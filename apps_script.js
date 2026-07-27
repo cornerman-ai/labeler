@@ -2261,7 +2261,7 @@ var REPORT_TZ = 'Asia/Manila';     // labelers' timezone
 var AUTO_REFRESH_HOURS = 1;        // how often it rebuilds
 
 // Only these labelers are shown (case-insensitive). Empty array = everyone.
-var ONLY_LABELERS = ['Arianne', 'Jhon', 'John'];
+var ONLY_LABELERS = ['Arianne', 'John'];
 
 // Optional: map raw labeler keys to names, e.g. { '1': 'Arianne', '2': 'Jhon' }.
 var LABELER_ALIASES = {};
