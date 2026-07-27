@@ -37,10 +37,11 @@ const SKIP_REASONS = [
 
 const SPEED_CYCLE = [0.25, 0.5, 1];
 
-// Loop the labelled punch window. A little trail-out so you can see whether
-// the hand comes back up after the punch — that's part of the judgement.
-const PUNCH_LEAD_IN_SEC = 0.15;
-const PUNCH_TRAIL_OUT_SEC = 0.25;
+// Loop the labelled punch window. 0/0 lead-in/trail-out = pure punch only,
+// same as the impact labeler — the verdict is about this punch, so the clip
+// must not show guard behaviour from before or after it.
+const PUNCH_LEAD_IN_SEC = 0;
+const PUNCH_TRAIL_OUT_SEC = 0;
 
 Object.assign(state, {
   knownVideos: [],
