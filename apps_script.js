@@ -789,6 +789,8 @@ function onOpen() {
     .createMenu('MyCorner')
     .addItem('Rebuild Combined Data', 'rebuildCombinedData')
     .addItem('Rebuild Combined Form Labels', 'rebuildCombinedFormLabels')
+    .addItem('Refresh Labeler Hours', 'labelerActivityReport')
+    .addItem('Set up hourly auto-refresh', 'installLabelerHoursTrigger')
     .addItem('Replace YouTube URLs with Drive URLs', 'replaceVideoUrls') // ONE-TIME: remove this line after running
     .addToUi();
 }
@@ -1840,6 +1842,7 @@ function doGetImpactFrames(p, labeler, action) {
   return jsonOut({ status: 'error', message: 'unknown impact-frame action: ' + action });
 }
 
+
 // ============================================================
 // Callout labeler — one row per called-out punch / combo / defense.
 // Each row stores the [start_sec, end_sec] window the callout was spoken
@@ -2083,4 +2086,309 @@ function doGetCalloutEvents(p, labeler, action) {
   }
 
   return jsonOut({ status: 'error', message: 'unknown callout action: ' + action });
+}
+
+
+
+
+
+
+// ============================================================
+// LABELER HOURS — auto-tracked, two tabs (styled)
+//
+// Builds two tabs from the `ts` / `labeled_at` timestamp stamped on
+// every label across all the labeling sheets:
+//
+//   "This Week"     — current week (Mon–Sun): each labeler's active
+//                     hours per day, week total, and how many labels
+//                     of each type (Punch / Impact / Form rule / …).
+//   "Weekly Totals" — one row per week, each labeler's total active
+//                     hours (a running history).
+//
+// Active hours = sum of gaps between consecutive labels that are
+// <= IDLE_GAP_MINUTES. A longer gap is a break and is not counted.
+// Example (5 min): labels at 10:00, 10:03, 10:22 -> 3-min gap counted,
+// 19-min gap not => 3 minutes active.
+//
+// Run "Set up hourly auto-refresh" once and both tabs update
+// themselves. Times shown in REPORT_TZ (timestamps stored in UTC).
+// ============================================================
+
+var WEEK_TAB = 'This Week';
+var HISTORY_TAB = 'Weekly Totals';
+var LEGACY_TAB = 'Labeler Hours';  // old single-tab output — removed on refresh
+var IDLE_GAP_MINUTES = 5;          // a gap longer than this is a break
+var REPORT_TZ = 'Asia/Manila';     // labelers' timezone
+var AUTO_REFRESH_HOURS = 1;        // how often it rebuilds
+
+// Only these labelers are shown (case-insensitive). Empty array = everyone.
+var ONLY_LABELERS = ['Arianne', 'Jhon', 'John'];
+
+// Optional: map raw labeler keys to names, e.g. { '1': 'Arianne', '2': 'Jhon' }.
+var LABELER_ALIASES = {};
+
+// Label types, in display order: [typeKey, columnHeader].
+var TYPE_LABELS = [
+  ['punch', 'Punch'], ['impact_frame', 'Impact'], ['rule', 'Form rule'],
+  ['orientation', 'Orientation'], ['punch_dir', 'Punch dir'],
+  ['punch_dir16', 'Punch dir16'], ['hip_rotation', 'Hip rot'], ['callout', 'Callout']
+];
+
+// Sheets to read: [name, isPrefix, timestampHeader, labelerFromSheetName, typeKey].
+// When labelerFromSheetName is false, the labeler is in the `labeler` column.
+var HOURS_SOURCES = [
+  ['Labeled Data', true,  'ts',         true,  'punch'],
+  ['Form Labels',  true,  'labeled_at', true,  'rule'],
+  ['Orientation Labels',   false, 'ts', false, 'orientation'],
+  ['Punch Directions',     false, 'ts', false, 'punch_dir'],
+  ['Punch Directions 16',  false, 'ts', false, 'punch_dir16'],
+  ['Hip Rotation Rubric',  false, 'ts', false, 'hip_rotation'],
+  ['Impact Frames',        false, 'ts', false, 'impact_frame'],
+  ['Callout Events',       false, 'ts', false, 'callout']
+];
+
+// Colors
+var C_TITLE_BG = '#0f172a', C_HEAD_BG = '#334155', C_FG = '#ffffff', C_TOTAL_BG = '#e2e8f0';
+
+function normLabeler(raw) {
+  var k = String(raw == null ? '' : raw).toLowerCase().trim();
+  if (k.indexOf('software ') === 0) k = k.substring(9).trim();  // "Software 1" -> "1"
+  return LABELER_ALIASES[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : '(unknown)');
+}
+
+var _onlySet = null;
+function allowedLabeler(who) {
+  if (!ONLY_LABELERS.length) return true;
+  if (!_onlySet) { _onlySet = {}; for (var i = 0; i < ONLY_LABELERS.length; i++) _onlySet[ONLY_LABELERS[i].toLowerCase()] = true; }
+  return _onlySet[who.toLowerCase()] === true;
+}
+
+function r1(x) { return Math.round(x * 10) / 10; }
+
+// Monday (UTC-noon Date) of the week containing the yyyy-MM-dd day string.
+function weekMonday(dayStr) {
+  var p = dayStr.split('-');
+  var dt = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  return dt;
+}
+function ymd(dt) { return Utilities.formatDate(dt, 'UTC', 'yyyy-MM-dd'); }
+function weekLabel(monday) {
+  var sun = new Date(monday.getTime()); sun.setUTCDate(sun.getUTCDate() + 6);
+  return Utilities.formatDate(monday, 'UTC', 'dd.MM') + '–' + Utilities.formatDate(sun, 'UTC', 'dd.MM');
+}
+
+function hoursTab(ss, name) {
+  var t = ss.getSheetByName(name);
+  if (!t) t = ss.insertSheet(name); else t.clear();
+  var bs = t.getBandings();
+  for (var i = 0; i < bs.length; i++) bs[i].remove();
+  // Unfreeze first — a leftover frozen column from a prior run makes the
+  // title-row merge span the frozen/non-frozen boundary and throw.
+  t.setFrozenRows(0);
+  t.setFrozenColumns(0);
+  t.getRange(1, 1, 1, t.getMaxColumns()).breakApart();
+  return t;
+}
+
+// Apply the shared look: title bar, header row, banded body, frozen panes,
+// number formats, auto width. hourCols/countCols are 1-based column indices.
+function styleTab(sheet, nRows, width, hourCols, countCols) {
+  sheet.getRange(1, 1, 1, width).merge()
+       .setBackground(C_TITLE_BG).setFontColor(C_FG).setFontWeight('bold').setFontSize(12);
+  sheet.setRowHeight(1, 26);
+  sheet.getRange(2, 1, 1, width)
+       .setBackground(C_HEAD_BG).setFontColor(C_FG).setFontWeight('bold')
+       .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(2, 24);
+  var bodyN = nRows - 2;
+  if (bodyN > 0) {
+    sheet.getRange(3, 1, bodyN, width).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+    sheet.getRange(3, 1, bodyN, 1).setFontWeight('bold');   // labeler / week column
+    for (var i = 0; i < hourCols.length; i++)
+      sheet.getRange(3, hourCols[i], bodyN, 1).setNumberFormat('0.0').setHorizontalAlignment('center');
+    for (var j = 0; j < countCols.length; j++)
+      sheet.getRange(3, countCols[j], bodyN, 1).setNumberFormat('#,##0').setHorizontalAlignment('center');
+  }
+  sheet.setFrozenRows(2);
+  // No frozen columns: the title cell is merged across the full width, and
+  // freezing a column would slice through that merged cell (Sheets throws).
+  sheet.autoResizeColumns(1, width);
+}
+
+function seq(a, b) { var out = []; for (var i = a; i <= b; i++) out.push(i); return out; }
+
+// Core: (re)build both tabs. No UI, so a trigger can call it.
+function refreshLabelerHours() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  _onlySet = null;
+  var legacy = ss.getSheetByName(LEGACY_TAB);
+  if (legacy) ss.deleteSheet(legacy);
+
+  var sheets = ss.getSheets();
+  var bucket = {};   // labeler -> day -> [{ms, type}, ...]
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s], name = sheet.getName();
+    var src = null;
+    for (var i = 0; i < HOURS_SOURCES.length; i++) {
+      var q = HOURS_SOURCES[i];
+      if (q[1] ? (name.indexOf(q[0]) === 0 && name.indexOf('Combined') !== 0) : name === q[0]) { src = q; break; }
+    }
+    var lastRow = sheet.getLastRow();
+    if (!src || lastRow < 2) continue;
+
+    // Read only the columns we need (timestamp, and labeler if applicable) —
+    // reading whole sheets is what makes the Spreadsheet service time out.
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var idx = headerIndex(header);
+    var tsCol = idx[src[2]];
+    if (tsCol == null) continue;
+    var n = lastRow - 1, type = src[4];
+    var tsVals = sheet.getRange(2, tsCol + 1, n, 1).getValues();
+    var nameKey = src[3] ? normLabeler(name.substring(src[0].length)) : null;
+    var labVals = null;
+    if (!src[3]) {
+      var lc = idx['labeler'];
+      if (lc == null) continue;
+      labVals = sheet.getRange(2, lc + 1, n, 1).getValues();
+    }
+
+    for (var r = 0; r < n; r++) {
+      var v = tsVals[r][0];
+      var ms = (v instanceof Date) ? v.getTime() : new Date(String(v)).getTime();
+      if (isNaN(ms)) continue;
+      var who = src[3] ? nameKey : normLabeler(labVals[r][0]);
+      if (!allowedLabeler(who)) continue;
+      var day = Utilities.formatDate(new Date(ms), REPORT_TZ, 'yyyy-MM-dd');
+      (bucket[who] = bucket[who] || {});
+      (bucket[who][day] = bucket[who][day] || []).push({ ms: ms, type: type });
+    }
+  }
+
+  // Per (labeler, day): active hours, total labels, per-type counts.
+  var gapMs = IDLE_GAP_MINUTES * 60000;
+  var daily = [];            // {who, day, hrs, labels, byType}
+  var peopleSet = {};
+  var whos = Object.keys(bucket);
+  for (var w = 0; w < whos.length; w++) {
+    peopleSet[whos[w]] = true;
+    var days = Object.keys(bucket[whos[w]]);
+    for (var d = 0; d < days.length; d++) {
+      var evs = bucket[whos[w]][days[d]].sort(function (a, b) { return a.ms - b.ms; });
+      var active = 0, byType = {};
+      for (var k = 0; k < evs.length; k++) {
+        if (k > 0 && evs[k].ms - evs[k - 1].ms <= gapMs) active += evs[k].ms - evs[k - 1].ms;
+        byType[evs[k].type] = (byType[evs[k].type] || 0) + 1;
+      }
+      daily.push({ who: whos[w], day: days[d], hrs: active / 3600000, labels: evs.length, byType: byType });
+    }
+  }
+  var allPeople = Object.keys(peopleSet).sort();
+
+  // ---------- Tab 1: This Week ----------
+  var todayStr = Utilities.formatDate(new Date(), REPORT_TZ, 'yyyy-MM-dd');
+  var curMon = weekMonday(todayStr), curKey = ymd(curMon);
+  var dayCols = [];
+  for (var i2 = 0; i2 < 7; i2++) {
+    var dd = new Date(curMon.getTime()); dd.setUTCDate(dd.getUTCDate() + i2);
+    dayCols.push({ key: ymd(dd), hdr: Utilities.formatDate(dd, 'UTC', 'EEE dd.MM') });
+  }
+  var wk = {};   // who -> {byDay:{key:{hrs,labels}}, byType:{}, totHrs, totLabels}
+  for (var e = 0; e < daily.length; e++) {
+    if (ymd(weekMonday(daily[e].day)) !== curKey) continue;
+    var o = wk[daily[e].who] || (wk[daily[e].who] = { byDay: {}, byType: {}, totHrs: 0, totLabels: 0 });
+    o.byDay[daily[e].day] = daily[e];
+    o.totHrs += daily[e].hrs; o.totLabels += daily[e].labels;
+    for (var tk in daily[e].byType) o.byType[tk] = (o.byType[tk] || 0) + daily[e].byType[tk];
+  }
+  // Which type columns to show this week (only non-empty ones).
+  var shownTypes = [];
+  for (var ti = 0; ti < TYPE_LABELS.length; ti++) {
+    var used = false;
+    for (var pk in wk) if (wk[pk].byType[TYPE_LABELS[ti][0]]) { used = true; break; }
+    if (used) shownTypes.push(TYPE_LABELS[ti]);
+  }
+
+  var h1 = ['Labeler'];
+  for (var c = 0; c < dayCols.length; c++) h1.push(dayCols[c].hdr);
+  h1.push('Total hrs');
+  for (var st = 0; st < shownTypes.length; st++) h1.push(shownTypes[st][1]);
+  h1.push('Total labels');
+  var w1width = h1.length;
+
+  var week1 = [['This Week  (' + weekLabel(curMon) + ')   ·   active hours per day   ·   updated ' +
+    Utilities.formatDate(new Date(), REPORT_TZ, 'yyyy-MM-dd HH:mm') + ' (' + REPORT_TZ + ')']];
+  week1.push(h1);
+  var wkPeople = Object.keys(wk).sort();
+  if (!wkPeople.length) {
+    week1.push(['No labels recorded yet this week.']);
+  }
+  for (var p = 0; p < wkPeople.length; p++) {
+    var o2 = wk[wkPeople[p]], row = [wkPeople[p]];
+    for (var c2 = 0; c2 < dayCols.length; c2++) {
+      var cell = o2.byDay[dayCols[c2].key];
+      row.push(cell ? r1(cell.hrs) : '');
+    }
+    row.push(r1(o2.totHrs));
+    for (var st2 = 0; st2 < shownTypes.length; st2++) row.push(o2.byType[shownTypes[st2][0]] || 0);
+    row.push(o2.totLabels);
+    week1.push(row);
+  }
+  for (var q1 = 0; q1 < week1.length; q1++) while (week1[q1].length < w1width) week1[q1].push('');
+  var tab1 = hoursTab(ss, WEEK_TAB);
+  tab1.getRange(1, 1, week1.length, w1width).setValues(week1);
+  var hourCols1 = seq(2, 2 + dayCols.length);           // day cols + Total hrs
+  var countCols1 = seq(3 + dayCols.length, w1width);    // type cols + Total labels
+  styleTab(tab1, week1.length, w1width, hourCols1, countCols1);
+
+  // ---------- Tab 2: Weekly Totals ----------
+  var weeks = {};   // weekKey -> {label, tot:{who->hrs}}
+  for (var e2 = 0; e2 < daily.length; e2++) {
+    var m = weekMonday(daily[e2].day), key = ymd(m);
+    if (!weeks[key]) weeks[key] = { label: weekLabel(m), tot: {} };
+    weeks[key].tot[daily[e2].who] = (weeks[key].tot[daily[e2].who] || 0) + daily[e2].hrs;
+  }
+  var h2 = ['Week']; for (var pp = 0; pp < allPeople.length; pp++) h2.push(allPeople[pp]);
+  var w2width = h2.length;
+  var hist = [['Weekly Totals  ·  total active hours per labeler, per week (Mon–Sun)']];
+  hist.push(h2);
+  var wkeys = Object.keys(weeks).sort().reverse();
+  if (!wkeys.length) hist.push(['No labels recorded yet.']);
+  for (var wkx = 0; wkx < wkeys.length; wkx++) {
+    var rec = weeks[wkeys[wkx]], hrow = [rec.label];
+    for (var pp2 = 0; pp2 < allPeople.length; pp2++) {
+      var val = rec.tot[allPeople[pp2]];
+      hrow.push(val ? r1(val) : '');
+    }
+    hist.push(hrow);
+  }
+  for (var q2 = 0; q2 < hist.length; q2++) while (hist[q2].length < w2width) hist[q2].push('');
+  var tab2 = hoursTab(ss, HISTORY_TAB);
+  tab2.getRange(1, 1, hist.length, w2width).setValues(hist);
+  styleTab(tab2, hist.length, w2width, seq(2, w2width), []);
+
+  return { days: daily.length, people: allPeople.length };
+}
+
+// Menu: rebuild both tabs now.
+function labelerActivityReport() {
+  var s = refreshLabelerHours();
+  SpreadsheetApp.getUi().alert('Labeler Hours refreshed',
+    'Updated the "' + WEEK_TAB + '" and "' + HISTORY_TAB + '" tabs (' +
+    s.days + ' labeler-days, ' + s.people + ' labeler(s)).',
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+// Menu: install the hourly auto-refresh (run once).
+function installLabelerHoursTrigger() {
+  var trigs = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < trigs.length; i++)
+    if (trigs[i].getHandlerFunction() === 'refreshLabelerHours') ScriptApp.deleteTrigger(trigs[i]);
+  ScriptApp.newTrigger('refreshLabelerHours').timeBased().everyHours(AUTO_REFRESH_HOURS).create();
+  refreshLabelerHours();
+  SpreadsheetApp.getUi().alert('Auto-refresh installed',
+    'The "' + WEEK_TAB + '" and "' + HISTORY_TAB + '" tabs now rebuild every ' +
+    AUTO_REFRESH_HOURS + 'h automatically.',
+    SpreadsheetApp.getUi().ButtonSet.OK);
 }
