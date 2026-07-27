@@ -258,6 +258,13 @@ function doGet(e) {
     return doGetImpactFrames(p, labeler, action);
   }
 
+  // Guard-drop labeler — separate sheet, one categorical verdict per punch
+  // on the NON-punching (resting) hand. Same candidate source as impact.
+  if (action === 'listGuardDrops' || action === 'saveGuardDrop' ||
+      action === 'deleteGuardDrop') {
+    return doGetGuardDrops(p, labeler, action);
+  }
+
   // Callout labeler — separate sheet. One row per called-out punch / combo /
   // defense, keyed by (labeler, video). These annotate the *instruction* a
   // coach app calls out, not the executed punch; they become weak labels for
@@ -1842,6 +1849,138 @@ function doGetImpactFrames(p, labeler, action) {
   return jsonOut({ status: 'error', message: 'unknown impact-frame action: ' + action });
 }
 
+// ============================================================
+// Guard-drop labeler — one categorical verdict per punch on the RESTING
+// (non-punching) hand. Same shape as the impact-frame sheet, but the label
+// is one of GUARD_DROP_VERDICTS instead of a frame index:
+//
+//   good        the resting hand stayed up at guard for the whole punch
+//   dropped     it started up and fell during the punch
+//   always_low  it was never up — low before, during and after
+//
+// The `always_low` / `dropped` split is the point: both fail "hand at
+// guard", but they're different faults with different drills, and the
+// existing binary `rule_resting_hand` pass/fail can't tell them apart.
+// Keyed by (labeler, punch_uuid); a re-save supersedes the prior row.
+// ============================================================
+var GUARD_DROP_SHEET_NAME = 'Guard Drops';
+var GUARD_DROP_HEADERS = ['ts', 'labeler', 'punch_uuid', 'video', 'verdict',
+                          'guard_hand', 'skip_reason', 'deleted'];
+var GUARD_DROP_VERDICTS = ['good', 'dropped', 'always_low'];
+var GUARD_DROP_SKIP_REASONS = ['occluded', 'unclear', 'no_punch', 'bad_clip'];
+
+function getOrCreateGuardDropSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(GUARD_DROP_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(GUARD_DROP_SHEET_NAME);
+    sh.appendRow(GUARD_DROP_HEADERS);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(GUARD_DROP_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function doGetGuardDrops(p, labeler, action) {
+  var sh = getOrCreateGuardDropSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  // === LIST verdicts (optionally filtered by labeler / video) ===
+  if (action === 'listGuardDrops') {
+    var video = p.video || '';
+    var filterLabeler = p.labeler || '';
+    var rows = [];
+    for (var li = 1; li < data.length; li++) {
+      var lr = data[li];
+      if (String(lr[idx.deleted]) === '1') continue;
+      if (video && lr[idx.video] !== video) continue;
+      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
+      rows.push({
+        ts: lr[idx.ts],
+        labeler: lr[idx.labeler],
+        punch_uuid: lr[idx.punch_uuid],
+        video: lr[idx.video],
+        verdict: lr[idx.verdict] === '' ? null : String(lr[idx.verdict]),
+        guard_hand: lr[idx.guard_hand] === '' ? null : String(lr[idx.guard_hand]),
+        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
+      });
+    }
+    return jsonOut({ status: 'ok', rows: rows });
+  }
+
+  // === SAVE keyed by (labeler, punch_uuid). Supersedes prior. ===
+  // Exactly one of verdict / skip_reason must be set.
+  if (action === 'saveGuardDrop') {
+    var required = ['labeler', 'punch_uuid', 'video'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var hasVerdict = p.verdict !== undefined && p.verdict !== '';
+    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
+    if (hasVerdict === hasSkip) {
+      return jsonOut({ status: 'error', message: 'need exactly one of verdict / skip_reason' });
+    }
+    var verdictVal = '';
+    var skipVal = '';
+    if (hasVerdict) {
+      if (GUARD_DROP_VERDICTS.indexOf(String(p.verdict)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid verdict: ' + p.verdict });
+      }
+      verdictVal = String(p.verdict);
+    } else {
+      if (GUARD_DROP_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+      }
+      skipVal = String(p.skip_reason);
+    }
+    var handVal = (p.guard_hand === undefined) ? '' : String(p.guard_hand);
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (String(data[i2][idx.deleted]) === '1') continue;
+      if (data[i2][idx.labeler] !== p.labeler) continue;
+      if (data[i2][idx.punch_uuid] !== p.punch_uuid) continue;
+      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+    }
+    var newRow = [];
+    var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(p.labeler);
+      else if (col === 'punch_uuid') newRow.push(p.punch_uuid);
+      else if (col === 'video') newRow.push(p.video);
+      else if (col === 'verdict') newRow.push(verdictVal);
+      else if (col === 'guard_hand') newRow.push(handVal);
+      else if (col === 'skip_reason') newRow.push(skipVal);
+      else if (col === 'deleted') newRow.push('');
+      else newRow.push('');
+    }
+    sh.appendRow(newRow);
+    return jsonOut({ status: 'ok' });
+  }
+
+  // === DELETE: mark every current row for (labeler, punch_uuid) deleted ===
+  if (action === 'deleteGuardDrop') {
+    var found = 0;
+    for (var i3 = 1; i3 < data.length; i3++) {
+      if (String(data[i3][idx.deleted]) === '1') continue;
+      if (data[i3][idx.labeler] !== p.labeler) continue;
+      if (data[i3][idx.punch_uuid] !== p.punch_uuid) continue;
+      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
+      found++;
+    }
+    return jsonOut({ status: 'ok', deleted: found });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown guard-drop action: ' + action });
+}
 
 // ============================================================
 // Callout labeler — one row per called-out punch / combo / defense.

@@ -26,6 +26,18 @@ id | video_name | video_file | training_type | stance | fighter | angle | label 
 **Form Labels sheets** ("Form Labels {Name}"):
 id | punch_uuid | video_file | punch_type | hand | stance | start_sec | end_sec | rule_hand_extended | rule_hand_low | rule_hand_ushape | rule_hip_rotation | rule_rear_heel_lift | rule_resting_hand | rule_extension | rule_punch_height | labeled_at
 
+**Guard Drops sheet** (`guard_drop_label.html` — one verdict per punch on the
+resting/non-punching hand):
+ts | labeler | punch_uuid | video | verdict | guard_hand | skip_reason | deleted
+
+`verdict` is one of `good` / `dropped` / `always_low`. The dropped vs
+always_low split is the point of the tool — `rule_resting_hand` in Form Labels
+is pass/fail and merges "guard collapsed when they threw" with "guard was
+never up", which are different faults needing different drills. Keyed by
+(labeler, punch_uuid); a re-save supersedes the prior row (soft `deleted=1`).
+`guard_hand` (LEFT/RIGHT) is recorded as-shown so a stance mistake in Combined
+Data is auditable after the fact.
+
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.
 

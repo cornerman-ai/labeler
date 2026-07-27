@@ -4,3 +4,7 @@
 # for the labels Sheet). This repo is public — never commit these.
 orientation/config.local.json
 config.local.json
+
+# Python bytecode from the labeler helper scripts
+__pycache__/
+*.pyc
