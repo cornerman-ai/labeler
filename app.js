@@ -31,7 +31,11 @@ const PUNCH_TYPES = [
   { id: 'lead_roll',             label: 'Lead Roll',           key: 'a', group: 'defense' },
   { id: 'rear_roll',             label: 'Rear Roll',           key: 'd', group: 'defense' },
   { id: 'pull_back',             label: 'Pull Back',           key: 'r', group: 'defense' },
-  { id: 'step_back',             label: 'Step Back',           key: 'f', group: 'defense' },
+  // step_back retired 2026-07-28: backward steps are mostly unintentional
+  // footwork (detected kinematically by the step detector, not labeled).
+  // Kept in the catalogue so the 800+ existing sheet rows still render
+  // instead of falling back to jab_head.
+  { id: 'step_back',             label: 'Step Back',           key: 'f', group: 'defense', retired: true },
   { id: 'duck',                  label: 'Duck',                key: 'c', group: 'defense' },
   { id: 'unsure',                label: 'Unsure',              key: 'u', group: 'other' },
 ];
@@ -174,6 +178,7 @@ function buildPunchButtons() {
   const container = document.getElementById('punch-buttons');
   let currentGroup = null;
   PUNCH_TYPES.forEach((punch) => {
+    if (punch.retired) return;
     if (punch.group !== currentGroup) {
       currentGroup = punch.group;
       const header = document.createElement('div');
@@ -969,7 +974,6 @@ function setupKeyboardShortcuts() {
       case 'KeyA': selectPunch('lead_roll'); break;
       case 'KeyD': selectPunch('rear_roll'); break;
       case 'KeyR': selectPunch('pull_back'); break;
-      case 'KeyF': selectPunch('step_back'); break;
       case 'KeyC': selectPunch('duck'); break;
       case 'KeyU': selectPunch('unsure'); break;
     }
