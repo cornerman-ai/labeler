@@ -447,13 +447,15 @@ body {
 }
 
 /* Overlay toggle button */
-#btn-overlay {
+#btn-overlay,
+#btn-defense-filter {
   font-size: 11px;
   padding: 3px 10px;
   min-width: auto;
 }
 
-#btn-overlay.overlay-off {
+#btn-overlay.overlay-off,
+#btn-defense-filter.overlay-off {
   opacity: 0.5;
 }
 

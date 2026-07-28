@@ -32,6 +32,7 @@ const PUNCH_TYPES = [
   { id: 'rear_roll',             label: 'Rear Roll',           key: 'd', group: 'defense' },
   { id: 'pull_back',             label: 'Pull Back',           key: 'r', group: 'defense' },
   { id: 'step_back',             label: 'Step Back',           key: 'f', group: 'defense' },
+  { id: 'duck',                  label: 'Duck',                key: 'c', group: 'defense' },
   { id: 'unsure',                label: 'Unsure',              key: 'u', group: 'other' },
 ];
 
@@ -56,6 +57,7 @@ const PUNCH_COLORS = {
   rear_roll:  '#00ffcc',
   pull_back:  '#aa66ff',
   step_back:  '#ffff00',
+  duck:       '#88ff00',
   // Other
   unsure:      '#999999',
   round_start: '#28a745',
@@ -76,6 +78,7 @@ Object.assign(state, {
   labels: [],
   roundActive: false,
   unsureFilter: false,
+  defenseFilter: false,
 });
 
 // ============================================================
@@ -108,6 +111,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     updateUnsureFilterButton();
   }
+  if (localStorage.getItem('defenseFilter') === 'true') {
+    state.defenseFilter = true;
+  }
+  updateDefenseFilterButton();
 });
 
 function toggleUnsureFilter() {
@@ -130,9 +137,33 @@ function updateUnsureFilterButton() {
   }
 }
 
+function toggleDefenseFilter() {
+  state.defenseFilter = !state.defenseFilter;
+  localStorage.setItem('defenseFilter', String(state.defenseFilter));
+  updateDefenseFilterButton();
+  renderLabels();
+  updateVideoOverlay();
+}
+
+function updateDefenseFilterButton() {
+  const btn = document.getElementById('btn-defense-filter');
+  if (!btn) return;
+  if (state.defenseFilter) {
+    btn.textContent = 'Defense only: ON';
+    btn.classList.remove('overlay-off');
+  } else {
+    btn.textContent = 'Defense only: OFF';
+    btn.classList.add('overlay-off');
+  }
+}
+
 function shouldHideByFilter(label) {
-  if (!state.unsureFilter) return false;
   if (label.isRoundMarker) return false;
+  if (state.defenseFilter) {
+    const type = PUNCH_TYPES.find(p => p.id === label.punch);
+    if (!type || type.group !== 'defense') return true;
+  }
+  if (!state.unsureFilter) return false;
   return label.punch !== 'unsure';
 }
 
@@ -939,6 +970,7 @@ function setupKeyboardShortcuts() {
       case 'KeyD': selectPunch('rear_roll'); break;
       case 'KeyR': selectPunch('pull_back'); break;
       case 'KeyF': selectPunch('step_back'); break;
+      case 'KeyC': selectPunch('duck'); break;
       case 'KeyU': selectPunch('unsure'); break;
     }
   });
@@ -1128,7 +1160,7 @@ function updateVideoOverlay() {
   );
 
   const roundKey = currentRound ? 'R' + currentRound : 'out';
-  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter;
+  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.defenseFilter;
   if (overlay.dataset.activeKey === key) return;
   overlay.dataset.activeKey = key;
 
