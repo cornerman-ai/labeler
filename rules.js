@@ -33,6 +33,7 @@ const ANSWER_SYMBOLS = { pass: '\u2713',  fail: '\u2717',  unclear: '?' };
 const NON_PUNCH_TYPES = new Set([
   // Defensive moves (app.js group: 'defense')
   'lead_slip', 'rear_slip', 'lead_roll', 'rear_roll', 'pull_back', 'step_back',
+  'duck',
   // Other (app.js group: 'other')
   'unsure',
 ]);
