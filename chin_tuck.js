@@ -35,7 +35,7 @@ const PLAYLIST = [
   'Beginner Shadow Boxing Workout In 5 Minutes ｜ Working The Jab (Follow Along)',
   '30 Minute Heavy Bag Boxing Workout at Home ｜ 10 Round Follow Along',
   '10 Min Complete Shadow Boxing Workout ｜ Become A Better Boxer',
-  '15 MINUTE FAT BURNING BOXING BAG WORKOUT [FOLLOW ALONG]',
+  'Heavy Bag Workout ｜ Follow along Boxing Workout',
   '20 Minute Shadowboxing for Beginners ｜ Trainer of the Month Club ｜ Well+Good',
   'Beginner Heavy Bag Workout ｜ 15 Min Fat-Burning Boxing Follow Along With Igor Matejski',
   "Shadow Boxing Drill for Home ｜ Tom Yankello's Drill #1",
