@@ -66,6 +66,101 @@ function formatChinLabel(v) {
   return v.verdict;
 }
 
+// ─── zoom / pan (still-frame stage) ────────────────────────────────────────
+// Ctrl+scroll (or trackpad pinch) zooms toward the cursor; click-drag pans;
+// double-click resets. The transform sits on #zoom-stage so the crop box
+// (positioned in stage coords) zooms and pans with the frame.
+const ZOOM_MAX = 8;
+
+Object.assign(state, { zoom: 1, panX: 0, panY: 0 });
+
+function clampPan() {
+  const stage = document.getElementById('zoom-stage');
+  if (!stage) return;
+  const w = stage.offsetWidth, h = stage.offsetHeight;
+  state.panX = Math.min(0, Math.max(w * (1 - state.zoom), state.panX));
+  state.panY = Math.min(0, Math.max(h * (1 - state.zoom), state.panY));
+}
+
+function applyZoomPan() {
+  const stage = document.getElementById('zoom-stage');
+  const viewport = document.getElementById('video-viewport');
+  const box = document.getElementById('chin-box');
+  if (!stage) return;
+  clampPan();
+  stage.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+  if (viewport) viewport.classList.toggle('zoomed', state.zoom > 1);
+  // Counter-scale the border so it stays hairline at high zoom.
+  if (box) box.style.borderWidth = Math.max(3 / state.zoom, 0.75) + 'px';
+  updateHud();
+}
+
+function setZoomAt(newZoom, cx, cy) {
+  // Keep the stage point under the cursor (cx, cy in viewport coords) fixed.
+  const z0 = state.zoom;
+  const z1 = Math.min(ZOOM_MAX, Math.max(1, newZoom));
+  state.panX = cx - (cx - state.panX) * (z1 / z0);
+  state.panY = cy - (cy - state.panY) * (z1 / z0);
+  state.zoom = z1;
+  applyZoomPan();
+}
+
+function resetZoom() {
+  state.zoom = 1;
+  state.panX = 0;
+  state.panY = 0;
+  applyZoomPan();
+}
+
+// While zoomed, center the viewport on the current sample's crop box so the
+// labeler can stay zoomed in across samples.
+function centerOnBox() {
+  if (state.zoom <= 1) return;
+  const stage = document.getElementById('zoom-stage');
+  const rect = computeBoxRect();
+  if (!stage || !rect) return;
+  state.panX = stage.offsetWidth / 2 - (rect.left + rect.width / 2) * state.zoom;
+  state.panY = stage.offsetHeight / 2 - (rect.top + rect.height / 2) * state.zoom;
+  applyZoomPan();
+}
+
+function setupZoomPan() {
+  const viewport = document.getElementById('video-viewport');
+  if (!viewport) return;
+
+  viewport.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;                  // plain scroll keeps scrolling the page
+    e.preventDefault();
+    const r = viewport.getBoundingClientRect();
+    setZoomAt(state.zoom * Math.exp(-e.deltaY * 0.005),
+              e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+
+  let dragging = false, lastX = 0, lastY = 0;
+  viewport.addEventListener('mousedown', (e) => {
+    if (state.zoom <= 1) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    viewport.classList.add('dragging');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    state.panX += e.clientX - lastX;
+    state.panY += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyZoomPan();
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    viewport.classList.remove('dragging');
+  });
+
+  viewport.addEventListener('dblclick', (e) => { e.preventDefault(); resetZoom(); });
+}
+
 // ─── chin crop box — MUST mirror chin_sampler.chin_box() exactly ───────────
 function chinBox(j, W, H, boxScale) {
   const px = (v) => [v[0] * W, v[1] * H];
@@ -144,27 +239,36 @@ function isPeeking(s) {
   return Math.abs(video.currentTime - s.pts) > tol;
 }
 
-function updateChinBox() {
-  const box = document.getElementById('chin-box');
+// Crop box of the current sample in stage coords (pre-transform element px),
+// or null when nothing to draw. Used by both the overlay and centerOnBox().
+function computeBoxRect() {
   const video = document.getElementById('video-player');
   const s = state.samples[state.cursor];
-  if (!box || !video) return;
-  if (!s || !state.videoLoaded || !video.videoWidth) {
-    box.style.display = 'none';
-    return;
-  }
+  if (!video || !s || !state.videoLoaded || !video.videoWidth) return null;
   const b = chinBox(s.joints, video.videoWidth, video.videoHeight, state.boxScale);
   // object-fit: contain mapping — video pixels -> element pixels
   const scale = Math.min(video.clientWidth / video.videoWidth,
                          video.clientHeight / video.videoHeight);
   const offX = video.offsetLeft + (video.clientWidth - video.videoWidth * scale) / 2;
   const offY = video.offsetTop + (video.clientHeight - video.videoHeight * scale) / 2;
+  return { left: offX + b.x * scale, top: offY + b.y * scale,
+           width: b.w * scale, height: b.h * scale };
+}
+
+function updateChinBox() {
+  const box = document.getElementById('chin-box');
+  if (!box) return;
+  const rect = computeBoxRect();
+  if (!rect) {
+    box.style.display = 'none';
+    return;
+  }
   box.style.display = 'block';
-  box.style.left = (offX + b.x * scale) + 'px';
-  box.style.top = (offY + b.y * scale) + 'px';
-  box.style.width = (b.w * scale) + 'px';
-  box.style.height = (b.h * scale) + 'px';
-  box.classList.toggle('peeking', isPeeking(s));
+  box.style.left = rect.left + 'px';
+  box.style.top = rect.top + 'px';
+  box.style.width = rect.width + 'px';
+  box.style.height = rect.height + 'px';
+  box.classList.toggle('peeking', isPeeking(state.samples[state.cursor]));
 }
 
 function updateHud() {
@@ -175,7 +279,8 @@ function updateHud() {
     hud.textContent = '— no sample —';
     return;
   }
-  const base = `sample ${state.cursor + 1}/${state.samples.length} · r${s.round} f${s.frame}`;
+  let base = `sample ${state.cursor + 1}/${state.samples.length} · r${s.round} f${s.frame}`;
+  if (state.zoom > 1) base += ` · ${state.zoom.toFixed(1)}x`;
   hud.textContent = isPeeking(s)
     ? base + ' · PEEKING — 1/2/3 labels the sampled frame'
     : base;
@@ -330,16 +435,16 @@ function seekToCurrent() {
   }
   const s = state.samples[state.cursor];
   const video = document.getElementById('video-player');
+  // Frame stepping (peek) converts to seconds with this — the manifest knows
+  // each round's true fps, so don't rely on playback-based detection.
+  state.frameDuration = 1 / sampleFps(s);
   if (video && !isNaN(video.duration) && video.duration > 0) {
-    if (!video.paused) {
-      video.pause();
-      const btn = document.getElementById('btn-play');
-      if (btn) btn.textContent = 'Play';
-    }
+    video.pause();
     // Seek a hair past the frame's PTS so the browser presents THAT frame.
     const eps = 0.3 / sampleFps(s);
     video.currentTime = Math.min(Math.max(0, s.pts + eps), video.duration);
   }
+  centerOnBox();
   const label = state.labelByKey.get(keyFor(s));
   const total = `${state.cursor + 1}/${state.samples.length}`;
   setCurrentLine(describeSample(s, total, formatChinLabel(label)));
@@ -680,6 +785,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const video = document.getElementById('video-player');
   video.addEventListener('loadedmetadata', () => {
     state.videoLoaded = true;
+    resetZoom();
     // Auto-select the matching stem when the file name matches exactly.
     const stem = (state.videoName || '').replace(/\.[^.]+$/, '');
     if (!state.currentStem && state.knownVideos.some(v => v.stem === stem)) {
@@ -689,7 +795,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     tryGenerateSamples();
   });
   video.addEventListener('seeked', () => { updateHud(); updateChinBox(); });
-  window.addEventListener('resize', updateChinBox);
+  window.addEventListener('resize', () => { updateChinBox(); applyZoomPan(); });
+  setupZoomPan();
 
   document.getElementById('btn-tucked').addEventListener('click', () => labelWith('tucked'));
   document.getElementById('btn-level').addEventListener('click', () => labelWith('level'));
@@ -722,7 +829,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     const v = VERDICTS.find(x => x.key === e.key);
     if (v) { e.preventDefault(); labelWith(v.verdict); return; }
-    if (e.key === ' ') { e.preventDefault(); togglePlay(); return; }
+    if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleOverlay(); return; }
     if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrames(-1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); stepFrames(1); return; }
     if (e.key === 'u' || e.key === 'U') { e.preventDefault(); undoAction(); return; }

@@ -132,6 +132,14 @@
     #chin-status.ok { color: #5fd97a; }
     #chin-status.err { color: #e85a5a; }
 
+    /* Still-frame stage: zoom/pan via CSS transform. The video element is
+       just the frame source — no playback chrome. */
+    #video-viewport { user-select: none; touch-action: none; }
+    #video-viewport.zoomed { cursor: grab; }
+    #video-viewport.zoomed.dragging { cursor: grabbing; }
+    #zoom-stage { position: relative; transform-origin: 0 0; }
+    .overlays-hidden #chin-box { display: none !important; }
+
     /* On-video chrome: crop box + HUD + state banner. */
     #chin-box {
       position: absolute;
@@ -216,54 +224,17 @@
 
     <!-- Main layout: video player center + labeling sidebar right -->
     <div id="main-layout">
-      <!-- Video player (same IDs as index.html so player.js works) -->
+      <!-- Still-frame stage (video element = frame source, never plays) -->
       <div id="video-container">
         <div id="video-viewport">
-          <video id="video-player" preload="auto"></video>
+          <div id="zoom-stage">
+            <video id="video-player" preload="auto"></video>
+            <div id="chin-box"></div>
+          </div>
           <div id="video-dim-overlay"></div>
           <div id="video-overlay"></div>
-          <div id="chin-box"></div>
           <div id="chin-hud">— no sample —</div>
           <div id="chin-banner" class="hidden"></div>
-          <video id="thumb-video" preload="auto" muted style="display:none"></video>
-        </div>
-        <div id="video-controls">
-          <div id="timeline-minimap" style="display:none">
-            <div id="minimap-segments"></div>
-            <div id="minimap-viewport"></div>
-            <div id="minimap-playhead"></div>
-          </div>
-          <div id="seek-bar-wrapper">
-            <div id="timeline-ticks"></div>
-            <div id="seek-bar-overlay"></div>
-            <input type="range" id="seek-bar" min="0" max="1000" value="0">
-            <div id="seek-thumbnail">
-              <canvas id="thumb-canvas" width="192" height="108"></canvas>
-              <span id="thumb-time"></span>
-            </div>
-          </div>
-          <div id="controls-row">
-            <button id="btn-play" onclick="togglePlay()">Play</button>
-            <button id="btn-mute" onclick="toggleMute()">&#128266;</button>
-            <button onclick="stepFrames(-2)" title="Back 2 frames">&laquo;</button>
-            <button onclick="stepFrames(-1)" title="Back 1 frame">&lsaquo;</button>
-            <button onclick="stepFrames(1)" title="Forward 1 frame">&rsaquo;</button>
-            <button onclick="stepFrames(2)" title="Forward 2 frames">&raquo;</button>
-            <div id="speed-controls">
-              <label>Speed:</label>
-              <button onclick="setSpeed(0.25)">0.25x</button>
-              <button onclick="setSpeed(0.5)">0.5x</button>
-              <button onclick="setSpeed(1)" class="speed-active">1x</button>
-            </div>
-            <span id="time-display">0:00.000 / 0:00.000</span>
-            <button id="btn-overlay" onclick="toggleOverlay()" title="Toggle overlay (L)">Labels: ON</button>
-            <div id="zoom-controls">
-              <button id="btn-zoom-out" onclick="zoomOut()" title="Zoom out (Ctrl+-)">&#8722;</button>
-              <span id="zoom-level-display">1x</span>
-              <button id="btn-zoom-in" onclick="zoomIn()" title="Zoom in (Ctrl+=)">+</button>
-              <button id="btn-zoom-fit" onclick="zoomFit()" title="Fit all (Ctrl+0)">Fit</button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -310,10 +281,13 @@
 
         <h3>Conventions</h3>
         <p style="font-size:11px;color:#888;line-height:1.5;margin:0">
-          Each sample pauses on its frame with the crop box drawn.<br>
+          One still frame at a time, with the crop box drawn.<br>
           <b>1/2/3</b> = tucked / level / in the air — saves &amp; advances.<br>
+          <b>Ctrl+scroll</b> (or pinch) = zoom · <b>drag</b> = pan ·
+          <b>double-click</b> = reset zoom.<br>
+          While zoomed, each new sample re-centers on the chin box.<br>
           <b>&larr;/&rarr;</b> = peek at neighboring frames (box goes dashed).<br>
-          <b>R</b> = re-seek to the sampled frame.<br>
+          <b>R</b> = back to the sampled frame · <b>H</b> = hide/show the box.<br>
           <b>U</b> = clear this sample's saved label.<br>
           <b>S</b> then <b>1/2/3</b> = skip (occluded / unclear / box misses chin).<br>
           <b>Esc</b> = cancel the skip menu.
@@ -334,9 +308,12 @@
     <div id="shortcuts-bar">
       <strong>Shortcuts:</strong>
       1/2/3 = tucked / level / air &nbsp;|&nbsp;
-      Space = play/pause &nbsp;|&nbsp;
+      Ctrl+scroll = zoom &nbsp;|&nbsp;
+      drag = pan &nbsp;|&nbsp;
+      dbl-click = reset zoom &nbsp;|&nbsp;
       &larr;/&rarr; = ±1 frame &nbsp;|&nbsp;
       R = back to sample &nbsp;|&nbsp;
+      H = hide box &nbsp;|&nbsp;
       Esc = cancel skip &nbsp;|&nbsp;
       U = clear label &nbsp;|&nbsp;
       S = skip &nbsp;|&nbsp;
