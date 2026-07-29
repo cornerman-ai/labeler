@@ -811,6 +811,8 @@ function onOpen() {
     .createMenu('MyCorner')
     .addItem('Rebuild Combined Data', 'rebuildCombinedData')
     .addItem('Rebuild Combined Form Labels', 'rebuildCombinedFormLabels')
+    .addItem('Build Chin Review sheet', 'buildChinReviewSheet')
+    .addItem('Import Chin Review labels', 'importChinReviewLabels')
     .addItem('Refresh Labeler Hours', 'labelerActivityReport')
     .addItem('Set up hourly auto-refresh', 'installLabelerHoursTrigger')
     .addItem('Replace YouTube URLs with Drive URLs', 'replaceVideoUrls') // ONE-TIME: remove this line after running
@@ -2172,6 +2174,119 @@ function doGetChinLabels(p, labeler, action) {
   }
 
   return jsonOut({ status: 'error', message: 'unknown chin action: ' + action });
+}
+
+// ============================================================
+// Chin review sheet — spreadsheet-native alternative to chin_tuck.html for
+// reviewers who prefer Sheets (or can't reach github.io reliably). One
+// numbered row per queue frame: # | =IMAGE() | verdict dropdown | comment.
+// Row order and numbering come from chin_review.json (built by
+// build_chin_review.py — playlist order, triage exclusions removed), which
+// also numbers the matching Drive folder of full-size JPEGs.
+// importChinReviewLabels() moves the picks into Chin Labels as CHIN_REVIEW_LABELER.
+// ============================================================
+var CHIN_REVIEW_SHEET = 'Chin Review John';
+var CHIN_REVIEW_LABELER = 'John';
+var CHIN_REVIEW_JSON = 'https://tradermathe.github.io/boxing-labeler/chin_review.json';
+var CHIN_REVIEW_OPTIONS = ['tucked', 'level', 'air', 'occluded', 'unclear'];
+
+function buildChinReviewSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  if (ss.getSheetByName(CHIN_REVIEW_SHEET)) {
+    ui.alert('"' + CHIN_REVIEW_SHEET + '" already exists. Import its labels ' +
+             '(MyCorner > Import Chin Review labels), then delete the tab and rebuild.');
+    return;
+  }
+  var body = JSON.parse(UrlFetchApp.fetch(CHIN_REVIEW_JSON).getContentText());
+  var rows = body.rows || [];
+  if (!rows.length) { ui.alert('chin_review.json is empty.'); return; }
+
+  var sh = ss.insertSheet(CHIN_REVIEW_SHEET);
+  var header = ['#', 'frame', 'verdict', 'comment', 'video', 'round', 'frame_idx', 'full size'];
+  var data = [header];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    data.push(["'" + r.n, '=IMAGE("' + r.url + '")', '', '',
+               r.stem, r.round, r.frame,
+               '=HYPERLINK("' + r.url + '","open")']);
+  }
+  sh.getRange(1, 1, data.length, header.length).setValues(data);
+  sh.setFrozenRows(1);
+  sh.setRowHeights(2, rows.length, 240);
+  sh.setColumnWidth(1, 50);
+  sh.setColumnWidth(2, 330);
+  sh.setColumnWidth(3, 110);
+  sh.setColumnWidth(4, 330);
+  sh.setColumnWidth(8, 90);
+  sh.hideColumns(5, 3);   // video / round / frame_idx — import keys, not for editing
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(CHIN_REVIEW_OPTIONS, true)
+    .setAllowInvalid(false)
+    .build();
+  sh.getRange(2, 3, rows.length, 1).setDataValidation(rule);
+  ui.alert('Built "' + CHIN_REVIEW_SHEET + '" with ' + rows.length + ' frames. ' +
+           'Pick verdicts in column C; comments in D. Then MyCorner > Import Chin Review labels.');
+}
+
+function importChinReviewLabels() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var rev = ss.getSheetByName(CHIN_REVIEW_SHEET);
+  if (!rev) { ui.alert('No "' + CHIN_REVIEW_SHEET + '" tab to import.'); return; }
+  var vals = rev.getDataRange().getValues();
+  var rIdx = punchDirHeaderIndex(vals[0]);
+
+  var sh = getOrCreateChinSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+  // Active rows already saved for the reviewer, keyed video|round|frame.
+  var active = {};
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idx.deleted]) === '1') continue;
+    if (data[i][idx.labeler] !== CHIN_REVIEW_LABELER) continue;
+    active[data[i][idx.video] + '|' + data[i][idx.round] + '|' + data[i][idx.frame]] = i;
+  }
+
+  var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var imported = 0, unchanged = 0;
+  for (var j = 1; j < vals.length; j++) {
+    var pick = String(vals[j][rIdx.verdict] || '').trim();
+    if (!pick) continue;
+    var video = vals[j][rIdx.video];
+    var round = Number(vals[j][rIdx.round]);
+    var frame = Number(vals[j][rIdx.frame_idx]);
+    var comment = String(vals[j][rIdx.comment] || '').slice(0, 2000);
+    var verdict = CHIN_VERDICTS.indexOf(pick) !== -1 ? pick : '';
+    var skip = verdict ? '' : pick;
+    var key = video + '|' + round + '|' + frame;
+    if (active[key] !== undefined) {
+      var cur = data[active[key]];
+      if (String(cur[idx.verdict]) === verdict && String(cur[idx.skip_reason]) === skip &&
+          String(cur[idx.comment] === undefined ? '' : cur[idx.comment]) === comment) {
+        unchanged++;
+        continue;
+      }
+      sh.getRange(active[key] + 1, idx.deleted + 1).setValue('1');
+    }
+    var newRow = [];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(CHIN_REVIEW_LABELER);
+      else if (col === 'video') newRow.push(video);
+      else if (col === 'round') newRow.push(round);
+      else if (col === 'frame') newRow.push(frame);
+      else if (col === 'verdict') newRow.push(verdict);
+      else if (col === 'skip_reason') newRow.push(skip);
+      else if (col === 'comment') newRow.push(comment);
+      else newRow.push('');
+    }
+    sh.appendRow(newRow);
+    imported++;
+  }
+  ui.alert('Imported ' + imported + ' label(s) into "' + CHIN_SHEET_NAME + '" as ' +
+           CHIN_REVIEW_LABELER + ' (' + unchanged + ' unchanged). Re-running is safe.');
 }
 
 // ============================================================
