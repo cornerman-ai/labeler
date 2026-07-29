@@ -24,6 +24,22 @@
 // Reuses player.js for the video chrome, sheetUrl(), and shared `state`.
 // ============================================================
 
+// Fixed labeling queue ("for now"): the 10 amateur videos John critiqued,
+// in order. No video picker — the page walks this list top to bottom,
+// prompting for each file, and advances when every sample is labeled.
+const PLAYLIST = [
+  'Advice on my Shadow Boxing [KLX3xfCo9Cw]',
+  'Pointers for a beginner on my bag work [T7Yw7FRqnp0]',
+  'One round of shadowboxing (I promise I go to the body more in sparrin... [ktbuo8]',
+  'Beginner shadowboxing - looking for honest critique [PMQpEkaf9h4]',
+  'bagwork give critiques (months boxing) [Yn01ebDSzms]',
+  'I got a lot of great feedback here. Time for another critique of my shadow boxing -- after 3 years [BSmTYUs5vdQ]',
+  'Shadow boxing critique [Ry5z_nGOD0Y]',
+  'This is my sand bag training, I started learning boxing from May 2025. [A2Xd55D6yTs]',
+  'Can you guys give me some tips to improve my shadow boxing I have be... [c03ekbdds1241]',
+  'Advice request on my bag work. [EglbwnGsod8]',
+];
+
 const VERDICTS = [
   { key: '1', verdict: 'tucked', label: 'tucked' },
   { key: '2', verdict: 'level',  label: 'level' },
@@ -39,6 +55,7 @@ const SKIP_REASONS = [
 Object.assign(state, {
   knownVideos: [],          // chin_frames.json videos — only source of samples
   boxScale: 1.3,            // overwritten from chin_frames.json params
+  playlistIdx: 0,           // position in PLAYLIST
   currentStem: null,
   samples: [],              // sampled frames for the current video, chronological
   cursor: 0,
@@ -46,7 +63,6 @@ Object.assign(state, {
   labelByKey: new Map(),    // key -> { verdict: string|null, skip_reason: string|null }
   coverageByKey: new Map(), // current video: sampleKey -> Set<labeler>
   videoLoaded: false,
-  labelCountsByVideo: new Map(),
   mode: 'scrub',            // 'scrub' | 'skipping'
   autoJumpOnSync: false,
 });
@@ -330,17 +346,66 @@ function updateVideoOverlay() {
   updateChinBox();
 }
 
+// ─── playlist flow ─────────────────────────────────────────────────────────
+function playlistStem() {
+  return PLAYLIST[state.playlistIdx];
+}
+
+function loadedFileStem() {
+  return (state.videoName || '').replace(/\.[^.]+$/, '');
+}
+
+function renderPlaylistBar() {
+  const pos = document.getElementById('playlist-pos');
+  const vid = document.getElementById('playlist-video');
+  if (pos) pos.textContent = (state.playlistIdx + 1) + '/' + PLAYLIST.length;
+  if (vid) vid.textContent = playlistStem();
+}
+
+// Move to another playlist entry (auto-advance or the prev/next buttons).
+function setPlaylistIdx(idx) {
+  state.playlistIdx = Math.max(0, Math.min(PLAYLIST.length - 1, idx));
+  state.samples = [];
+  state.cursor = 0;
+  state.doneKeys = new Set();
+  state.labelByKey = new Map();
+  state.coverageByKey = new Map();
+  tryGenerateSamples();
+}
+
+// Every sample of the current video is saved — move on (or finish).
+function advancePlaylist() {
+  if (state.playlistIdx + 1 >= PLAYLIST.length) {
+    setBanner('ALL VIDEOS COMPLETE', 'captured');
+    setModeBadge('all done');
+    setCurrentLine('All ' + PLAYLIST.length + ' videos fully labelled — you are done 🎉');
+    return;
+  }
+  setPlaylistIdx(state.playlistIdx + 1);
+  setBanner('VIDEO COMPLETE — NEXT ONE', 'captured');
+}
+
 // ─── candidate generation ────────────────────────────────────────────────
 function tryGenerateSamples() {
-  if (!state.currentStem) {
-    setCurrentLine('— pick a video name to begin —');
-    setModeBadge('no video');
+  state.currentStem = playlistStem();
+  renderPlaylistBar();
+
+  // The right file must be open — prompt (or complain) until it is.
+  if (!state.videoLoaded || loadedFileStem() !== state.currentStem) {
+    setModeBadge('open file');
+    setCurrentLine('Open the video file: "' + state.currentStem + '.mp4"');
+    if (state.videoLoaded && loadedFileStem() !== state.currentStem) {
+      setStatus('Loaded file is "' + loadedFileStem() + '" — this video needs "' +
+                state.currentStem + '.mp4".', 'err');
+    }
+    state.samples = [];
+    redrawProgress();
+    updateCapturePanel();
+    updateHud();
+    updateChinBox();
     return;
   }
-  if (!state.videoLoaded) {
-    setCurrentLine('Video name set: "' + state.currentStem + '". Now load the local .mp4 file.');
-    return;
-  }
+
   const known = state.knownVideos.find(v => v.stem === state.currentStem);
   state.cursor = 0;
   state.doneKeys = new Set();
@@ -388,7 +453,13 @@ async function syncFromSheet() {
       }
     }
     setStatus(`Loaded ${state.doneKeys.size} of your label(s) · ${state.coverageByKey.size} labeled in total.`, 'ok');
-    updateOptionCount(state.currentStem, state.coverageByKey.size);
+    // Already fully labelled (e.g. reopening a finished video on load) —
+    // roll straight on to the next playlist entry.
+    if (state.autoJumpOnSync && state.doneKeys.size >= state.samples.length) {
+      state.autoJumpOnSync = false;
+      advancePlaylist();
+      return;
+    }
     if (state.autoJumpOnSync && state.mode === 'scrub') {
       const firstIdx = state.samples.findIndex(ss => !state.doneKeys.has(keyFor(ss)));
       if (firstIdx !== state.cursor) advanceToNextUnlabeled(0);
@@ -510,14 +581,14 @@ function persistLabel(labeler, label) {
   who.add(labeler);
   state.pendingSaves = (state.pendingSaves || 0) + 1;
   redrawProgress();
-  updateOptionCount(state.currentStem, state.coverageByKey.size);
   setStatus('saving ' + formatChinLabel(label) + '… (' + state.pendingSaves + ' pending)');
 
+  const stemAtSave = state.currentStem;
   gotoNext();
 
   saveChinLabel({
     labeler,
-    video: state.currentStem,
+    video: stemAtSave,
     round: s.round,
     frame: s.frame,
     pts_sec: s.pts,
@@ -528,6 +599,11 @@ function persistLabel(labeler, label) {
     setStatus(state.pendingSaves === 0 ? 'Saved.'
       : state.pendingSaves + ' save' + (state.pendingSaves === 1 ? '' : 's') + ' pending…',
       state.pendingSaves === 0 ? 'ok' : null);
+    // Whole video confirmed saved -> advance the playlist.
+    if (state.pendingSaves === 0 && state.currentStem === stemAtSave &&
+        state.samples.length > 0 && state.doneKeys.size >= state.samples.length) {
+      advancePlaylist();
+    }
   }).catch((e) => {
     state.pendingSaves = Math.max(0, (state.pendingSaves || 1) - 1);
     state.doneKeys.delete(k);
@@ -535,7 +611,6 @@ function persistLabel(labeler, label) {
     const who2 = state.coverageByKey.get(k);
     if (who2) { who2.delete(labeler); if (who2.size === 0) state.coverageByKey.delete(k); }
     redrawProgress();
-    updateOptionCount(state.currentStem, state.coverageByKey.size);
     setStatus('Save failed for ' + k + ': ' + e.message, 'err');
   });
 }
@@ -554,7 +629,6 @@ async function clearLabelAt(idx) {
   const who = state.coverageByKey.get(k);
   if (who) { who.delete(labeler); if (who.size === 0) state.coverageByKey.delete(k); }
   redrawProgress();
-  updateOptionCount(state.currentStem, state.coverageByKey.size);
   if (idx === state.cursor) {
     updateCapturePanel();
     const total = `${idx + 1}/${state.samples.length}`;
@@ -677,7 +751,7 @@ function updateOverviewHighlight() {
   if (currentRow) currentRow.scrollIntoView({ block: 'nearest' });
 }
 
-// ─── dropdown / counts ──────────────────────────────────────────────────────
+// ─── config / starting position ─────────────────────────────────────────────
 async function loadChinConfig() {
   try {
     const res = await fetch('./chin_frames.json', { cache: 'no-cache' });
@@ -688,76 +762,28 @@ async function loadChinConfig() {
   }
 }
 
-// Total samples labeled by ANY labeler, per video (deduped by sample).
-async function fetchTotalCounts() {
-  const counts = new Map();
+// First playlist video this labeler hasn't finished — so reopening the page
+// resumes where they left off. Falls back to 0 when the sheet is unreachable.
+async function computeStartIdx(labeler) {
+  if (!labeler) return 0;
+  let doneByVideo = new Map();
   try {
-    const url = sheetUrl({ action: 'listChinLabels', labeler: '' });
-    const res = await fetch(url);
-    if (!res.ok) return counts;
-    const body = await res.json();
-    if (body.status !== 'ok') return counts;
-    const keysByVideo = new Map();
-    for (const r of body.rows || []) {
-      let s = keysByVideo.get(r.video);
-      if (!s) { s = new Set(); keysByVideo.set(r.video, s); }
+    const rows = await fetchChinLabels('', labeler);
+    for (const r of rows) {
+      let s = doneByVideo.get(r.video);
+      if (!s) { s = new Set(); doneByVideo.set(r.video, s); }
       s.add(r.round + ':' + r.frame);
     }
-    for (const [video, s] of keysByVideo) counts.set(video, s.size);
-  } catch {}
-  return counts;
-}
-
-function buildOptionText(stem, baseText, count) {
-  let suffix = '';
-  if (count > 0) suffix = ' · ' + count + ' labeled';
-  return stem + ' (' + baseText + ')' + suffix;
-}
-
-function updateOptionCount(stem, count) {
-  if (!stem) return;
-  state.labelCountsByVideo.set(stem, count);
-  const sel = document.getElementById('video-select');
-  if (!sel) return;
-  for (const opt of sel.querySelectorAll('option[data-stem]')) {
-    if (opt.dataset.stem !== stem) continue;
-    opt.textContent = buildOptionText(stem, opt.dataset.base || '', count);
-    opt.classList.toggle('labeled', count > 0);
-    return;
+  } catch {
+    return 0;
   }
-}
-
-function populateVideoSelect(videos, counts) {
-  const sel = document.getElementById('video-select');
-  if (!sel) return;
-  sel.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = '— pick a video —';
-  sel.appendChild(placeholder);
-
-  const active = videos.filter(v => !v.held_out);
-  if (!active.length) return;
-  const grp = document.createElement('optgroup');
-  grp.label = 'Sampled videos · chin frames';
-  for (const v of active.slice().sort((a, b) => a.stem.localeCompare(b.stem))) {
-    const opt = document.createElement('option');
-    opt.value = v.stem;
-    const baseText = v.samples.length + ' frame' + (v.samples.length === 1 ? '' : 's');
-    const count = counts.get(v.stem) || 0;
-    opt.dataset.stem = v.stem;
-    opt.dataset.base = baseText;
-    opt.textContent = buildOptionText(v.stem, baseText, count);
-    if (count > 0) opt.classList.add('labeled');
-    grp.appendChild(opt);
+  for (let i = 0; i < PLAYLIST.length; i++) {
+    const known = state.knownVideos.find(v => v.stem === PLAYLIST[i]);
+    const total = known ? known.samples.length : 0;
+    const done = (doneByVideo.get(PLAYLIST[i]) || new Set()).size;
+    if (done < total) return i;
   }
-  sel.appendChild(grp);
-}
-
-async function refreshCountsAndDropdown() {
-  const map = await fetchTotalCounts();
-  state.labelCountsByVideo = map;
-  populateVideoSelect(state.knownVideos, map);
+  return PLAYLIST.length - 1;   // everything done — land on the last video
 }
 
 // ─── wire-up ────────────────────────────────────────────────────────────────
@@ -768,32 +794,26 @@ window.addEventListener('DOMContentLoaded', async () => {
   try { labelerInput.value = localStorage.getItem('orient_labeler_name') || ''; } catch {}
   labelerInput.addEventListener('change', async () => {
     try { localStorage.setItem('orient_labeler_name', labelerInput.value.trim()); } catch {}
-    await refreshCountsAndDropdown();
-    if (state.currentStem && state.samples.length) syncFromSheet();
+    if (state.currentStem && state.samples.length) {
+      syncFromSheet();
+    } else {
+      setPlaylistIdx(await computeStartIdx(labelerInput.value.trim()));
+    }
   });
 
   const cfg = await loadChinConfig();
   state.knownVideos = cfg.videos || [];
   if (cfg.params && cfg.params.box_scale) state.boxScale = cfg.params.box_scale;
-  await refreshCountsAndDropdown();
+  const missing = PLAYLIST.filter(p => !state.knownVideos.some(v => v.stem === p));
+  if (missing.length) setStatus('Playlist videos missing from chin_frames.json: ' + missing.join(' · '), 'err');
 
-  const selectEl = document.getElementById('video-select');
-  selectEl.addEventListener('change', () => {
-    state.currentStem = selectEl.value || null;
-    if (!state.currentStem) { setModeBadge('no video'); return; }
-    tryGenerateSamples();
-  });
+  document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1));
+  document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1));
 
   const video = document.getElementById('video-player');
   video.addEventListener('loadedmetadata', () => {
     state.videoLoaded = true;
     resetZoom();
-    // Auto-select the matching stem when the file name matches exactly.
-    const stem = (state.videoName || '').replace(/\.[^.]+$/, '');
-    if (!state.currentStem && state.knownVideos.some(v => v.stem === stem)) {
-      selectEl.value = stem;
-      state.currentStem = stem;
-    }
     tryGenerateSamples();
   });
   video.addEventListener('seeked', () => { updateHud(); updateChinBox(); });
@@ -844,5 +864,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   setStatus('—');
-  setCurrentLine('— pick a video to begin —');
+  setPlaylistIdx(await computeStartIdx(labelerInput.value.trim()));
 });
