@@ -252,7 +252,7 @@
         <div id="chin-current">— pick a video to start —</div>
 
         <h3>Verdict</h3>
-        <div id="chin-state">Judge the chin in the box: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.</div>
+        <div id="chin-state">Judge the chin: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.</div>
 
         <div class="chin-row">
           <button class="chin-btn-action verdict-tucked" id="btn-tucked">tucked (1)</button>
@@ -270,7 +270,6 @@
         <div class="chin-row">
           <button class="chin-btn-action skip" id="btn-skip-occluded">occluded (1)</button>
           <button class="chin-btn-action skip" id="btn-skip-unclear">unclear (2)</button>
-          <button class="chin-btn-action skip" id="btn-skip-badbox">box misses chin (3)</button>
         </div>
 
         <h3>Navigate</h3>
@@ -297,15 +296,15 @@
           Videos come in a fixed order; the next one starts automatically
           when one is done. Frames load from the server — no video files
           needed (a video without hosted frames asks for its local file).<br>
-          One still frame at a time, with the crop box drawn.<br>
+          One still frame at a time.<br>
           <b>1/2/3</b> = tucked / level / in the air — saves &amp; advances.<br>
           <b>Ctrl/Cmd+scroll</b> (or pinch) = zoom · <b>drag</b> = pan ·
           <b>double-click</b> = reset zoom.<br>
-          While zoomed, each new sample re-centers on the chin box.<br>
-          <b>&larr;/&rarr;</b> = peek at neighboring frames (box goes dashed).<br>
-          <b>R</b> = back to the sampled frame · <b>H</b> = hide/show the box.<br>
+          While zoomed, each new sample re-centers on the chin.<br>
+          <b>&larr;/&rarr;</b> = peek at neighboring frames.<br>
+          <b>R</b> = back to the sampled frame.<br>
           <b>U</b> = clear this sample's saved label.<br>
-          <b>S</b> then <b>1/2/3</b> = skip (occluded / unclear / box misses chin).<br>
+          <b>S</b> then <b>1/2</b> = skip (occluded / unclear).<br>
           <b>Esc</b> = cancel the skip menu.
         </p>
       </div>
@@ -313,11 +312,9 @@
 
     <!-- Persistent labeling definition -->
     <div id="chin-hint">
-      Judge the chin at the boxed frame. <b>Tucked</b> = chin pulled down toward
+      Judge the chin at the shown frame. <b>Tucked</b> = chin pulled down toward
       the chest. <b>Level</b> = jaw roughly parallel to the ground — neither
       tucked nor lifted. <b>In the air</b> = chin lifted, jaw pointing up.
-      The yellow box is exactly what the model will see — if it misses the chin
-      area, skip with <b>box misses chin</b>.
     </div>
 
     <!-- Shortcuts bar -->
@@ -329,7 +326,6 @@
       dbl-click = reset zoom &nbsp;|&nbsp;
       &larr;/&rarr; = ±1 frame &nbsp;|&nbsp;
       R = back to sample &nbsp;|&nbsp;
-      H = hide box &nbsp;|&nbsp;
       Esc = cancel skip &nbsp;|&nbsp;
       U = clear label &nbsp;|&nbsp;
       S = skip &nbsp;|&nbsp;

@@ -48,10 +48,14 @@ const VERDICTS = [
   { key: '3', verdict: 'air',    label: 'in the air' },
 ];
 
+// TEMP (John's pass): crop box hidden and the bad_box skip removed — the
+// coach judges the chin naturally; box QA is a labeler job. Flip SHOW_BOX
+// and re-add the bad_box row (key '3') to restore.
+const SHOW_BOX = false;
+
 const SKIP_REASONS = [
   { key: '1', reason: 'occluded', label: 'chin occluded' },
   { key: '2', reason: 'unclear',  label: 'unclear' },
-  { key: '3', reason: 'bad_box',  label: 'box misses chin' },
 ];
 
 Object.assign(state, {
@@ -311,6 +315,10 @@ function computeBoxRect() {
 function updateChinBox() {
   const box = document.getElementById('chin-box');
   if (!box) return;
+  if (!SHOW_BOX) {
+    box.style.display = 'none';
+    return;
+  }
   const rect = computeBoxRect();
   if (!rect) {
     box.style.display = 'none';
@@ -355,7 +363,9 @@ function updateCapturePanel() {
   const el = document.getElementById('chin-state');
   if (!el) return;
   if (state.mode === 'skipping') {
-    el.innerHTML = 'Skip reason: <b>1</b> occluded · <b>2</b> unclear · <b>3</b> box misses chin · <b>Esc</b> cancel';
+    el.innerHTML = 'Skip reason: ' +
+      SKIP_REASONS.map(s => `<b>${s.key}</b> ${s.label}`).join(' · ') +
+      ' · <b>Esc</b> cancel';
   } else {
     const s = state.samples[state.cursor];
     const existing = s ? state.labelByKey.get(keyFor(s)) : undefined;
@@ -368,8 +378,7 @@ function updateCapturePanel() {
     } else {
       setBanner(null);
       el.innerHTML = s
-        ? 'Judge the chin in the box: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.<br>' +
-          '<b>&larr;/&rarr;</b> peek for context — the label saves for the boxed frame.'
+        ? 'Judge the chin: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.'
         : '—';
     }
   }
@@ -622,7 +631,8 @@ function beginSkip() {
   state.autoJumpOnSync = false;
   if (!state.currentStem || !state.samples.length) return;
   state.mode = 'skipping';
-  setBanner('SKIP: [1] occluded · [2] unclear · [3] box misses chin · [Esc] cancel', 'skipping');
+  setBanner('SKIP: ' + SKIP_REASONS.map(s => `[${s.key}] ${s.label}`).join(' · ') +
+            ' · [Esc] cancel', 'skipping');
   updateCapturePanel();
 }
 
@@ -914,7 +924,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-undo').addEventListener('click', undoAction);
   document.getElementById('btn-skip-occluded').addEventListener('click', () => skipWith('occluded'));
   document.getElementById('btn-skip-unclear').addEventListener('click', () => skipWith('unclear'));
-  document.getElementById('btn-skip-badbox').addEventListener('click', () => skipWith('bad_box'));
   document.getElementById('btn-first').addEventListener('click', gotoFirst);
   document.getElementById('btn-prev').addEventListener('click', gotoPrev);
   document.getElementById('btn-next').addEventListener('click', gotoNext);
