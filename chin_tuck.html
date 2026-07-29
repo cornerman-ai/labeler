@@ -138,6 +138,13 @@
     #video-viewport.zoomed { cursor: grab; }
     #video-viewport.zoomed.dragging { cursor: grabbing; }
     #zoom-stage { position: relative; transform-origin: 0 0; }
+    #frame-image {
+      display: none;
+      width: 100%;
+      max-height: calc(100vh - 200px);
+      object-fit: contain;
+      background: #000;
+    }
     .overlays-hidden #chin-box { display: none !important; }
 
     /* On-video chrome: crop box + HUD + state banner. */
@@ -229,6 +236,7 @@
         <div id="video-viewport">
           <div id="zoom-stage">
             <video id="video-player" preload="auto"></video>
+            <img id="frame-image" alt="">
             <div id="chin-box"></div>
           </div>
           <div id="video-dim-overlay"></div>
@@ -252,6 +260,11 @@
           <button class="chin-btn-action verdict-air" id="btn-air">in the air (3)</button>
           <button class="chin-btn-action secondary" id="btn-undo">clear (U)</button>
         </div>
+
+        <h3>Comment (optional)</h3>
+        <textarea id="chin-comment" rows="2"
+                  placeholder="Thoughts on this frame? Saved with your next verdict/skip."
+                  style="width:100%; box-sizing:border-box; background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; margin-bottom:8px;"></textarea>
 
         <h3>Skip (S, then reason)</h3>
         <div class="chin-row">
@@ -281,8 +294,9 @@
 
         <h3>Conventions</h3>
         <p style="font-size:11px;color:#888;line-height:1.5;margin:0">
-          Videos come in a fixed order — open the exact file named in the
-          prompt; the next video starts automatically when one is done.<br>
+          Videos come in a fixed order; the next one starts automatically
+          when one is done. Frames load from the server — no video files
+          needed (a video without hosted frames asks for its local file).<br>
           One still frame at a time, with the crop box drawn.<br>
           <b>1/2/3</b> = tucked / level / in the air — saves &amp; advances.<br>
           <b>Ctrl/Cmd+scroll</b> (or pinch) = zoom · <b>drag</b> = pan ·

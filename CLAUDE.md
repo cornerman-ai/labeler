@@ -41,13 +41,20 @@ Data is auditable after the fact.
 **Chin Labels sheet** (`chin_tuck.html` — one verdict per randomly sampled
 frame; candidates baked into `chin_frames.json` by cornerman-backend's
 `chin_sampler.py`, which also defines the chin crop box the page draws):
-ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | deleted
+ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | comment | deleted
 
 `verdict` is `tucked` / `level` / `air` (provisional 3-way split pending
 coach input). `round`/`frame` index the BlazePose round cache; `pts_sec` is
 source-video seconds. The `bad_box` skip reason means the skeleton-derived
-crop box missed the chin — it QAs the crop logic, not the boxer. Keyed by
-(labeler, video, round, frame); a re-save supersedes (soft `deleted=1`).
+crop box missed the chin — it QAs the crop logic, not the boxer. `comment`
+is free text the labeler can attach to a frame. Keyed by (labeler, video,
+round, frame); a re-save supersedes (soft `deleted=1`).
+
+The page walks a fixed PLAYLIST (no video picker). For playlist videos the
+sampled frames are committed as JPEGs under `frames/<stem>/` (built by
+cornerman-backend's `chin_export_frames.py`, listed in `chin_hosted.json`),
+so remote labelers need no video files; non-hosted videos fall back to the
+open-the-local-file flow.
 
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.

@@ -55,6 +55,7 @@ const SKIP_REASONS = [
 Object.assign(state, {
   knownVideos: [],          // chin_frames.json videos — only source of samples
   boxScale: 1.3,            // overwritten from chin_frames.json params
+  hostedStems: new Set(),   // chin_hosted.json — stems with server-side JPEGs
   playlistIdx: 0,           // position in PLAYLIST
   currentStem: null,
   samples: [],              // sampled frames for the current video, chronological
@@ -69,6 +70,36 @@ Object.assign(state, {
 
 function keyFor(s) {
   return s ? 's:' + s.round + ':' + s.frame : null;
+}
+
+// ─── hosted frames — server-side JPEGs instead of the local video ──────────
+// Videos listed in chin_hosted.json have every sampled frame exported as
+// frames/<stem>/r{round}_f{frame}.jpg (chin_export_frames.py), so remote
+// labelers need no video files at all. Frame peeking is video-only.
+function isHosted() {
+  return state.hostedStems.has(state.currentStem);
+}
+
+function frameUrl(stem, s) {
+  return './frames/' + encodeURIComponent(stem) + '/r' + s.round + '_f' + s.frame + '.jpg';
+}
+
+// Show the JPEG or the video element, never both.
+function setActiveMedia(hosted) {
+  const img = document.getElementById('frame-image');
+  const video = document.getElementById('video-player');
+  if (img) img.style.display = hosted ? 'block' : 'none';
+  if (video) video.style.display = hosted ? 'none' : 'block';
+}
+
+// Dimensions of whatever is displaying the frame (0s until it has loaded).
+function mediaDims() {
+  if (isHosted()) {
+    const img = document.getElementById('frame-image');
+    return { el: img, w: img ? img.naturalWidth : 0, h: img ? img.naturalHeight : 0 };
+  }
+  const v = document.getElementById('video-player');
+  return { el: v, w: (v && state.videoLoaded) ? v.videoWidth : 0, h: v ? v.videoHeight : 0 };
 }
 
 function sampleFps(s) {
@@ -203,11 +234,12 @@ async function fetchChinLabels(video, labeler) {
   if (body.status !== 'ok') throw new Error('listChinLabels: ' + (body.message || 'unknown'));
   return body.rows;
 }
-async function saveChinLabel({ labeler, video, round, frame, pts_sec, verdict, skip_reason }) {
+async function saveChinLabel({ labeler, video, round, frame, pts_sec, verdict, skip_reason, comment }) {
   const params = { action: 'saveChinLabel', labeler, video,
                    round: String(round), frame: String(frame), pts_sec: String(pts_sec) };
   params.verdict = verdict || '';
   params.skip_reason = skip_reason || '';
+  params.comment = comment || '';
   const url = sheetUrl(params);
   const res = await fetch(url);
   if (!res.ok) throw new Error('saveChinLabel HTTP ' + res.status);
@@ -251,6 +283,7 @@ function describeSample(s, totalLabel, labelTxt) {
 // Peeking = the displayed frame is not the sampled frame (labeler stepped
 // away for motion context). The box goes dashed and the HUD warns.
 function isPeeking(s) {
+  if (isHosted()) return false;             // hosted JPEGs are the sample itself
   const video = document.getElementById('video-player');
   if (!video || !s) return false;
   const tol = 0.6 / sampleFps(s);
@@ -260,15 +293,14 @@ function isPeeking(s) {
 // Crop box of the current sample in stage coords (pre-transform element px),
 // or null when nothing to draw. Used by both the overlay and centerOnBox().
 function computeBoxRect() {
-  const video = document.getElementById('video-player');
   const s = state.samples[state.cursor];
-  if (!video || !s || !state.videoLoaded || !video.videoWidth) return null;
-  const b = chinBox(s.joints, video.videoWidth, video.videoHeight, state.boxScale);
-  // object-fit: contain mapping — video pixels -> element pixels
-  const scale = Math.min(video.clientWidth / video.videoWidth,
-                         video.clientHeight / video.videoHeight);
-  const offX = video.offsetLeft + (video.clientWidth - video.videoWidth * scale) / 2;
-  const offY = video.offsetTop + (video.clientHeight - video.videoHeight * scale) / 2;
+  const { el, w, h } = mediaDims();
+  if (!el || !s || !w || !h) return null;
+  const b = chinBox(s.joints, w, h, state.boxScale);
+  // object-fit: contain mapping — source pixels -> element pixels
+  const scale = Math.min(el.clientWidth / w, el.clientHeight / h);
+  const offX = el.offsetLeft + (el.clientWidth - w * scale) / 2;
+  const offY = el.offsetTop + (el.clientHeight - h * scale) / 2;
   return { left: offX + b.x * scale, top: offY + b.y * scale,
            width: b.w * scale, height: b.h * scale };
 }
@@ -389,9 +421,11 @@ function advancePlaylist() {
 function tryGenerateSamples() {
   state.currentStem = playlistStem();
   renderPlaylistBar();
+  setActiveMedia(isHosted());
 
-  // The right file must be open — prompt (or complain) until it is.
-  if (!state.videoLoaded || loadedFileStem() !== state.currentStem) {
+  // Hosted videos need no file; otherwise the right file must be open —
+  // prompt (or complain) until it is.
+  if (!isHosted() && (!state.videoLoaded || loadedFileStem() !== state.currentStem)) {
     setModeBadge('open file');
     setCurrentLine('Open the video file: "' + state.currentStem + '.mp4"');
     if (state.videoLoaded && loadedFileStem() !== state.currentStem) {
@@ -449,7 +483,7 @@ async function syncFromSheet() {
       who.add(r.labeler);
       if (r.labeler === labeler) {
         state.doneKeys.add(k);
-        state.labelByKey.set(k, { verdict: r.verdict, skip_reason: r.skip_reason });
+        state.labelByKey.set(k, { verdict: r.verdict, skip_reason: r.skip_reason, comment: r.comment || '' });
       }
     }
     setStatus(`Loaded ${state.doneKeys.size} of your label(s) · ${state.coverageByKey.size} labeled in total.`, 'ok');
@@ -507,18 +541,28 @@ function seekToCurrent() {
     return;
   }
   const s = state.samples[state.cursor];
-  const video = document.getElementById('video-player');
-  // Frame stepping (peek) converts to seconds with this — the manifest knows
-  // each round's true fps, so don't rely on playback-based detection.
-  state.frameDuration = 1 / sampleFps(s);
-  if (video && !isNaN(video.duration) && video.duration > 0) {
-    video.pause();
-    // Seek a hair past the frame's PTS so the browser presents THAT frame.
-    const eps = 0.3 / sampleFps(s);
-    video.currentTime = Math.min(Math.max(0, s.pts + eps), video.duration);
+  if (isHosted()) {
+    const img = document.getElementById('frame-image');
+    img.onload = () => { updateHud(); updateChinBox(); centerOnBox(); };
+    img.src = frameUrl(state.currentStem, s);
+    // Preload the next sample's frame so advancing feels instant.
+    const nx = state.samples[state.cursor + 1];
+    if (nx) { new Image().src = frameUrl(state.currentStem, nx); }
+  } else {
+    const video = document.getElementById('video-player');
+    // Frame stepping (peek) converts to seconds with this — the manifest knows
+    // each round's true fps, so don't rely on playback-based detection.
+    state.frameDuration = 1 / sampleFps(s);
+    if (video && !isNaN(video.duration) && video.duration > 0) {
+      video.pause();
+      // Seek a hair past the frame's PTS so the browser presents THAT frame.
+      const eps = 0.3 / sampleFps(s);
+      video.currentTime = Math.min(Math.max(0, s.pts + eps), video.duration);
+    }
+    centerOnBox();
   }
-  centerOnBox();
   const label = state.labelByKey.get(keyFor(s));
+  setCommentBox(label ? label.comment : '');
   const total = `${state.cursor + 1}/${state.samples.length}`;
   setCurrentLine(describeSample(s, total, formatChinLabel(label)));
   updateCapturePanel();
@@ -538,6 +582,16 @@ function requireLabeler() {
   return labeler;
 }
 
+function currentComment() {
+  const el = document.getElementById('chin-comment');
+  return el ? el.value.trim() : '';
+}
+
+function setCommentBox(text) {
+  const el = document.getElementById('chin-comment');
+  if (el) el.value = text || '';
+}
+
 function labelWith(verdict) {
   state.autoJumpOnSync = false;
   if (!state.currentStem || !state.samples.length) {
@@ -545,7 +599,7 @@ function labelWith(verdict) {
   }
   const labeler = requireLabeler();
   if (!labeler) return;
-  persistLabel(labeler, { verdict, skip_reason: null });
+  persistLabel(labeler, { verdict, skip_reason: null, comment: currentComment() });
 }
 
 function beginSkip() {
@@ -560,7 +614,7 @@ function skipWith(reason) {
   if (!state.currentStem || !state.samples.length) return;
   const labeler = requireLabeler();
   if (!labeler) return;
-  persistLabel(labeler, { verdict: null, skip_reason: reason });
+  persistLabel(labeler, { verdict: null, skip_reason: reason, comment: currentComment() });
 }
 
 function cancelToScrub() {
@@ -594,6 +648,7 @@ function persistLabel(labeler, label) {
     pts_sec: s.pts,
     verdict: label.verdict,
     skip_reason: label.skip_reason,
+    comment: label.comment,
   }).then(() => {
     state.pendingSaves = Math.max(0, (state.pendingSaves || 1) - 1);
     setStatus(state.pendingSaves === 0 ? 'Saved.'
@@ -716,6 +771,7 @@ function rebuildOverview() {
     if (v !== undefined) {
       if (v.skip_reason) { labelTxt = 'skip:' + v.skip_reason; labelCls = 'skip'; }
       else { labelTxt = v.verdict; labelCls = 'done'; }
+      if (v.comment) labelTxt += ' 💬';
     }
     row.innerHTML =
       `<span class="ov-idx">${idx + 1}</span>` +
@@ -804,11 +860,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   const cfg = await loadChinConfig();
   state.knownVideos = cfg.videos || [];
   if (cfg.params && cfg.params.box_scale) state.boxScale = cfg.params.box_scale;
+  try {
+    const res = await fetch('./chin_hosted.json', { cache: 'no-cache' });
+    if (res.ok) state.hostedStems = new Set((await res.json()).stems || []);
+  } catch {}
   const missing = PLAYLIST.filter(p => !state.knownVideos.some(v => v.stem === p));
   if (missing.length) setStatus('Playlist videos missing from chin_frames.json: ' + missing.join(' · '), 'err');
 
   document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1));
   document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1));
+
+  // Escape drops focus out of the comment box so 1/2/3 shortcuts work again.
+  document.getElementById('chin-comment').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); }
+  });
 
   const video = document.getElementById('video-player');
   video.addEventListener('loadedmetadata', () => {
@@ -852,8 +917,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     const v = VERDICTS.find(x => x.key === e.key);
     if (v) { e.preventDefault(); labelWith(v.verdict); return; }
     if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleOverlay(); return; }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrames(-1); return; }
-    if (e.key === 'ArrowRight') { e.preventDefault(); stepFrames(1); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (isHosted()) { setStatus('Frame peeking needs the local video file.', null); return; }
+      stepFrames(e.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
     if (e.key === 'u' || e.key === 'U') { e.preventDefault(); undoAction(); return; }
     if (e.key === 's' || e.key === 'S') { e.preventDefault(); beginSkip(); return; }
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); gotoNext(); return; }

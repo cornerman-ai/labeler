@@ -2049,7 +2049,7 @@ function doGetGuardDrops(p, labeler, action) {
 // ============================================================
 var CHIN_SHEET_NAME = 'Chin Labels';
 var CHIN_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
-                    'verdict', 'skip_reason', 'deleted'];
+                    'verdict', 'skip_reason', 'comment', 'deleted'];
 var CHIN_VERDICTS = ['tucked', 'level', 'air'];
 var CHIN_SKIP_REASONS = ['occluded', 'unclear', 'bad_box'];
 
@@ -2100,6 +2100,7 @@ function doGetChinLabels(p, labeler, action) {
         pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
         verdict: lr[idx.verdict] === '' ? null : String(lr[idx.verdict]),
         skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
+        comment: (idx.comment === undefined || lr[idx.comment] === '') ? null : String(lr[idx.comment]),
       });
     }
     return jsonOut({ status: 'ok', rows: rows });
@@ -2150,6 +2151,7 @@ function doGetChinLabels(p, labeler, action) {
       else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
       else if (col === 'verdict') newRow.push(verdictVal);
       else if (col === 'skip_reason') newRow.push(skipVal);
+      else if (col === 'comment') newRow.push(String(p.comment || '').slice(0, 2000));
       else if (col === 'deleted') newRow.push('');
       else newRow.push('');
     }
