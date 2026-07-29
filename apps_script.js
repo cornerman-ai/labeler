@@ -2189,20 +2189,38 @@ var CHIN_REVIEW_SHEET = 'Chin Review John';
 var CHIN_REVIEW_LABELER = 'John';
 var CHIN_REVIEW_JSON = 'https://tradermathe.github.io/boxing-labeler/chin_review.json';
 var CHIN_REVIEW_OPTIONS = ['tucked', 'level', 'air', 'occluded', 'unclear'];
+var CHIN_REVIEW_ID_PROP = 'chinReviewSpreadsheetId';   // Script Properties key
+
+// The review lives in its OWN spreadsheet (created here, ID remembered in
+// Script Properties) so the reviewer can be given just that one document,
+// not the whole labels spreadsheet.
+function getChinReviewSpreadsheet() {
+  var id = PropertiesService.getScriptProperties().getProperty(CHIN_REVIEW_ID_PROP);
+  if (!id) return null;
+  try {
+    return SpreadsheetApp.openById(id);
+  } catch (e) {
+    return null;   // file was deleted — treat as absent
+  }
+}
 
 function buildChinReviewSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
-  if (ss.getSheetByName(CHIN_REVIEW_SHEET)) {
-    ui.alert('"' + CHIN_REVIEW_SHEET + '" already exists. Import its labels ' +
-             '(MyCorner > Import Chin Review labels), then delete the tab and rebuild.');
+  var existing = getChinReviewSpreadsheet();
+  if (existing) {
+    ui.alert('Review spreadsheet already exists:\n' + existing.getUrl() +
+             '\n\nImport its labels (MyCorner > Import Chin Review labels), ' +
+             'then delete that file and rebuild.');
     return;
   }
   var body = JSON.parse(UrlFetchApp.fetch(CHIN_REVIEW_JSON).getContentText());
   var rows = body.rows || [];
   if (!rows.length) { ui.alert('chin_review.json is empty.'); return; }
 
-  var sh = ss.insertSheet(CHIN_REVIEW_SHEET);
+  var reviewSs = SpreadsheetApp.create('Chin Review — John');
+  PropertiesService.getScriptProperties().setProperty(CHIN_REVIEW_ID_PROP, reviewSs.getId());
+  var sh = reviewSs.getSheets()[0];
+  sh.setName(CHIN_REVIEW_SHEET);
   var header = ['#', 'frame', 'verdict', 'comment', 'video', 'round', 'frame_idx', 'full size'];
   var data = [header];
   for (var i = 0; i < rows.length; i++) {
@@ -2225,15 +2243,19 @@ function buildChinReviewSheet() {
     .setAllowInvalid(false)
     .build();
   sh.getRange(2, 3, rows.length, 1).setDataValidation(rule);
-  ui.alert('Built "' + CHIN_REVIEW_SHEET + '" with ' + rows.length + ' frames. ' +
-           'Pick verdicts in column C; comments in D. Then MyCorner > Import Chin Review labels.');
+  ui.alert('Created a NEW spreadsheet "Chin Review — John" with ' + rows.length +
+           ' frames (in your My Drive root — move it wherever, the link stays valid):\n\n' +
+           reviewSs.getUrl() +
+           '\n\nShare that file with John (editor). Verdicts in column C, comments in D. ' +
+           'When done: MyCorner > Import Chin Review labels.');
 }
 
 function importChinReviewLabels() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
-  var rev = ss.getSheetByName(CHIN_REVIEW_SHEET);
-  if (!rev) { ui.alert('No "' + CHIN_REVIEW_SHEET + '" tab to import.'); return; }
+  var reviewSs = getChinReviewSpreadsheet();
+  if (!reviewSs) { ui.alert('No review spreadsheet found — build it first.'); return; }
+  var rev = reviewSs.getSheetByName(CHIN_REVIEW_SHEET);
+  if (!rev) { ui.alert('No "' + CHIN_REVIEW_SHEET + '" tab in ' + reviewSs.getUrl()); return; }
   var vals = rev.getDataRange().getValues();
   var rIdx = punchDirHeaderIndex(vals[0]);
 

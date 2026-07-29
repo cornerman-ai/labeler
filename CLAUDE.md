@@ -62,11 +62,13 @@ the sheet; delete/rebuild the file to bring frames back.
 Spreadsheet-native review path (for reviewers who prefer Sheets over the
 web page): `build_chin_review.py` numbers the current queue into
 `chin_review.json` + a matching Drive folder of `NNN.jpg` copies
-(`Boxing AI Data/labels/chin_review_frames`). In the labels spreadsheet,
-MyCorner > *Build Chin Review sheet* renders it as one row per frame
-(# | =IMAGE | verdict dropdown | comment), and *Import Chin Review labels*
-moves the picks into Chin Labels under the `John` identity (idempotent —
-unchanged rows are skipped, changes supersede).
+(`Boxing AI Data/labels/chin_review_frames`). MyCorner > *Build Chin
+Review sheet* creates a STANDALONE spreadsheet "Chin Review — John" (ID
+remembered in Script Properties; share just that file with the reviewer)
+with one row per frame (# | =IMAGE | verdict dropdown | comment), and
+*Import Chin Review labels* reads it back and moves the picks into Chin
+Labels under the `John` identity (idempotent — unchanged rows are
+skipped, changes supersede).
 
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.
