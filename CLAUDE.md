@@ -54,7 +54,10 @@ The page walks a fixed PLAYLIST (no video picker). For playlist videos the
 sampled frames are committed as JPEGs under `frames/<stem>/` (built by
 cornerman-backend's `chin_export_frames.py`, listed in `chin_hosted.json`),
 so remote labelers need no video files; non-hosted videos fall back to the
-open-the-local-file flow.
+open-the-local-file flow. `chin_excluded.json` (built by
+`build_chin_excluded.py` from one labeler's occluded/unclear/bad_box skips)
+hides triage-rejected frames from everyone's queue — the skip rows stay in
+the sheet; delete/rebuild the file to bring frames back.
 
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.

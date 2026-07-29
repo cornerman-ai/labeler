@@ -58,6 +58,7 @@ Object.assign(state, {
   knownVideos: [],          // chin_frames.json videos — only source of samples
   boxScale: 1.3,            // overwritten from chin_frames.json params
   hostedStems: new Set(),   // chin_hosted.json — stems with server-side JPEGs
+  excludedByStem: new Map(),// chin_excluded.json — triage-skipped frames, hidden from the queue
   playlistIdx: 0,           // position in PLAYLIST
   currentStem: null,
   samples: [],              // sampled frames for the current video, chronological
@@ -385,6 +386,17 @@ function playlistStem() {
   return PLAYLIST[state.playlistIdx];
 }
 
+// Samples for a stem minus the triage-excluded ones (chin_excluded.json —
+// frames one labeler already marked occluded / unclear / bad_box, kept out
+// of everyone else's queue so review time goes to judgeable frames only).
+function samplesFor(stem) {
+  const known = state.knownVideos.find(v => v.stem === stem);
+  if (!known) return [];
+  const excluded = state.excludedByStem.get(stem);
+  if (!excluded) return known.samples;
+  return known.samples.filter(s => !excluded.has(s.round + ':' + s.frame));
+}
+
 function loadedFileStem() {
   return (state.videoName || '').replace(/\.[^.]+$/, '');
 }
@@ -442,7 +454,6 @@ function tryGenerateSamples() {
     return;
   }
 
-  const known = state.knownVideos.find(v => v.stem === state.currentStem);
   state.cursor = 0;
   state.doneKeys = new Set();
   state.labelByKey = new Map();
@@ -450,14 +461,15 @@ function tryGenerateSamples() {
   enterScrub();
   setStatus('—');
 
-  state.samples = known ? known.samples : [];
+  state.samples = samplesFor(state.currentStem);
+  const nExcluded = (state.excludedByStem.get(state.currentStem) || new Set()).size;
   if (!state.samples.length) {
     setModeBadge('0 samples');
     setCurrentLine('No sampled frames for "' + state.currentStem + '".');
     redrawProgress();
     return;
   }
-  setModeBadge(state.samples.length + ' samples');
+  setModeBadge(state.samples.length + ' samples' + (nExcluded ? ' · ' + nExcluded + ' excluded' : ''));
   redrawProgress();
   state.cursor = 0;
   seekToCurrent();
@@ -478,8 +490,10 @@ async function syncFromSheet() {
     state.doneKeys = new Set();
     state.labelByKey = new Map();
     state.coverageByKey = new Map();
+    const inQueue = new Set(state.samples.map(keyFor));
     for (const r of rows) {
       const k = 's:' + r.round + ':' + r.frame;
+      if (!inQueue.has(k)) continue;    // excluded or from an older sampling
       let who = state.coverageByKey.get(k);
       if (!who) { who = new Set(); state.coverageByKey.set(k, who); }
       who.add(r.labeler);
@@ -836,10 +850,9 @@ async function computeStartIdx(labeler) {
     return 0;
   }
   for (let i = 0; i < PLAYLIST.length; i++) {
-    const known = state.knownVideos.find(v => v.stem === PLAYLIST[i]);
-    const total = known ? known.samples.length : 0;
-    const done = (doneByVideo.get(PLAYLIST[i]) || new Set()).size;
-    if (done < total) return i;
+    const samples = samplesFor(PLAYLIST[i]);
+    const labeled = doneByVideo.get(PLAYLIST[i]) || new Set();
+    if (samples.some(s => !labeled.has(s.round + ':' + s.frame))) return i;
   }
   return PLAYLIST.length - 1;   // everything done — land on the last video
 }
@@ -865,6 +878,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const res = await fetch('./chin_hosted.json', { cache: 'no-cache' });
     if (res.ok) state.hostedStems = new Set((await res.json()).stems || []);
+  } catch {}
+  try {
+    const res = await fetch('./chin_excluded.json', { cache: 'no-cache' });
+    if (res.ok) {
+      for (const [stem, lst] of Object.entries((await res.json()).videos || {})) {
+        state.excludedByStem.set(stem, new Set(lst.map(e => e.round + ':' + e.frame)));
+      }
+    }
   } catch {}
   const missing = PLAYLIST.filter(p => !state.knownVideos.some(v => v.stem === p));
   if (missing.length) setStatus('Playlist videos missing from chin_frames.json: ' + missing.join(' · '), 'err');
