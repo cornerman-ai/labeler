@@ -206,8 +206,10 @@
 </head>
 <body>
   <div id="app">
-    <!-- Top bar -->
-    <div id="top-bar">
+    <!-- Top bar — TEMP: hidden for John's pass; every playlist video is
+         hosted, so the local-file picker is dead weight. Remove the
+         style attribute to restore. -->
+    <div id="top-bar" style="display:none">
       <div id="video-loader">
         <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">Open Video File</button>
         <input type="file" id="video-file" accept="video/*" style="display:none">
