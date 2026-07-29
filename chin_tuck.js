@@ -129,10 +129,12 @@ function setupZoomPan() {
   if (!viewport) return;
 
   viewport.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return;                  // plain scroll keeps scrolling the page
+    // Ctrl+scroll, Cmd+scroll (Mac) or trackpad pinch (fires as ctrlKey).
+    // Same feel as the debug viewer's zoom (exponential step, 0.0015).
+    if (!e.ctrlKey && !e.metaKey) return;    // plain scroll keeps scrolling the page
     e.preventDefault();
     const r = viewport.getBoundingClientRect();
-    setZoomAt(state.zoom * Math.exp(-e.deltaY * 0.005),
+    setZoomAt(state.zoom * Math.exp(-e.deltaY * 0.0015),
               e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
 
