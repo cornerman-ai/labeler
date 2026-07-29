@@ -24,20 +24,22 @@
 // Reuses player.js for the video chrome, sheetUrl(), and shared `state`.
 // ============================================================
 
-// Fixed labeling queue ("for now"): the 10 amateur videos John critiqued,
-// in order. No video picker — the page walks this list top to bottom,
-// prompting for each file, and advances when every sample is labeled.
+// Fixed labeling queue ("for now"): 10 professionally shot videos (the
+// amateur critique clips were too low-res to judge the chin), 10 samples
+// each, mixing shadowboxing and bagwork across different coaches/setups.
+// No video picker — the page walks this list top to bottom and advances
+// when every sample is labeled.
 const PLAYLIST = [
-  'Advice on my Shadow Boxing [KLX3xfCo9Cw]',
-  'Pointers for a beginner on my bag work [T7Yw7FRqnp0]',
-  'One round of shadowboxing (I promise I go to the body more in sparrin... [ktbuo8]',
-  'Beginner shadowboxing - looking for honest critique [PMQpEkaf9h4]',
-  'bagwork give critiques (months boxing) [Yn01ebDSzms]',
-  'I got a lot of great feedback here. Time for another critique of my shadow boxing -- after 3 years [BSmTYUs5vdQ]',
-  'Shadow boxing critique [Ry5z_nGOD0Y]',
-  'This is my sand bag training, I started learning boxing from May 2025. [A2Xd55D6yTs]',
-  'Can you guys give me some tips to improve my shadow boxing I have be... [c03ekbdds1241]',
-  'Advice request on my bag work. [EglbwnGsod8]',
+  'Shadow Boxing Workout ｜ Let me coach you for 12 minutes',
+  '20 Minute Boxing Footwork Heavy bag Workout - Follow along',
+  'Beginner Shadow Boxing Workout In 5 Minutes ｜ Working The Jab (Follow Along)',
+  '30 Minute Heavy Bag Boxing Workout at Home ｜ 10 Round Follow Along',
+  '10 Min Complete Shadow Boxing Workout ｜ Become A Better Boxer',
+  '15 MINUTE FAT BURNING BOXING BAG WORKOUT [FOLLOW ALONG]',
+  '20 Minute Shadowboxing for Beginners ｜ Trainer of the Month Club ｜ Well+Good',
+  'Beginner Heavy Bag Workout ｜ 15 Min Fat-Burning Boxing Follow Along With Igor Matejski',
+  "Shadow Boxing Drill for Home ｜ Tom Yankello's Drill #1",
+  '30 Days of Basic Boxing at Home for Beginners #DAY16  #HIENSUNDAY  #BoxingAtHome #HomeWorkout [pTNIAZADJzM]',
 ];
 
 const VERDICTS = [
