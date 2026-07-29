@@ -38,6 +38,17 @@ never up", which are different faults needing different drills. Keyed by
 `guard_hand` (LEFT/RIGHT) is recorded as-shown so a stance mistake in Combined
 Data is auditable after the fact.
 
+**Chin Labels sheet** (`chin_tuck.html` — one verdict per randomly sampled
+frame; candidates baked into `chin_frames.json` by cornerman-backend's
+`chin_sampler.py`, which also defines the chin crop box the page draws):
+ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | deleted
+
+`verdict` is `tucked` / `level` / `air` (provisional 3-way split pending
+coach input). `round`/`frame` index the BlazePose round cache; `pts_sec` is
+source-video seconds. The `bad_box` skip reason means the skeleton-derived
+crop box missed the chin — it QAs the crop logic, not the boxer. Keyed by
+(labeler, video, round, frame); a re-save supersedes (soft `deleted=1`).
+
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.
 

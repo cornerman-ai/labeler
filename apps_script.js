@@ -265,6 +265,14 @@ function doGet(e) {
     return doGetGuardDrops(p, labeler, action);
   }
 
+  // Chin-tuck labeler — separate sheet, one categorical verdict per sampled
+  // frame (candidates baked into chin_frames.json by the backend's
+  // chin_sampler.py, not fetched from here).
+  if (action === 'listChinLabels' || action === 'saveChinLabel' ||
+      action === 'deleteChinLabel') {
+    return doGetChinLabels(p, labeler, action);
+  }
+
   // Callout labeler — separate sheet. One row per called-out punch / combo /
   // defense, keyed by (labeler, video). These annotate the *instruction* a
   // coach app calls out, not the executed punch; they become weak labels for
@@ -2026,6 +2034,145 @@ function doGetGuardDrops(p, labeler, action) {
 }
 
 // ============================================================
+// Chin-tuck labeler — one categorical verdict per SAMPLED FRAME (random
+// frames baked into the labeler's chin_frames.json by the backend's
+// chin_sampler.py — no candidate listing here). Verdicts, provisional
+// 3-way split until a coach weighs in:
+//
+//   tucked  chin pulled down toward the chest
+//   level   jaw roughly parallel to the ground — neither tucked nor lifted
+//   air     chin lifted / jaw pointing up
+//
+// The `bad_box` skip reason is a crop-QA signal: the frame was judgeable
+// but the skeleton-derived crop box missed the chin area.
+// Keyed by (labeler, video, round, frame); a re-save supersedes the prior row.
+// ============================================================
+var CHIN_SHEET_NAME = 'Chin Labels';
+var CHIN_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
+                    'verdict', 'skip_reason', 'deleted'];
+var CHIN_VERDICTS = ['tucked', 'level', 'air'];
+var CHIN_SKIP_REASONS = ['occluded', 'unclear', 'bad_box'];
+
+function getOrCreateChinSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(CHIN_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(CHIN_SHEET_NAME);
+    sh.appendRow(CHIN_HEADERS);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(CHIN_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function chinRowMatches(row, idx, p) {
+  return row[idx.labeler] === p.labeler &&
+         row[idx.video] === p.video &&
+         String(row[idx.round]) === String(p.round) &&
+         String(row[idx.frame]) === String(p.frame);
+}
+
+function doGetChinLabels(p, labeler, action) {
+  var sh = getOrCreateChinSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  // === LIST chin labels (optionally filtered by labeler / video) ===
+  if (action === 'listChinLabels') {
+    var video = p.video || '';
+    var filterLabeler = p.labeler || '';
+    var rows = [];
+    for (var li = 1; li < data.length; li++) {
+      var lr = data[li];
+      if (String(lr[idx.deleted]) === '1') continue;
+      if (video && lr[idx.video] !== video) continue;
+      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
+      rows.push({
+        ts: lr[idx.ts],
+        labeler: lr[idx.labeler],
+        video: lr[idx.video],
+        round: Number(lr[idx.round]),
+        frame: Number(lr[idx.frame]),
+        pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
+        verdict: lr[idx.verdict] === '' ? null : String(lr[idx.verdict]),
+        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
+      });
+    }
+    return jsonOut({ status: 'ok', rows: rows });
+  }
+
+  // === SAVE a label keyed by (labeler, video, round, frame). Supersedes. ===
+  // Exactly one of verdict / skip_reason must be set.
+  if (action === 'saveChinLabel') {
+    var required = ['labeler', 'video', 'round', 'frame'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var hasVerdict = p.verdict !== undefined && p.verdict !== '';
+    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
+    if (hasVerdict === hasSkip) {
+      return jsonOut({ status: 'error', message: 'need exactly one of verdict / skip_reason' });
+    }
+    var verdictVal = '';
+    var skipVal = '';
+    if (hasVerdict) {
+      if (CHIN_VERDICTS.indexOf(String(p.verdict)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid verdict: ' + p.verdict });
+      }
+      verdictVal = String(p.verdict);
+    } else {
+      if (CHIN_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+      }
+      skipVal = String(p.skip_reason);
+    }
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (String(data[i2][idx.deleted]) === '1') continue;
+      if (!chinRowMatches(data[i2], idx, p)) continue;
+      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+    }
+    var newRow = [];
+    var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(p.labeler);
+      else if (col === 'video') newRow.push(p.video);
+      else if (col === 'round') newRow.push(Number(p.round));
+      else if (col === 'frame') newRow.push(Number(p.frame));
+      else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
+      else if (col === 'verdict') newRow.push(verdictVal);
+      else if (col === 'skip_reason') newRow.push(skipVal);
+      else if (col === 'deleted') newRow.push('');
+      else newRow.push('');
+    }
+    sh.appendRow(newRow);
+    return jsonOut({ status: 'ok' });
+  }
+
+  // === DELETE: mark every current row for (labeler, video, round, frame) ===
+  if (action === 'deleteChinLabel') {
+    var found = 0;
+    for (var i3 = 1; i3 < data.length; i3++) {
+      if (String(data[i3][idx.deleted]) === '1') continue;
+      if (!chinRowMatches(data[i3], idx, p)) continue;
+      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
+      found++;
+    }
+    return jsonOut({ status: 'ok', deleted: found });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown chin action: ' + action });
+}
+
+// ============================================================
 // Callout labeler — one row per called-out punch / combo / defense.
 // Each row stores the [start_sec, end_sec] window the callout was spoken
 // over + the compact combo string + the canonical token ids (pipe-joined).
@@ -2313,7 +2460,8 @@ var LABELER_ALIASES = {};
 var TYPE_LABELS = [
   ['punch', 'Punch'], ['impact_frame', 'Impact'], ['rule', 'Form rule'],
   ['orientation', 'Orientation'], ['punch_dir', 'Punch dir'],
-  ['punch_dir16', 'Punch dir16'], ['hip_rotation', 'Hip rot'], ['callout', 'Callout']
+  ['punch_dir16', 'Punch dir16'], ['hip_rotation', 'Hip rot'], ['callout', 'Callout'],
+  ['chin', 'Chin']
 ];
 
 // Sheets to read: [name, isPrefix, timestampHeader, labelerFromSheetName, typeKey].
@@ -2326,7 +2474,8 @@ var HOURS_SOURCES = [
   ['Punch Directions 16',  false, 'ts', false, 'punch_dir16'],
   ['Hip Rotation Rubric',  false, 'ts', false, 'hip_rotation'],
   ['Impact Frames',        false, 'ts', false, 'impact_frame'],
-  ['Callout Events',       false, 'ts', false, 'callout']
+  ['Callout Events',       false, 'ts', false, 'callout'],
+  ['Chin Labels',          false, 'ts', false, 'chin']
 ];
 
 // Colors
