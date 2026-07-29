@@ -458,10 +458,12 @@ async function fetchLabelsFromSheet() {
         }
       }
 
+      mergeForeignRoundMarkers(result);
       syncRoundActiveFromLabels();
       renderLabels();
       showToast(`Loaded ${result.labels.length} existing labels from sheet`, 'info');
     } else {
+      mergeForeignRoundMarkers(result);
       syncRoundActiveFromLabels();
       showToast('No existing labels for this video', 'info');
       renderLabels();
@@ -469,6 +471,26 @@ async function fetchLabelsFromSheet() {
   } catch (e) {
     console.error('Failed to fetch labels:', e);
     showToast('Failed to load labels from sheet', 'error');
+  }
+}
+
+// Round markers from OTHER labelers' sheets (list response
+// `foreign_round_markers`). Read-only: they show the video's round
+// structure so a second labeler doesn't re-mark rounds, but can't be
+// edited or deleted from here. Own markers of the same type nearby win.
+function mergeForeignRoundMarkers(result) {
+  if (!Array.isArray(result.foreign_round_markers)) return;
+  for (const fm of result.foreign_round_markers) {
+    const t = typeof fm.startTime === 'number' ? fm.startTime : parseSheetTime(fm.startTime);
+    if (!Number.isFinite(t)) continue;
+    const dupe = state.labels.some(l =>
+      l.isRoundMarker && l.punch === fm.punch && Math.abs(l.start - t) < 0.5);
+    if (dupe) continue;
+    state.labels.push({
+      id: null, punch_uuid: '', punch: fm.punch, start: t, end: t,
+      videoName: null, fromSheet: true, isRoundMarker: true,
+      foreign: true, sheetName: fm.sheet,
+    });
   }
 }
 
@@ -564,15 +586,30 @@ function renderLabels() {
       entry.className = 'label-entry round-marker';
       const icon = label.punch === 'round_start' ? '\u25B6' : '\u25A0';
       const text = label.punch === 'round_start' ? 'Round Start' : 'Round End';
-      entry.innerHTML = `
-        <span class="label-text">
-          <small style="color:#555">#${label.id || '...'}</small> ${icon} <span style="color:#888">${text}</span>
-          <small style="color:#666">${formatTime(label.start)}</small>
-        </span>
-        <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
-      `;
-      entry.querySelector('.label-text').style.cursor = 'pointer';
-      entry.querySelector('.label-text').onclick = () => openEditRoundMarker(idx);
+      if (label.foreign) {
+        const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+        entry.innerHTML = `
+          <span class="label-text">
+            ${icon} <span style="color:#666">${text}</span>
+            <small style="color:#555">${formatTime(label.start)} &middot; ${who} (read-only)</small>
+          </span>
+        `;
+        entry.style.opacity = '0.65';
+        entry.querySelector('.label-text').style.cursor = 'pointer';
+        entry.querySelector('.label-text').onclick = () => {
+          document.getElementById('video-player').currentTime = label.start;
+        };
+      } else {
+        entry.innerHTML = `
+          <span class="label-text">
+            <small style="color:#555">#${label.id || '...'}</small> ${icon} <span style="color:#888">${text}</span>
+            <small style="color:#666">${formatTime(label.start)}</small>
+          </span>
+          <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
+        `;
+        entry.querySelector('.label-text').style.cursor = 'pointer';
+        entry.querySelector('.label-text').onclick = () => openEditRoundMarker(idx);
+      }
     } else {
       const punch = PUNCH_TYPES.find(p => p.id === label.punch);
       entry.className = 'label-entry';
@@ -741,11 +778,14 @@ function deleteLabel(idx) {
 }
 
 function undoLastLabel() {
-  if (state.labels.length === 0) return;
-  const label = state.labels.pop();
-  renderLabels();
-  deleteLabelFromSheet(label);
-  showToast('Undid last label', 'info');
+  for (let i = state.labels.length - 1; i >= 0; i--) {
+    if (state.labels[i].foreign) continue;   // other labelers' round markers are read-only
+    const label = state.labels.splice(i, 1)[0];
+    renderLabels();
+    deleteLabelFromSheet(label);
+    showToast('Undid last label', 'info');
+    return;
+  }
 }
 
 async function updateLabelInSheet(label) {

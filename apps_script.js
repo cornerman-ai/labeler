@@ -315,8 +315,15 @@ function doGet(e) {
         });
       }
     }
+    // Round markers from OTHER labelers (and the frozen Archive) ride along
+    // read-only, so a second labeler sees the video's round structure
+    // without being able to edit or duplicate it. Punch rows deliberately
+    // stay own-sheet-only.
+    var foreignMarkers = collectForeignRoundMarkers(p.video, sheetName);
     return ContentService
-      .createTextOutput(JSON.stringify({ status: 'ok', labels: labels }))
+      .createTextOutput(JSON.stringify({
+        status: 'ok', labels: labels, foreign_round_markers: foreignMarkers,
+      }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -1351,6 +1358,42 @@ function punchDirHeaderIndex(headerRow) {
 
 // Round-marker labels in Combined Data — never labelable as punches.
 var NON_PUNCH_LABELS = ['round_start', 'round_end', 'rest_start', 'rest_end'];
+
+// Round markers for a video across every OTHER labeler sheet + the frozen
+// Combined Data Archive (whose source sheets were deleted). Serves the
+// labeler's read-only round display — rounds are shared context, punches
+// are per-labeler.
+function collectForeignRoundMarkers(video, ownSheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var target = normalizeDriveUrl(video);
+  var out = [];
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var name = sheet.getName();
+    var isArchive = name === COMBINED_ARCHIVE_NAME;
+    if (!isArchive) {
+      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+      if (name === ownSheetName) continue;
+    }
+    if (sheet.getLastRow() < 2) continue;
+    var data = sheet.getDataRange().getValues();
+    var cols = findColumns(data[0]);
+    if (cols.punch < 0 || cols.video < 0 || cols.start < 0) continue;
+    for (var r = 1; r < data.length; r++) {
+      var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
+      if (lbl !== 'round_start' && lbl !== 'round_end') continue;
+      if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
+      out.push({
+        punch: lbl,
+        startTime: toSeconds(data[r][cols.start]),
+        sheet: name,
+      });
+    }
+  }
+  return out;
+}
 function isPunchLabel(lbl) {
   if (lbl === null || lbl === undefined || lbl === '') return false;
   var s = String(lbl).toLowerCase();
