@@ -73,6 +73,8 @@ Object.assign(state, {
   videoLoaded: false,
   mode: 'scrub',            // 'scrub' | 'skipping'
   autoJumpOnSync: false,
+  manualNav: false,         // explicit prev/next click — pin, don't auto-advance
+  syncSeq: 0,               // stale-response guard for syncFromSheet
 });
 
 function keyFor(s) {
@@ -423,9 +425,13 @@ function renderPlaylistBar() {
   if (vid) vid.textContent = playlistStem();
 }
 
-// Move to another playlist entry (auto-advance or the prev/next buttons).
-function setPlaylistIdx(idx) {
+// Move to another playlist entry. Auto flows (finishing a video, resuming
+// on load) roll onward past fully-labeled videos; explicit prev/next clicks
+// pass manual=true and stay on the chosen video — otherwise clicking prev
+// with a fully-labeled history chains all the way to the end.
+function setPlaylistIdx(idx, manual) {
   state.playlistIdx = Math.max(0, Math.min(PLAYLIST.length - 1, idx));
+  state.manualNav = !!manual;
   state.samples = [];
   state.cursor = 0;
   state.doneKeys = new Set();
@@ -488,7 +494,8 @@ function tryGenerateSamples() {
   redrawProgress();
   state.cursor = 0;
   seekToCurrent();
-  state.autoJumpOnSync = true;
+  state.autoJumpOnSync = !state.manualNav;
+  state.manualNav = false;
   syncFromSheet();
 }
 
@@ -499,9 +506,16 @@ async function syncFromSheet() {
     setStatus('Type your name above before labelling.', 'err');
     return;
   }
+  // Sheet responses take a second or two and can land out of order when the
+  // labeler navigates quickly (or during the auto-advance chain). Only the
+  // newest sync may touch state — a stale response filtered against the
+  // wrong video's queue would wipe the loaded labels ("Loaded 0").
+  const stem = state.currentStem;
+  const seq = ++state.syncSeq;
   try {
     setStatus('Loading existing labels…');
-    const rows = await fetchChinLabels(state.currentStem, '');
+    const rows = await fetchChinLabels(stem, '');
+    if (seq !== state.syncSeq || stem !== state.currentStem) return;
     state.doneKeys = new Set();
     state.labelByKey = new Map();
     state.coverageByKey = new Map();
@@ -539,6 +553,7 @@ async function syncFromSheet() {
     updateCapturePanel();
     redrawProgress();
   } catch (e) {
+    if (seq !== state.syncSeq) return;
     setStatus("Couldn't fetch labels: " + e.message, 'err');
   }
   state.autoJumpOnSync = false;
@@ -908,8 +923,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const missing = PLAYLIST.filter(p => !state.knownVideos.some(v => v.stem === p));
   if (missing.length) setStatus('Playlist videos missing from chin_frames.json: ' + missing.join(' · '), 'err');
 
-  document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1));
-  document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1));
+  document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1, true));
+  document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1, true));
 
   // Escape drops focus out of the comment box so 1/2/3 shortcuts work again.
   document.getElementById('chin-comment').addEventListener('keydown', (e) => {
