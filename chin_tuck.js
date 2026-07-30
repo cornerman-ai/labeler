@@ -120,6 +120,11 @@ function formatChinLabel(v) {
   return v.verdict;
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // ─── zoom / pan (still-frame stage) ────────────────────────────────────────
 // Ctrl+scroll (or trackpad pinch) zooms toward the cursor; click-drag pans;
 // double-click resets. The transform sits on #zoom-stage so the crop box
@@ -373,8 +378,9 @@ function updateCapturePanel() {
       const isSkip = !!existing.skip_reason;
       setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED: ${existing.verdict}`,
                 isSkip ? 'skipping' : 'captured');
-      el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.<br>` +
-        '<b>1/2/3</b> re-labels (overwrites) · <b>U</b> clears';
+      el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.` +
+        (existing.comment ? `<br><span class="saved-comment">“${escapeHtml(existing.comment)}”</span>` : '') +
+        '<br><b>1/2/3</b> re-labels (overwrites) · <b>U</b> clears';
     } else {
       setBanner(null);
       el.innerHTML = s
@@ -525,8 +531,10 @@ async function syncFromSheet() {
     }
     const s = state.samples[state.cursor];
     if (s) {
+      const label = state.labelByKey.get(keyFor(s));
+      setCommentBox(label ? label.comment : '');
       const total = `${state.cursor + 1}/${state.samples.length}`;
-      setCurrentLine(describeSample(s, total, formatChinLabel(state.labelByKey.get(keyFor(s)))));
+      setCurrentLine(describeSample(s, total, formatChinLabel(label)));
     }
     updateCapturePanel();
     redrawProgress();
