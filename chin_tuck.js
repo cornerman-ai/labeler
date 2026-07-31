@@ -68,19 +68,20 @@ function buildPlaylist() {
 }
 
 // The three questions, answered in order via keys 1/2/3 (buttons work in
-// any order). `id` doubles as the sheet column name.
+// any order). `id` doubles as the sheet column name. Options run GOOD →
+// BAD (1 = the proper tucked position), so keys read like a grade.
 const QUESTIONS = [
   { id: 'chin_height', num: 1, title: 'Chin vs shoulder height',
     options: [
-      { key: '1', value: 'over',  label: 'over' },
+      { key: '1', value: 'under', label: 'under' },
       { key: '2', value: 'level', label: 'level' },
-      { key: '3', value: 'under', label: 'under' },
+      { key: '3', value: 'over',  label: 'over' },
     ] },
   { id: 'chin_front', num: 2, title: 'Chin in front of shoulder',
     options: [
-      { key: '1', value: 'front',  label: 'in front' },
+      { key: '1', value: 'behind', label: 'behind' },
       { key: '2', value: 'same',   label: 'same' },
-      { key: '3', value: 'behind', label: 'behind' },
+      { key: '3', value: 'front',  label: 'in front' },
     ] },
   { id: 'kissing', num: 3, title: 'Kissing the shoulder',
     options: [
@@ -295,14 +296,13 @@ async function fetchChinLabels(video, labeler) {
 }
 async function saveChinShoulderLabel({ labeler, video, round, frame, pts_sec,
                                        chin_height, chin_front, kissing,
-                                       skip_reason, comment }) {
+                                       skip_reason }) {
   const params = { action: 'saveChinShoulderLabel', labeler, video,
                    round: String(round), frame: String(frame), pts_sec: String(pts_sec) };
   params.chin_height = chin_height || '';
   params.chin_front = chin_front || '';
   params.kissing = kissing || '';
   params.skip_reason = skip_reason || '';
-  params.comment = comment || '';
   const url = sheetUrl(params);
   const res = await fetch(url);
   if (!res.ok) throw new Error('saveChinShoulderLabel HTTP ' + res.status);
@@ -452,7 +452,6 @@ function updateCapturePanel() {
     setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED: ${formatChinLabel(existing)}`,
               isSkip ? 'skipping' : 'captured');
     el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.` +
-      (existing.comment ? `<br><span class="saved-comment">“${escapeHtml(existing.comment)}”</span>` : '') +
       '<br>Answering the 3 questions again re-labels (overwrites) · <b>U</b> clears';
   } else if (s) {
     setBanner(null);
@@ -609,8 +608,7 @@ async function syncFromSheet() {
       if (r.labeler === labeler) {
         state.doneKeys.add(k);
         state.labelByKey.set(k, { chin_height: r.chin_height, chin_front: r.chin_front,
-                                  kissing: r.kissing, skip_reason: r.skip_reason,
-                                  comment: r.comment || '' });
+                                  kissing: r.kissing, skip_reason: r.skip_reason });
       }
     }
     setStatus(`Loaded ${state.doneKeys.size} of your label(s) · ${state.coverageByKey.size} labeled in total.`, 'ok');
@@ -628,7 +626,6 @@ async function syncFromSheet() {
     const s = state.samples[state.cursor];
     if (s) {
       const label = state.labelByKey.get(keyFor(s));
-      setCommentBox(label ? label.comment : '');
       const total = `${state.cursor + 1}/${state.samples.length}`;
       setCurrentLine(describeSample(s, total, formatChinLabel(label)));
     }
@@ -693,7 +690,6 @@ function seekToCurrent() {
     centerOnBox();
   }
   const label = state.labelByKey.get(keyFor(s));
-  setCommentBox(label ? label.comment : '');
   const total = `${state.cursor + 1}/${state.samples.length}`;
   setCurrentLine(describeSample(s, total, formatChinLabel(label)));
   updateCapturePanel();
@@ -713,16 +709,6 @@ function requireLabeler() {
   return labeler;
 }
 
-function currentComment() {
-  const el = document.getElementById('chin-comment');
-  return el ? el.value.trim() : '';
-}
-
-function setCommentBox(text) {
-  const el = document.getElementById('chin-comment');
-  if (el) el.value = text || '';
-}
-
 // Record one answer; the third one completes the label and saves it.
 function answerWith(qid, value) {
   state.autoJumpOnSync = false;
@@ -738,8 +724,7 @@ function answerWith(qid, value) {
   const a = state.answers;
   state.answers = {};
   persistLabel(labeler, { chin_height: a.chin_height, chin_front: a.chin_front,
-                          kissing: a.kissing, skip_reason: null,
-                          comment: currentComment() });
+                          kissing: a.kissing, skip_reason: null });
 }
 
 function resetAnswers() {
@@ -764,7 +749,7 @@ function skipWith(reason) {
   if (!labeler) return;
   state.answers = {};
   persistLabel(labeler, { chin_height: null, chin_front: null, kissing: null,
-                          skip_reason: reason, comment: currentComment() });
+                          skip_reason: reason });
 }
 
 function cancelToScrub() {
@@ -800,7 +785,6 @@ function persistLabel(labeler, label) {
     chin_front: label.chin_front,
     kissing: label.kissing,
     skip_reason: label.skip_reason,
-    comment: label.comment,
   }).then(() => {
     state.pendingSaves = Math.max(0, (state.pendingSaves || 1) - 1);
     setStatus(state.pendingSaves === 0 ? 'Saved.'
@@ -934,7 +918,6 @@ function rebuildOverview() {
     if (v !== undefined) {
       if (v.skip_reason) { labelTxt = 'skip:' + v.skip_reason; labelCls = 'skip'; }
       else { labelTxt = formatChinLabel(v, true); labelCls = 'done'; }
-      if (v.comment) labelTxt += ' 💬';
     }
     row.innerHTML =
       `<span class="ov-idx">${idx + 1}</span>` +
@@ -1039,11 +1022,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1, true));
   document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1, true));
-
-  // Escape drops focus out of the comment box so number shortcuts work again.
-  document.getElementById('chin-comment').addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); }
-  });
 
   const video = document.getElementById('video-player');
   video.addEventListener('loadedmetadata', () => {
