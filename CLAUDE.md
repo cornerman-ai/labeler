@@ -38,8 +38,10 @@ never up", which are different faults needing different drills. Keyed by
 `guard_hand` (LEFT/RIGHT) is recorded as-shown so a stance mistake in Combined
 Data is auditable after the fact.
 
-**Chin Labels sheet** (`chin_tuck.html` — one verdict per randomly sampled
-frame; candidates baked into `chin_frames.json` by cornerman-backend's
+**Chin Labels sheet** (`chin_tuck_john.html` — the ORIGINAL single-verdict
+chin labeler, preserved under that name for John's pass when `chin_tuck.html`
+became the 3-question chin-shoulder labeler below. One verdict per randomly
+sampled frame; candidates baked into `chin_frames.json` by cornerman-backend's
 `chin_sampler.py`, which also defines the chin crop box the page draws):
 ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | comment | deleted
 
@@ -69,6 +71,19 @@ video/round/frame keys + READ ME tab) is what the reviewer edits;
 convert it to a native Google Sheet once (File > Save as Google Sheets)
 so the inline images render. Import = read the sheet and push each
 verdict through the deployed saveChinLabel endpoint as labeler `John`.
+
+**Chin Shoulder Labels sheet** (`chin_tuck.html` — THREE answers per sampled
+frame, all judged against the LEAD shoulder; same candidate source, playlist,
+hosted frames, and exclusion file as Chin Labels):
+ts | labeler | video | round | frame | pts_sec | chin_height | chin_front | kissing | skip_reason | comment | deleted
+
+`chin_height` is `over` / `level` / `under` (chin higher than / level with /
+lower than the shoulder), `chin_front` is `front` / `same` / `behind` (chin
+ahead of / even with / behind the shoulder), `kissing` is `yes` / `no` (chin
+close enough to almost kiss the shoulder). A row has either all three answers
+or a `skip_reason` (`occluded` / `unclear`), never both. Keyed by (labeler,
+video, round, frame); a re-save supersedes (soft `deleted=1`). Actions:
+`listChinShoulderLabels` / `saveChinShoulderLabel` / `deleteChinShoulderLabel`.
 
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.

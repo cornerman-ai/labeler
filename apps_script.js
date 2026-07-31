@@ -273,6 +273,14 @@ function doGet(e) {
     return doGetChinLabels(p, labeler, action);
   }
 
+  // Chin-shoulder labeler — the 3-question chin-vs-lead-shoulder version of
+  // the chin page (chin_tuck.html). The original single-verdict page lives
+  // on as chin_tuck_john.html against the Chin Labels sheet above.
+  if (action === 'listChinShoulderLabels' || action === 'saveChinShoulderLabel' ||
+      action === 'deleteChinShoulderLabel') {
+    return doGetChinShoulderLabels(p, labeler, action);
+  }
+
   // Callout labeler — separate sheet. One row per called-out punch / combo /
   // defense, keyed by (labeler, video). These annotate the *instruction* a
   // coach app calls out, not the executed punch; they become weak labels for
@@ -2175,6 +2183,158 @@ function doGetChinLabels(p, labeler, action) {
 }
 
 // ============================================================
+// Chin-shoulder labeler (chin_tuck.html) — THREE answers per SAMPLED FRAME,
+// all judged against the LEAD shoulder (same candidate source + keying as
+// Chin Labels; the single-verdict original is chin_tuck_john.html):
+//
+//   chin_height  over / level / under   chin higher than / level with /
+//                                       lower than the shoulder
+//   chin_front   front / same / behind  chin ahead of / even with /
+//                                       behind the shoulder
+//   kissing      yes / no               chin close enough to (almost)
+//                                       kiss the shoulder
+//
+// A row has either all three answers or a skip_reason, never both.
+// Keyed by (labeler, video, round, frame); a re-save supersedes the prior row.
+// ============================================================
+var CHIN_SHOULDER_SHEET_NAME = 'Chin Shoulder Labels';
+var CHIN_SHOULDER_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
+                             'chin_height', 'chin_front', 'kissing',
+                             'skip_reason', 'comment', 'deleted'];
+var CHIN_SHOULDER_VALUES = {
+  chin_height: ['over', 'level', 'under'],
+  chin_front: ['front', 'same', 'behind'],
+  kissing: ['yes', 'no']
+};
+var CHIN_SHOULDER_FIELDS = ['chin_height', 'chin_front', 'kissing'];
+var CHIN_SHOULDER_SKIP_REASONS = ['occluded', 'unclear'];
+
+function getOrCreateChinShoulderSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(CHIN_SHOULDER_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(CHIN_SHOULDER_SHEET_NAME);
+    sh.appendRow(CHIN_SHOULDER_HEADERS);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(CHIN_SHOULDER_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function doGetChinShoulderLabels(p, labeler, action) {
+  var sh = getOrCreateChinShoulderSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  // === LIST chin-shoulder labels (optionally filtered by labeler / video) ===
+  if (action === 'listChinShoulderLabels') {
+    var video = p.video || '';
+    var filterLabeler = p.labeler || '';
+    var rows = [];
+    for (var li = 1; li < data.length; li++) {
+      var lr = data[li];
+      if (String(lr[idx.deleted]) === '1') continue;
+      if (video && lr[idx.video] !== video) continue;
+      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
+      rows.push({
+        ts: lr[idx.ts],
+        labeler: lr[idx.labeler],
+        video: lr[idx.video],
+        round: Number(lr[idx.round]),
+        frame: Number(lr[idx.frame]),
+        pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
+        chin_height: lr[idx.chin_height] === '' ? null : String(lr[idx.chin_height]),
+        chin_front: lr[idx.chin_front] === '' ? null : String(lr[idx.chin_front]),
+        kissing: lr[idx.kissing] === '' ? null : String(lr[idx.kissing]),
+        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
+        comment: (idx.comment === undefined || lr[idx.comment] === '') ? null : String(lr[idx.comment]),
+      });
+    }
+    return jsonOut({ status: 'ok', rows: rows });
+  }
+
+  // === SAVE a label keyed by (labeler, video, round, frame). Supersedes. ===
+  // Either all three answers or a skip_reason must be set, never both.
+  if (action === 'saveChinShoulderLabel') {
+    var required = ['labeler', 'video', 'round', 'frame'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var nAnswers = 0;
+    for (var f = 0; f < CHIN_SHOULDER_FIELDS.length; f++) {
+      var fld = CHIN_SHOULDER_FIELDS[f];
+      if (p[fld] !== undefined && p[fld] !== '') nAnswers++;
+    }
+    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
+    if (hasSkip ? nAnswers !== 0 : nAnswers !== CHIN_SHOULDER_FIELDS.length) {
+      return jsonOut({ status: 'error',
+                       message: 'need either all of chin_height/chin_front/kissing or skip_reason' });
+    }
+    var vals = { chin_height: '', chin_front: '', kissing: '', skip_reason: '' };
+    if (hasSkip) {
+      if (CHIN_SHOULDER_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+      }
+      vals.skip_reason = String(p.skip_reason);
+    } else {
+      for (var f2 = 0; f2 < CHIN_SHOULDER_FIELDS.length; f2++) {
+        var fld2 = CHIN_SHOULDER_FIELDS[f2];
+        if (CHIN_SHOULDER_VALUES[fld2].indexOf(String(p[fld2])) === -1) {
+          return jsonOut({ status: 'error', message: 'invalid ' + fld2 + ': ' + p[fld2] });
+        }
+        vals[fld2] = String(p[fld2]);
+      }
+    }
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (String(data[i2][idx.deleted]) === '1') continue;
+      if (!chinRowMatches(data[i2], idx, p)) continue;
+      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+    }
+    var newRow = [];
+    var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(p.labeler);
+      else if (col === 'video') newRow.push(p.video);
+      else if (col === 'round') newRow.push(Number(p.round));
+      else if (col === 'frame') newRow.push(Number(p.frame));
+      else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
+      else if (col === 'chin_height') newRow.push(vals.chin_height);
+      else if (col === 'chin_front') newRow.push(vals.chin_front);
+      else if (col === 'kissing') newRow.push(vals.kissing);
+      else if (col === 'skip_reason') newRow.push(vals.skip_reason);
+      else if (col === 'comment') newRow.push(String(p.comment || '').slice(0, 2000));
+      else if (col === 'deleted') newRow.push('');
+      else newRow.push('');
+    }
+    sh.appendRow(newRow);
+    return jsonOut({ status: 'ok' });
+  }
+
+  // === DELETE: mark every current row for (labeler, video, round, frame) ===
+  if (action === 'deleteChinShoulderLabel') {
+    var found = 0;
+    for (var i3 = 1; i3 < data.length; i3++) {
+      if (String(data[i3][idx.deleted]) === '1') continue;
+      if (!chinRowMatches(data[i3], idx, p)) continue;
+      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
+      found++;
+    }
+    return jsonOut({ status: 'ok', deleted: found });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown chin-shoulder action: ' + action });
+}
+
+// ============================================================
 // Callout labeler — one row per called-out punch / combo / defense.
 // Each row stores the [start_sec, end_sec] window the callout was spoken
 // over + the compact combo string + the canonical token ids (pipe-joined).
@@ -2463,7 +2623,7 @@ var TYPE_LABELS = [
   ['punch', 'Punch'], ['impact_frame', 'Impact'], ['rule', 'Form rule'],
   ['orientation', 'Orientation'], ['punch_dir', 'Punch dir'],
   ['punch_dir16', 'Punch dir16'], ['hip_rotation', 'Hip rot'], ['callout', 'Callout'],
-  ['chin', 'Chin']
+  ['chin', 'Chin'], ['chin_shoulder', 'Chin shldr']
 ];
 
 // Sheets to read: [name, isPrefix, timestampHeader, labelerFromSheetName, typeKey].
@@ -2477,7 +2637,8 @@ var HOURS_SOURCES = [
   ['Hip Rotation Rubric',  false, 'ts', false, 'hip_rotation'],
   ['Impact Frames',        false, 'ts', false, 'impact_frame'],
   ['Callout Events',       false, 'ts', false, 'callout'],
-  ['Chin Labels',          false, 'ts', false, 'chin']
+  ['Chin Labels',          false, 'ts', false, 'chin'],
+  ['Chin Shoulder Labels', false, 'ts', false, 'chin_shoulder']
 ];
 
 // Colors

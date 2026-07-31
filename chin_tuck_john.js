@@ -1,5 +1,10 @@
 // ============================================================
-// chin_tuck.js — chin-vs-lead-shoulder labeler, THREE answers per sampled frame
+// chin_tuck_john.js — PRESERVED copy of the original single-verdict
+// chin labeler (tucked / level / air), frozen for John's pass. Saves to
+// the "Chin Labels" sheet. The live chin_tuck.html/.js is now the
+// 3-question chin-vs-lead-shoulder labeler ("Chin Shoulder Labels").
+//
+// Chin-position labeler, one verdict per sampled frame.
 //
 // Candidates come from chin_frames.json (baked by cornerman-backend's
 // chin_sampler.py): random frames per video where BlazePose tracked the
@@ -9,26 +14,17 @@
 // (chin_sampler.chin_box), and drawn over the frame so labeling doubles
 // as a visual check of the crop the model will eventually see.
 //
-// Every frame gets three answers, all judged against the LEAD shoulder:
-//   chin_height  over / level / under   is the chin higher than, level
-//                                       with, or lower than the shoulder?
-//   chin_front   front / same / behind  is the chin in front of, even
-//                                       with, or behind the shoulder?
-//   kissing      yes / no               is the chin close enough to the
-//                                       shoulder to (almost) kiss it?
+// Verdicts (provisional 3-way split until a coach weighs in):
+//   tucked  chin down toward the chest
+//   level   roughly even with the ground — neither tucked nor lifted
+//   air     chin lifted / jaw pointing up
 //
-// Interaction: each sample seeks + pauses on its frame. Keys 1/2/3 answer
-// the ACTIVE question (the first unanswered one); answering the last
-// question saves and advances — 3 keypresses per frame. Buttons can answer
-// the questions in any order. Esc restarts the current frame's answers.
-// ←/→ peek at neighboring frames for motion context (the label still
-// applies to the SAMPLED frame). S then 1/2 skips (occluded / unclear).
-// U clears. Saved to the "Chin Shoulder Labels" sheet via
-// saveChinShoulderLabel / listChinShoulderLabels / deleteChinShoulderLabel,
-// keyed by (labeler, video, round, frame).
-//
-// The original single-verdict labeler (tucked / level / air, "Chin Labels"
-// sheet) is preserved as chin_tuck_john.html / chin_tuck_john.js.
+// Interaction: each sample seeks + pauses on its frame. 1/2/3 saves the
+// verdict and advances. ←/→ peek at neighboring frames for motion context
+// (the label still applies to the SAMPLED frame — the box goes dashed
+// while peeking). S then 1/2/3 skips (occluded / unclear / bad box).
+// U clears. Saved to the "Chin Labels" sheet via saveChinLabel /
+// listChinLabels / deleteChinLabel, keyed by (labeler, video, round, frame).
 //
 // Reuses player.js for the video chrome, sheetUrl(), and shared `state`.
 // ============================================================
@@ -51,31 +47,15 @@ const PLAYLIST = [
   '30 Days of Basic Boxing at Home for Beginners #DAY16  #HIENSUNDAY  #BoxingAtHome #HomeWorkout [pTNIAZADJzM]',
 ];
 
-// The three questions, answered in order via keys 1/2/3 (buttons work in
-// any order). `id` doubles as the sheet column name.
-const QUESTIONS = [
-  { id: 'chin_height', num: 1, title: 'Chin vs shoulder height',
-    options: [
-      { key: '1', value: 'over',  label: 'over' },
-      { key: '2', value: 'level', label: 'level' },
-      { key: '3', value: 'under', label: 'under' },
-    ] },
-  { id: 'chin_front', num: 2, title: 'Chin in front of shoulder',
-    options: [
-      { key: '1', value: 'front',  label: 'in front' },
-      { key: '2', value: 'same',   label: 'same' },
-      { key: '3', value: 'behind', label: 'behind' },
-    ] },
-  { id: 'kissing', num: 3, title: 'Kissing the shoulder',
-    options: [
-      { key: '1', value: 'yes', label: 'yes' },
-      { key: '2', value: 'no',  label: 'no' },
-    ] },
+const VERDICTS = [
+  { key: '1', verdict: 'tucked', label: 'tucked' },
+  { key: '2', verdict: 'level',  label: 'level' },
+  { key: '3', verdict: 'air',    label: 'in the air' },
 ];
-const ANSWER_FIELDS = QUESTIONS.map(q => q.id);
 
-// Crop box hidden (as in the original page's John config) — the labeler
-// judges the chin naturally; flip SHOW_BOX to restore the overlay.
+// TEMP (John's pass): crop box hidden and the bad_box skip removed — the
+// coach judges the chin naturally; box QA is a labeler job. Flip SHOW_BOX
+// and re-add the bad_box row (key '3') to restore.
 const SHOW_BOX = false;
 
 const SKIP_REASONS = [
@@ -93,9 +73,8 @@ Object.assign(state, {
   samples: [],              // sampled frames for the current video, chronological
   cursor: 0,
   doneKeys: new Set(),
-  labelByKey: new Map(),    // key -> { chin_height, chin_front, kissing, skip_reason, comment }
+  labelByKey: new Map(),    // key -> { verdict: string|null, skip_reason: string|null }
   coverageByKey: new Map(), // current video: sampleKey -> Set<labeler>
-  answers: {},              // in-progress answers for the CURRENT sample
   videoLoaded: false,
   mode: 'scrub',            // 'scrub' | 'skipping'
   autoJumpOnSync: false,
@@ -142,13 +121,10 @@ function sampleFps(s) {
   return (v && v.fps_by_round && v.fps_by_round[s.round]) || 30;
 }
 
-// Full form for the state panel; compact 3-letter form (e.g. "O·F·Y") for
-// the overview rows.
-function formatChinLabel(v, compact) {
+function formatChinLabel(v) {
   if (v === undefined) return 'unlabeled';
   if (v.skip_reason) return 'skip:' + v.skip_reason;
-  if (compact) return ANSWER_FIELDS.map(f => String(v[f] || '?')[0].toUpperCase()).join('·');
-  return v.chin_height + ' · ' + v.chin_front + ' · kiss:' + v.kissing;
+  return v.verdict;
 }
 
 function escapeHtml(s) {
@@ -268,39 +244,35 @@ function chinBox(j, W, H, boxScale) {
   return { x, y, w: Math.min(side, W - x), h: Math.min(side, H - y) };
 }
 
-// ─── sheet sync (Chin Shoulder Labels) ─────────────────────────────────────
+// ─── sheet sync (Chin Labels) ──────────────────────────────────────────────
 async function fetchChinLabels(video, labeler) {
-  const url = sheetUrl({ action: 'listChinShoulderLabels', video, labeler });
+  const url = sheetUrl({ action: 'listChinLabels', video, labeler });
   const res = await fetch(url);
-  if (!res.ok) throw new Error('listChinShoulderLabels HTTP ' + res.status);
+  if (!res.ok) throw new Error('listChinLabels HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('listChinShoulderLabels: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('listChinLabels: ' + (body.message || 'unknown'));
   return body.rows;
 }
-async function saveChinShoulderLabel({ labeler, video, round, frame, pts_sec,
-                                       chin_height, chin_front, kissing,
-                                       skip_reason, comment }) {
-  const params = { action: 'saveChinShoulderLabel', labeler, video,
+async function saveChinLabel({ labeler, video, round, frame, pts_sec, verdict, skip_reason, comment }) {
+  const params = { action: 'saveChinLabel', labeler, video,
                    round: String(round), frame: String(frame), pts_sec: String(pts_sec) };
-  params.chin_height = chin_height || '';
-  params.chin_front = chin_front || '';
-  params.kissing = kissing || '';
+  params.verdict = verdict || '';
   params.skip_reason = skip_reason || '';
   params.comment = comment || '';
   const url = sheetUrl(params);
   const res = await fetch(url);
-  if (!res.ok) throw new Error('saveChinShoulderLabel HTTP ' + res.status);
+  if (!res.ok) throw new Error('saveChinLabel HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('saveChinShoulderLabel: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('saveChinLabel: ' + (body.message || 'unknown'));
   return body;
 }
-async function deleteChinShoulderLabel({ labeler, video, round, frame }) {
-  const url = sheetUrl({ action: 'deleteChinShoulderLabel', labeler, video,
+async function deleteChinLabel({ labeler, video, round, frame }) {
+  const url = sheetUrl({ action: 'deleteChinLabel', labeler, video,
                          round: String(round), frame: String(frame) });
   const res = await fetch(url);
-  if (!res.ok) throw new Error('deleteChinShoulderLabel HTTP ' + res.status);
+  if (!res.ok) throw new Error('deleteChinLabel HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('deleteChinShoulderLabel: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('deleteChinLabel: ' + (body.message || 'unknown'));
   return body;
 }
 
@@ -383,7 +355,7 @@ function updateHud() {
   let base = `sample ${state.cursor + 1}/${state.samples.length} · r${s.round} f${s.frame}`;
   if (state.zoom > 1) base += ` · ${state.zoom.toFixed(1)}x`;
   hud.textContent = isPeeking(s)
-    ? base + ' · PEEKING — answers label the sampled frame'
+    ? base + ' · PEEKING — 1/2/3 labels the sampled frame'
     : base;
 }
 
@@ -399,58 +371,29 @@ function setBanner(text, cls) {
   banner.className = cls || '';
 }
 
-// First question without an in-progress answer, or null when all answered /
-// no sample on screen.
-function activeQuestion() {
-  if (!state.samples.length || state.cursor >= state.samples.length) return null;
-  return QUESTIONS.find(q => !state.answers[q.id]) || null;
-}
-
-// Highlight the active question block + the selected option buttons.
-function renderQuestions() {
-  const active = state.mode === 'scrub' ? activeQuestion() : null;
-  for (const q of QUESTIONS) {
-    const div = document.querySelector(`.chin-q[data-q="${q.id}"]`);
-    if (div) div.classList.toggle('active', !!active && active.id === q.id);
-  }
-  document.querySelectorAll('.q-opt').forEach(btn => {
-    btn.classList.toggle('selected', state.answers[btn.dataset.q] === btn.dataset.v);
-  });
-}
-
 function updateCapturePanel() {
-  renderQuestions();
   const el = document.getElementById('chin-state');
   if (!el) return;
   if (state.mode === 'skipping') {
     el.innerHTML = 'Skip reason: ' +
       SKIP_REASONS.map(s => `<b>${s.key}</b> ${s.label}`).join(' · ') +
       ' · <b>Esc</b> cancel';
-    return;
-  }
-  const s = state.samples[state.cursor];
-  const existing = s ? state.labelByKey.get(keyFor(s)) : undefined;
-  const started = ANSWER_FIELDS.some(f => state.answers[f]);
-  if (existing !== undefined && !started) {
-    const isSkip = !!existing.skip_reason;
-    setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED: ${formatChinLabel(existing)}`,
-              isSkip ? 'skipping' : 'captured');
-    el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.` +
-      (existing.comment ? `<br><span class="saved-comment">“${escapeHtml(existing.comment)}”</span>` : '') +
-      '<br>Answering the 3 questions again re-labels (overwrites) · <b>U</b> clears';
-  } else if (s) {
-    setBanner(null);
-    const q = activeQuestion();
-    if (q) {
-      el.innerHTML = `Q${q.num}/3 — <b>${q.title}</b>: ` +
-        q.options.map(o => `<b>${o.key}</b> ${o.label}`).join(' · ') +
-        (started ? ' · <b>Esc</b> restart' : '');
-    } else {
-      el.innerHTML = '—';
-    }
   } else {
-    setBanner(null);
-    el.innerHTML = '—';
+    const s = state.samples[state.cursor];
+    const existing = s ? state.labelByKey.get(keyFor(s)) : undefined;
+    if (existing !== undefined) {
+      const isSkip = !!existing.skip_reason;
+      setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED: ${existing.verdict}`,
+                isSkip ? 'skipping' : 'captured');
+      el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.` +
+        (existing.comment ? `<br><span class="saved-comment">“${escapeHtml(existing.comment)}”</span>` : '') +
+        '<br><b>1/2/3</b> re-labels (overwrites) · <b>U</b> clears';
+    } else {
+      setBanner(null);
+      el.innerHTML = s
+        ? 'Judge the chin: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.'
+        : '—';
+    }
   }
 }
 
@@ -499,7 +442,6 @@ function setPlaylistIdx(idx, manual) {
   state.doneKeys = new Set();
   state.labelByKey = new Map();
   state.coverageByKey = new Map();
-  state.answers = {};
   tryGenerateSamples();
 }
 
@@ -542,7 +484,6 @@ function tryGenerateSamples() {
   state.doneKeys = new Set();
   state.labelByKey = new Map();
   state.coverageByKey = new Map();
-  state.answers = {};
   enterScrub();
   setStatus('—');
 
@@ -592,9 +533,7 @@ async function syncFromSheet() {
       who.add(r.labeler);
       if (r.labeler === labeler) {
         state.doneKeys.add(k);
-        state.labelByKey.set(k, { chin_height: r.chin_height, chin_front: r.chin_front,
-                                  kissing: r.kissing, skip_reason: r.skip_reason,
-                                  comment: r.comment || '' });
+        state.labelByKey.set(k, { verdict: r.verdict, skip_reason: r.skip_reason, comment: r.comment || '' });
       }
     }
     setStatus(`Loaded ${state.doneKeys.size} of your label(s) · ${state.coverageByKey.size} labeled in total.`, 'ok');
@@ -648,7 +587,6 @@ function enterScrub() {
 
 function seekToCurrent() {
   if (!state.samples.length) return;
-  state.answers = {};
   enterScrub();
   if (state.cursor >= state.samples.length) {
     updateHud();
@@ -686,7 +624,7 @@ function seekToCurrent() {
   updateChinBox();
 }
 
-// ─── answers / skip / undo ─────────────────────────────────────────────────
+// ─── verdict / skip / undo ─────────────────────────────────────────────────
 function requireLabeler() {
   const labeler = document.getElementById('labeler-input').value.trim();
   if (!labeler) {
@@ -707,30 +645,14 @@ function setCommentBox(text) {
   if (el) el.value = text || '';
 }
 
-// Record one answer; the third one completes the label and saves it.
-function answerWith(qid, value) {
+function labelWith(verdict) {
   state.autoJumpOnSync = false;
   if (!state.currentStem || !state.samples.length) {
     setStatus('Pick a video and load the file first.', 'err'); return;
   }
-  if (state.cursor >= state.samples.length) return;
-  state.answers[qid] = value;
-  updateCapturePanel();
-  if (!ANSWER_FIELDS.every(f => state.answers[f])) return;
   const labeler = requireLabeler();
-  if (!labeler) return;    // answers stay — save fires once the name is set
-  const a = state.answers;
-  state.answers = {};
-  persistLabel(labeler, { chin_height: a.chin_height, chin_front: a.chin_front,
-                          kissing: a.kissing, skip_reason: null,
-                          comment: currentComment() });
-}
-
-function resetAnswers() {
-  if (!ANSWER_FIELDS.some(f => state.answers[f])) return;
-  state.answers = {};
-  updateCapturePanel();
-  setStatus('Answers reset — start from question 1.', null);
+  if (!labeler) return;
+  persistLabel(labeler, { verdict, skip_reason: null, comment: currentComment() });
 }
 
 function beginSkip() {
@@ -746,9 +668,7 @@ function skipWith(reason) {
   if (!state.currentStem || !state.samples.length) return;
   const labeler = requireLabeler();
   if (!labeler) return;
-  state.answers = {};
-  persistLabel(labeler, { chin_height: null, chin_front: null, kissing: null,
-                          skip_reason: reason, comment: currentComment() });
+  persistLabel(labeler, { verdict: null, skip_reason: reason, comment: currentComment() });
 }
 
 function cancelToScrub() {
@@ -774,15 +694,13 @@ function persistLabel(labeler, label) {
   const stemAtSave = state.currentStem;
   gotoNext();
 
-  saveChinShoulderLabel({
+  saveChinLabel({
     labeler,
     video: stemAtSave,
     round: s.round,
     frame: s.frame,
     pts_sec: s.pts,
-    chin_height: label.chin_height,
-    chin_front: label.chin_front,
-    kissing: label.kissing,
+    verdict: label.verdict,
     skip_reason: label.skip_reason,
     comment: label.comment,
   }).then(() => {
@@ -826,7 +744,7 @@ async function clearLabelAt(idx) {
     setCurrentLine(describeSample(s, total, 'unlabeled'));
   }
   try {
-    await deleteChinShoulderLabel({ labeler, video: state.currentStem, round: s.round, frame: s.frame });
+    await deleteChinLabel({ labeler, video: state.currentStem, round: s.round, frame: s.frame });
     setStatus("Cleared that sample's label — relabel it any time.", 'ok');
   } catch (e) {
     setStatus('Clear failed: ' + e.message, 'err');
@@ -880,25 +798,14 @@ function redrawProgress() {
   if (bar) bar.style.width = N ? (100 * labelled / N).toFixed(1) + '%' : '0%';
   const pt = document.getElementById('chin-progress-text');
   if (pt) pt.textContent = N ? labelled + ' / ' + N + ' labelled' : 'no samples';
-  // Distribution, one line per question plus skips.
-  const parts = [];
-  for (const q of QUESTIONS) {
-    const counts = {};
-    for (const v of state.labelByKey.values()) {
-      if (v.skip_reason || !v[q.id]) continue;
-      counts[v[q.id]] = (counts[v[q.id]] || 0) + 1;
-    }
-    const qp = q.options.filter(o => counts[o.value])
-                        .map(o => o.value + ':' + counts[o.value]);
-    if (qp.length) parts.push(q.title.replace('Chin ', '').replace(' of shoulder', '') + ' — ' + qp.join(' '));
-  }
-  const skipCounts = {};
+  const counts = {};
   for (const v of state.labelByKey.values()) {
-    if (v.skip_reason) skipCounts[v.skip_reason] = (skipCounts[v.skip_reason] || 0) + 1;
+    const key = v.skip_reason ? 'skip:' + v.skip_reason : v.verdict;
+    counts[key] = (counts[key] || 0) + 1;
   }
-  for (const s of SKIP_REASONS) {
-    if (skipCounts[s.reason]) parts.push('skip:' + s.reason + ': ' + skipCounts[s.reason]);
-  }
+  const parts = [];
+  for (const v of VERDICTS) if (counts[v.verdict]) parts.push(v.verdict + ': ' + counts[v.verdict]);
+  for (const s of SKIP_REASONS) if (counts['skip:' + s.reason]) parts.push(s.reason + ': ' + counts['skip:' + s.reason]);
   document.getElementById('chin-dist').textContent = parts.length ? parts.join(' · ') : '—';
   rebuildOverview();
 }
@@ -917,13 +824,13 @@ function rebuildOverview() {
     let labelTxt = '—', labelCls = 'none';
     if (v !== undefined) {
       if (v.skip_reason) { labelTxt = 'skip:' + v.skip_reason; labelCls = 'skip'; }
-      else { labelTxt = formatChinLabel(v, true); labelCls = 'done'; }
+      else { labelTxt = v.verdict; labelCls = 'done'; }
       if (v.comment) labelTxt += ' 💬';
     }
     row.innerHTML =
       `<span class="ov-idx">${idx + 1}</span>` +
       `<span class="ov-type">r${s.round} f${s.frame} · ${formatTime(s.pts)}</span>` +
-      `<span class="ov-label ${labelCls}" title="${escapeHtml(formatChinLabel(v))}">${labelTxt}</span>`;
+      `<span class="ov-label ${labelCls}">${labelTxt}</span>`;
     if (v !== undefined) {
       const x = document.createElement('button');
       x.className = 'ov-clear';
@@ -1024,7 +931,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1, true));
   document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1, true));
 
-  // Escape drops focus out of the comment box so number shortcuts work again.
+  // Escape drops focus out of the comment box so 1/2/3 shortcuts work again.
   document.getElementById('chin-comment').addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); }
   });
@@ -1039,10 +946,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('resize', () => { updateChinBox(); applyZoomPan(); });
   setupZoomPan();
 
-  // Question buttons — clickable in any order; the third answer saves.
-  document.querySelectorAll('.q-opt').forEach(btn => {
-    btn.addEventListener('click', () => answerWith(btn.dataset.q, btn.dataset.v));
-  });
+  document.getElementById('btn-tucked').addEventListener('click', () => labelWith('tucked'));
+  document.getElementById('btn-level').addEventListener('click', () => labelWith('level'));
+  document.getElementById('btn-air').addEventListener('click', () => labelWith('air'));
   document.getElementById('btn-undo').addEventListener('click', undoAction);
   document.getElementById('btn-skip-occluded').addEventListener('click', () => skipWith('occluded'));
   document.getElementById('btn-skip-unclear').addEventListener('click', () => skipWith('unclear'));
@@ -1068,12 +974,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    const q = activeQuestion();
-    if (q) {
-      const opt = q.options.find(o => o.key === e.key);
-      if (opt) { e.preventDefault(); answerWith(q.id, opt.value); return; }
-    }
-    if (e.key === 'Escape') { e.preventDefault(); resetAnswers(); return; }
+    const v = VERDICTS.find(x => x.key === e.key);
+    if (v) { e.preventDefault(); labelWith(v.verdict); return; }
     if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleOverlay(); return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();

@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boxing Chin-Shoulder Labeler</title>
+  <title>Boxing Chin-Tuck Labeler (John)</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    /* Chin panel — question blocks + skip reasons. */
+    /* Chin panel — verdict buttons + skip reasons. */
     #chin-panel {
       padding: 12px;
       background: #16213e;
@@ -94,26 +94,9 @@
     .chin-btn-action.secondary { background: #444; }
     .chin-btn-action.skip { background: #524422; }
     .chin-btn-action.skip:hover { background: #6a5a2e; }
-
-    /* Question blocks — the active one (next to answer) gets the accent bar;
-       a chosen answer gets the green outline. */
-    .chin-q {
-      border-left: 3px solid #2a2a4e;
-      padding: 4px 0 0 8px;
-      margin-bottom: 8px;
-    }
-    .chin-q.active { border-left-color: #e94560; }
-    .chin-q .chin-q-title {
-      font-size: 12px;
-      color: #aab;
-      margin-bottom: 4px;
-    }
-    .chin-q.active .chin-q-title { color: #e0e0e0; font-weight: bold; }
-    .chin-q .chin-row { margin-bottom: 4px; }
-    .q-opt.selected {
-      outline: 2px solid #5fd97a;
-      background: #1d5c33;
-    }
+    .chin-btn-action.verdict-tucked { background: #1d5c33; }
+    .chin-btn-action.verdict-level  { background: #3e5c8a; }
+    .chin-btn-action.verdict-air    { background: #8a3e3e; }
     .chin-progress {
       height: 18px;
       background: #1a1a2e;
@@ -224,8 +207,9 @@
 </head>
 <body>
   <div id="app">
-    <!-- Top bar — hidden: every playlist video is hosted, so the local-file
-         picker is dead weight. Remove the style attribute to restore. -->
+    <!-- Top bar — TEMP: hidden for John's pass; every playlist video is
+         hosted, so the local-file picker is dead weight. Remove the
+         style attribute to restore. -->
     <div id="top-bar" style="display:none">
       <div id="video-loader">
         <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">Open Video File</button>
@@ -270,42 +254,19 @@
         <h3>Current sample</h3>
         <div id="chin-current">— pick a video to start —</div>
 
-        <h3>Questions — all vs the LEAD shoulder</h3>
-        <div id="chin-state">Answer the highlighted question with <b>1/2/3</b>; the third answer saves.</div>
-
-        <div class="chin-q" data-q="chin_height">
-          <div class="chin-q-title">1 · Chin vs shoulder height — is the chin higher than the shoulder?</div>
-          <div class="chin-row">
-            <button class="chin-btn-action q-opt" data-q="chin_height" data-v="over">over (1)</button>
-            <button class="chin-btn-action q-opt" data-q="chin_height" data-v="level">level (2)</button>
-            <button class="chin-btn-action q-opt" data-q="chin_height" data-v="under">under (3)</button>
-          </div>
-        </div>
-
-        <div class="chin-q" data-q="chin_front">
-          <div class="chin-q-title">2 · Chin in front of shoulder — is the chin ahead of the shoulder?</div>
-          <div class="chin-row">
-            <button class="chin-btn-action q-opt" data-q="chin_front" data-v="front">in front (1)</button>
-            <button class="chin-btn-action q-opt" data-q="chin_front" data-v="same">same (2)</button>
-            <button class="chin-btn-action q-opt" data-q="chin_front" data-v="behind">behind (3)</button>
-          </div>
-        </div>
-
-        <div class="chin-q" data-q="kissing">
-          <div class="chin-q-title">3 · Kissing the shoulder — is the chin close enough to (almost) kiss it?</div>
-          <div class="chin-row">
-            <button class="chin-btn-action q-opt" data-q="kissing" data-v="yes">yes (1)</button>
-            <button class="chin-btn-action q-opt" data-q="kissing" data-v="no">no (2)</button>
-          </div>
-        </div>
+        <h3>Verdict</h3>
+        <div id="chin-state">Judge the chin: <b>1</b> tucked · <b>2</b> level · <b>3</b> in the air.</div>
 
         <div class="chin-row">
+          <button class="chin-btn-action verdict-tucked" id="btn-tucked">tucked (1)</button>
+          <button class="chin-btn-action verdict-level" id="btn-level">level (2)</button>
+          <button class="chin-btn-action verdict-air" id="btn-air">in the air (3)</button>
           <button class="chin-btn-action secondary" id="btn-undo">clear (U)</button>
         </div>
 
         <h3>Comment (optional)</h3>
         <textarea id="chin-comment" rows="2"
-                  placeholder="Thoughts on this frame? Saved with your next label/skip."
+                  placeholder="Thoughts on this frame? Saved with your next verdict/skip."
                   style="width:100%; box-sizing:border-box; background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; margin-bottom:8px;"></textarea>
 
         <h3>Skip (S, then reason)</h3>
@@ -338,11 +299,8 @@
           Videos come in a fixed order; the next one starts automatically
           when one is done. Frames load from the server — no video files
           needed (a video without hosted frames asks for its local file).<br>
-          One still frame at a time, three questions per frame — all judged
-          against the <b>lead</b> shoulder.<br>
-          <b>1/2/3</b> answers the highlighted question; the third answer
-          saves &amp; advances.<br>
-          <b>Esc</b> = restart this frame's answers.<br>
+          One still frame at a time.<br>
+          <b>1/2/3</b> = tucked / level / in the air — saves &amp; advances.<br>
           <b>Ctrl/Cmd+scroll</b> (or pinch) = zoom · <b>drag</b> = pan ·
           <b>double-click</b> = reset zoom.<br>
           While zoomed, each new sample re-centers on the chin.<br>
@@ -357,36 +315,34 @@
 
     <!-- Persistent labeling definition -->
     <div id="chin-hint">
-      Judge the chin against the <b>LEAD</b> shoulder at the shown frame.
-      <b>Height</b>: over / level / under — is the chin higher, even, or lower
-      than the shoulder? <b>In front</b>: in front / same / behind — is the chin
-      ahead of, even with, or behind the shoulder? <b>Kissing</b>: yes / no —
-      is the chin close enough to (almost) kiss the shoulder?
+      Judge the chin at the shown frame. <b>Tucked</b> = chin pulled down toward
+      the chest. <b>Level</b> = jaw roughly parallel to the ground — neither
+      tucked nor lifted. <b>In the air</b> = chin lifted, jaw pointing up.
     </div>
 
     <!-- Shortcuts bar -->
     <div id="shortcuts-bar">
       <strong>Shortcuts:</strong>
-      1/2/3 = answer the highlighted question &nbsp;|&nbsp;
-      Esc = restart answers / cancel skip &nbsp;|&nbsp;
+      1/2/3 = tucked / level / air &nbsp;|&nbsp;
       Ctrl/Cmd+scroll = zoom &nbsp;|&nbsp;
       drag = pan &nbsp;|&nbsp;
       dbl-click = reset zoom &nbsp;|&nbsp;
       &larr;/&rarr; = ±1 frame &nbsp;|&nbsp;
       R = back to sample &nbsp;|&nbsp;
+      Esc = cancel skip &nbsp;|&nbsp;
       U = clear label &nbsp;|&nbsp;
       S = skip &nbsp;|&nbsp;
       N = Next &nbsp;|&nbsp;
       P = Previous &nbsp;|&nbsp;
       F = First &nbsp;|&nbsp;
       G = Next unlabeled
-      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v9</span>
+      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v8</span>
     </div>
   </div>
 
   <!-- ?v= busts stale browser caches — bump BOTH together on every deploy,
        and keep it matching the version shown in the shortcuts bar. -->
-  <script src="player.js?v=9"></script>
-  <script src="chin_tuck.js?v=9"></script>
+  <script src="player.js?v=8"></script>
+  <script src="chin_tuck_john.js?v=8"></script>
 </body>
 </html>
