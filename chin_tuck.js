@@ -33,12 +33,14 @@
 // Reuses player.js for the video chrome, sheetUrl(), and shared `state`.
 // ============================================================
 
-// Fixed labeling queue ("for now"): 10 professionally shot videos (the
-// amateur critique clips were too low-res to judge the chin), 10 samples
-// each, mixing shadowboxing and bagwork across different coaches/setups.
-// No video picker — the page walks this list top to bottom and advances
+// Labeling queue: EVERY hosted video (all sampled frames — a versatile
+// dataset across the whole corpus, not a hand-picked subset). The 10
+// professionally shot videos from the original pass come first (best image
+// quality, frames already triaged); every other hosted video follows
+// alphabetically. Built at load from chin_frames.json ∩ chin_hosted.json.
+// No video picker — the page walks the list top to bottom and advances
 // when every sample is labeled.
-const PLAYLIST = [
+const PRIORITY_STEMS = [
   'Shadow Boxing Workout ｜ Let me coach you for 12 minutes',
   '20 Minute Boxing Footwork Heavy bag Workout - Follow along',
   'Beginner Shadow Boxing Workout In 5 Minutes ｜ Working The Jab (Follow Along)',
@@ -50,6 +52,20 @@ const PLAYLIST = [
   "Shadow Boxing Drill for Home ｜ Tom Yankello's Drill #1",
   '30 Days of Basic Boxing at Home for Beginners #DAY16  #HIENSUNDAY  #BoxingAtHome #HomeWorkout [pTNIAZADJzM]',
 ];
+let PLAYLIST = [];
+
+// Hosted stems only — remote labelers have no video files, so a stem
+// without server-side JPEGs would dead-end the queue. (Fallback to every
+// manifest stem when chin_hosted.json is missing, e.g. local dev.)
+function buildPlaylist() {
+  const known = state.knownVideos.map(v => v.stem);
+  const eligible = state.hostedStems.size
+    ? known.filter(s => state.hostedStems.has(s))
+    : known;
+  const head = PRIORITY_STEMS.filter(s => eligible.includes(s));
+  const rest = eligible.filter(s => !head.includes(s)).sort((a, b) => a.localeCompare(b));
+  PLAYLIST = head.concat(rest);
+}
 
 // The three questions, answered in order via keys 1/2/3 (buttons work in
 // any order). `id` doubles as the sheet column name.
@@ -1018,8 +1034,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
   } catch {}
-  const missing = PLAYLIST.filter(p => !state.knownVideos.some(v => v.stem === p));
-  if (missing.length) setStatus('Playlist videos missing from chin_frames.json: ' + missing.join(' · '), 'err');
+  buildPlaylist();
+  if (!PLAYLIST.length) setStatus('No videos to label — chin_frames.json / chin_hosted.json empty?', 'err');
 
   document.getElementById('btn-video-prev').addEventListener('click', () => setPlaylistIdx(state.playlistIdx - 1, true));
   document.getElementById('btn-video-next').addEventListener('click', () => setPlaylistIdx(state.playlistIdx + 1, true));

@@ -73,8 +73,12 @@ so the inline images render. Import = read the sheet and push each
 verdict through the deployed saveChinLabel endpoint as labeler `John`.
 
 **Chin Shoulder Labels sheet** (`chin_tuck.html` — THREE answers per sampled
-frame, all judged against the LEAD shoulder; same candidate source, playlist,
-hosted frames, and exclusion file as Chin Labels):
+frame, all judged against the LEAD shoulder; same candidate source and
+exclusion file as Chin Labels, but the queue is EVERY hosted video, not the
+10-video playlist: the 10 professionally shot ones come first, then every
+other hosted stem alphabetically, built at load from chin_frames.json ∩
+chin_hosted.json — all sampled frames are baked as JPEGs by
+`chin_export_frames.py`, which defaults to every manifest stem):
 ts | labeler | video | round | frame | pts_sec | chin_height | chin_front | kissing | skip_reason | comment | deleted
 
 `chin_height` is `over` / `level` / `under` (chin higher than / level with /
