@@ -39,10 +39,12 @@ never up", which are different faults needing different drills. Keyed by
 Data is auditable after the fact.
 
 **Chin Labels sheet** (`chin_tuck_john.html` — the ORIGINAL single-verdict
-chin labeler, preserved under that name for John's pass when `chin_tuck.html`
-became the 3-question chin-shoulder labeler below. One verdict per randomly
-sampled frame; candidates baked into `chin_frames.json` by cornerman-backend's
-`chin_sampler.py`, which also defines the chin crop box the page draws):
+chin labeler, preserved under that name when `chin_tuck.html` became the
+3-question chin-shoulder labeler below. NOT actively used — the page carries
+an archive banner; it exists only so John's tucked/level/air answers can be
+reviewed now and then. One verdict per randomly sampled frame; candidates
+baked into `chin_frames.json` by cornerman-backend's `chin_sampler.py`,
+which also defines the chin crop box the page draws):
 ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | comment | deleted
 
 `verdict` is `tucked` / `level` / `air` (provisional 3-way split pending
