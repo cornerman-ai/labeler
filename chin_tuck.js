@@ -71,19 +71,19 @@ function buildPlaylist() {
 // any order). `id` doubles as the sheet column name. Options run GOOD →
 // BAD (1 = the proper tucked position), so keys read like a grade.
 const QUESTIONS = [
-  { id: 'chin_height', num: 1, title: 'Chin vs shoulder height',
+  { id: 'chin_height', num: 1, title: 'Height',
     options: [
       { key: '1', value: 'under', label: 'under' },
       { key: '2', value: 'level', label: 'level' },
       { key: '3', value: 'over',  label: 'over' },
     ] },
-  { id: 'chin_front', num: 2, title: 'Chin in front of shoulder',
+  { id: 'chin_front', num: 2, title: 'Front to back',
     options: [
       { key: '1', value: 'behind', label: 'behind' },
       { key: '2', value: 'same',   label: 'same' },
       { key: '3', value: 'front',  label: 'in front' },
     ] },
-  { id: 'kissing', num: 3, title: 'Kissing the shoulder',
+  { id: 'kissing', num: 3, title: 'Kissing',
     options: [
       { key: '1', value: 'yes', label: 'yes' },
       { key: '2', value: 'no',  label: 'no' },
@@ -890,7 +890,7 @@ function redrawProgress() {
     }
     const qp = q.options.filter(o => counts[o.value])
                         .map(o => o.value + ':' + counts[o.value]);
-    if (qp.length) parts.push(q.title.replace('Chin ', '').replace(' of shoulder', '') + ' — ' + qp.join(' '));
+    if (qp.length) parts.push(q.title + ' — ' + qp.join(' '));
   }
   const skipCounts = {};
   for (const v of state.labelByKey.values()) {

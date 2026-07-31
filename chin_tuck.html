@@ -273,7 +273,7 @@
         <div id="chin-state">Answer the highlighted question with <b>1/2/3</b>; the third answer saves.</div>
 
         <div class="chin-q" data-q="chin_height">
-          <div class="chin-q-title">1 · Chin vs shoulder height — is the chin higher than the shoulder?</div>
+          <div class="chin-q-title">1 · Height — is the chin under, level with, or over the shoulder?</div>
           <div class="chin-row">
             <button class="chin-btn-action q-opt" data-q="chin_height" data-v="under">under (1)</button>
             <button class="chin-btn-action q-opt" data-q="chin_height" data-v="level">level (2)</button>
@@ -282,7 +282,7 @@
         </div>
 
         <div class="chin-q" data-q="chin_front">
-          <div class="chin-q-title">2 · Chin in front of shoulder — is the chin ahead of the shoulder?</div>
+          <div class="chin-q-title">2 · Front to back — is the chin behind, same as, or in front of the shoulder?</div>
           <div class="chin-row">
             <button class="chin-btn-action q-opt" data-q="chin_front" data-v="behind">behind (1)</button>
             <button class="chin-btn-action q-opt" data-q="chin_front" data-v="same">same (2)</button>
@@ -291,7 +291,7 @@
         </div>
 
         <div class="chin-q" data-q="kissing">
-          <div class="chin-q-title">3 · Kissing the shoulder — is the chin close enough to (almost) kiss it?</div>
+          <div class="chin-q-title">3 · Kissing — is the chin close enough to (almost) kiss the shoulder?</div>
           <div class="chin-row">
             <button class="chin-btn-action q-opt" data-q="kissing" data-v="yes">yes (1)</button>
             <button class="chin-btn-action q-opt" data-q="kissing" data-v="no">no (2)</button>
@@ -352,11 +352,10 @@
     <!-- Persistent labeling definition -->
     <div id="chin-hint">
       Judge the chin against the <b>LEAD</b> shoulder at the shown frame.
-      Answers run good &rarr; bad. <b>Height</b>: under / level / over — is the
-      chin lower, even, or higher than the shoulder? <b>In front</b>: behind /
-      same / in front — is the chin behind, even with, or ahead of the
-      shoulder? <b>Kissing</b>: yes / no — is the chin close enough to
-      (almost) kiss the shoulder?
+      Answers run good &rarr; bad. <b>Height</b>: is the chin under, level
+      with, or over the shoulder? <b>Front to back</b>: is the chin behind,
+      same as, or in front of the shoulder? <b>Kissing</b>: is the chin close
+      enough to (almost) kiss the shoulder?
     </div>
 
     <!-- Shortcuts bar -->
@@ -375,13 +374,13 @@
       P = Previous &nbsp;|&nbsp;
       F = First &nbsp;|&nbsp;
       G = Next unlabeled
-      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v10</span>
+      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v11</span>
     </div>
   </div>
 
   <!-- ?v= busts stale browser caches — bump BOTH together on every deploy,
        and keep it matching the version shown in the shortcuts bar. -->
-  <script src="player.js?v=10"></script>
-  <script src="chin_tuck.js?v=10"></script>
+  <script src="player.js?v=11"></script>
+  <script src="chin_tuck.js?v=11"></script>
 </body>
 </html>
