@@ -270,28 +270,39 @@ function setupZoomPan() {
   viewport.addEventListener('dblclick', (e) => { e.preventDefault(); resetZoom(); });
 }
 
-// ─── hover height guide ────────────────────────────────────────────────────
-// A full-width horizontal line at the cursor's height — hover the shoulder
-// to see how the chin lines up. The line lives in stage coords, so it
-// tracks correctly at any zoom/pan; thickness is counter-scaled to stay
-// hairline when zoomed in.
+// ─── hover guide cross ─────────────────────────────────────────────────────
+// A horizontal + vertical line at the cursor — hover the shoulder to see
+// how the chin lines up in height (horizontal) and front-to-back
+// (vertical). The lines live in stage coords, so they track correctly at
+// any zoom/pan; thickness is counter-scaled to stay hairline when zoomed.
 function setupGuideLine() {
   const viewport = document.getElementById('video-viewport');
   const stage = document.getElementById('zoom-stage');
-  const guide = document.getElementById('chin-guide');
-  if (!viewport || !stage || !guide) return;
+  const guideH = document.getElementById('chin-guide');
+  const guideV = document.getElementById('chin-guide-v');
+  if (!viewport || !stage || !guideH || !guideV) return;
+  const hide = () => {
+    guideH.style.display = 'none';
+    guideV.style.display = 'none';
+  };
   viewport.addEventListener('mousemove', (e) => {
     const r = viewport.getBoundingClientRect();
-    const y = (e.clientY - r.top - state.panY) / state.zoom;   // invert the stage transform
-    if (y < 0 || y > stage.offsetHeight) {
-      guide.style.display = 'none';
+    // invert the stage transform
+    const x = (e.clientX - r.left - state.panX) / state.zoom;
+    const y = (e.clientY - r.top - state.panY) / state.zoom;
+    if (x < 0 || x > stage.offsetWidth || y < 0 || y > stage.offsetHeight) {
+      hide();
       return;
     }
-    guide.style.display = 'block';
-    guide.style.top = y + 'px';
-    guide.style.borderTopWidth = Math.max(2 / state.zoom, 0.5) + 'px';
+    const w = Math.max(2 / state.zoom, 0.5) + 'px';
+    guideH.style.display = 'block';
+    guideH.style.top = y + 'px';
+    guideH.style.borderTopWidth = w;
+    guideV.style.display = 'block';
+    guideV.style.left = x + 'px';
+    guideV.style.borderLeftWidth = w;
   });
-  viewport.addEventListener('mouseleave', () => { guide.style.display = 'none'; });
+  viewport.addEventListener('mouseleave', hide);
 }
 
 // ─── chin crop box — MUST mirror chin_sampler.chin_box() exactly ───────────
