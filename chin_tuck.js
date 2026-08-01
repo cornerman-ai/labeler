@@ -422,6 +422,15 @@ function activeQuestion() {
   return QUESTIONS.find(q => !state.answers[q.id]) || null;
 }
 
+// Revisit flow: pre-fill the buttons with the saved answers so they show
+// green and a single changed click re-saves. Skips aren't pre-filled (they
+// have no answers), and in-progress answers are never clobbered.
+function prefillFromSaved(label) {
+  if (!label || label.skip_reason) return;
+  if (ANSWER_FIELDS.some(f => state.answers[f])) return;
+  for (const f of ANSWER_FIELDS) state.answers[f] = label[f];
+}
+
 // Highlight the active question block + the selected option buttons.
 function renderQuestions() {
   const active = state.mode === 'scrub' ? activeQuestion() : null;
@@ -447,12 +456,17 @@ function updateCapturePanel() {
   const s = state.samples[state.cursor];
   const existing = s ? state.labelByKey.get(keyFor(s)) : undefined;
   const started = ANSWER_FIELDS.some(f => state.answers[f]);
-  if (existing !== undefined && !started) {
+  const complete = ANSWER_FIELDS.every(f => state.answers[f]);
+  // Saved view shows when the frame is untouched OR fully pre-filled from
+  // the saved label (revisit) — a partial edit falls back to the Q prompt.
+  if (existing !== undefined && (!started || complete)) {
     const isSkip = !!existing.skip_reason;
     setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED: ${formatChinLabel(existing)}`,
               isSkip ? 'skipping' : 'captured');
     el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatChinLabel(existing)}</b>.` +
-      '<br>Answering the 3 questions again re-labels (overwrites) · <b>U</b> clears';
+      (isSkip
+        ? '<br>Answer the 3 questions to replace the skip · <b>U</b> clears'
+        : '<br>Click another option to change an answer — it re-saves &amp; moves on · <b>U</b> clears');
   } else if (s) {
     setBanner(null);
     const q = activeQuestion();
@@ -626,6 +640,7 @@ async function syncFromSheet() {
     const s = state.samples[state.cursor];
     if (s) {
       const label = state.labelByKey.get(keyFor(s));
+      prefillFromSaved(label);
       const total = `${state.cursor + 1}/${state.samples.length}`;
       setCurrentLine(describeSample(s, total, formatChinLabel(label)));
     }
@@ -690,6 +705,7 @@ function seekToCurrent() {
     centerOnBox();
   }
   const label = state.labelByKey.get(keyFor(s));
+  prefillFromSaved(label);
   const total = `${state.cursor + 1}/${state.samples.length}`;
   setCurrentLine(describeSample(s, total, formatChinLabel(label)));
   updateCapturePanel();
@@ -762,6 +778,7 @@ function persistLabel(labeler, label) {
   const s = state.samples[state.cursor];
   if (!s) return;
   const k = keyFor(s);
+  const wasDone = state.doneKeys.has(k);   // re-save of an edit, not new progress
   state.mode = 'scrub';
   state.doneKeys.add(k);
   state.labelByKey.set(k, label);
@@ -790,8 +807,10 @@ function persistLabel(labeler, label) {
     setStatus(state.pendingSaves === 0 ? 'Saved.'
       : state.pendingSaves + ' save' + (state.pendingSaves === 1 ? '' : 's') + ' pending…',
       state.pendingSaves === 0 ? 'ok' : null);
-    // Whole video confirmed saved -> advance the playlist.
-    if (state.pendingSaves === 0 && state.currentStem === stemAtSave &&
+    // Whole video confirmed saved -> advance the playlist. Only when this
+    // save was NEW progress — editing a frame of an already-complete video
+    // (revisit flow) stays put.
+    if (!wasDone && state.pendingSaves === 0 && state.currentStem === stemAtSave &&
         state.samples.length > 0 && state.doneKeys.size >= state.samples.length) {
       advancePlaylist();
     }
