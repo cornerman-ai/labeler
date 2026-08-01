@@ -175,6 +175,18 @@
       pointer-events: none;
     }
     #chin-box.peeking { border-style: dashed; border-color: #9aa3b5; }
+    /* Hover height guide — full-width horizontal line at the cursor's
+       height, for lining the shoulder up with the chin. */
+    #chin-guide {
+      position: absolute;
+      left: 0; right: 0;
+      height: 0;
+      border-top: 2px solid rgba(95, 217, 122, 0.9);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.55), 0 -1px 0 rgba(0,0,0,0.55);
+      display: none;
+      z-index: 26;
+      pointer-events: none;
+    }
     #chin-hud {
       position: absolute;
       top: 10px; left: 10px;
@@ -256,6 +268,7 @@
             <video id="video-player" preload="auto"></video>
             <img id="frame-image" alt="">
             <div id="chin-box"></div>
+            <div id="chin-guide"></div>
           </div>
           <div id="video-dim-overlay"></div>
           <div id="video-overlay"></div>
@@ -339,6 +352,8 @@
           Revisiting a labeled frame shows its answers in green — click a
           different option to change it; that one click re-saves &amp;
           moves on.<br>
+          <b>Hover the frame</b> for a horizontal guide line — line the
+          shoulder up with the chin.<br>
           <b>Esc</b> = restart this frame's answers.<br>
           <b>Ctrl/Cmd+scroll</b> (or pinch) = zoom · <b>drag</b> = pan ·
           <b>double-click</b> = reset zoom.<br>
@@ -365,6 +380,7 @@
     <div id="shortcuts-bar">
       <strong>Shortcuts:</strong>
       1/2/3 = answer the highlighted question &nbsp;|&nbsp;
+      hover = height guide line &nbsp;|&nbsp;
       Esc = restart answers / cancel skip &nbsp;|&nbsp;
       Ctrl/Cmd+scroll = zoom &nbsp;|&nbsp;
       drag = pan &nbsp;|&nbsp;
@@ -377,13 +393,13 @@
       P = Previous &nbsp;|&nbsp;
       F = First &nbsp;|&nbsp;
       G = Next unlabeled
-      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v12</span>
+      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v13</span>
     </div>
   </div>
 
   <!-- ?v= busts stale browser caches — bump BOTH together on every deploy,
        and keep it matching the version shown in the shortcuts bar. -->
-  <script src="player.js?v=12"></script>
-  <script src="chin_tuck.js?v=12"></script>
+  <script src="player.js?v=13"></script>
+  <script src="chin_tuck.js?v=13"></script>
 </body>
 </html>

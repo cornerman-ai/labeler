@@ -270,6 +270,30 @@ function setupZoomPan() {
   viewport.addEventListener('dblclick', (e) => { e.preventDefault(); resetZoom(); });
 }
 
+// ─── hover height guide ────────────────────────────────────────────────────
+// A full-width horizontal line at the cursor's height — hover the shoulder
+// to see how the chin lines up. The line lives in stage coords, so it
+// tracks correctly at any zoom/pan; thickness is counter-scaled to stay
+// hairline when zoomed in.
+function setupGuideLine() {
+  const viewport = document.getElementById('video-viewport');
+  const stage = document.getElementById('zoom-stage');
+  const guide = document.getElementById('chin-guide');
+  if (!viewport || !stage || !guide) return;
+  viewport.addEventListener('mousemove', (e) => {
+    const r = viewport.getBoundingClientRect();
+    const y = (e.clientY - r.top - state.panY) / state.zoom;   // invert the stage transform
+    if (y < 0 || y > stage.offsetHeight) {
+      guide.style.display = 'none';
+      return;
+    }
+    guide.style.display = 'block';
+    guide.style.top = y + 'px';
+    guide.style.borderTopWidth = Math.max(2 / state.zoom, 0.5) + 'px';
+  });
+  viewport.addEventListener('mouseleave', () => { guide.style.display = 'none'; });
+}
+
 // ─── chin crop box — MUST mirror chin_sampler.chin_box() exactly ───────────
 function chinBox(j, W, H, boxScale) {
   const px = (v) => [v[0] * W, v[1] * H];
@@ -1051,6 +1075,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   video.addEventListener('seeked', () => { updateHud(); updateChinBox(); });
   window.addEventListener('resize', () => { updateChinBox(); applyZoomPan(); });
   setupZoomPan();
+  setupGuideLine();
 
   // Question buttons — clickable in any order; the third answer saves.
   document.querySelectorAll('.q-opt').forEach(btn => {
