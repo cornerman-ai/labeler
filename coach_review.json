@@ -1,0 +1,455 @@
+{
+  "videos": [
+    {
+      "n": 1,
+      "mode": "Shadowboxing",
+      "title": "Advice on my Shadow Boxing",
+      "driveId": "1V_Cd7i_bZs3ckGpp0vPxBzxbY25h-4AZ"
+    },
+    {
+      "n": 2,
+      "mode": "Bagwork",
+      "title": "Pointers for a beginner on my bag work",
+      "driveId": "1uHPrQlzyWLIZLVvr8X6t2QpeR38qFpnz"
+    },
+    {
+      "n": 3,
+      "mode": "Shadowboxing",
+      "title": "One round of shadowboxing",
+      "driveId": "1-PwYY739Zhn-MaH6ExeiTPt6qPzEZReB"
+    },
+    {
+      "n": 4,
+      "mode": "Shadowboxing",
+      "title": "Beginner shadowboxing, looking for honest critique",
+      "driveId": "1wieKH5fdAomzuIJ5vU1XpM0_iDIS4zCB"
+    },
+    {
+      "n": 5,
+      "mode": "Bagwork",
+      "title": "Bagwork, give critiques (months boxing)",
+      "driveId": "1ad5-nohvV34O0DjSOGeb_YftRnmElQhI"
+    },
+    {
+      "n": 6,
+      "mode": "Shadowboxing",
+      "title": "Another critique of my shadow boxing, after 3 years",
+      "driveId": "1Q4swj9LxzzJRELFmRyS-xoij8IJS_EpC"
+    },
+    {
+      "n": 7,
+      "mode": "Shadowboxing",
+      "title": "Shadow boxing critique",
+      "driveId": "1NDvaeydC3FwkJ7LhkGf6v9uDu8xQp7oB"
+    },
+    {
+      "n": 8,
+      "mode": "Bagwork",
+      "title": "Sand bag training, started boxing May 2025",
+      "driveId": "1Gwdf_njToV_xAgvX9R8A9UfCl5hrSROk"
+    },
+    {
+      "n": 9,
+      "mode": "Shadowboxing",
+      "title": "Tips to improve my shadow boxing",
+      "driveId": "1ILiPLr9I_oqf8yrGc7LgXFIjxBpbVLmI"
+    },
+    {
+      "n": 10,
+      "mode": "Bagwork",
+      "title": "Advice request on my bag work",
+      "driveId": "1kRuu8qVI-QrFU4z4ddPstgPKsXtbcekR"
+    }
+  ],
+  "coaches": [
+    {
+      "name": "Doh",
+      "comments": {
+        "1": [
+          {
+            "n": 1,
+            "title": "Stop hopping after every combination.",
+            "detail": "Stop hopping after every combination. Stay grounded so you maintain your stance, balance, and position instead of jumping up and down after punching.",
+            "why": "Your footwork is the foundation of your boxing. If your base is unstable, everything built on top of it—your balance, power, defense, and ability to move—will suffer.",
+            "where": "Throughout the shadowboxing, after nearly every combination."
+          },
+          {
+            "n": 2,
+            "title": "Stop bringing your lead foot too far back toward your rear foot.",
+            "detail": "Stop bringing your lead foot too far back toward your rear foot. Maintain a consistent stance width instead of moving the front foot in and out excessively.",
+            "why": "Consistent stance width gives you a stable base to punch, defend, and move efficiently. Letting your feet get too close together limits your mobility and creates bad habits over time.",
+            "where": "Throughout the shadowboxing, whenever resetting after combinations."
+          },
+          {
+            "n": 3,
+            "title": "Keep your chin tucked throughout every combination.",
+            "detail": "Keep your chin tucked throughout every combination. On full extension, your chin is exposed because your shoulders aren't coming up to protect it. Try to keep your shoulder \"kissing\" your chin on every punch.",
+            "why": "",
+            "where": "Throughout the shadowboxing, whenever throwing fully extended punches."
+          }
+        ],
+        "2": [
+          {
+            "n": 1,
+            "title": "Stop loading up your punches and dropping the opposite hand before you throw.",
+            "detail": "Stop loading up your punches and dropping the opposite hand before you throw. Keep your hands disciplined and throw from a more neutral position so your punches aren't telegraphed.",
+            "why": "This creates an immediate defensive vulnerability and makes your offense predictable. An experienced opponent will catch your shots and counter every time they see your hands drop.",
+            "where": "Throughout the shadowboxing, especially on the overhand right, straight right, and left hand."
+          },
+          {
+            "n": 2,
+            "title": "Tighten up your jab.",
+            "detail": "Tighten up your jab. Avoid flicking it from your hip or waist level, and keep your chin protected as you throw. Bring the jab straight from your guard instead of letting it drift up from below.",
+            "why": "A lazy jab with your chin exposed is another major defensive vulnerability. Not only is the punch easier to read, but you're also leaving yourself open to counters every time you throw it.",
+            "where": "Throughout the shadowboxing, whenever throwing the jab."
+          },
+          {
+            "n": 3,
+            "title": "After working to the body, keep your head protected as you come back upstairs.",
+            "detail": "After working to the body, keep your head protected as you come back upstairs. Avoid popping your head straight up with your chin exposed.",
+            "why": "Coming up from body shots with your chin high is a common opening for uppercuts and hooks. Fixing this will make your combinations much safer.",
+            "where": "Whenever transitioning from body shots back to head shots."
+          },
+          {
+            "n": 4,
+            "title": "Keep your hands moving with your head movement.",
+            "detail": "Keep your hands moving with your head movement. Don't let your head move while your hands drift away from your defensive position—always have a backup plan in case you need to block or parry.",
+            "why": "",
+            "where": "Throughout the defensive head movement sequences."
+          }
+        ],
+        "3": [
+          {
+            "n": 1,
+            "title": "Stop dropping your right hand every time you throw the jab.",
+            "detail": "Stop dropping your right hand every time you throw the jab. Keep your rear hand home to protect against counters while maintaining a strong defensive position.",
+            "why": "This is the biggest defensive vulnerability in your boxing. Every jab leaves you open to a counter left hook or a catch-and-shoot from an experienced opponent.",
+            "where": "Throughout the shadowboxing, whenever throwing the jab."
+          },
+          {
+            "n": 2,
+            "title": "Don't over-rotate your shoulder on the jab.",
+            "detail": "Don't over-rotate your shoulder on the jab. The shoulder rotation is so exaggerated that it begins to look like you're loading a hook, causing you to overcommit and making the jab easier to read.",
+            "why": "An overcommitted jab sacrifices balance and recovery while telegraphing your offense, making it much easier for your opponent to counter.",
+            "where": "Throughout the shadowboxing, whenever throwing the jab."
+          },
+          {
+            "n": 3,
+            "title": "When throwing your power shots, sit down on your punches by allowing your heel to touch the floor.",
+            "detail": "When throwing your power shots, sit down on your punches by allowing your heel to touch the floor. Staying on your toes for every punch limits your ability to generate power.",
+            "why": "Your movement is good, but without transferring your weight into your power shots, you're giving up a significant amount of power and efficiency.",
+            "where": "Throughout the shadowboxing, especially on the crosses and other power punches."
+          },
+          {
+            "n": 4,
+            "title": "Lower your chin and move your head with your punches.",
+            "detail": "Lower your chin and move your head with your punches. Your feet, body movement, and combinations look good, but your head stays on the centerline instead of moving with the rest of your body.",
+            "why": "",
+            "where": "Throughout the shadowboxing, especially during combinations."
+          }
+        ],
+        "4": [
+          {
+            "n": 1,
+            "title": "Narrow your stance and stop standing so squared up.",
+            "detail": "Narrow your stance and stop standing so squared up. Turn your lead side in slightly so you're more bladed instead of facing your opponent head-on.",
+            "why": "Your stance is the foundation for both your offense and defense. Standing too square leaves your body exposed down the middle, limits your rotation, and makes you a much easier target to hit.",
+            "where": "Throughout the shadowboxing."
+          },
+          {
+            "n": 2,
+            "title": "Keep your elbows tighter to your body.",
+            "detail": "Keep your elbows tighter to your body. Your guard is high, but your elbows are flared, leaving your body open to straight shots and hooks to the body.",
+            "why": "Even with a good high guard, open elbows create easy openings to the body. Tightening them immediately improves your defense.",
+            "where": "Throughout the shadowboxing, especially while holding your guard and throwing combinations."
+          },
+          {
+            "n": 3,
+            "title": "Keep your chin tucked and let your shoulders protect it after every punch.",
+            "detail": "Keep your chin tucked and let your shoulders protect it after every punch. Your chin stays exposed after your hooks, right hands, and other combinations instead of being covered by your shoulder.",
+            "why": "Exposing your chin after every punch creates consistent countering opportunities for your opponent.",
+            "where": "Throughout the shadowboxing, especially after hooks and right hands."
+          },
+          {
+            "n": 4,
+            "title": "When attacking the body, change your level with your entire body.",
+            "detail": "When attacking the body, change your level with your entire body. Don't throw to the body while keeping your head at your opponent's eye level. Drop your level, tuck your chin, and let your head travel with your body as you punch.",
+            "why": "Proper level changes make body punching much safer. Keeping your head high while punching low leaves you in perfect position to be countered.",
+            "where": "Whenever throwing body shots or transitioning from head to body."
+          },
+          {
+            "n": 5,
+            "title": "Move your head off the centerline.",
+            "detail": "Move your head off the centerline. Your feet and body move, but your head stays directly in front of your opponent instead of slipping slightly with your punches and movement.",
+            "why": "Even with a good guard, keeping your head on the centerline makes you an easy target. Small head movement dramatically reduces the chances of getting hit clean.",
+            "where": "Throughout the shadowboxing, especially while throwing combinations."
+          },
+          {
+            "n": 6,
+            "title": "Relax your upper body and improve your rotation.",
+            "detail": "Relax your upper body and improve your rotation. You're very stiff through your torso, which limits your range of motion and prevents full extension on your punches.",
+            "why": "",
+            "where": "Throughout the shadowboxing, especially on your power shots."
+          }
+        ],
+        "5": [
+          {
+            "n": 1,
+            "title": "Develop more variety with your jab.",
+            "detail": "Develop more variety with your jab. Your jab is sharp, but every jab is thrown with full power, making it easy to anticipate. Mix in lighter, faster, and probing jabs to disguise your intentions.",
+            "why": "The jab sets up everything else. If it's predictable, your opponent can read your offense before it starts and take away your combinations.",
+            "where": "Throughout the shadowboxing, whenever throwing the jab."
+          },
+          {
+            "n": 2,
+            "title": "Stop leaning with your head when you punch.",
+            "detail": "Stop leaning with your head when you punch. Your head travels too far forward on the jab and combinations, causing too much of your weight to stay over the lead foot.",
+            "why": "Leaning forward hurts your balance, reduces your ability to transfer weight properly, and leaves your head closer to your opponent's counters.",
+            "where": "Throughout the shadowboxing, especially on the jab and longer combinations."
+          },
+          {
+            "n": 3,
+            "title": "Stop dropping your left hand whenever you slip or dip to the right.",
+            "detail": "Stop dropping your left hand whenever you slip or dip to the right. Keep the opposite hand in position to defend while moving your head.",
+            "why": "Head movement without defensive hand positioning creates unnecessary openings. Your head movement should always have a backup plan.",
+            "where": "Whenever slipping or dipping to the right."
+          },
+          {
+            "n": 4,
+            "title": "Keep your right elbow tighter when throwing the left hook.",
+            "detail": "Keep your right elbow tighter when throwing the left hook. Letting it flare out opens your body and creates a defensive opening for counters.",
+            "why": "Every left hook leaves a clear opening on the opposite side, making you vulnerable if your opponent counters immediately.",
+            "where": "Whenever throwing the left hook."
+          },
+          {
+            "n": 5,
+            "title": "Keep your rear foot grounded when throwing the liver shot.",
+            "detail": "Keep your rear foot grounded when throwing the liver shot. Your rear foot should stay planted to serve as your anchor and help you generate balance and power.",
+            "why": "Lifting your rear foot takes away your base, reducing power and making it harder to recover after the punch.",
+            "where": "Whenever throwing the liver shot."
+          },
+          {
+            "n": 6,
+            "title": "Don't pull straight back after throwing the liver shot.",
+            "detail": "Don't pull straight back after throwing the liver shot. Either finish the combination upstairs or create an angle as you exit instead of backing straight out.",
+            "why": "",
+            "where": "Immediately after throwing the liver shot."
+          }
+        ],
+        "6": [
+          {
+            "n": 1,
+            "title": "Stop standing so squared up.",
+            "detail": "Stop standing so squared up. Stay more bladed in your stance and avoid putting too much weight over your lead foot.",
+            "why": "Your stance is the foundation of everything. Being too square and front-foot heavy limits your movement, reduces your defensive positioning, and makes you an easier target.",
+            "where": "Throughout the shadowboxing."
+          },
+          {
+            "n": 2,
+            "title": "Rotate your shoulders more and commit to full extension on your punches.",
+            "detail": "Rotate your shoulders more and commit to full extension on your punches. You're cutting your punches short, which leaves your chin exposed and prevents you from maximizing your reach and power.",
+            "why": "Proper rotation improves both your offense and defense. It generates more power while allowing your shoulders to naturally protect your chin.",
+            "where": "Throughout the shadowboxing, especially on your straight punches."
+          },
+          {
+            "n": 3,
+            "title": "Keep your chin tucked when throwing the right uppercut.",
+            "detail": "Keep your chin tucked when throwing the right uppercut. Your head pops up as you throw, exposing your chin to counters.",
+            "why": "Lifting your head during an uppercut creates a major defensive opening and makes you easy to counter immediately.",
+            "where": "Whenever throwing the right uppercut."
+          },
+          {
+            "n": 4,
+            "title": "Stop dropping your opposite hand when throwing the right uppercut.",
+            "detail": "Stop dropping your opposite hand when throwing the right uppercut. Keep your left hand home to protect against counters.",
+            "why": "Every uppercut leaves you exposed if your opposite hand isn't protecting you. Keeping it in place gives you a defensive backup.",
+            "where": "Whenever throwing the right uppercut."
+          },
+          {
+            "n": 5,
+            "title": "Smooth out your stance switches.",
+            "detail": "Smooth out your stance switches. The transitions should happen naturally as part of your movement instead of feeling separate or forced.",
+            "why": "Smooth stance switches allow you to stay balanced and ready to attack or defend without interrupting your rhythm.",
+            "where": "Throughout the shadowboxing whenever switching stances."
+          },
+          {
+            "n": 6,
+            "title": "Stay bladed after switching stances.",
+            "detail": "Stay bladed after switching stances. Every time you switch, you tend to square yourself up, which creates the same defensive issues as your original stance.",
+            "why": "",
+            "where": "Throughout the shadowboxing, immediately after each stance switch."
+          }
+        ],
+        "7": [
+          {
+            "n": 1,
+            "title": "Stop leaning too far over your lead side when throwing the jab.",
+            "detail": "Stop leaning too far over your lead side when throwing the jab. Your shoulder does a good job protecting your chin, but the excessive lean flares your rear elbow and compromises your balance.",
+            "why": "While your jab mechanics are solid, the lean creates unnecessary defensive openings and puts you in a poor position to defend or recover.",
+            "where": "Throughout the shadowboxing, whenever throwing the jab."
+          },
+          {
+            "n": 2,
+            "title": "Keep your right elbow tighter after every punch.",
+            "detail": "Keep your right elbow tighter after every punch. It consistently flares away from your body, exposing your ribs and liver to counters.",
+            "why": "This creates a clear opening for body shots that an experienced opponent will recognize immediately.",
+            "where": "Throughout the shadowboxing, especially after the jab and right hand."
+          },
+          {
+            "n": 3,
+            "title": "Move your head off the centerline during your combinations instead of leaving it directly in front of your opponent.",
+            "detail": "Move your head off the centerline during your combinations instead of leaving it directly in front of your opponent.",
+            "why": "Good combinations become much safer when your head isn't stationary. Small head movement makes you significantly harder to counter.",
+            "where": "Throughout the shadowboxing, especially during longer combinations."
+          },
+          {
+            "n": 4,
+            "title": "Use your legs more when attacking the body.",
+            "detail": "Use your legs more when attacking the body. Don't throw body shots while keeping your head at head level—change your level with your legs and let your head travel with your body.",
+            "why": "Proper level changes protect you while attacking the body and put you in a much stronger position to continue your combinations.",
+            "where": "Whenever transitioning from head shots to body shots."
+          },
+          {
+            "n": 5,
+            "title": "Rotate more on your right cross so you can flow naturally into your left hook.",
+            "detail": "Rotate more on your right cross so you can flow naturally into your left hook. Finishing your rotation will improve both your power and the connection between your punches.",
+            "why": "",
+            "where": "Whenever throwing the right cross into the left hook."
+          }
+        ],
+        "8": [
+          {
+            "n": 1,
+            "title": "Fix your stance.",
+            "detail": "Fix your stance. You're too hunched over, too squared up, and your shoulders are rolled too far inward, making you stationary and an easy target.",
+            "why": "Your stance is the foundation of your boxing. Being hunched over and square limits your mobility, power, defense, and makes it much easier for your opponent to put combinations together.",
+            "where": "Throughout the shadowboxing and bag work."
+          },
+          {
+            "n": 2,
+            "title": "Rotate your hips and shoulders on the cross.",
+            "detail": "Rotate your hips and shoulders on the cross. Right now you're arm-punching without generating any rotation or power.",
+            "why": "Without proper rotation, you're giving up power, balance, and the ability to flow into your next punch.",
+            "where": "Whenever throwing the cross."
+          },
+          {
+            "n": 3,
+            "title": "Tighten up your jab.",
+            "detail": "Tighten up your jab. Right now it's more of a slap than a true jab. Throw it straight from your guard with proper extension and intent.",
+            "why": "The jab is your most important punch. If it's ineffective, it becomes much harder to control distance and set up everything else.",
+            "where": "Throughout the shadowboxing and bag work."
+          },
+          {
+            "n": 4,
+            "title": "Keep moving when you're not punching.",
+            "detail": "Keep moving when you're not punching. Avoid standing in front of the bag bouncing up and down with no head movement or footwork.",
+            "why": "Staying stationary makes you an easy target. Constant footwork and subtle head movement make you much harder to hit.",
+            "where": "Between combinations, whenever you're resetting."
+          },
+          {
+            "n": 5,
+            "title": "Don't start combinations with a body shot while leaving your head high and chin exposed.",
+            "detail": "Don't start combinations with a body shot while leaving your head high and chin exposed. If you're attacking the body, change your level with your legs and protect yourself as you enter.",
+            "why": "Starting low with your head exposed is one of the easiest ways to get countered with uppercuts or hooks.",
+            "where": "Whenever initiating combinations with body shots."
+          },
+          {
+            "n": 6,
+            "title": "If you're going to use a crouched, pressure-fighter stance like Isaac \"Pitbull\" Cruz, you also need the constant head movement, pressure, and defensive responsibility that make that style effective.",
+            "detail": "If you're going to use a crouched, pressure-fighter stance like Isaac \"Pitbull\" Cruz, you also need the constant head movement, pressure, and defensive responsibility that make that style effective. Right now you're using the stance without the movement that makes it work.",
+            "why": "Certain styles only work when the supporting fundamentals are there. Without the movement, the stance becomes a liability instead of an advantage.",
+            "where": "Throughout the shadowboxing and bag work."
+          },
+          {
+            "n": 7,
+            "title": "Focus on mastering the fundamentals—your footwork, head movement, and stance—before trying to build your style around a specific fighter.",
+            "detail": "Focus on mastering the fundamentals—your footwork, head movement, and stance—before trying to build your style around a specific fighter. A strong foundation will make every other part of your boxing improve.",
+            "why": "",
+            "where": "Throughout the entire clip."
+          }
+        ],
+        "9": [
+          {
+            "n": 1,
+            "title": "Keep your right elbow tucked in.",
+            "detail": "Keep your right elbow tucked in. Your hands stay on your chin, which is good, but your right elbow consistently flares away from your body, leaving your ribs and liver exposed.",
+            "why": "Your guard starts with your elbows. A flared elbow creates an easy opening to the body, even if your hands are in the correct position.",
+            "where": "Throughout the shadowboxing while holding your guard and throwing combinations."
+          },
+          {
+            "n": 2,
+            "title": "Stop pulling straight back after your combinations.",
+            "detail": "Stop pulling straight back after your combinations. You have a habit of dipping slightly to the left and then immediately pulling straight backward, leaving yourself in line for counters.",
+            "why": "Pulling straight back without proper head movement is one of the easiest habits for an opponent to exploit with straight punches and follow-up combinations.",
+            "where": "Throughout the shadowboxing, immediately after finishing combinations."
+          },
+          {
+            "n": 3,
+            "title": "Blade your stance a little more.",
+            "detail": "Blade your stance a little more. Your hips are turned too far inward, leaving you too squared up and exposing both your body and chin.",
+            "why": "Your stance affects every part of your boxing. A more bladed position will improve both your defense and your ability to rotate into punches.",
+            "where": "Throughout the shadowboxing."
+          },
+          {
+            "n": 4,
+            "title": "Add more variety to your head movement.",
+            "detail": "Add more variety to your head movement. Most of your defensive movement is simple left and right slips. Mix in rolls, level changes, and angled exits instead of relying on one pattern.",
+            "why": "Predictable head movement becomes easy to time. More variety makes you much harder to read and counter.",
+            "where": "Throughout the defensive movements and after combinations."
+          },
+          {
+            "n": 5,
+            "title": "Keep both elbows tucked in while maintaining your hands on your chin.",
+            "detail": "Keep both elbows tucked in while maintaining your hands on your chin. Your hand position is good, but your elbows need to stay connected to your body to complete your defensive shell.",
+            "why": "",
+            "where": "Throughout the shadowboxing."
+          }
+        ],
+        "10": [
+          {
+            "n": 1,
+            "title": "Move your head with every punch.",
+            "detail": "Move your head with every punch. Right now your head stays on the centerline throughout your combinations instead of moving naturally with your offense.",
+            "why": "Head movement is one of the biggest defensive fundamentals. Staying on the centerline makes you an easy target, regardless of how good your punches are.",
+            "where": "Throughout the shadowboxing, especially during combinations."
+          },
+          {
+            "n": 2,
+            "title": "Stop pulling straight back after every combination.",
+            "detail": "Stop pulling straight back after every combination. Exit with head movement, an angle, or continue your defense instead of retreating in a straight line.",
+            "why": "Pulling straight back is one of the easiest habits for an opponent to counter. It keeps you in range while giving up your defensive responsibility.",
+            "where": "Immediately after every combination."
+          },
+          {
+            "n": 3,
+            "title": "Keep your hands in a consistent defensive position.",
+            "detail": "Keep your hands in a consistent defensive position. Your hands constantly bob up and down between your chin and mid-chest, creating unnecessary openings.",
+            "why": "A disciplined guard allows you to defend at any moment. Dropping your hands while moving in and out creates easy countering opportunities.",
+            "where": "Throughout the shadowboxing."
+          },
+          {
+            "n": 4,
+            "title": "Lean your body with your overhand punches.",
+            "detail": "Lean your body with your overhand punches. When throwing overhands, your head and body should move with the punch instead of remaining upright on the centerline.",
+            "why": "Proper body movement improves both your power and your defense, while staying upright leaves your chin exposed.",
+            "where": "Whenever throwing overhand punches."
+          },
+          {
+            "n": 5,
+            "title": "Move your head immediately after every combination.",
+            "detail": "Move your head immediately after every combination. Don't finish punching and stay standing upright in range waiting to be hit.",
+            "why": "Your combination isn't finished until you've defended yourself. Adding head movement after every exchange makes you much harder to counter.",
+            "where": "Immediately after every combination."
+          },
+          {
+            "n": 6,
+            "title": "Develop a more purposeful jab.",
+            "detail": "Develop a more purposeful jab. Your jab is too lazy and mainly serves as a setup for your left power shot, making your offense predictable. Use the jab with intent to create openings instead of simply waiting to throw power.",
+            "why": "",
+            "where": "Throughout the shadowboxing, especially before throwing the left hand."
+          }
+        ]
+      }
+    }
+  ]
+}

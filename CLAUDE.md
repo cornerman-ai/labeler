@@ -94,6 +94,21 @@ video, round, frame); a re-save supersedes (soft `deleted=1`). Actions:
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.
 
+## Coaching review (`coach_review.html`)
+
+Watch-only page — no labeling, no Apps Script, nothing saved. Reads
+`coach_review.json` and renders the 10 professionally shot clips (left rail,
+"Video N: title") beside their Google Drive player (center, `/preview`
+iframe — viewers need Drive access to the files) and the coach feedback
+(right): coach &rarr; comment titles &rarr; details, each collapsible, so the
+video and the feedback stay visible together. Details carry the coach's full
+instruction plus the "why it ranks here" and "where" notes.
+
+`coach_review.json` shape: `videos[{n, mode, title, driveId}]` and
+`coaches[{name, comments: {"<videoN>": [{n, title, detail, why, where}]}}]`.
+Adding a coach = append one entry to `coaches`; the page lists only the
+coaches that have comments on the selected video.
+
 ## Setup
 
 See `SETUP.md` for Google Sheets + Apps Script deployment instructions.

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coaching Review</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Watch-only review page: video left, coach feedback right. Nothing is
+       saved anywhere — every panel is read-only. */
+
+    /* Left rail — the fixed 10-video playlist. */
+    #cr-videos {
+      width: 260px;
+      min-width: 260px;
+      background: #16213e;
+      border-right: 1px solid #0f3460;
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #cr-videos h3, #cr-feedback h3 {
+      margin: 2px 0 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+    }
+    .cr-vid {
+      text-align: left;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4e;
+      border-left: 3px solid #533483;
+      border-radius: 4px;
+      color: #e0e0e0;
+      padding: 7px 9px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .cr-vid:hover { background: #2a2a3e; }
+    .cr-vid.current { border-left-color: #e94560; background: #241a2e; }
+    .cr-vid .cr-vid-n {
+      font-family: ui-monospace, monospace;
+      color: #e94560;
+      font-weight: bold;
+    }
+    .cr-vid .cr-vid-meta {
+      display: block;
+      margin-top: 3px;
+      font-size: 11px;
+      color: #6a7aa0;
+    }
+
+    /* Center — the Drive player fills the pane. */
+    #cr-stage {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      gap: 8px;
+    }
+    #cr-stage-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+    #cr-stage-title { font-weight: bold; }
+    #cr-stage-mode {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #0f3460;
+      color: #9ec5ff;
+    }
+    #cr-open-drive { font-size: 12px; color: #6a9ad0; }
+    #cr-frame-wrap {
+      flex: 1;
+      min-height: 0;
+      background: #000;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #cr-frame { width: 100%; height: 100%; border: 0; display: block; }
+
+    /* Right — coaches > comment titles > details, all collapsible. */
+    #cr-feedback {
+      width: 400px;
+      min-width: 400px;
+      background: #16213e;
+      border-left: 1px solid #0f3460;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    .cr-coach { margin-bottom: 8px; }
+    .cr-coach-btn {
+      width: 100%;
+      text-align: left;
+      background: #0f3460;
+      color: #e0e0e0;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cr-coach-btn:hover { background: #1a4a7a; }
+    .cr-coach-btn .cr-caret { color: #6a7aa0; font-size: 11px; width: 10px; }
+    .cr-coach-btn .cr-count {
+      margin-left: auto;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #9ec5ff;
+    }
+    .cr-comments { margin: 6px 0 0 8px; display: none; }
+    .cr-coach.open .cr-comments { display: block; }
+
+    .cr-item { margin-bottom: 5px; }
+    .cr-item-btn {
+      width: 100%;
+      text-align: left;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      border: 1px solid #2a2a4e;
+      border-left: 3px solid #533483;
+      border-radius: 4px;
+      padding: 7px 9px;
+      font-size: 12px;
+      line-height: 1.4;
+      cursor: pointer;
+      display: flex;
+      gap: 7px;
+    }
+    .cr-item-btn:hover { background: #2a2a3e; }
+    .cr-item.open .cr-item-btn { border-left-color: #e94560; background: #241a2e; }
+    .cr-item-btn .cr-item-n {
+      font-family: ui-monospace, monospace;
+      color: #e94560;
+      white-space: nowrap;
+    }
+    .cr-detail {
+      display: none;
+      margin: 4px 0 0 10px;
+      padding: 8px 10px;
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #cfd6e6;
+    }
+    .cr-item.open .cr-detail { display: block; }
+    .cr-detail p { margin: 0 0 7px; }
+    .cr-detail p:last-child { margin-bottom: 0; }
+    .cr-detail .cr-lbl {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      margin-bottom: 1px;
+    }
+    .cr-detail .cr-why { color: #e6d9a8; }
+    .cr-detail .cr-where { color: #a8d9c0; }
+    #cr-empty { font-size: 12px; color: #888; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="drive-link-bar" style="padding:6px 16px; background:#121a30; border-bottom:1px solid #0f3460; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <strong style="font-size:13px;">Coaching review</strong>
+      <span style="font-size:12px; color:#888;">watch only — nothing to fill in</span>
+      <span id="cr-status" style="margin-left:auto; font-size:12px; color:#888;">loading…</span>
+    </div>
+
+    <div id="main-layout">
+      <!-- Left: the 10 videos -->
+      <div id="cr-videos">
+        <h3>Videos</h3>
+        <div id="cr-video-list"></div>
+      </div>
+
+      <!-- Center: Drive player -->
+      <div id="cr-stage">
+        <div id="cr-stage-head">
+          <span id="cr-stage-title">—</span>
+          <span id="cr-stage-mode" style="display:none"></span>
+          <a id="cr-open-drive" href="#" target="_blank" rel="noopener" style="display:none">open in Drive ↗</a>
+        </div>
+        <div id="cr-frame-wrap">
+          <iframe id="cr-frame" allow="autoplay; fullscreen" allowfullscreen></iframe>
+        </div>
+      </div>
+
+      <!-- Right: coaches -> comments -> details -->
+      <div id="cr-feedback">
+        <h3>Coach feedback</h3>
+        <div id="cr-coach-list"><div id="cr-empty">—</div></div>
+      </div>
+    </div>
+
+    <div id="shortcuts-bar">
+      Click a video on the left, then a coach on the right, then a comment to
+      read the detail. Video and feedback stay side by side.
+      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v1</span>
+    </div>
+  </div>
+
+  <script src="coach_review.js?v=1"></script>
+</body>
+</html>
