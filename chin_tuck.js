@@ -321,13 +321,32 @@ function chinBox(j, W, H, boxScale) {
 }
 
 // ─── sheet sync (Chin Shoulder Labels) ─────────────────────────────────────
+// Apps Script's /exec endpoint intermittently 404s (or serves an HTML error
+// page) under quick successive requests — a labeler's normal pace. Retry
+// HTTP/network-level failures with backoff before giving up; a JSON-level
+// error (status != ok) is a real backend answer and is never retried.
+async function fetchSheetJson(url, what, tries = 4) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    if (i) await new Promise(r => setTimeout(r, 800 * 2 ** (i - 1)));   // 0.8s, 1.6s, 3.2s
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (e) { lastErr = e; continue; }                              // network error
+    if (!res.ok) { lastErr = new Error(what + ' HTTP ' + res.status); continue; }
+    let body;
+    try {
+      body = await res.json();
+    } catch { lastErr = new Error(what + ': non-JSON response'); continue; }
+    if (body.status !== 'ok') throw new Error(what + ': ' + (body.message || 'unknown'));
+    return body;
+  }
+  throw lastErr;
+}
+
 async function fetchChinLabels(video, labeler) {
   const url = sheetUrl({ action: 'listChinShoulderLabels', video, labeler });
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('listChinShoulderLabels HTTP ' + res.status);
-  const body = await res.json();
-  if (body.status !== 'ok') throw new Error('listChinShoulderLabels: ' + (body.message || 'unknown'));
-  return body.rows;
+  return (await fetchSheetJson(url, 'listChinShoulderLabels')).rows;
 }
 async function saveChinShoulderLabel({ labeler, video, round, frame, pts_sec,
                                        chin_height, chin_front, kissing,
@@ -338,21 +357,12 @@ async function saveChinShoulderLabel({ labeler, video, round, frame, pts_sec,
   params.chin_front = chin_front || '';
   params.kissing = kissing || '';
   params.skip_reason = skip_reason || '';
-  const url = sheetUrl(params);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('saveChinShoulderLabel HTTP ' + res.status);
-  const body = await res.json();
-  if (body.status !== 'ok') throw new Error('saveChinShoulderLabel: ' + (body.message || 'unknown'));
-  return body;
+  return fetchSheetJson(sheetUrl(params), 'saveChinShoulderLabel');
 }
 async function deleteChinShoulderLabel({ labeler, video, round, frame }) {
   const url = sheetUrl({ action: 'deleteChinShoulderLabel', labeler, video,
                          round: String(round), frame: String(frame) });
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('deleteChinShoulderLabel HTTP ' + res.status);
-  const body = await res.json();
-  if (body.status !== 'ok') throw new Error('deleteChinShoulderLabel: ' + (body.message || 'unknown'));
-  return body;
+  return fetchSheetJson(url, 'deleteChinShoulderLabel');
 }
 
 // ─── UI helpers ────────────────────────────────────────────────────────────
