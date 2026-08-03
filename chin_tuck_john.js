@@ -94,8 +94,15 @@ function isHosted() {
   return state.hostedStems.has(state.currentStem);
 }
 
+// Windows forbids trailing dots/spaces in a path component, so the frames
+// directory drops them — the stem itself stays canonical everywhere else
+// (Sheet, chin_hosted.json). Mirrored in chin_export_frames.py; keep in sync.
+function frameDir(stem) {
+  return stem.replace(/[. ]+$/, '');
+}
+
 function frameUrl(stem, s) {
-  return './frames/' + encodeURIComponent(stem) + '/r' + s.round + '_f' + s.frame + '.jpg';
+  return './frames/' + encodeURIComponent(frameDir(stem)) + '/r' + s.round + '_f' + s.frame + '.jpg';
 }
 
 // Show the JPEG or the video element, never both.
