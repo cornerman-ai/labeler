@@ -9,10 +9,25 @@
     /* Watch-only review page: video left, coach feedback right. Nothing is
        saved anywhere — every panel is read-only. */
 
-    /* Left rail — the fixed 10-video playlist. */
+    /* Left rail — the fixed 10-video playlist. Both side panels are
+       collapsible: Drive's embedded player picks its stream quality from the
+       player's pixel size, so room given back to the video is quality. */
+    #app.hide-videos #cr-videos { display: none; }
+    #app.hide-feedback #cr-feedback { display: none; }
+    .cr-toggle {
+      background: #0f3460;
+      color: #cfd6e6;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 9px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cr-toggle:hover { background: #1a4a7a; }
+
     #cr-videos {
-      width: 260px;
-      min-width: 260px;
+      width: 220px;
+      min-width: 220px;
       background: #16213e;
       border-right: 1px solid #0f3460;
       padding: 10px;
@@ -79,6 +94,11 @@
       color: #9ec5ff;
     }
     #cr-open-drive { font-size: 12px; color: #6a9ad0; }
+    #cr-res {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #6a7aa0;
+    }
     #cr-frame-wrap {
       flex: 1;
       min-height: 0;
@@ -91,8 +111,8 @@
 
     /* Right — coaches > comment titles > details, all collapsible. */
     #cr-feedback {
-      width: 400px;
-      min-width: 400px;
+      width: 340px;
+      min-width: 300px;
       background: #16213e;
       border-left: 1px solid #0f3460;
       padding: 10px;
@@ -179,6 +199,9 @@
     <div id="drive-link-bar" style="padding:6px 16px; background:#121a30; border-bottom:1px solid #0f3460; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
       <strong style="font-size:13px;">Coaching review</strong>
       <span style="font-size:12px; color:#888;">watch only — nothing to fill in</span>
+      <button class="cr-toggle" id="btn-toggle-videos" title="hide/show the video list (V)">videos (V)</button>
+      <button class="cr-toggle" id="btn-toggle-feedback" title="hide/show the feedback panel (B)">feedback (B)</button>
+      <button class="cr-toggle" id="btn-fullscreen" title="fullscreen player — Drive streams its highest rendition (F)">⤢ fullscreen (F)</button>
       <span id="cr-status" style="margin-left:auto; font-size:12px; color:#888;">loading…</span>
     </div>
 
@@ -194,6 +217,7 @@
         <div id="cr-stage-head">
           <span id="cr-stage-title">—</span>
           <span id="cr-stage-mode" style="display:none"></span>
+          <span id="cr-res">quality follows player size — hide a panel or go fullscreen</span>
           <a id="cr-open-drive" href="#" target="_blank" rel="noopener" style="display:none">open in Drive ↗</a>
         </div>
         <div id="cr-frame-wrap">
@@ -210,11 +234,14 @@
 
     <div id="shortcuts-bar">
       Click a video on the left, then a coach on the right, then a comment to
-      read the detail. Video and feedback stay side by side.
-      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v1</span>
+      read the detail. &nbsp;|&nbsp; <strong>V</strong> = video list &nbsp;|&nbsp;
+      <strong>B</strong> = feedback panel &nbsp;|&nbsp; <strong>F</strong> = fullscreen.
+      Drive picks its stream quality from the player's size, so a bigger player
+      = sharper video; the player's own gear menu can force a resolution.
+      <span style="float:right; color:#556; font-family:ui-monospace,monospace">v3</span>
     </div>
   </div>
 
-  <script src="coach_review.js?v=1"></script>
+  <script src="coach_review.js?v=3"></script>
 </body>
 </html>

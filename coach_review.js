@@ -65,6 +65,38 @@ function selectVideo(n) {
   renderFeedback(n);
 }
 
+/* Playback quality.
+ *
+ * The clips can only be played through Drive's own embedded player: the raw
+ * file at drive.usercontent.google.com refuses cross-site requests
+ * (cross-origin-resource-policy: same-site), so a native <video> can't touch
+ * it, and there is no URL parameter that pins the embed's resolution.
+ *
+ * What the player DOES follow is its own pixel size — a squeezed embed gets a
+ * low rendition. Hence the panel toggles and the fullscreen button: the more
+ * room the player has, the higher the stream Drive sends. Fullscreen gets the
+ * best available; the player's own gear menu can also force a resolution.
+ */
+function toggleClass(cls) {
+  document.getElementById('app').classList.toggle(cls);
+}
+
+$('btn-toggle-videos').addEventListener('click', () => toggleClass('hide-videos'));
+$('btn-toggle-feedback').addEventListener('click', () => toggleClass('hide-feedback'));
+$('btn-fullscreen').addEventListener('click', () => {
+  const el = $('cr-frame-wrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else el.requestFullscreen();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'v') toggleClass('hide-videos');
+  else if (k === 'b') toggleClass('hide-feedback');
+  else if (k === 'f') $('btn-fullscreen').click();
+});
+
 /* ---------- right panel ---------- */
 
 function renderFeedback(videoN) {
@@ -137,7 +169,7 @@ function esc(s) {
 
 /* ---------- boot ---------- */
 
-fetch('coach_review.json?v=1')
+fetch('coach_review.json?v=3')
   .then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();

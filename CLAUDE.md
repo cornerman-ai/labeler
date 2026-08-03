@@ -104,6 +104,16 @@ iframe — viewers need Drive access to the files) and the coach feedback
 video and the feedback stay visible together. Details carry the coach's full
 instruction plus the "why it ranks here" and "where" notes.
 
+Playback quality is a function of how much room the player gets: Drive's
+embedded player picks its rendition from its own pixel size, and there is no
+URL parameter that pins it. The raw file
+(`drive.usercontent.google.com/download?id=…`) can't be used in a native
+`<video>` — it answers `cross-origin-resource-policy: same-site`, so the
+browser blocks it cross-site (curl gets it fine; the browser never will).
+Hence the `V` / `B` panel toggles and `F` fullscreen: hiding both panels takes
+the player from ~760px to full width, and fullscreen gets Drive's best
+stream. Anything sharper than that means re-hosting the clips ourselves.
+
 `coach_review.json` shape: `videos[{n, mode, title, driveId}]` and
 `coaches[{name, comments: {"<videoN>": [{n, title, detail, why, where}]}}]`.
 Adding a coach = append one entry to `coaches`; the page lists only the
