@@ -7,7 +7,7 @@
 // Chin-position labeler, one verdict per sampled frame.
 //
 // Candidates come from chin_frames.json (baked by cornerman-backend's
-// chin_sampler.py): random frames per video where BlazePose tracked the
+// chin_tuck/chin_sampler.py): random frames per video where BlazePose tracked the
 // head + shoulders confidently. Each sample carries the normalized joint
 // anchors; the chin crop box is computed here at display time from the
 // video's true dimensions with the SAME formula as the Python side

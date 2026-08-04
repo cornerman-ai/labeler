@@ -267,7 +267,7 @@ function doGet(e) {
 
   // Chin-tuck labeler — separate sheet, one categorical verdict per sampled
   // frame (candidates baked into chin_frames.json by the backend's
-  // chin_sampler.py, not fetched from here).
+  // chin_tuck/chin_sampler.py, not fetched from here).
   if (action === 'listChinLabels' || action === 'saveChinLabel' ||
       action === 'deleteChinLabel') {
     return doGetChinLabels(p, labeler, action);
@@ -2044,7 +2044,7 @@ function doGetGuardDrops(p, labeler, action) {
 // ============================================================
 // Chin-tuck labeler — one categorical verdict per SAMPLED FRAME (random
 // frames baked into the labeler's chin_frames.json by the backend's
-// chin_sampler.py — no candidate listing here). Verdicts, provisional
+// chin_tuck/chin_sampler.py — no candidate listing here). Verdicts, provisional
 // 3-way split until a coach weighs in:
 //
 //   tucked  chin pulled down toward the chest
