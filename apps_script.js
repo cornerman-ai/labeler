@@ -2920,7 +2920,10 @@ var BLADED_PAIRS_HEADERS = ['ts', 'labeler', 'attribute', 'pair_id',
                             'right_video', 'right_round', 'right_frame',
                             'winner', 'skip_reason', 'deleted'];
 var BLADED_PAIRS_WINNERS = ['left', 'right'];
-var BLADED_PAIRS_SKIP_REASONS = ['too_close'];
+// 'unreadable' = the image cannot be judged (blur, occlusion, boxer out of
+// stance). NOT a tie button — a near-tie must still be answered, see
+// shoulder_bladedness.js.
+var BLADED_PAIRS_SKIP_REASONS = ['unreadable'];
 var BLADED_PAIRS_ATTRIBUTES = ['shoulders', 'hips'];
 
 function bladedPairsSheetName(attribute) {

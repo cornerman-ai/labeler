@@ -97,8 +97,9 @@
     </div>
     <div id="bp-hint">
       Judge the <b>shoulder line and chest only</b> — <span id="bp-ignore">ignore the feet</span>,
-      they are scored separately.<br>
-      press <b>1</b> for left · <b>2</b> for right · <b>S</b> if you truly cannot tell · <b>U</b> to undo
+      they are scored separately. <b>Close call? Still pick one</b> — a guess on a
+      near-tie is information; <b>S</b> is only for a frame you cannot read.<br>
+      press <b>1</b> for left · <b>2</b> for right · <b>S</b> if the frame is unreadable · <b>U</b> to undo
     </div>
 
     <!-- Hidden until a name is entered: the <img> pair has no src yet, and an
@@ -115,7 +116,7 @@
     </div>
 
     <div id="bp-foot">
-      <button id="bp-skip">S · too close to call</button>
+      <button id="bp-skip" title="blurred, occluded, or the boxer is not in a stance — NOT for &quot;they look similar&quot;">S · can't read this frame</button>
       <button id="bp-undo">U · undo last</button>
       <span id="bp-rate"></span>
     </div>
@@ -127,6 +128,8 @@
     </div>
   </div>
 
-  <script src="shoulder_bladedness.js"></script>
+  <!-- ?v= bumped on every JS change: GitHub Pages caches, and a labeler
+       running stale JS mid-pass is a silent problem. -->
+  <script src="shoulder_bladedness.js?v=3"></script>
 </body>
 </html>
