@@ -53,6 +53,10 @@ const S = {
   answered: 0,
   history: [],        // {pairIdx, winner} for undo
   labeler: '', attribute: 'shoulders',
+  // pairId -> {winner, skip_reason}. The queue holds EVERY pair now, not only
+  // the unanswered ones, so the arrows can walk back into work already done —
+  // and landing on an answered pair has to show what you picked.
+  picked: new Map(),
   startedAt: null,
   busy: false,      // only guards undo, which is rare and does block
   outbox: [],       // answers accepted by the UI, not yet in the sheet
@@ -119,11 +123,24 @@ function paint() {
   const p = S.pairs[S.queue[S.cursor]];
   $('bp-img-l').src = S.items[p.l].img;
   $('bp-img-r').src = S.items[p.r].img;
-  $('bp-left').classList.remove('picked');
-  $('bp-right').classList.remove('picked');
+
+  // Re-answering supersedes, so an already-answered pair shows its pick rather
+  // than looking blank — otherwise walking back reads as "my answer is gone".
+  const prev = S.picked.get(p.id);
+  $('bp-left').classList.toggle('picked', prev?.winner === 'left');
+  $('bp-right').classList.toggle('picked', prev?.winner === 'right');
+  $('bp-seen').classList.toggle('hidden', !prev);
+  if (prev) {
+    $('bp-seen').textContent = prev.winner
+      ? `answered: ${prev.winner} — answer again to change it`
+      : 'marked unreadable — answer again to change it';
+  }
+  $('bp-prev').disabled = S.cursor === 0;
+  $('bp-next').disabled = S.cursor >= S.queue.length - 1;
 
   const total = S.pairs.length;
   const done = S.answered;
+  $('bp-pos').textContent = `#${S.cursor + 1}`;
   $('bp-count').textContent = `${done} / ${total}`;
   $('bp-progress-fill').style.width = (done / total * 100) + '%';
 
@@ -134,6 +151,16 @@ function paint() {
     $('bp-rate').textContent = `~${perSec.toFixed(1)}s each · ~${left} min left`;
   }
   preloadNext();
+}
+
+// Move without answering. Deliberately does NOT skip over answered pairs: the
+// arrows exist to go back and look at a call you are second-guessing, and
+// silently landing somewhere else would defeat that.
+function go(delta) {
+  const next = S.cursor + delta;
+  if (next < 0 || next >= S.queue.length) return;
+  S.cursor = next;
+  paint();
 }
 
 // Preload the next two pairs' images. The answer now advances instantly, so a
@@ -169,9 +196,19 @@ function answer(winner, skipReason) {
     },
   });
   S.history.push({ pairIdx });
-  S.answered++;
-  S.cursor++;
+  if (!S.picked.has(p.id)) S.answered++;      // re-answering supersedes, not adds
+  S.picked.set(p.id, { winner, skip_reason: skipReason });
   if (S.startedAt === null) { S.startedAt = Date.now(); S.startedAtDone = S.answered; }
+
+  // Forward one. At the end, fall back to the first pair still unanswered —
+  // browsing back and answering out of order must not strand the gaps.
+  if (S.cursor < S.queue.length - 1) {
+    S.cursor++;
+  } else {
+    const gap = S.queue.findIndex(i => !S.picked.has(S.pairs[i].id));
+    if (gap === -1) return finish(), pump();
+    S.cursor = gap;
+  }
   paint();
   pump();
 }
@@ -197,8 +234,8 @@ function undo() {
     });
   }
 
-  S.answered = Math.max(0, S.answered - 1);
-  S.cursor = Math.max(0, S.cursor - 1);
+  if (S.picked.delete(p.id)) S.answered = Math.max(0, S.answered - 1);
+  S.cursor = S.queue.indexOf(last.pairIdx);
   $('bp-done').classList.add('hidden');
   $('bp-stage').classList.remove('hidden');
   paint();
@@ -263,18 +300,22 @@ async function rebuildQueue() {
   if (!S.labeler) { setStatus('enter your name to start', 'err'); return; }
 
   setStatus('loading your progress…');
-  let done = new Set();
+  S.picked = new Map();
   try {
     const rows = await listPairs(S.labeler, S.attribute);
-    for (const r of rows) done.add(Number(r.pair_id));
+    for (const r of rows) {
+      S.picked.set(Number(r.pair_id), { winner: r.winner, skip_reason: r.skip_reason });
+    }
   } catch (e) {
     // Offline or backend down: start from the top rather than blocking. A
     // duplicate answer supersedes the old row, so re-answering is harmless.
     setStatus('could not read progress — starting from the top', 'err');
   }
-  S.queue = S.pairs.map((_, i) => i).filter(i => !done.has(S.pairs[i].id));
-  S.answered = done.size;
-  S.cursor = 0;
+  // Every pair, in order — the arrows need the answered ones to still be there.
+  S.queue = S.pairs.map((_, i) => i);
+  S.answered = S.picked.size;
+  const gap = S.queue.findIndex(i => !S.picked.has(S.pairs[i].id));
+  S.cursor = gap === -1 ? S.queue.length : gap;
   S.history = [];
   S.outbox = [];
   S.startedAt = null;
@@ -283,8 +324,8 @@ async function rebuildQueue() {
   $('bp-foot').classList.remove('hidden');
   $('bp-question').classList.remove('hidden');
   $('bp-hint').classList.remove('hidden');
-  if (!S.queue.length) return finish();
-  setStatus(done.size ? `resuming — ${done.size} already done` : 'ready', 'ok');
+  if (S.cursor >= S.queue.length) return finish();
+  setStatus(S.answered ? `resuming — ${S.answered} already done` : 'ready', 'ok');
   paint();
 }
 
@@ -304,6 +345,8 @@ async function boot() {
   $('bp-right').addEventListener('click', () => answer('right'));
   $('bp-skip').addEventListener('click', () => answer('', 'unreadable'));
   $('bp-undo').addEventListener('click', undo);
+  $('bp-prev').addEventListener('click', () => go(-1));
+  $('bp-next').addEventListener('click', () => go(1));
 
   document.addEventListener('keydown', e => {
     if (document.activeElement === $('bp-labeler')) return;
@@ -311,6 +354,8 @@ async function boot() {
     else if (e.key === '2') { e.preventDefault(); answer('right'); }
     else if (e.key.toLowerCase() === 's') { e.preventDefault(); answer('', 'unreadable'); }
     else if (e.key.toLowerCase() === 'u') { e.preventDefault(); undo(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
   });
 
   window.addEventListener('beforeunload', e => {

@@ -19,6 +19,7 @@
       padding: 6px 10px; border-radius: 4px; font-size: 13px; min-width: 120px;
     }
     #bp-count { font-family: ui-monospace, monospace; color: #e94560; font-weight: bold; }
+    #bp-pos { font-family: ui-monospace, monospace; color: #6a7aa0; font-size: 12px; }
     #bp-status { margin-left: auto; font-family: ui-monospace, monospace; font-size: 12px; }
     #bp-status.ok  { color: #5fd97a; }
     #bp-status.err { color: #e94560; }
@@ -71,7 +72,10 @@
       background: #1a1a2e; border: 1px solid #0f3460; color: #aaa;
       padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
     }
-    #bp-foot button:hover { background: #2a2a3e; color: #e0e0e0; }
+    #bp-foot button:hover:not(:disabled) { background: #2a2a3e; color: #e0e0e0; }
+    #bp-foot button:disabled { opacity: .35; cursor: default; }
+    /* Shown when you land on a pair you already answered. */
+    #bp-seen { color: #5fd97a; font-size: 12px; }
 
     #bp-done {
       flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -88,6 +92,7 @@
       <label for="bp-labeler">Your name:</label>
       <input type="text" id="bp-labeler" placeholder="e.g. Mathe">
       <span id="bp-count">–/–</span>
+      <span id="bp-pos"></span>
       <span id="bp-status"></span>
     </div>
     <div id="bp-progress"><div id="bp-progress-fill"></div></div>
@@ -99,7 +104,8 @@
       Judge the <b>shoulder line and chest only</b> — <span id="bp-ignore">ignore the feet</span>,
       they are scored separately. <b>Close call? Still pick one</b> — a guess on a
       near-tie is information; <b>S</b> is only for a frame you cannot read.<br>
-      press <b>1</b> for left · <b>2</b> for right · <b>S</b> if the frame is unreadable · <b>U</b> to undo
+      press <b>1</b> for left · <b>2</b> for right · <b>S</b> if the frame is unreadable ·
+      <b>← →</b> to move between comparisons · <b>U</b> to undo
     </div>
 
     <!-- Hidden until a name is entered: the <img> pair has no src yet, and an
@@ -116,6 +122,9 @@
     </div>
 
     <div id="bp-foot">
+      <button id="bp-prev" title="previous comparison (←)">←</button>
+      <button id="bp-next" title="next comparison (→)">→</button>
+      <span id="bp-seen" class="hidden"></span>
       <button id="bp-skip" title="blurred, occluded, or the boxer is not in a stance — NOT for &quot;they look similar&quot;">S · can't read this frame</button>
       <button id="bp-undo">U · undo last</button>
       <span id="bp-rate"></span>
@@ -130,6 +139,6 @@
 
   <!-- ?v= bumped on every JS change: GitHub Pages caches, and a labeler
        running stale JS mid-pass is a silent problem. -->
-  <script src="shoulder_bladedness.js?v=3"></script>
+  <script src="shoulder_bladedness.js?v=4"></script>
 </body>
 </html>
