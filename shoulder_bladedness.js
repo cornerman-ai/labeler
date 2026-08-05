@@ -1,7 +1,15 @@
 // ============================================================
-// bladed_pairs.js — pairwise bladedness labeler
+// shoulder_bladedness.js — pairwise SHOULDER-bladedness labeler
 //
-// Two frames, one question: which boxer is more bladed? Keys 1 / 2, or click.
+// Two frames, one question: whose SHOULDERS are turned further away? Keys 1 / 2,
+// or click.
+//
+// ONE ATTRIBUTE PER PASS. Hips are asked separately, over a separate pair list.
+// Both questions on the same pair would invite a halo effect — a single global
+// "looks bladed" impression answering both — which would manufacture the very
+// shoulder/hip agreement we are running this to measure. The manifest's
+// `attribute` field says which question this build is, and the page renders it
+// as a badge so it cannot be mistaken.
 // S records "too close to call", U undoes the last answer.
 //
 // WHY PAIRWISE RATHER THAN A RATING SCALE. Judging how far a torso is rotated
@@ -13,7 +21,7 @@
 // which people are reliable at, and reaches scale reliability of roughly
 // 0.85-0.9. The scores come out of a Bradley-Terry fit run offline.
 //
-// Pairs come baked into bladed_pairs.json (cornerman-backend's
+// Pairs come baked into shoulder_bladedness.json (cornerman-backend's
 // build_pair_labeler.py). They are FIXED and seeded so that every labeler
 // answers the same comparisons — that is the only way inter-rater agreement
 // is computable, and inter-rater agreement is the ceiling on what any metric
@@ -23,7 +31,8 @@
 // the offline join, prefixed with `_`, and they are never rendered — a labeler
 // who saw them would be anchored by them.
 //
-// Saved to the "Bladed Pairs" sheet via saveBladedPair / listBladedPairs,
+// Saved to the "Bladed Pairs Shoulders" sheet (one sheet per attribute) via
+// saveBladedPair / listBladedPairs,
 // keyed by (labeler, pair_id). A re-answer supersedes (soft deleted=1).
 // ============================================================
 
@@ -35,7 +44,7 @@ const S = {
   cursor: 0,
   answered: 0,
   history: [],        // {pairIdx, winner} for undo
-  labeler: '',
+  labeler: '', attribute: 'shoulders',
   startedAt: null,
   busy: false,
 };
@@ -66,22 +75,24 @@ async function fetchSheetJson(url, what, tries = 4) {
   throw lastErr;
 }
 
-const listPairs = labeler =>
-  fetchSheetJson(sheetUrl({ action: 'listBladedPairs', labeler }), 'listBladedPairs')
+// Progress is per (labeler, attribute) — answering the shoulder pass must not
+// mark the hip pass done.
+const listPairs = (labeler, attribute) =>
+  fetchSheetJson(sheetUrl({ action: 'listBladedPairs', labeler, attribute }), 'listBladedPairs')
     .then(b => b.rows);
 
-const savePair = ({ labeler, pair_id, left, right, winner, skip_reason }) =>
+const savePair = ({ labeler, attribute, pair_id, left, right, winner, skip_reason }) =>
   fetchSheetJson(sheetUrl({
-    action: 'saveBladedPair', labeler,
+    action: 'saveBladedPair', labeler, attribute,
     pair_id: String(pair_id),
     left_video: left.video, left_round: String(left.round), left_frame: String(left.frame),
     right_video: right.video, right_round: String(right.round), right_frame: String(right.frame),
     winner: winner || '', skip_reason: skip_reason || '',
   }), 'saveBladedPair');
 
-const deletePair = ({ labeler, pair_id }) =>
-  fetchSheetJson(sheetUrl({ action: 'deleteBladedPair', labeler, pair_id: String(pair_id) }),
-                 'deleteBladedPair');
+const deletePair = ({ labeler, attribute, pair_id }) =>
+  fetchSheetJson(sheetUrl({ action: 'deleteBladedPair', labeler, attribute,
+                            pair_id: String(pair_id) }), 'deleteBladedPair');
 
 // ─── ui ────────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -134,7 +145,7 @@ async function answer(winner, skipReason) {
   setStatus('saving…');
   try {
     await savePair({
-      labeler: S.labeler, pair_id: p.id,
+      labeler: S.labeler, attribute: S.attribute, pair_id: p.id,
       left: S.items[p.l], right: S.items[p.r],
       winner, skip_reason: skipReason,
     });
@@ -162,7 +173,7 @@ async function undo() {
   S.busy = true;
   setStatus('undoing…');
   try {
-    await deletePair({ labeler: S.labeler, pair_id: p.id });
+    await deletePair({ labeler: S.labeler, attribute: S.attribute, pair_id: p.id });
     S.answered = Math.max(0, S.answered - 1);
     S.cursor = Math.max(0, S.cursor - 1);
     $('bp-done').classList.add('hidden');
@@ -182,7 +193,7 @@ function finish() {
   $('bp-hint').classList.add('hidden');
   $('bp-done').classList.remove('hidden');
   $('bp-done-detail').textContent =
-    `${S.answered} comparisons saved as "${S.labeler}".`;
+    `${S.answered} ${S.attribute} comparisons saved as "${S.labeler}".`;
 }
 
 // ─── boot ──────────────────────────────────────────────────────────────────
@@ -194,7 +205,7 @@ async function rebuildQueue() {
   setStatus('loading your progress…');
   let done = new Set();
   try {
-    const rows = await listPairs(S.labeler);
+    const rows = await listPairs(S.labeler, S.attribute);
     for (const r of rows) done.add(Number(r.pair_id));
   } catch (e) {
     // Offline or backend down: start from the top rather than blocking. A
@@ -217,10 +228,12 @@ async function rebuildQueue() {
 }
 
 async function boot() {
-  const res = await fetch('./bladed_pairs.json', { cache: 'no-cache' });
+  const res = await fetch('./shoulder_bladedness.json', { cache: 'no-cache' });
   const data = await res.json();
   S.items = data.items;
   S.pairs = data.pairs;
+  S.attribute = data.attribute || 'shoulders';
+  document.getElementById('bp-attr').textContent = S.attribute;
 
   const saved = localStorage.getItem('bp_labeler');
   if (saved) $('bp-labeler').value = saved;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bladedness — Pairwise Labeler</title>
+  <title>SHOULDER Bladedness — Pairwise Labeler</title>
   <link rel="stylesheet" href="style.css">
   <style>
     body { margin: 0; overflow: hidden; }
@@ -34,6 +34,14 @@
     }
     #bp-question b { color: #e94560; }
     #bp-hint { text-align: center; font-size: 12px; color: #6a7aa0; padding-bottom: 6px; }
+    /* The attribute badge. Shoulders and hips are asked in separate passes, so
+       which one you are answering has to be impossible to mistake. */
+    #bp-attr {
+      background: #e94560; color: #fff; font-weight: 700; font-size: 12px;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 10px;
+    }
+    #bp-ignore { color: #f5b945; }
 
     #bp-stage {
       flex: 1; display: flex; gap: 18px; padding: 0 18px 14px;
@@ -76,6 +84,7 @@
 <body>
   <div id="bp-app">
     <div id="bp-bar">
+      <span id="bp-attr">shoulders</span>
       <label for="bp-labeler">Your name:</label>
       <input type="text" id="bp-labeler" placeholder="e.g. Mathe">
       <span id="bp-count">–/–</span>
@@ -83,8 +92,14 @@
     </div>
     <div id="bp-progress"><div id="bp-progress-fill"></div></div>
 
-    <div id="bp-question">Which boxer is more <b>bladed</b> — turned further side-on to the camera?</div>
-    <div id="bp-hint">press <b>1</b> for left · <b>2</b> for right · <b>S</b> if you truly cannot tell · <b>U</b> to undo</div>
+    <div id="bp-question">
+      Whose <b>SHOULDERS</b> are turned further away from the camera?
+    </div>
+    <div id="bp-hint">
+      Judge the <b>shoulder line and chest only</b> — <span id="bp-ignore">ignore the feet</span>,
+      they are scored separately.<br>
+      press <b>1</b> for left · <b>2</b> for right · <b>S</b> if you truly cannot tell · <b>U</b> to undo
+    </div>
 
     <div id="bp-stage">
       <div class="bp-side" id="bp-left">
@@ -105,10 +120,11 @@
 
     <div id="bp-done" class="hidden">
       <h2>Done — thank you</h2>
+      <div>Shoulder bladedness</div>
       <div id="bp-done-detail"></div>
     </div>
   </div>
 
-  <script src="bladed_pairs.js"></script>
+  <script src="shoulder_bladedness.js"></script>
 </body>
 </html>

@@ -2904,23 +2904,35 @@ function installLabelerHoursTrigger() {
 // answer. Scores are NOT computed here — a Bradley-Terry fit runs offline over
 // the whole set of comparisons and produces one score per frame.
 //
+// ONE SHEET PER ATTRIBUTE — 'Bladed Pairs Shoulders', 'Bladed Pairs Hips'.
+// Shoulders and hips are asked in separate passes over separate pair lists, so
+// their pair_id spaces both start at 0 and would collide in a shared sheet.
+// Separate sheets also make it impossible to read one pass's answers as the
+// other's. The `attribute` column repeats it inside the row so an exported or
+// merged copy stays self-describing.
+//
 // `winner` is 'left' or 'right' as SHOWN (the side each frame appeared on is
-// fixed in bladed_pairs.json), so position bias is auditable afterwards. A row
-// has either a winner or a skip_reason, never both.
+// fixed in the manifest), so position bias is auditable afterwards. A row has
+// either a winner or a skip_reason, never both.
 // ============================================================
-var BLADED_PAIRS_SHEET_NAME = 'Bladed Pairs';
-var BLADED_PAIRS_HEADERS = ['ts', 'labeler', 'pair_id',
+var BLADED_PAIRS_HEADERS = ['ts', 'labeler', 'attribute', 'pair_id',
                             'left_video', 'left_round', 'left_frame',
                             'right_video', 'right_round', 'right_frame',
                             'winner', 'skip_reason', 'deleted'];
 var BLADED_PAIRS_WINNERS = ['left', 'right'];
 var BLADED_PAIRS_SKIP_REASONS = ['too_close'];
+var BLADED_PAIRS_ATTRIBUTES = ['shoulders', 'hips'];
 
-function getOrCreateBladedPairsSheet() {
+function bladedPairsSheetName(attribute) {
+  return 'Bladed Pairs ' + attribute.charAt(0).toUpperCase() + attribute.slice(1);
+}
+
+function getOrCreateBladedPairsSheet(attribute) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(BLADED_PAIRS_SHEET_NAME);
+  var name = bladedPairsSheetName(attribute);
+  var sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = ss.insertSheet(BLADED_PAIRS_SHEET_NAME);
+    sh = ss.insertSheet(name);
     sh.appendRow(BLADED_PAIRS_HEADERS);
     sh.setFrozenRows(1);
     return sh;
@@ -2941,7 +2953,13 @@ function bladedPairsIndex(headerRow) {
 }
 
 function doGetBladedPairs(p, labeler, action) {
-  var sh = getOrCreateBladedPairsSheet();
+  // The attribute picks the sheet, so a typo must not silently open a third
+  // one and quietly split a labeler's answers in two.
+  var attribute = String(p.attribute || '').toLowerCase();
+  if (BLADED_PAIRS_ATTRIBUTES.indexOf(attribute) === -1) {
+    return jsonOut({ status: 'error', message: 'unknown attribute: ' + (p.attribute || '(none)') });
+  }
+  var sh = getOrCreateBladedPairsSheet(attribute);
   var data = sh.getDataRange().getValues();
   var idx = bladedPairsIndex(data[0]);
 
@@ -2956,6 +2974,7 @@ function doGetBladedPairs(p, labeler, action) {
       rows.push({
         ts: lr[idx.ts],
         labeler: lr[idx.labeler],
+        attribute: String(lr[idx.attribute]),
         pair_id: Number(lr[idx.pair_id]),
         left_video: String(lr[idx.left_video]),
         left_round: Number(lr[idx.left_round]),
@@ -2998,7 +3017,7 @@ function doGetBladedPairs(p, labeler, action) {
       sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
     }
 
-    sh.appendRow([new Date(), String(p.labeler), String(p.pair_id),
+    sh.appendRow([new Date(), String(p.labeler), attribute, String(p.pair_id),
                   String(p.left_video), String(p.left_round), String(p.left_frame),
                   String(p.right_video), String(p.right_round), String(p.right_frame),
                   hasWinner ? String(p.winner) : '',
