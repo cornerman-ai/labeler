@@ -1,8 +1,8 @@
 // ============================================================
 // shoulder_bladedness.js — pairwise SHOULDER-bladedness labeler
 //
-// Two frames, one question: whose SHOULDERS are turned further away? Keys 1 / 2,
-// or click.
+// Two frames, one question: which boxer's SHOULDERS are turned the most?
+// Keys 1 / 2, or click.
 //
 // ONE ATTRIBUTE PER PASS. Hips are asked separately, over a separate pair list.
 // Both questions on the same pair would invite a halo effect — a single global
