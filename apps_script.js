@@ -281,6 +281,15 @@ function doGet(e) {
     return doGetChinShoulderLabels(p, labeler, action);
   }
 
+  // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
+  // answered, keyed by (labeler, pair_id). The pair list itself is fixed and
+  // seeded in bladed_pairs.json — every labeler answers the SAME comparisons,
+  // which is what makes inter-rater agreement computable.
+  if (action === 'listBladedPairs' || action === 'saveBladedPair' ||
+      action === 'deleteBladedPair') {
+    return doGetBladedPairs(p, labeler, action);
+  }
+
   // Callout labeler — separate sheet. One row per called-out punch / combo /
   // defense, keyed by (labeler, video). These annotate the *instruction* a
   // coach app calls out, not the executed punch; they become weak labels for
@@ -2885,4 +2894,134 @@ function installLabelerHoursTrigger() {
     'The "' + WEEK_TAB + '" and "' + HISTORY_TAB + '" tabs now rebuild every ' +
     AUTO_REFRESH_HOURS + 'h automatically.',
     SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+
+// ============================================================
+// Bladed Pairs — pairwise bladedness comparisons
+//
+// Comparative judgement: each row is one "which of these two is more bladed"
+// answer. Scores are NOT computed here — a Bradley-Terry fit runs offline over
+// the whole set of comparisons and produces one score per frame.
+//
+// `winner` is 'left' or 'right' as SHOWN (the side each frame appeared on is
+// fixed in bladed_pairs.json), so position bias is auditable afterwards. A row
+// has either a winner or a skip_reason, never both.
+// ============================================================
+var BLADED_PAIRS_SHEET_NAME = 'Bladed Pairs';
+var BLADED_PAIRS_HEADERS = ['ts', 'labeler', 'pair_id',
+                            'left_video', 'left_round', 'left_frame',
+                            'right_video', 'right_round', 'right_frame',
+                            'winner', 'skip_reason', 'deleted'];
+var BLADED_PAIRS_WINNERS = ['left', 'right'];
+var BLADED_PAIRS_SKIP_REASONS = ['too_close'];
+
+function getOrCreateBladedPairsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(BLADED_PAIRS_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(BLADED_PAIRS_SHEET_NAME);
+    sh.appendRow(BLADED_PAIRS_HEADERS);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(BLADED_PAIRS_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function bladedPairsIndex(headerRow) {
+  var idx = {};
+  for (var i = 0; i < headerRow.length; i++) {
+    idx[String(headerRow[i]).trim()] = i;
+  }
+  return idx;
+}
+
+function doGetBladedPairs(p, labeler, action) {
+  var sh = getOrCreateBladedPairsSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = bladedPairsIndex(data[0]);
+
+  // === LIST answers, optionally filtered by labeler ===
+  if (action === 'listBladedPairs') {
+    var filterLabeler = p.labeler || '';
+    var rows = [];
+    for (var li = 1; li < data.length; li++) {
+      var lr = data[li];
+      if (String(lr[idx.deleted]) === '1') continue;
+      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
+      rows.push({
+        ts: lr[idx.ts],
+        labeler: lr[idx.labeler],
+        pair_id: Number(lr[idx.pair_id]),
+        left_video: String(lr[idx.left_video]),
+        left_round: Number(lr[idx.left_round]),
+        left_frame: Number(lr[idx.left_frame]),
+        right_video: String(lr[idx.right_video]),
+        right_round: Number(lr[idx.right_round]),
+        right_frame: Number(lr[idx.right_frame]),
+        winner: lr[idx.winner] === '' ? null : String(lr[idx.winner]),
+        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason])
+      });
+    }
+    return jsonOut({ status: 'ok', rows: rows });
+  }
+
+  // === SAVE one answer, keyed by (labeler, pair_id). Supersedes. ===
+  if (action === 'saveBladedPair') {
+    var required = ['labeler', 'pair_id', 'left_video', 'left_round', 'left_frame',
+                    'right_video', 'right_round', 'right_frame'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var hasWinner = p.winner !== undefined && p.winner !== '';
+    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
+    if (hasWinner === hasSkip) {
+      return jsonOut({ status: 'error', message: 'need exactly one of winner / skip_reason' });
+    }
+    if (hasWinner && BLADED_PAIRS_WINNERS.indexOf(String(p.winner)) === -1) {
+      return jsonOut({ status: 'error', message: 'invalid winner: ' + p.winner });
+    }
+    if (hasSkip && BLADED_PAIRS_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+      return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+    }
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (String(data[i2][idx.deleted]) === '1') continue;
+      if (String(data[i2][idx.labeler]) !== String(p.labeler)) continue;
+      if (String(data[i2][idx.pair_id]) !== String(p.pair_id)) continue;
+      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+    }
+
+    sh.appendRow([new Date(), String(p.labeler), String(p.pair_id),
+                  String(p.left_video), String(p.left_round), String(p.left_frame),
+                  String(p.right_video), String(p.right_round), String(p.right_frame),
+                  hasWinner ? String(p.winner) : '',
+                  hasSkip ? String(p.skip_reason) : '',
+                  '']);
+    return jsonOut({ status: 'ok' });
+  }
+
+  // === DELETE (soft) — used by the page's undo ===
+  if (action === 'deleteBladedPair') {
+    if (!p.labeler || p.pair_id === undefined || p.pair_id === '') {
+      return jsonOut({ status: 'error', message: 'missing labeler / pair_id' });
+    }
+    var n = 0;
+    for (var i3 = 1; i3 < data.length; i3++) {
+      if (String(data[i3][idx.deleted]) === '1') continue;
+      if (String(data[i3][idx.labeler]) !== String(p.labeler)) continue;
+      if (String(data[i3][idx.pair_id]) !== String(p.pair_id)) continue;
+      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
+      n++;
+    }
+    return jsonOut({ status: 'ok', deleted: n });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown action: ' + action });
 }

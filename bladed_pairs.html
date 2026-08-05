@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bladedness — Pairwise Labeler</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #bp-app { display: flex; flex-direction: column; height: 100vh; }
+
+    #bp-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 6px 16px; background: #121a30; border-bottom: 1px solid #0f3460;
+      font-size: 13px; color: #aaa;
+    }
+    #bp-bar input {
+      background: #1a1a2e; border: 1px solid #0f3460; color: #e0e0e0;
+      padding: 6px 10px; border-radius: 4px; font-size: 13px; min-width: 120px;
+    }
+    #bp-count { font-family: ui-monospace, monospace; color: #e94560; font-weight: bold; }
+    #bp-status { margin-left: auto; font-family: ui-monospace, monospace; font-size: 12px; }
+    #bp-status.ok  { color: #5fd97a; }
+    #bp-status.err { color: #e94560; }
+
+    #bp-progress { height: 3px; background: #0f3460; }
+    #bp-progress div { height: 100%; background: #e94560; width: 0; transition: width .2s; }
+
+    /* The question, kept in front of the labeler at all times. Comparative
+       judgement only works if everyone answers the SAME question every time. */
+    #bp-question {
+      text-align: center; padding: 10px 16px 4px;
+      font-size: 17px; color: #e0e0e0;
+    }
+    #bp-question b { color: #e94560; }
+    #bp-hint { text-align: center; font-size: 12px; color: #6a7aa0; padding-bottom: 6px; }
+
+    #bp-stage {
+      flex: 1; display: flex; gap: 18px; padding: 0 18px 14px;
+      align-items: stretch; justify-content: center; min-height: 0;
+    }
+    .bp-side {
+      flex: 1; max-width: 46vw; display: flex; flex-direction: column;
+      align-items: center; cursor: pointer; border: 3px solid transparent;
+      border-radius: 10px; background: #16213e; padding: 10px; min-height: 0;
+    }
+    .bp-side:hover { border-color: #533483; background: #1c2a4a; }
+    .bp-side.picked { border-color: #5fd97a; }
+    .bp-side img {
+      flex: 1; min-height: 0; max-width: 100%; object-fit: contain; border-radius: 6px;
+    }
+    .bp-key {
+      margin-top: 8px; font-family: ui-monospace, monospace; font-size: 15px;
+      color: #6a7aa0; letter-spacing: .04em;
+    }
+    .bp-side:hover .bp-key { color: #e0e0e0; }
+
+    #bp-foot {
+      display: flex; gap: 10px; justify-content: center; align-items: center;
+      padding: 0 16px 12px; font-size: 12px; color: #6a7aa0;
+    }
+    #bp-foot button {
+      background: #1a1a2e; border: 1px solid #0f3460; color: #aaa;
+      padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    }
+    #bp-foot button:hover { background: #2a2a3e; color: #e0e0e0; }
+
+    #bp-done {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 10px; color: #e0e0e0;
+    }
+    #bp-done h2 { color: #5fd97a; margin: 0; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="bp-app">
+    <div id="bp-bar">
+      <label for="bp-labeler">Your name:</label>
+      <input type="text" id="bp-labeler" placeholder="e.g. Mathe">
+      <span id="bp-count">–/–</span>
+      <span id="bp-status"></span>
+    </div>
+    <div id="bp-progress"><div id="bp-progress-fill"></div></div>
+
+    <div id="bp-question">Which boxer is more <b>bladed</b> — turned further side-on to the camera?</div>
+    <div id="bp-hint">press <b>1</b> for left · <b>2</b> for right · <b>S</b> if you truly cannot tell · <b>U</b> to undo</div>
+
+    <div id="bp-stage">
+      <div class="bp-side" id="bp-left">
+        <img id="bp-img-l" alt="left">
+        <div class="bp-key">1 &nbsp;· &nbsp;left</div>
+      </div>
+      <div class="bp-side" id="bp-right">
+        <img id="bp-img-r" alt="right">
+        <div class="bp-key">2 &nbsp;· &nbsp;right</div>
+      </div>
+    </div>
+
+    <div id="bp-foot">
+      <button id="bp-skip">S · too close to call</button>
+      <button id="bp-undo">U · undo last</button>
+      <span id="bp-rate"></span>
+    </div>
+
+    <div id="bp-done" class="hidden">
+      <h2>Done — thank you</h2>
+      <div id="bp-done-detail"></div>
+    </div>
+  </div>
+
+  <script src="bladed_pairs.js"></script>
+</body>
+</html>
