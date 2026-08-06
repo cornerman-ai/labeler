@@ -1,15 +1,19 @@
 // ============================================================
-// shoulder_bladedness.js — pairwise SHOULDER-bladedness labeler
+// bladed_pairs.js — pairwise bladedness labeler, shared by both passes
 //
-// Two frames, one question: which boxer's SHOULDERS are turned the most?
-// Keys 1 / 2, or click.
+// Two frames, one question: which boxer is turned the most? Keys 1 / 2, or
+// click. The page that loads this file sets window.BP_MANIFEST and asks the
+// question in its own words:
 //
-// ONE ATTRIBUTE PER PASS. Hips are asked separately, over a separate pair list.
-// Both questions on the same pair would invite a halo effect — a single global
-// "looks bladed" impression answering both — which would manufacture the very
-// shoulder/hip agreement we are running this to measure. The manifest's
-// `attribute` field says which question this build is, and the page renders it
-// as a badge so it cannot be mistaken.
+//   shoulder_bladedness.html -> shoulder_bladedness.json -> "Bladed Pairs Shoulders"
+//   hip_bladedness.html      -> hip_bladedness.json      -> "Bladed Pairs Hips"
+//
+// ONE ATTRIBUTE PER PASS. Shoulders and hips are asked separately, over
+// separate pair lists. Both questions on the same pair would invite a halo
+// effect — a single global "looks bladed" impression answering both — which
+// would manufacture the very shoulder/hip agreement we are running this to
+// measure. The manifest's `attribute` field says which question this build is,
+// and the page renders it as a badge so it cannot be mistaken.
 // S records "cannot read this frame", U undoes the last answer.
 //
 // S IS NOT A TIE BUTTON. Bradley-Terry has no tie term here, so a skip is a
@@ -29,20 +33,26 @@
 // which people are reliable at, and reaches scale reliability of roughly
 // 0.85-0.9. The scores come out of a Bradley-Terry fit run offline.
 //
-// Pairs come baked into shoulder_bladedness.json (cornerman-backend's
-// build_pair_labeler.py). They are FIXED and seeded so that every labeler
-// answers the same comparisons — that is the only way inter-rater agreement
-// is computable, and inter-rater agreement is the ceiling on what any metric
-// can score against these labels.
+// Pairs come baked into the manifest (cornerman-backend's
+// build_pair_labeler.py / build_hip_pair_labeler.py). They are FIXED and
+// seeded so that every labeler answers the same comparisons — that is the only
+// way inter-rater agreement is computable, and inter-rater agreement is the
+// ceiling on what any metric can score against these labels. Some pairs are
+// hidden repeats of an earlier comparison, left/right swapped; the page must
+// stay unaware of them, so it treats `_repeat_of` like any other `_` key.
 //
 // Nothing on this page reveals a metric value. The manifest carries them for
 // the offline join, prefixed with `_`, and they are never rendered — a labeler
 // who saw them would be anchored by them.
 //
-// Saved to the "Bladed Pairs Shoulders" sheet (one sheet per attribute) via
+// Saved to the "Bladed Pairs <Attribute>" sheet (one sheet per attribute) via
 // saveBladedPair / listBladedPairs,
 // keyed by (labeler, pair_id). A re-answer supersedes (soft deleted=1).
 // ============================================================
+
+// Set by the page. No default on purpose: a page that forgot it would quietly
+// serve the OTHER pass's comparisons, which is worse than not loading.
+const MANIFEST = window.BP_MANIFEST;
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyechZQLtMzlmeT15bhIy0eozKpA0jHlmuZPSqVzyEcS5Vy0A5cS/exec';
 
@@ -52,7 +62,7 @@ const S = {
   cursor: 0,
   answered: 0,
   history: [],        // {pairIdx, winner} for undo
-  labeler: '', attribute: 'shoulders',
+  labeler: '', attribute: '',        // attribute comes from the manifest
   // pairId -> {winner, skip_reason}. The queue holds EVERY pair now, not only
   // the unanswered ones, so the arrows can walk back into work already done —
   // and landing on an answered pair has to show what you picked.
@@ -330,11 +340,12 @@ async function rebuildQueue() {
 }
 
 async function boot() {
-  const res = await fetch('./shoulder_bladedness.json', { cache: 'no-cache' });
+  if (!MANIFEST) { setStatus('page bug: window.BP_MANIFEST is not set', 'err'); return; }
+  const res = await fetch(MANIFEST, { cache: 'no-cache' });
   const data = await res.json();
   S.items = data.items;
   S.pairs = data.pairs;
-  S.attribute = data.attribute || 'shoulders';
+  S.attribute = data.attribute;
   document.getElementById('bp-attr').textContent = S.attribute;
 
   const saved = localStorage.getItem('bp_labeler');

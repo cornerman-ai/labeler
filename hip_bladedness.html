@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SHOULDER Bladedness — Pairwise Labeler</title>
+  <title>HIP Bladedness — Pairwise Labeler</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Layout shared with hip_bladedness.html — the two passes must look the
-       same, so only the question differs. -->
+  <!-- Layout shared with shoulder_bladedness.html — the two passes must look
+       the same, so only the question differs. -->
   <link rel="stylesheet" href="bladed_pairs.css?v=1">
 </head>
 <body>
   <div id="bp-app">
     <div id="bp-bar">
-      <span id="bp-attr">shoulders</span>
+      <span id="bp-attr">hips</span>
       <label for="bp-labeler">Your name:</label>
       <input type="text" id="bp-labeler" placeholder="e.g. Mathe">
       <span id="bp-count">–/–</span>
@@ -22,10 +22,11 @@
     <div id="bp-progress"><div id="bp-progress-fill"></div></div>
 
     <div id="bp-question">
-      Which boxer's <b>SHOULDERS</b> are turned the most?
+      Which boxer's <b>HIPS</b> are turned the most?
     </div>
     <div id="bp-hint">
-      Judge the <b>shoulder line and chest only</b> — <span id="bp-ignore">ignore the feet</span>,
+      Judge the <b>hips and belt line only</b> —
+      <span id="bp-ignore">ignore the shoulders and the feet</span>,
       they are scored separately. <b>Close call? Still pick one</b> — a guess on a
       near-tie is information; <b>S</b> is only for a frame you cannot read.<br>
       press <b>1</b> for left · <b>2</b> for right · <b>S</b> if the frame is unreadable ·
@@ -56,16 +57,16 @@
 
     <div id="bp-done" class="hidden">
       <h2>Done — thank you</h2>
-      <div>Shoulder bladedness</div>
+      <div>Hip bladedness</div>
       <div id="bp-done-detail"></div>
     </div>
   </div>
 
-  <!-- Which pair list this page is. bladed_pairs.js is shared with the hip
-       pass and has no default — see its header.
+  <!-- Which pair list this page is. bladed_pairs.js is shared with the
+       shoulder pass and has no default — see its header.
        ?v= bumped on every JS change: GitHub Pages caches, and a labeler
        running stale JS mid-pass is a silent problem. -->
-  <script>window.BP_MANIFEST = './shoulder_bladedness.json';</script>
+  <script>window.BP_MANIFEST = './hip_bladedness.json';</script>
   <script src="bladed_pairs.js?v=5"></script>
 </body>
 </html>
