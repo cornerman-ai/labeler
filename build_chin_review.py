@@ -64,6 +64,8 @@ def main():
         for s in v['samples']:
             if (s['round'], s['frame']) in excluded.get(stem, set()):
                 continue
+            if s.get('rep'):
+                continue          # same frame as its rep=0 original — one card is enough
             fname = f"r{s['round']}_f{s['frame']}.jpg"
             rows.append({
                 'n': f'{len(rows) + 1:03d}',

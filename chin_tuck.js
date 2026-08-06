@@ -25,7 +25,14 @@
 // applies to the SAMPLED frame). S then 1/2 skips (occluded / unclear).
 // U clears. Saved to the "Chin Shoulder Labels" sheet via
 // saveChinShoulderLabel / listChinShoulderLabels / deleteChinShoulderLabel,
-// keyed by (labeler, video, round, frame).
+// keyed by (labeler, video, round, frame, rep).
+//
+// `rep` is the ceiling probe: the manifest repeats a couple of samples per
+// video further down the same queue (chin_sampler.add_repeats), so ONE
+// labeler judges one frame twice and chin_agreement.py can measure their
+// self-agreement. rep is part of the row key — without it the second pass
+// would just overwrite the first and the measurement would vanish. Nothing
+// on screen marks a repeat: the labeler must re-judge, not recall.
 //
 // The original single-verdict labeler (tucked / level / air, "Chin Labels"
 // sheet) is preserved as chin_tuck_john.html / chin_tuck_john.js.
@@ -120,8 +127,13 @@ Object.assign(state, {
   syncSeq: 0,               // stale-response guard for syncFromSheet
 });
 
+// Queue identity of a sample = the sheet row key. A repeat shares round+frame
+// with its original, so `rep` is what keeps the two apart everywhere.
+function repOf(x) {
+  return (x && x.rep) ? Number(x.rep) : 0;
+}
 function keyFor(s) {
-  return s ? 's:' + s.round + ':' + s.frame : null;
+  return s ? 's:' + s.round + ':' + s.frame + ':' + repOf(s) : null;
 }
 
 // ─── hosted frames — server-side JPEGs instead of the local video ──────────
@@ -355,20 +367,22 @@ async function fetchChinLabels(video, labeler) {
   const url = sheetUrl({ action: 'listChinShoulderLabels', video, labeler });
   return (await fetchSheetJson(url, 'listChinShoulderLabels')).rows;
 }
-async function saveChinShoulderLabel({ labeler, video, round, frame, pts_sec,
+async function saveChinShoulderLabel({ labeler, video, round, frame, rep, pts_sec,
                                        chin_height, chin_front, kissing,
                                        skip_reason }) {
   const params = { action: 'saveChinShoulderLabel', labeler, video,
-                   round: String(round), frame: String(frame), pts_sec: String(pts_sec) };
+                   round: String(round), frame: String(frame), rep: String(rep || 0),
+                   pts_sec: String(pts_sec) };
   params.chin_height = chin_height || '';
   params.chin_front = chin_front || '';
   params.kissing = kissing || '';
   params.skip_reason = skip_reason || '';
   return fetchSheetJson(sheetUrl(params), 'saveChinShoulderLabel');
 }
-async function deleteChinShoulderLabel({ labeler, video, round, frame }) {
+async function deleteChinShoulderLabel({ labeler, video, round, frame, rep }) {
   const url = sheetUrl({ action: 'deleteChinShoulderLabel', labeler, video,
-                         round: String(round), frame: String(frame) });
+                         round: String(round), frame: String(frame),
+                         rep: String(rep || 0) });
   return fetchSheetJson(url, 'deleteChinShoulderLabel');
 }
 
@@ -549,6 +563,8 @@ function playlistStem() {
 // Samples for a stem minus the triage-excluded ones (chin_excluded.json —
 // frames one labeler already marked occluded / unclear / bad_box, kept out
 // of everyone else's queue so review time goes to judgeable frames only).
+// Exclusion is keyed on round:frame WITHOUT rep on purpose: an unjudgeable
+// frame is unjudgeable both times, so triaging it drops its repeat too.
 function samplesFor(stem) {
   const known = state.knownVideos.find(v => v.stem === stem);
   if (!known) return [];
@@ -666,7 +682,7 @@ async function syncFromSheet() {
     state.coverageByKey = new Map();
     const inQueue = new Set(state.samples.map(keyFor));
     for (const r of rows) {
-      const k = 's:' + r.round + ':' + r.frame;
+      const k = 's:' + r.round + ':' + r.frame + ':' + repOf(r);
       if (!inQueue.has(k)) continue;    // excluded or from an older sampling
       let who = state.coverageByKey.get(k);
       if (!who) { who = new Set(); state.coverageByKey.set(k, who); }
@@ -849,6 +865,7 @@ function persistLabel(labeler, label) {
     video: stemAtSave,
     round: s.round,
     frame: s.frame,
+    rep: repOf(s),
     pts_sec: s.pts,
     chin_height: label.chin_height,
     chin_front: label.chin_front,
@@ -897,7 +914,8 @@ async function clearLabelAt(idx) {
     setCurrentLine(describeSample(s, total, 'unlabeled'));
   }
   try {
-    await deleteChinShoulderLabel({ labeler, video: state.currentStem, round: s.round, frame: s.frame });
+    await deleteChinShoulderLabel({ labeler, video: state.currentStem, round: s.round,
+                                    frame: s.frame, rep: repOf(s) });
     setStatus("Cleared that sample's label — relabel it any time.", 'ok');
   } catch (e) {
     setStatus('Clear failed: ' + e.message, 'err');
@@ -1045,7 +1063,7 @@ async function computeStartIdx(labeler) {
     for (const r of rows) {
       let s = doneByVideo.get(r.video);
       if (!s) { s = new Set(); doneByVideo.set(r.video, s); }
-      s.add(r.round + ':' + r.frame);
+      s.add(r.round + ':' + r.frame + ':' + repOf(r));
     }
   } catch {
     return 0;
@@ -1053,7 +1071,7 @@ async function computeStartIdx(labeler) {
   for (let i = 0; i < PLAYLIST.length; i++) {
     const samples = samplesFor(PLAYLIST[i]);
     const labeled = doneByVideo.get(PLAYLIST[i]) || new Set();
-    if (samples.some(s => !labeled.has(s.round + ':' + s.frame))) return i;
+    if (samples.some(s => !labeled.has(s.round + ':' + s.frame + ':' + repOf(s)))) return i;
   }
   return PLAYLIST.length - 1;   // everything done — land on the last video
 }

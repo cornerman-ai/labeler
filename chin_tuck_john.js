@@ -418,12 +418,16 @@ function playlistStem() {
 // Samples for a stem minus the triage-excluded ones (chin_excluded.json —
 // frames one labeler already marked occluded / unclear / bad_box, kept out
 // of everyone else's queue so review time goes to judgeable frames only).
+// rep>0 samples are the intra-rater repeats added for the three-question
+// labeler (chin_tuck.js). This frozen page keys its sheet on round:frame with
+// no rep, so a repeat here would silently overwrite the original — drop them.
 function samplesFor(stem) {
   const known = state.knownVideos.find(v => v.stem === stem);
   if (!known) return [];
+  const samples = known.samples.filter(s => !s.rep);
   const excluded = state.excludedByStem.get(stem);
-  if (!excluded) return known.samples;
-  return known.samples.filter(s => !excluded.has(s.round + ':' + s.frame));
+  if (!excluded) return samples;
+  return samples.filter(s => !excluded.has(s.round + ':' + s.frame));
 }
 
 function loadedFileStem() {

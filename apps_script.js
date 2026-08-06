@@ -2086,11 +2086,21 @@ function getOrCreateChinSheet() {
   return sh;
 }
 
+// Repeat index of a sample: 0 = the frame's first appearance in the queue,
+// 1 = the deliberate repeat further down it (chin_sampler.add_repeats), which
+// exists so one labeler judges one frame twice and their self-agreement can be
+// measured. Blank/absent reads as 0 — that covers every row written before rep
+// existed, and the old "Chin Labels" sheet, which has no rep column at all.
+function chinRep(v) {
+  return (v === undefined || v === null || v === '') ? '0' : String(Number(v));
+}
+
 function chinRowMatches(row, idx, p) {
   return row[idx.labeler] === p.labeler &&
          row[idx.video] === p.video &&
          String(row[idx.round]) === String(p.round) &&
-         String(row[idx.frame]) === String(p.frame);
+         String(row[idx.frame]) === String(p.frame) &&
+         chinRep(idx.rep === undefined ? '' : row[idx.rep]) === chinRep(p.rep);
 }
 
 function doGetChinLabels(p, labeler, action) {
@@ -2204,11 +2214,14 @@ function doGetChinLabels(p, labeler, action) {
 //                                       kiss the shoulder
 //
 // A row has either all three answers or a skip_reason, never both.
-// Keyed by (labeler, video, round, frame); a re-save supersedes the prior row.
+// Keyed by (labeler, video, round, frame, rep); a re-save supersedes the prior
+// row. `rep` distinguishes a sample from its deliberate repeat later in the
+// same queue (see chinRep) — the two must NOT collapse onto one row, because
+// the whole point is to hold both of one labeler's verdicts on one frame.
 // ============================================================
 var CHIN_SHOULDER_SHEET_NAME = 'Chin Shoulder Labels';
-var CHIN_SHOULDER_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
-                             'chin_height', 'chin_front', 'kissing',
+var CHIN_SHOULDER_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
+                             'pts_sec', 'chin_height', 'chin_front', 'kissing',
                              'skip_reason', 'comment', 'deleted'];
 var CHIN_SHOULDER_VALUES = {
   chin_height: ['over', 'level', 'under'],
@@ -2239,6 +2252,23 @@ function doGetChinShoulderLabels(p, labeler, action) {
   var data = sh.getDataRange().getValues();
   var idx = punchDirHeaderIndex(data[0]);
 
+  // Self-migrate: the sheet predates repeated samples and has no rep column.
+  // Add it once (existing rows keep it blank = rep 0) and re-read, so the
+  // indices line up.
+  //
+  // Target the column by header width, NOT getLastColumn(): getLastColumn() is
+  // the last column WITH CONTENT, so it does not move when a blank column is
+  // inserted after it — writing the new header there would land on 'deleted'
+  // and clobber it. (The callout sheet's event_id migration has that shape and
+  // is worth a look.)
+  if (idx.rep === undefined) {
+    var repCol = data[0].length + 1;
+    if (sh.getMaxColumns() < repCol) sh.insertColumnAfter(sh.getMaxColumns());
+    sh.getRange(1, repCol).setValue('rep');
+    data = sh.getDataRange().getValues();
+    idx = punchDirHeaderIndex(data[0]);
+  }
+
   // === LIST chin-shoulder labels (optionally filtered by labeler / video) ===
   if (action === 'listChinShoulderLabels') {
     var video = p.video || '';
@@ -2255,6 +2285,7 @@ function doGetChinShoulderLabels(p, labeler, action) {
         video: lr[idx.video],
         round: Number(lr[idx.round]),
         frame: Number(lr[idx.frame]),
+        rep: Number(chinRep(lr[idx.rep])),
         pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
         chin_height: lr[idx.chin_height] === '' ? null : String(lr[idx.chin_height]),
         chin_front: lr[idx.chin_front] === '' ? null : String(lr[idx.chin_front]),
@@ -2315,6 +2346,7 @@ function doGetChinShoulderLabels(p, labeler, action) {
       else if (col === 'video') newRow.push(p.video);
       else if (col === 'round') newRow.push(Number(p.round));
       else if (col === 'frame') newRow.push(Number(p.frame));
+      else if (col === 'rep') newRow.push(Number(chinRep(p.rep)));
       else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
       else if (col === 'chin_height') newRow.push(vals.chin_height);
       else if (col === 'chin_front') newRow.push(vals.chin_front);
