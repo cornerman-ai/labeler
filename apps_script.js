@@ -1338,7 +1338,7 @@ function doGetOrientation(p, labeler, action) {
 // Frame mode (existing) labels facing direction at 5s-bucket frames.
 // Punch mode (new) labels facing direction once per punch (keyed by
 // punch_uuid from Combined Data). Used to test whether the inter-ankle
-// arrow predicts "where the enemy is" — see boxing_ai/orientation_model/
+// arrow predicts "where the enemy is" — see cornerman-backend ml/research/orientation_model/
 // 07_punch_directions.py.
 // ============================================================
 

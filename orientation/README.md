@@ -102,7 +102,7 @@ mistake; **P** to step back to the previous candidate.
 ## Regenerating `videos.json` after new extractions
 
 When new glove caches land in
-`~/Google Drive/My Drive/boxing_ai/glove_wrist_cache/`, run:
+`~/Google Drive/My Drive/Cornerman/archive/boxing_ai/glove_wrist_cache/`, run:
 
 ```bash
 python labeler/orientation/build_videos_json.py

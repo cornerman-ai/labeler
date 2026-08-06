@@ -66,7 +66,7 @@ the sheet; delete/rebuild the file to bring frames back.
 Spreadsheet-native review path (for reviewers who prefer Sheets over the
 web page), NO Apps Script involved: `build_chin_review.py` numbers the
 current queue into `chin_review.json` + a matching Drive folder of
-`NNN.jpg` copies (`Boxing AI Data/labels/chin_review_frames`). The
+`NNN.jpg` copies (`Cornerman/data/labeler_media/chin_tuck/review_frames`). The
 standalone "Chin Review John" workbook in Drive (built from
 chin_review.json: # | =IMAGE | verdict dropdown | comment | hidden
 video/round/frame keys + READ ME tab) is what the reviewer edits;

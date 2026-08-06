@@ -17,7 +17,7 @@ from pathlib import Path
 from collections import defaultdict
 
 GLOVE_CACHE = Path(
-    "/Users/mathewieme/Google Drive/My Drive/boxing_ai/glove_wrist_cache"
+    "/Users/mathewieme/Google Drive/My Drive/Cornerman/archive/boxing_ai/glove_wrist_cache"
 )
 OUT = Path(__file__).parent / "videos.json"
 

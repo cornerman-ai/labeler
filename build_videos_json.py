@@ -21,7 +21,7 @@ from collections import defaultdict
 
 CACHE = pathlib.Path(
     "/Users/mathewieme/Library/CloudStorage/GoogleDrive-mathee.wieme@gmail.com/"
-    "My Drive/boxing_ai/apple_vision_pose_cache"
+    "My Drive/Cornerman/archive/boxing_ai/apple_vision_pose_cache"
 )
 OUT = pathlib.Path(__file__).parent / "videos.json"
 
