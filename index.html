@@ -1,145 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boxing Punch Labeler</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cornerman Labelers</title>
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  body { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  h1 { margin: 0 0 4px; }
+  .sub { opacity: .7; margin: 0 0 24px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em;
+       opacity: .65; margin: 26px 0 8px; }
+  ul.tools { list-style: none; padding: 0; margin: 0; }
+  ul.tools li { margin: 0; }
+  ul.tools a { display: block; padding: 10px 12px; border-radius: 8px;
+       text-decoration: none; color: inherit; }
+  ul.tools a:hover { background: rgba(127,127,127,.12); }
+  ul.tools .name { font-weight: 600; }
+  ul.tools .desc { opacity: .65; font-size: 13px; margin-left: 8px; }
+</style>
 </head>
 <body>
-  <div id="app">
-    <!-- Top bar: compact single row -->
-    <div id="top-bar">
-      <div id="video-loader">
-        <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">Open Video File</button>
-        <input type="file" id="video-file" accept="video/*" style="display:none">
-        <span id="video-name">No video loaded</span>
-        <span id="labeler-badge" style="background:#0f3460; color:#e94560; padding:2px 10px; border-radius:10px; font-size:13px; font-weight:bold; display:none;"></span>
-      </div>
-      <div style="font-size:12px; color:#666; margin-right:12px">
-        <a href="callout.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px">Callout labeler &rarr;</a>
-        <a href="hip_rotation_label.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Hip rotation labeler &rarr;</a>
-        <a href="impact_frame.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Impact frame labeler &rarr;</a>
-        <a href="guard_drop_label.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Guard drop labeler &rarr;</a>
-        <a href="chin_tuck.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Chin tuck labeler &rarr;</a>
-        <a href="coach_review.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Coaching review &rarr;</a>
-      </div>
-      </div>
-      <!-- Hidden input to keep loadConfig working -->
-      <input type="hidden" id="script-url">
-    <div id="drive-link-bar" style="padding:4px 16px; background:#121a30; border-bottom:1px solid #0f3460; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <label for="drive-link" style="font-size:13px; color:#aaa; white-space:nowrap;">Drive Link:</label>
-      <input type="text" id="drive-link" placeholder="Paste Google Drive video link here" style="flex:1; min-width:200px; background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 10px; border-radius:4px; font-size:13px;">
-      <label for="training-type" style="font-size:13px; color:#aaa; white-space:nowrap;">Type:</label>
-      <select id="training-type" style="background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:13px;">
-        <option value="shadowboxing">Shadowboxing</option>
-        <option value="sparring">Sparring</option>
-        <option value="bagwork">Bagwork</option>
-      </select>
-      <label for="stance-select" style="font-size:13px; color:#aaa; white-space:nowrap;">Stance:</label>
-      <select id="stance-select" style="background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:13px;">
-        <option value="Orthodox">Orthodox</option>
-        <option value="Southpaw">Southpaw</option>
-      </select>
-    </div>
+<h1>Cornerman Labelers</h1>
+<p class="sub">The labeling tools. Pick yours — labels save to the Sheet automatically.</p>
 
-    <!-- Main layout -->
-    <div id="main-layout">
-      <!-- Left sidebar: punch types -->
-      <div id="punch-panel">
-        <h3>Move Type</h3>
-        <div id="punch-buttons"></div>
-      </div>
+<h2>Punches &amp; rounds</h2>
+<ul class="tools">
+  <li><a href="punch/index.html"><span class="name">Punch labeler</span><span class="desc">the main tool — label punches in a round</span></a></li>
+  <li><a href="impact/impact_frame.html"><span class="name">Impact frame</span><span class="desc">mark the exact impact frame of a punch</span></a></li>
+  <li><a href="punch_directions/punch_dir_16.html"><span class="name">Punch directions</span><span class="desc">16-way direction of straight punches</span></a></li>
+  <li><a href="bodyshot/bodyshot.html"><span class="name">Bodyshot</span><span class="desc">head vs body per punch clip</span></a></li>
+  <li><a href="callout/callout.html"><span class="name">Callout</span><span class="desc">label called-out combos in guided rounds</span></a></li>
+  <li><a href="rules/rules.html"><span class="name">Rules</span><span class="desc">form-rule spot checks</span></a></li>
+</ul>
 
-      <!-- Center: video player -->
-      <div id="video-container">
-        <div id="video-viewport">
-          <video id="video-player" preload="auto"></video>
-          <div id="video-dim-overlay"></div>
-          <div id="video-overlay"></div>
-          <video id="thumb-video" preload="auto" muted style="display:none"></video>
-        </div>
-        <div id="video-controls">
-          <div id="timeline-minimap" style="display:none">
-            <div id="minimap-segments"></div>
-            <div id="minimap-viewport"></div>
-            <div id="minimap-playhead"></div>
-          </div>
-          <div id="seek-bar-wrapper">
-            <div id="timeline-ticks"></div>
-            <div id="seek-bar-overlay"></div>
-            <input type="range" id="seek-bar" min="0" max="1000" value="0">
-            <div id="seek-thumbnail">
-              <canvas id="thumb-canvas" width="192" height="108"></canvas>
-              <span id="thumb-time"></span>
-            </div>
-          </div>
-          <div id="controls-row">
-            <button id="btn-play" onclick="togglePlay()">Play</button>
-            <button id="btn-mute" onclick="toggleMute()">&#128266;</button>
-            <button onclick="stepFrames(-2)" title="Back 2 frames">&laquo;</button>
-            <button onclick="stepFrames(-1)" title="Back 1 frame">&lsaquo;</button>
-            <button onclick="stepFrames(1)" title="Forward 1 frame">&rsaquo;</button>
-            <button onclick="stepFrames(2)" title="Forward 2 frames">&raquo;</button>
-            <div id="speed-controls">
-              <label>Speed:</label>
-              <button onclick="setSpeed(0.25)">0.25x</button>
-              <button onclick="setSpeed(0.5)">0.5x</button>
-              <button onclick="setSpeed(1)" class="speed-active">1x</button>
-              <button onclick="setSpeed(2)">2x</button>
-            </div>
-            <span id="time-display">0:00.000 / 0:00.000</span>
-            <button id="btn-overlay" onclick="toggleOverlay()" title="Toggle label overlays (L)">Labels: ON</button>
-            <button id="btn-defense-filter" class="overlay-off" onclick="toggleDefenseFilter()" title="Show only defense labels">Defense only: OFF</button>
-            <div id="zoom-controls">
-              <button id="btn-zoom-out" onclick="zoomOut()" title="Zoom out (Ctrl+-)">&#8722;</button>
-              <span id="zoom-level-display">1x</span>
-              <button id="btn-zoom-in" onclick="zoomIn()" title="Zoom in (Ctrl+=)">+</button>
-              <button id="btn-zoom-fit" onclick="zoomFit()" title="Fit all (Ctrl+0)">Fit</button>
-            </div>
-          </div>
-        </div>
-      </div>
+<h2>Form &amp; posture</h2>
+<ul class="tools">
+  <li><a href="chin_tuck/chin_tuck.html"><span class="name">Chin tuck</span><span class="desc">chin vs shoulder, three questions per frame</span></a></li>
+  <li><a href="chin_tuck/chin_tuck_john.html"><span class="name">Chin tuck (John, frozen)</span><span class="desc">the earlier chin labeler, kept for reference</span></a></li>
+  <li><a href="guard_drop/guard_drop_label.html"><span class="name">Guard drop</span><span class="desc">hands-down moments in a round</span></a></li>
+  <li><a href="hip_rotation/hip_rotation_label.html"><span class="name">Hip rotation</span><span class="desc">rotation quality per punch</span></a></li>
+  <li><a href="orientation/index.html"><span class="name">Orientation</span><span class="desc">8-bin facing direction per frame</span></a></li>
+</ul>
 
-      <!-- Right sidebar: labeling workflow + log -->
-      <div id="label-panel">
-        <div id="round-indicator" class="round-idle" onclick="">Press S to start round</div>
-        <h3>Label Punch</h3>
-        <div id="selected-punch">Select a punch type first</div>
-        <button id="btn-timestamp" onclick="captureTimestamp()" disabled>
-          Select a punch type first
-        </button>
-        <div id="pending-label"></div>
-
-        <h3>Labels <span id="label-count">(0)</span><button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none; margin-left:8px; font-size:11px; font-weight:normal; padding:3px 8px; cursor:pointer; background:#0f3460; color:#e0e0e0; border:1px solid #533483; border-radius:3px;">Unsure only: OFF</button></h3>
-        <div id="label-log"></div>
-      </div>
-    </div>
-
-    <!-- Keyboard shortcuts help -->
-    <div id="shortcuts-bar">
-      <strong>Shortcuts:</strong>
-      Space = Play/Pause &nbsp;|&nbsp;
-      &larr;/&rarr; = &plusmn;1 frame &nbsp;|&nbsp;
-      Shift+&larr;/&rarr; = Prev/Next punch &nbsp;|&nbsp;
-      1-6 = Head punch &nbsp;|&nbsp;
-      Shift+1-6 = Body punch &nbsp;|&nbsp;
-      Q/W/A/D/R/C = Defense &nbsp;|&nbsp;
-      Enter = Capture time &nbsp;|&nbsp;
-      Z = Undo last label &nbsp;|&nbsp;
-      Esc = Cancel punch &nbsp;|&nbsp;
-      S = Round Start &nbsp;|&nbsp;
-      E = Round End &nbsp;|&nbsp;
-      L = Toggle Labels &nbsp;|&nbsp;
-      Shift+&lt;/&gt; = Speed &minus;/+ &nbsp;|&nbsp;
-      Alt+Scroll = Zoom &nbsp;|&nbsp;
-      Scroll = Pan (when zoomed) &nbsp;|&nbsp;
-      Ctrl+/- = Zoom In/Out &nbsp;|&nbsp;
-      Ctrl+0 = Fit
-    </div>
-  </div>
-
-  <script src="player.js"></script>
-  <script src="app.js"></script>
+<h2>Bladedness &amp; review</h2>
+<ul class="tools">
+  <li><a href="bladedness/shoulder_bladedness.html"><span class="name">Shoulder bladedness</span><span class="desc">squared vs bladed — shoulder pairs</span></a></li>
+  <li><a href="bladedness/hip_bladedness.html"><span class="name">Hip bladedness</span><span class="desc">squared vs bladed — hip pairs</span></a></li>
+  <li><a href="bladedness/coach_review.html"><span class="name">Bladedness coach review</span><span class="desc">coach scores the curated frames</span></a></li>
+  <li><a href="axiality/axiality_review.html"><span class="name">Axiality review</span><span class="desc">straight-punch direction model review</span></a></li>
+</ul>
 </body>
 </html>

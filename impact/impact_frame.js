@@ -1,33 +1,23 @@
 // ============================================================
-// guard_drop_label.js — resting-hand labeler, one verdict per punch
+// impact_frame.js — impact-frame labeler, one frame index per punch
 //
-// A focused duplicate of impact_frame.js. Same candidate source (Combined
-// Data via listPunchesForVideo), same queue / progress / optimistic-save
-// machinery, same looping clip. The only difference is the label: instead
-// of picking a frame, you pick one of three verdicts about the RESTING
-// (non-punching) hand.
+// A focused duplicate of punch_dir_16.js. Same candidate source (Combined
+// Data via listPunchesForVideo — offensive punches only; slips/rolls and
+// other defensive events are excluded), same queue / progress /
+// optimistic-save machinery, but the label is the absolute frame index
+// (in the source video) of the punch's turnaround: the deepest frame,
+// where forward motion flips to the return to guard (usually bag contact,
+// sometimes 1–2 frames later).
+// Saved to the "Impact Frames" sheet via saveImpactFrame / listImpactFrames /
+// deleteImpactFrame Apps Script actions.
 //
-//   1 good        stayed up at the chin for the whole punch
-//   2 dropped     started up, fell during the punch
-//   3 always_low  never up — low before, during and after
-//
-// The dropped / always_low split is the reason this exists. The Form Labels
-// sheet's `rule_resting_hand` is pass/fail, which merges two different
-// faults: a guard that collapses when you throw, and a guard that was never
-// there. They need different coaching, and a detector that models "the hand
-// fell during the punch" will behave differently on each.
-//
-// Saved to the "Guard Drops" sheet via saveGuardDrop / listGuardDrops /
-// deleteGuardDrop Apps Script actions.
+// Interaction: the punch loops as a slow-motion clip of its event window.
+// Space pauses, ←/→ step single frames; a single Enter saves the displayed
+// frame as the impact and advances. U clears a saved label. S then 1/2/3
+// skips with a reason (occluded / unclear / no_punch).
 //
 // Reuses player.js for the video chrome, sheetUrl(), and shared `state`.
 // ============================================================
-
-const VERDICTS = [
-  { key: '1', value: 'good',       label: 'good',           cls: 'good', short: 'good' },
-  { key: '2', value: 'dropped',    label: 'dropped',        cls: 'drop', short: 'drop' },
-  { key: '3', value: 'always_low', label: 'always too low',  cls: 'low',  short: 'low' },
-];
 
 const SKIP_REASONS = [
   { key: '1', reason: 'occluded', label: 'occluded' },
@@ -37,89 +27,67 @@ const SKIP_REASONS = [
 
 const SPEED_CYCLE = [0.25, 0.5, 1];
 
-// Loop the labelled punch window. 0/0 lead-in/trail-out = pure punch only,
-// same as the impact labeler — the verdict is about this punch, so the clip
-// must not show guard behaviour from before or after it.
+// Loop the labelled punch window. 0/0 lead-in/trail-out = pure punch only.
 const PUNCH_LEAD_IN_SEC = 0;
 const PUNCH_TRAIL_OUT_SEC = 0;
 
 Object.assign(state, {
-  knownVideos: [],
+  knownVideos: [],          // from videos.json — only source of labelable videos
   currentStem: null,
-  videoFps: null,
-  candidates: [],
+  videoFps: null,           // from videos.json for the current stem
+  candidates: [],           // all punches for the current video, chronological
   cursor: 0,
   doneKeys: new Set(),
-  labelByKey: new Map(),     // key -> { verdict: string|null, skip_reason: string|null }
-  coverageByUuid: new Map(),
+  labelByKey: new Map(),    // key -> { impact_frame: int|null, skip_reason: string|null }
+  coverageByUuid: new Map(),       // current video: punch_uuid -> Set<labeler>
   videoLoaded: false,
-  labelCountsByVideo: new Map(),
-  mode: 'scrub',             // 'scrub' | 'skipping'
-  autoJumpOnSync: false,
-  lastMediaTime: null,
+  labelCountsByVideo: new Map(),   // stem -> total punches labeled by anyone
+  mode: 'scrub',            // 'scrub' | 'skipping'
+  autoJumpOnSync: false,    // hop to first unlabeled punch when the sheet sync lands
+  lastMediaTime: null,      // PTS of the most recently presented frame (rVFC)
 });
 
 function keyFor(c) {
-  return 'p:' + c.punch_uuid;
+  return c ? 'p:' + c.punch_uuid : null;
 }
 
 function fpsNow() {
-  return state.videoFps || 30;
+  return state.videoFps || (1 / state.frameDuration);
 }
 
-function verdictMeta(v) {
-  return VERDICTS.find(x => x.value === v) || null;
+function formatImpactLabel(v) {
+  if (v === undefined) return 'unlabeled';
+  if (v.skip_reason) return 'skip:' + v.skip_reason;
+  return 'f ' + v.impact_frame;
 }
 
-function formatVerdictLabel(v) {
-  if (v === undefined || v === null) return 'unlabeled';
-  if (v.skip_reason) return 'skipped: ' + v.skip_reason;
-  const m = verdictMeta(v.verdict);
-  return m ? m.label : String(v.verdict);
-}
-
-// Round markers are never labelable punches.
+// Offense only — slips / rolls / pull-backs / step-backs / "unsure" have no
+// impact frame. Whitelist by punch family so future defense types are
+// excluded automatically.
 function isPunch(punchType) {
-  if (!punchType) return false;
-  const s = String(punchType).toLowerCase();
-  return !['round_start', 'round_end', 'rest_start', 'rest_end'].includes(s);
+  const t = String(punchType || '').toLowerCase();
+  return t.startsWith('jab') || t.startsWith('cross') ||
+         t.startsWith('lead_hook') || t.startsWith('rear_hook') ||
+         t.startsWith('lead_uppercut') || t.startsWith('rear_uppercut');
 }
 
-// Which anatomical hand is throwing, from the punch type. Mirrors the
-// jab/cross naming used throughout Combined Data.
-function punchHandFromType(punchType) {
-  const s = String(punchType || '').toLowerCase();
-  if (s.startsWith('jab') || s.startsWith('lead')) return 'lead';
-  if (s.startsWith('cross') || s.startsWith('rear')) return 'rear';
-  return null;
-}
-
-// The guard hand is the one NOT throwing, and which side that is flips with
-// stance. Orthodox leads with the left; southpaw leads with the right.
-// Returned uppercase for the on-video badge.
-function guardHandFor(punchType, stance) {
-  const hand = punchHandFromType(punchType);
-  if (!hand) return null;
-  const southpaw = String(stance || '').toLowerCase() === 'southpaw';
-  const punchingLeft = southpaw ? (hand === 'rear') : (hand === 'lead');
-  return punchingLeft ? 'RIGHT' : 'LEFT';
-}
-
+// ─── candidate fetch (Combined Data, offensive punches) ────────────────────
+// Mirrors dump_labels.py's timestamp parser since the Sheet stores mm:ss(.mmm)
+// or numeric seconds.
 function parseTimestamp(ts) {
-  if (ts === null || ts === undefined || ts === '') return NaN;
-  if (typeof ts === 'number') return ts;
-  const s = String(ts).trim();
-  const m = s.match(/^(\d+):(\d+)(?:[.,](\d+))?$/);
-  if (m) {
-    const mm = Number(m[1]), ss = Number(m[2]);
-    const frac = m[3] ? Number('0.' + m[3]) : 0;
-    return mm * 60 + ss + frac;
+  if (ts === null || ts === undefined) return NaN;
+  const s = String(ts).trim().replace(/^['"]|['"]$/g, '').replace(',', '.');
+  if (s.indexOf(':') !== -1) {
+    const parts = s.split(':');
+    try {
+      if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    } catch (_) { return NaN; }
   }
-  const n = Number(s);
-  return Number.isFinite(n) ? n : NaN;
+  const v = parseFloat(s);
+  return Number.isFinite(v) ? v : NaN;
 }
 
-// ─── candidate source (Combined Data) ──────────────────────────────────────
 async function fetchPunchCandidates(videoStem) {
   const url = sheetUrl({ action: 'listPunchesForVideo', video: videoStem });
   const res = await fetch(url);
@@ -132,62 +100,59 @@ async function fetchPunchCandidates(videoStem) {
     const start = parseTimestamp(r.start_sec);
     const end   = parseTimestamp(r.end_sec);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    const stance = (r.stance || '').toLowerCase();
     out.push({
       punch_uuid: r.punch_uuid,
       video_name: r.video_name,
       punch_type: r.label,
-      stance,
-      hand: punchHandFromType(r.label),
-      guard_hand: guardHandFor(r.label, stance),
+      stance: (r.stance || '').toLowerCase(),
       start_sec: start,
       end_sec: end,
     });
   }
-  out.sort((a, b) => a.start_sec - b.start_sec);
+  out.sort((a, b) => a.start_sec - b.start_sec);   // chronological
   return out;
 }
 
-// ─── sheet sync (Guard Drops) ──────────────────────────────────────────────
-async function fetchGuardDrops(video, labeler) {
-  const url = sheetUrl({ action: 'listGuardDrops', video, labeler });
+// ─── sheet sync (Impact Frames) ────────────────────────────────────────────
+async function fetchImpactFrames(video, labeler) {
+  const url = sheetUrl({ action: 'listImpactFrames', video, labeler });
   const res = await fetch(url);
-  if (!res.ok) throw new Error('listGuardDrops HTTP ' + res.status);
+  if (!res.ok) throw new Error('listImpactFrames HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('listGuardDrops: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('listImpactFrames: ' + (body.message || 'unknown'));
   return body.rows;
 }
-async function saveGuardDrop({ labeler, video, punch_uuid, verdict, skip_reason, guard_hand }) {
-  const params = { action: 'saveGuardDrop', labeler, video, punch_uuid };
-  params.verdict = verdict || '';
+async function saveImpactFrame({ labeler, video, punch_uuid, impact_frame, skip_reason }) {
+  const params = { action: 'saveImpactFrame', labeler, video, punch_uuid };
+  params.impact_frame = (impact_frame === null || impact_frame === undefined) ? '' : String(impact_frame);
   params.skip_reason = skip_reason || '';
-  params.guard_hand = guard_hand || '';
+  params.fps = String(Math.round(fpsNow() * 1000) / 1000);
   const url = sheetUrl(params);
   const res = await fetch(url);
-  if (!res.ok) throw new Error('saveGuardDrop HTTP ' + res.status);
+  if (!res.ok) throw new Error('saveImpactFrame HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('saveGuardDrop: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('saveImpactFrame: ' + (body.message || 'unknown'));
   return body;
 }
-async function deleteGuardDrop({ labeler, punch_uuid }) {
-  const url = sheetUrl({ action: 'deleteGuardDrop', labeler, punch_uuid });
+async function deleteImpactFrame({ labeler, punch_uuid }) {
+  const url = sheetUrl({ action: 'deleteImpactFrame', labeler, punch_uuid });
   const res = await fetch(url);
-  if (!res.ok) throw new Error('deleteGuardDrop HTTP ' + res.status);
+  if (!res.ok) throw new Error('deleteImpactFrame HTTP ' + res.status);
   const body = await res.json();
-  if (body.status !== 'ok') throw new Error('deleteGuardDrop: ' + (body.message || 'unknown'));
+  if (body.status !== 'ok') throw new Error('deleteImpactFrame: ' + (body.message || 'unknown'));
   return body;
 }
 
-// ─── panel plumbing ────────────────────────────────────────────────────────
+// ─── UI helpers ────────────────────────────────────────────────────────────
 function setStatus(text, cls) {
-  const el = document.getElementById('gd-status');
+  const el = document.getElementById('impact-status');
   if (!el) return;
   el.textContent = text;
   el.classList.remove('ok', 'err');
   if (cls) el.classList.add(cls);
 }
 function setCurrentLine(text) {
-  const el = document.getElementById('gd-current');
+  const el = document.getElementById('impact-current');
   if (el) el.textContent = text;
 }
 function setModeBadge(text) {
@@ -203,63 +168,77 @@ function describeCandidate(c, totalLabel, labelTxt) {
   return `${type}${stance} · ${window} · ${labelTxt} · ${totalLabel}`;
 }
 
-function updateHud() {
-  const hud = document.getElementById('gd-hud');
-  if (!hud) return;
-  const c = state.candidates[state.cursor];
-  if (!c) { hud.textContent = '— no punch —'; return; }
-  hud.textContent = `${c.punch_type} · ${c.hand || '?'} hand · ${c.stance || 'stance ?'}`;
+// ─── frame HUD + state banner (on-video) ───────────────────────────────────
+function displayedFrameNow() {
+  const video = document.getElementById('video-player');
+  if (!video) return null;
+  const f = fpsNow();
+  if (state.lastMediaTime !== null && state.lastMediaTime !== undefined) {
+    return Math.round(state.lastMediaTime * f);
+  }
+  return Math.floor(video.currentTime * f + 1e-3);
 }
 
-// The badge that stops you watching the wrong arm.
-function updateHandBadge() {
-  const el = document.getElementById('gd-hand');
-  if (!el) return;
-  const c = state.candidates[state.cursor];
-  if (!c || !c.guard_hand) { el.className = 'hidden'; el.textContent = ''; return; }
-  el.className = '';
-  el.textContent = `WATCH: ${c.guard_hand} HAND`;
+function clipFrameBounds() {
+  const lw = state.loopWindow;
+  if (!lw) return null;
+  const f = fpsNow();
+  const start = Math.max(0, Math.floor(lw.start * f + 1e-3));
+  const end = Math.floor(lw.end * f + 1e-3);
+  return { start, end, total: end - start + 1 };
+}
+
+function updateHud() {
+  const hud = document.getElementById('impact-hud');
+  if (!hud) return;
+  const bounds = clipFrameBounds();
+  const abs = displayedFrameNow();
+  if (!bounds || abs === null) {
+    hud.textContent = '— no punch —';
+    return;
+  }
+  const fpsTxt = (Math.round(fpsNow() * 10) / 10) + 'fps';
+  if (abs < bounds.start || abs > bounds.end) {
+    hud.textContent = `outside clip · abs ${abs} · ${fpsTxt}`;
+    return;
+  }
+  const rel = abs - bounds.start + 1;
+  hud.textContent = `clip ${rel}/${bounds.total} · abs ${abs} · ${fpsTxt}`;
 }
 
 function setBanner(text, cls) {
-  const banner = document.getElementById('gd-banner');
+  const banner = document.getElementById('impact-banner');
   if (!banner) return;
-  if (!text) { banner.className = 'hidden'; banner.textContent = ''; return; }
+  if (!text) {
+    banner.className = 'hidden';
+    banner.textContent = '';
+    return;
+  }
   banner.textContent = text;
   banner.className = cls || '';
 }
 
-function updateVerdictPanel() {
-  const el = document.getElementById('gd-state');
+function updateCapturePanel() {
+  const el = document.getElementById('impact-state');
   if (!el) return;
-  for (const v of VERDICTS) {
-    const btn = document.getElementById('btn-v-' + (v.value === 'always_low' ? 'low' : v.value));
-    if (btn) btn.classList.remove('chosen');
-  }
   if (state.mode === 'skipping') {
     el.innerHTML = 'Skip reason: <b>1</b> occluded · <b>2</b> unclear · <b>3</b> no punch in clip · <b>Esc</b> cancel';
-    setBanner('SKIP — pick a reason', 'skipping');
-    return;
-  }
-  const c = state.candidates[state.cursor];
-  const existing = c ? state.labelByKey.get(keyFor(c)) : undefined;
-  if (existing !== undefined) {
-    const isSkip = !!existing.skip_reason;
-    const m = verdictMeta(existing.verdict);
-    setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : (m ? m.label.toUpperCase() : '?'),
-              isSkip ? 'skipping' : (existing.verdict || ''));
-    const cls = isSkip ? 'lbl-skip' : (m ? 'lbl-' + m.cls : '');
-    el.innerHTML = `Saved: <b class="${cls}">${formatVerdictLabel(existing)}</b>.<br>` +
-      '<b>1/2/3</b> overwrites · <b>U</b> clears';
-    if (!isSkip && m) {
-      const btn = document.getElementById('btn-v-' + (m.value === 'always_low' ? 'low' : m.value));
-      if (btn) btn.classList.add('chosen');
-    }
   } else {
-    setBanner(null);
-    el.innerHTML = c
-      ? 'Watch the non-punching hand for the whole loop, then press <b>1</b>, <b>2</b> or <b>3</b>.'
-      : '—';
+    const c = state.candidates[state.cursor];
+    const existing = c ? state.labelByKey.get(keyFor(c)) : undefined;
+    if (existing !== undefined) {
+      // Already-labelled punch: unmissable on-video banner + colored panel text.
+      const isSkip = !!existing.skip_reason;
+      setBanner(isSkip ? `SKIPPED: ${existing.skip_reason}` : `LABELED f ${existing.impact_frame}`,
+                isSkip ? 'skipping' : 'captured');
+      el.innerHTML = `Saved: <b class="${isSkip ? 'lbl-skip' : 'lbl-done'}">${formatImpactLabel(existing)}</b>.<br>` +
+        '<b>Enter</b> re-captures (overwrites) · <b>U</b> clears';
+    } else {
+      setBanner(null);
+      el.innerHTML = c
+        ? 'Line up the impact frame (<b>Space</b> pause · <b>&larr;/&rarr;</b> step), then <b>Enter</b> saves &amp; advances.'
+        : '—';
+    }
   }
 }
 
@@ -268,7 +247,7 @@ function updateVideoOverlay() {
   updateHud();
 }
 
-// ─── candidate generation ──────────────────────────────────────────────────
+// ─── candidate generation ────────────────────────────────────────────────
 async function tryGenerateCandidates() {
   if (!state.currentStem) {
     setCurrentLine('— pick a video name to begin —');
@@ -307,6 +286,9 @@ async function tryGenerateCandidates() {
   }
   setModeBadge(state.candidates.length + ' punches');
   redrawProgress();
+  // Loop the first punch immediately — don't make the labeler sit through the
+  // (slow) sheet sync; it fills in existing labels in the background and then
+  // hops to the first unlabeled punch.
   state.cursor = 0;
   seekToCurrent();
   state.autoJumpOnSync = true;
@@ -322,7 +304,10 @@ async function syncFromSheet() {
   }
   try {
     setStatus('Loading existing labels…');
-    const rows = await fetchGuardDrops(state.currentStem, '');
+    // Pull every labeler's rows for this video: the in-video UX (progress,
+    // next-unlabeled) reflects only YOUR labels, but the dropdown count is the
+    // total of punches labeled by anyone (deduped by punch_uuid).
+    const rows = await fetchImpactFrames(state.currentStem, '');
     state.doneKeys = new Set();
     state.labelByKey = new Map();
     state.coverageByUuid = new Map();
@@ -333,21 +318,27 @@ async function syncFromSheet() {
       if (r.labeler === labeler) {
         const k = 'p:' + r.punch_uuid;
         state.doneKeys.add(k);
-        state.labelByKey.set(k, { verdict: r.verdict, skip_reason: r.skip_reason });
+        state.labelByKey.set(k, { impact_frame: r.impact_frame, skip_reason: r.skip_reason });
       }
     }
     setStatus(`Loaded ${state.doneKeys.size} of your label(s) · ${state.coverageByUuid.size} labeled in total.`, 'ok');
     updateOptionCount(state.currentStem, state.coverageByUuid.size);
+    // On initial load, hop to the first unlabeled punch — unless the labeler
+    // already started navigating/capturing while the sync was in flight, or
+    // it IS the punch already looping (no pointless loop restart).
     if (state.autoJumpOnSync && state.mode === 'scrub') {
       const firstIdx = state.candidates.findIndex(cc => !state.doneKeys.has(keyFor(cc)));
-      if (firstIdx !== state.cursor) advanceToNextUnlabeled(0);
+      if (firstIdx !== state.cursor) advanceToNextUnlabeled(0);   // also handles all-labelled
     }
+    // Refresh the current punch's text with any label the sync brought in,
+    // but don't re-seek — the punch is already looping (and the labeler may
+    // be mid-capture).
     const c = state.candidates[state.cursor];
     if (c) {
       const total = `${state.cursor + 1}/${state.candidates.length}`;
-      setCurrentLine(describeCandidate(c, total, formatVerdictLabel(state.labelByKey.get(keyFor(c)))));
+      setCurrentLine(describeCandidate(c, total, formatImpactLabel(state.labelByKey.get(keyFor(c)))));
     }
-    updateVerdictPanel();
+    updateCapturePanel();
     redrawProgress();
   } catch (e) {
     setStatus("Couldn't fetch labels: " + e.message, 'err');
@@ -360,7 +351,8 @@ function advanceToNextUnlabeled(fromIdx) {
   if (N === 0) return;
   for (let i = 0; i < N; i++) {
     const idx = (fromIdx + i) % N;
-    if (!state.doneKeys.has(keyFor(state.candidates[idx]))) {
+    const c = state.candidates[idx];
+    if (!state.doneKeys.has(keyFor(c))) {
       state.cursor = idx;
       seekToCurrent();
       return;
@@ -373,7 +365,7 @@ function advanceToNextUnlabeled(fromIdx) {
 function enterScrub() {
   state.mode = 'scrub';
   setBanner(null);
-  updateVerdictPanel();
+  updateCapturePanel();
 }
 
 function seekToCurrent() {
@@ -382,7 +374,6 @@ function seekToCurrent() {
   if (state.cursor >= state.candidates.length) {
     state.loopWindow = null;
     updateHud();
-    updateHandBadge();
     return;
   }
   const c = state.candidates[state.cursor];
@@ -399,15 +390,15 @@ function seekToCurrent() {
       if (pp && typeof pp.catch === 'function') pp.catch(() => {});
     }
   }
+  const label = state.labelByKey.get(keyFor(c));
   const total = `${state.cursor + 1}/${state.candidates.length}`;
-  setCurrentLine(describeCandidate(c, total, formatVerdictLabel(state.labelByKey.get(keyFor(c)))));
-  updateVerdictPanel();
+  setCurrentLine(describeCandidate(c, total, formatImpactLabel(label)));
+  updateCapturePanel();
   updateOverviewHighlight();
   updateHud();
-  updateHandBadge();
 }
 
-// ─── verdict / skip / undo ─────────────────────────────────────────────────
+// ─── capture / confirm / skip / undo ───────────────────────────────────────
 function requireLabeler() {
   const labeler = document.getElementById('labeler-input').value.trim();
   if (!labeler) {
@@ -418,34 +409,54 @@ function requireLabeler() {
   return labeler;
 }
 
-function chooseVerdict(value) {
-  if (state.mode === 'skipping') return;
-  const labeler = requireLabeler();
-  if (!labeler) return;
-  const c = state.candidates[state.cursor];
-  if (!c) { setStatus('No punch selected.', 'err'); return; }
-  persistLabel(labeler, { verdict: value, skip_reason: null });
-}
-
-function beginSkip() {
-  if (!state.candidates[state.cursor]) return;
-  state.mode = 'skipping';
-  updateVerdictPanel();
-}
-
-function skipWith(reason) {
+// One keystroke: save the currently displayed frame as the impact and advance.
+// Line the frame up first — Space pauses, ←/→ step single frames.
+function captureAndSave() {
+  state.autoJumpOnSync = false;
+  if (!state.currentStem || !state.candidates.length) {
+    setStatus('Pick a video and load the file first.', 'err'); return;
+  }
   const labeler = requireLabeler();
   if (!labeler) return;
   const c = state.candidates[state.cursor];
   if (!c) return;
-  state.mode = 'scrub';
-  persistLabel(labeler, { verdict: null, skip_reason: reason });
+  const bounds = clipFrameBounds();
+  let frame = displayedFrameNow();
+  if (frame === null || !bounds) return;
+  frame = Math.max(bounds.start, Math.min(bounds.end, frame));
+  persistLabel(labeler, { impact_frame: frame, skip_reason: null });
+}
+
+function beginSkip() {
+  state.autoJumpOnSync = false;
+  if (!state.currentStem || !state.candidates.length) return;
+  const video = document.getElementById('video-player');
+  if (video && !video.paused) {
+    video.pause();
+    const btn = document.getElementById('btn-play');
+    if (btn) btn.textContent = 'Play';
+  }
+  state.mode = 'skipping';
+  setBanner('SKIP: [1] occluded · [2] unclear · [3] no punch · [Esc] cancel', 'skipping');
+  updateCapturePanel();
+}
+
+function skipWith(reason) {
+  if (!state.currentStem || !state.candidates.length) return;
+  const labeler = requireLabeler();
+  if (!labeler) return;
+  persistLabel(labeler, { impact_frame: null, skip_reason: reason });
 }
 
 function cancelToScrub() {
-  state.mode = 'scrub';
-  updateVerdictPanel();
-  setStatus('Skip cancelled.');
+  enterScrub();
+  const video = document.getElementById('video-player');
+  if (video && video.paused && state.loopWindow) {
+    const pp = video.play();
+    if (pp && typeof pp.catch === 'function') pp.catch(() => {});
+    const btn = document.getElementById('btn-play');
+    if (btn) btn.textContent = 'Pause';
+  }
 }
 
 // Optimistic local update — advance immediately, save in the background,
@@ -462,17 +473,16 @@ function persistLabel(labeler, label) {
   state.pendingSaves = (state.pendingSaves || 0) + 1;
   redrawProgress();
   updateOptionCount(state.currentStem, state.coverageByUuid.size);
-  setStatus('saving ' + formatVerdictLabel(label) + '… (' + state.pendingSaves + ' pending)');
+  setStatus('saving ' + formatImpactLabel(label) + '… (' + state.pendingSaves + ' pending)');
 
   gotoNext();
 
-  saveGuardDrop({
+  saveImpactFrame({
     labeler,
     video: state.currentStem,
     punch_uuid: c.punch_uuid,
-    verdict: label.verdict,
+    impact_frame: label.impact_frame,
     skip_reason: label.skip_reason,
-    guard_hand: c.guard_hand,
   }).then(() => {
     state.pendingSaves = Math.max(0, (state.pendingSaves || 1) - 1);
     setStatus(state.pendingSaves === 0 ? 'Saved.'
@@ -490,6 +500,7 @@ function persistLabel(labeler, label) {
   });
 }
 
+// Clear the saved label of the punch at `idx` (used by U and the overview ✕).
 async function clearLabelAt(idx) {
   if (!state.currentStem) return;
   const labeler = document.getElementById('labeler-input').value.trim();
@@ -505,18 +516,20 @@ async function clearLabelAt(idx) {
   redrawProgress();
   updateOptionCount(state.currentStem, state.coverageByUuid.size);
   if (idx === state.cursor) {
-    updateVerdictPanel();
+    updateCapturePanel();
     const total = `${idx + 1}/${state.candidates.length}`;
     setCurrentLine(describeCandidate(c, total, 'unlabeled'));
   }
   try {
-    await deleteGuardDrop({ labeler, punch_uuid: c.punch_uuid });
+    await deleteImpactFrame({ labeler, punch_uuid: c.punch_uuid });
     setStatus("Cleared that punch's label — relabel it any time.", 'ok');
   } catch (e) {
     setStatus('Clear failed: ' + e.message, 'err');
   }
 }
 
+// U: clear the current punch's saved label so it can be relabelled.
+// (Esc — not U — closes the skip menu.)
 async function undoAction() {
   if (state.mode === 'skipping') {
     setStatus('Esc closes the skip menu.', null);
@@ -525,69 +538,68 @@ async function undoAction() {
   const c = state.candidates[state.cursor];
   if (!c) return;
   if (!state.doneKeys.has(keyFor(c))) {
-    setStatus('Nothing saved for this punch yet.', null);
+    setStatus('Nothing to undo on this punch.', null);
     return;
   }
   await clearLabelAt(state.cursor);
 }
 
-// ─── navigation ────────────────────────────────────────────────────────────
 function gotoPrev() {
   state.autoJumpOnSync = false;
   if (!state.candidates.length) return;
-  state.cursor = Math.max(0, Math.min(state.cursor, state.candidates.length - 1) - 1);
+  state.cursor = Math.max(0, state.cursor - 1);
   seekToCurrent();
 }
+
+// Sequential next — moves to the following punch whether or not it's labelled.
 function gotoNext() {
   state.autoJumpOnSync = false;
   if (!state.candidates.length) return;
-  if (state.cursor >= state.candidates.length - 1) {
-    advanceToNextUnlabeled(0);
-    return;
-  }
-  state.cursor += 1;
+  state.cursor = Math.min(state.candidates.length - 1, state.cursor + 1);
   seekToCurrent();
 }
+
 function gotoFirst() {
   state.autoJumpOnSync = false;
   if (!state.candidates.length) return;
   state.cursor = 0;
   seekToCurrent();
 }
+
 function gotoNextUnlabeled() {
   state.autoJumpOnSync = false;
-  advanceToNextUnlabeled(state.cursor);
+  advanceToNextUnlabeled(state.cursor + 1);
 }
+
 function cycleSpeed() {
-  const video = document.getElementById('video-player');
-  if (!video) return;
-  const i = SPEED_CYCLE.indexOf(video.playbackRate);
+  const cur = state.playbackRate || 0.25;
+  const i = SPEED_CYCLE.indexOf(cur);
   setSpeed(SPEED_CYCLE[(i + 1) % SPEED_CYCLE.length]);
 }
 
-// ─── progress + overview ───────────────────────────────────────────────────
 function redrawProgress() {
   const N = state.candidates.length;
   const labelled = state.doneKeys.size;
-  const bar = document.getElementById('gd-bar');
+  const bar = document.getElementById('impact-bar');
   if (bar) bar.style.width = N ? (100 * labelled / N).toFixed(1) + '%' : '0%';
-  const pt = document.getElementById('gd-progress-text');
+  const pt = document.getElementById('impact-progress-text');
   if (pt) pt.textContent = N ? labelled + ' / ' + N + ' labelled' : 'no candidates';
-  const counts = {};
+  let framed = 0;
   const skips = {};
   for (const v of state.labelByKey.values()) {
     if (v.skip_reason) skips[v.skip_reason] = (skips[v.skip_reason] || 0) + 1;
-    else if (v.verdict) counts[v.verdict] = (counts[v.verdict] || 0) + 1;
+    else framed++;
   }
   const parts = [];
-  for (const v of VERDICTS) if (counts[v.value]) parts.push(v.short + ': ' + counts[v.value]);
+  if (framed) parts.push('impact: ' + framed);
   for (const s of SKIP_REASONS) if (skips[s.reason]) parts.push(s.reason + ': ' + skips[s.reason]);
-  document.getElementById('gd-dist').textContent = parts.length ? parts.join(' · ') : '—';
+  document.getElementById('impact-dist').textContent = parts.length ? parts.join(' · ') : '—';
   rebuildOverview();
 }
 
+// ─── overview list — one row per punch, click to jump, ✕ to clear ──────────
 function rebuildOverview() {
-  const list = document.getElementById('gd-overview');
+  const list = document.getElementById('impact-overview');
   if (!list) return;
   list.innerHTML = '';
   if (!state.candidates.length) { list.textContent = '—'; return; }
@@ -599,11 +611,7 @@ function rebuildOverview() {
     let labelTxt = '—', labelCls = 'none';
     if (v !== undefined) {
       if (v.skip_reason) { labelTxt = 'skip:' + v.skip_reason; labelCls = 'skip'; }
-      else {
-        const m = verdictMeta(v.verdict);
-        labelTxt = m ? m.short : String(v.verdict);
-        labelCls = m ? m.cls : 'none';
-      }
+      else { labelTxt = 'f ' + v.impact_frame; labelCls = 'done'; }
     }
     row.innerHTML =
       `<span class="ov-idx">${idx + 1}</span>` +
@@ -628,7 +636,7 @@ function rebuildOverview() {
 }
 
 function updateOverviewHighlight() {
-  const list = document.getElementById('gd-overview');
+  const list = document.getElementById('impact-overview');
   if (!list) return;
   let currentRow = null;
   for (const row of list.querySelectorAll('.ov-row')) {
@@ -646,44 +654,47 @@ function csvCell(v) {
 }
 
 async function exportPerLabelerCsvs() {
-  setStatus('Fetching all guard-drop labels…');
+  setStatus('Fetching all impact labels…');
   let rows;
   try {
-    rows = await fetchGuardDrops('', '');
+    rows = await fetchImpactFrames('', '');
   } catch (e) {
     setStatus('Export failed: ' + e.message, 'err');
     return;
   }
   const byLabeler = new Map();
   for (const r of rows) {
-    let arr = byLabeler.get(r.labeler);
-    if (!arr) { arr = []; byLabeler.set(r.labeler, arr); }
-    arr.push(r);
+    let list = byLabeler.get(r.labeler);
+    if (!list) { list = []; byLabeler.set(r.labeler, list); }
+    list.push(r);
   }
-  if (!byLabeler.size) { setStatus('No labels to export.', 'err'); return; }
-  for (const [labeler, arr] of byLabeler) {
-    const header = ['punch_uuid', 'video', 'verdict', 'guard_hand', 'skip_reason', 'ts'];
+  if (byLabeler.size === 0) {
+    setStatus('No impact labels to export yet.', 'err');
+    return;
+  }
+  const header = ['labeler', 'video', 'punch_uuid', 'impact_frame', 'fps', 'skip_reason', 'ts'];
+  let delay = 0;
+  for (const [labeler, list] of byLabeler) {
     const lines = [header.join(',')];
-    for (const r of arr) {
-      lines.push([r.punch_uuid, r.video, r.verdict, r.guard_hand, r.skip_reason, r.ts]
-        .map(csvCell).join(','));
+    for (const r of list) {
+      lines.push(header.map(h => csvCell(r[h])).join(','));
     }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'guard_drops_' + String(labeler).replace(/[^A-Za-z0-9_-]/g, '_') + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
+    a.href = url;
+    a.download = 'impact_frames_' + labeler.replace(/[^\w-]+/g, '_') + '.csv';
+    // Stagger the clicks — browsers drop back-to-back programmatic downloads.
+    setTimeout(() => { a.click(); URL.revokeObjectURL(url); }, delay);
+    delay += 300;
   }
   setStatus('Exported ' + byLabeler.size + ' labeler CSV(s).', 'ok');
 }
 
-// ─── dropdown / counts ─────────────────────────────────────────────────────
+// ─── dropdown / counts ──────────────────────────────────────────────────────
 async function loadVideosConfig() {
   try {
-    const res = await fetch('./videos.json', { cache: 'no-cache' });
+    const res = await fetch('../shared/videos.json', { cache: 'no-cache' });
     if (!res.ok) return { videos: [] };
     return await res.json();
   } catch {
@@ -691,10 +702,12 @@ async function loadVideosConfig() {
   }
 }
 
+// Total punches labeled by ANY labeler, per video (deduped by punch_uuid so a
+// punch labeled by several people still counts once). Drives the dropdown count.
 async function fetchTotalCounts() {
   const counts = new Map();
   try {
-    const url = sheetUrl({ action: 'listGuardDrops', labeler: '' });
+    const url = sheetUrl({ action: 'listImpactFrames', labeler: '' });
     const res = await fetch(url);
     if (!res.ok) return counts;
     const body = await res.json();
@@ -741,7 +754,7 @@ function populateVideoSelect(cachedVideos, counts) {
   const cachedActive = cachedVideos.filter(v => !v.heldOut);
   if (!cachedActive.length) return;
   const grp = document.createElement('optgroup');
-  grp.label = 'Cached videos · guard drops';
+  grp.label = 'Cached videos · impact frames';
   for (const v of cachedActive.slice().sort((a, b) => a.stem.localeCompare(b.stem))) {
     const opt = document.createElement('option');
     opt.value = v.stem;
@@ -763,10 +776,10 @@ async function refreshCountsAndDropdown() {
   populateVideoSelect(state.knownVideos, map);
 }
 
-// ─── wire-up ───────────────────────────────────────────────────────────────
+// ─── wire-up ────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   setupPlayer();
-  setSpeed(0.25);
+  setSpeed(0.25);   // slow motion by default; persists across video loads
 
   const labelerInput = document.getElementById('labeler-input');
   try { labelerInput.value = localStorage.getItem('orient_labeler_name') || ''; } catch {}
@@ -794,24 +807,27 @@ window.addEventListener('DOMContentLoaded', async () => {
     tryGenerateCandidates();
   });
 
+  // Track the PTS of the most recently *presented* frame — this is what
+  // "currently displayed frame" means for capture, exact even at 0.25x.
   if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
     const onFrame = (now, metadata) => {
       state.lastMediaTime = metadata.mediaTime;
+      updateHud();
       video.requestVideoFrameCallback(onFrame);
     };
     video.requestVideoFrameCallback(onFrame);
   }
+  video.addEventListener('seeked', updateHud);
 
-  // Loop the clip window while playing in scrub mode.
+  // Loop the clip window while playing in scrub mode. Snap back to start when
+  // playback runs past end; paused frame-stepping is never yanked back.
   video.addEventListener('timeupdate', () => {
     const lw = state.loopWindow;
     if (!lw || state.mode !== 'scrub' || video.paused) return;
     if (video.currentTime > lw.end + 0.05) video.currentTime = lw.start;
   });
 
-  document.getElementById('btn-v-good').addEventListener('click', () => chooseVerdict('good'));
-  document.getElementById('btn-v-dropped').addEventListener('click', () => chooseVerdict('dropped'));
-  document.getElementById('btn-v-low').addEventListener('click', () => chooseVerdict('always_low'));
+  document.getElementById('btn-capture').addEventListener('click', captureAndSave);
   document.getElementById('btn-undo').addEventListener('click', undoAction);
   document.getElementById('btn-skip-occluded').addEventListener('click', () => skipWith('occluded'));
   document.getElementById('btn-skip-unclear').addEventListener('click', () => skipWith('unclear'));
@@ -822,6 +838,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-next-unlabeled').addEventListener('click', gotoNextUnlabeled);
   document.getElementById('btn-export').addEventListener('click', exportPerLabelerCsvs);
 
+  // Buttons keep focus after a click; blur them so Enter/Space keep driving
+  // the capture flow instead of re-clicking the focused button.
   document.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('button');
     if (btn) btn.blur();
@@ -831,7 +849,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-    // Skip menu is modal: 1/2/3 mean reasons there, verdicts everywhere else.
     if (state.mode === 'skipping') {
       const m = SKIP_REASONS.find(s => s.key === e.key);
       if (m) { e.preventDefault(); skipWith(m.reason); return; }
@@ -839,9 +856,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    const v = VERDICTS.find(x => x.key === e.key);
-    if (v) { e.preventDefault(); chooseVerdict(v.value); return; }
-
+    if (e.key === 'Enter') { e.preventDefault(); captureAndSave(); return; }
     if (e.key === ' ') { e.preventDefault(); togglePlay(); return; }
     if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrames(-1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); stepFrames(1); return; }

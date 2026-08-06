@@ -8,7 +8,7 @@
 
 ## Step 2: Add the Apps Script
 1. In your Google Sheet, go to **Extensions > Apps Script**
-2. Delete any existing code and paste the contents of `apps_script.js` from this folder
+2. Delete any existing code and paste the contents of `shared/apps_script.js`
 3. Click **Save** (name the project anything, e.g. "Label Receiver")
 
 ## Step 3: Deploy the Apps Script
@@ -23,7 +23,7 @@
 6. **Copy the Web App URL** - it looks like: `https://script.google.com/macros/s/XXXX/exec`
 
 ## Step 4: Configure the Labeler
-1. Open the labeler at https://cornerman-ai.github.io/boxing-labeler/
+1. Open the labeler at https://cornerman-ai.github.io/cornerman-labeler/
 2. Paste the Web App URL into the "Apps Script URL" field in the top bar
 3. Click "Save"
 
