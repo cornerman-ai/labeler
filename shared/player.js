@@ -1,5 +1,5 @@
 // ============================================================
-// player.js — Shared video + timeline core for boxing-labeler
+// player.js — Shared video + timeline core for cornerman-labeler
 //
 // Provides: video load, seek bar, timeline minimap, zoom, playback
 // controls, frame stepping, time ticks, sheet-URL helper, toasts,

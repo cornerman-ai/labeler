@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate boxing-labeler/videos.json from Apple Vision pose-cache metadata.
+"""Regenerate cornerman-labeler/shared/videos.json from Apple Vision pose-cache metadata.
 
 The orientation labeler ONLY labels videos that appear in videos.json. Each
 saved label's (round, frame) is a direct index into `<video>_vision_r<round>.npy`,
