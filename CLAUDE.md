@@ -6,7 +6,7 @@ Web-based video labeling tool for boxing punch annotation.
 
 - `index.html` + `style.css` + `app.js` — Frontend (vanilla HTML/JS, no framework)
 - `apps_script.js` — Google Apps Script backend (deployed as Web App)
-- Hosted at: https://tradermathe.github.io/boxing-labeler/
+- Hosted at: https://cornerman-ai.github.io/boxing-labeler/
 
 ## How It Works
 

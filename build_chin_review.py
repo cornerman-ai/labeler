@@ -30,7 +30,7 @@ import shutil
 import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PAGES_BASE = 'https://tradermathe.github.io/boxing-labeler/frames/'
+PAGES_BASE = 'https://cornerman-ai.github.io/boxing-labeler/frames/'
 DRIVE_DIR = ('/Users/mathewieme/Google Drive/My Drive/Cornerman/data/'
              'coach_media/chin_tuck/review_frames')
 
