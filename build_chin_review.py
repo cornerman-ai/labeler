@@ -10,7 +10,7 @@ triage-excluded frames removed — exactly what the page shows) and write
                         dropdown | comment. importChinReviewLabels() later
                         moves the picks into the Chin Labels sheet.
   <drive>/NNN.jpg       numbered copies of the same frames in a Drive
-                        folder (default under Cornerman/data/labeler_media/chin_tuck) as a
+                        folder (default under Cornerman/data/coach_media/chin_tuck) as a
                         backup way to view them full-size — share it with
                         the reviewer alongside the sheet.
 
@@ -32,7 +32,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGES_BASE = 'https://tradermathe.github.io/boxing-labeler/frames/'
 DRIVE_DIR = ('/Users/mathewieme/Google Drive/My Drive/Cornerman/data/'
-             'labeler_media/chin_tuck/review_frames')
+             'coach_media/chin_tuck/review_frames')
 
 
 def playlist_from_page():
