@@ -23,7 +23,7 @@
 6. **Copy the Web App URL** - it looks like: `https://script.google.com/macros/s/XXXX/exec`
 
 ## Step 4: Configure the Labeler
-1. Open the labeler at https://cornerman-ai.github.io/cornerman-labeler/
+1. Open the labeler at https://cornerman-ai.github.io/labeler/
 2. Paste the Web App URL into the "Apps Script URL" field in the top bar
 3. Click "Save"
 

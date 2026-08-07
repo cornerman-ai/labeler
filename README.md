@@ -4,7 +4,7 @@ The labelers — the web tools the labeling team uses to produce Cornerman's
 training labels. One folder per labeler; every tool saves straight to the
 **Box Labeled Data** Sheet via the shared Apps Script backend (no login).
 
-**Start here:** https://cornerman-ai.github.io/cornerman-labeler/ — the landing
+**Start here:** https://cornerman-ai.github.io/labeler/ — the landing
 page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.md).
 
 ## The labelers

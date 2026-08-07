@@ -8,7 +8,7 @@ Web-based video labeling tool for boxing punch annotation.
   its page, JS, data, and media; `shared/` holds `player.js`, `style.css`,
   `videos.json`, and `apps_script.js` (deployed as a Web App); root `index.html`
   is the landing page listing every labeler
-- Hosted at: https://cornerman-ai.github.io/cornerman-labeler/
+- Hosted at: https://cornerman-ai.github.io/labeler/
 
 ## How It Works
 
