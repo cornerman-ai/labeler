@@ -309,11 +309,30 @@ function doGet(e) {
     sheetName = 'Labeled Data ' + labeler.charAt(0).toUpperCase() + labeler.slice(1).toLowerCase();
   }
 
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var pss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = pss.getSheetByName(sheetName);
   if (!sheet) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: 'error', message: 'Sheet not found: ' + sheetName }))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (labeler === 'combined' || labeler === 'archive') {
+      return ContentService
+        .createTextOutput(JSON.stringify({ status: 'error', message: 'Sheet not found: ' + sheetName }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    // Auto-create a per-labeler sheet so a new name's first save just works
+    // (since 2026-08 the name comes from the in-page field, not a URL, so
+    // fresh names like "Labeled Data John" won't pre-exist). Headers copy
+    // from an existing Labeled Data sheet; fixed fallback otherwise.
+    var tmpl = null;
+    var allSheets = pss.getSheets();
+    for (var ti = 0; ti < allSheets.length; ti++) {
+      if (allSheets[ti].getName().indexOf('Labeled Data') === 0) { tmpl = allSheets[ti]; break; }
+    }
+    sheet = pss.insertSheet(sheetName);
+    if (tmpl && tmpl.getLastColumn() > 0) {
+      var hdr = tmpl.getRange(1, 1, 1, tmpl.getLastColumn()).getValues();
+      sheet.getRange(1, 1, 1, hdr[0].length).setValues(hdr);
+    } else {
+      sheet.appendRow(['Video Name', 'Punch ID', 'Punch Label', 'Start Time', 'End Time', 'Duration', 'Timestamp']);
+    }
   }
 
   // === LIST labels for a video ===
