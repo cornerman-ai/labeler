@@ -95,19 +95,19 @@ window.addEventListener('DOMContentLoaded', () => {
   updateTimestampButton();
   updateRoundIndicator();
   setupDriveLink();
-  if (LABELER_ID) {
+  if (labelerId()) {
     const badge = document.getElementById('labeler-badge');
-    const isName = !/^\d+$/.test(LABELER_ID);
+    const isName = !/^\d+$/.test(labelerId());
     const displayName = isName
-      ? LABELER_ID.charAt(0).toUpperCase() + LABELER_ID.slice(1).toLowerCase()
-      : LABELER_ID;
+      ? labelerId().charAt(0).toUpperCase() + labelerId().slice(1).toLowerCase()
+      : labelerId();
     badge.textContent = isName ? displayName : 'Labeler ' + displayName;
     badge.style.display = 'inline';
     document.title = isName
       ? 'Boxing Punch Labeler — ' + displayName
       : 'Boxing Punch Labeler ' + displayName;
   }
-  if (LABELER_ID === 'review') {
+  if (labelerId().toLowerCase() === 'review') {   // labeler_name.js capitalizes the stored name
     const btn = document.getElementById('btn-unsure-filter');
     if (btn) btn.style.display = 'inline-block';
     if (localStorage.getItem('unsureFilter') === 'true') {
@@ -374,7 +374,7 @@ function setupDriveLink() {
   const trainingType = document.getElementById('training-type');
   const stance = document.getElementById('stance-select');
 
-  const prefix = LABELER_ID ? 'labeler_' + LABELER_ID + '_' : 'labeler_';
+  const prefix = labelerId() ? 'labeler_' + labelerId() + '_' : 'labeler_';
   const saved = localStorage.getItem(prefix + 'drive_link');
   if (saved) input.value = saved;
 

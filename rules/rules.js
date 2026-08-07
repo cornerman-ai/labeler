@@ -92,12 +92,12 @@ window.addEventListener('DOMContentLoaded', () => {
   setupLoopToggle();
   setupFilter();
   renderCurrentPunch();      // empty state
-  if (LABELER_ID) {
+  if (labelerId()) {
     const badge = document.getElementById('labeler-badge');
-    const isName = !/^\d+$/.test(LABELER_ID);
+    const isName = !/^\d+$/.test(labelerId());
     const displayName = isName
-      ? LABELER_ID.charAt(0).toUpperCase() + LABELER_ID.slice(1).toLowerCase()
-      : LABELER_ID;
+      ? labelerId().charAt(0).toUpperCase() + labelerId().slice(1).toLowerCase()
+      : labelerId();
     badge.textContent = isName ? displayName : 'Labeler ' + displayName;
     badge.style.display = 'inline';
     document.title = isName
@@ -111,7 +111,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 function setupDriveLink() {
   const input = document.getElementById('drive-link');
-  const prefix = LABELER_ID ? 'labeler_' + LABELER_ID + '_rules_' : 'labeler_rules_';
+  const prefix = labelerId() ? 'labeler_' + labelerId() + '_rules_' : 'labeler_rules_';
   const saved = localStorage.getItem(prefix + 'drive_link');
   if (saved) input.value = saved;
 
@@ -134,7 +134,7 @@ function setupDriveLink() {
 // still pauses — the timeupdate hook only fires while playing.
 // ============================================================
 function loopPrefKey() {
-  return (LABELER_ID ? 'labeler_' + LABELER_ID + '_rules_' : 'labeler_rules_') + 'loop_punch';
+  return (labelerId() ? 'labeler_' + labelerId() + '_rules_' : 'labeler_rules_') + 'loop_punch';
 }
 
 function setupLoopToggle() {
@@ -184,7 +184,7 @@ function updateLoopButton() {
 // keeps the active filter.
 // ============================================================
 function filterPrefKey() {
-  return (LABELER_ID ? 'labeler_' + LABELER_ID + '_rules_' : 'labeler_rules_') + 'filter';
+  return (labelerId() ? 'labeler_' + labelerId() + '_rules_' : 'labeler_rules_') + 'filter';
 }
 
 function setupFilter() {
