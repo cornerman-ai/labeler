@@ -26,10 +26,10 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 
 ## Identity — one name, every tool
 
-Every labeler shows a small corner **"Your name"** input once per browser
-(`shared/labeler_name.js`) — pages with their own name field (chin tuck,
-bladedness pairs, orientation) keep it as the only UI, auto-synced. The name
-becomes a corner chip (with *change*) and is sent as the
+Every labeler shows the same slim **top bar** — "👤 Your name:" until filled,
+then "👤 Name · change" (`shared/labeler_name.js`). Pages that had their own
+name field (chin tuck, bladedness pairs) get it hidden and auto-synced; the
+bar is the one UI everywhere. The name is sent as the
 `labeler` field on every save — the Apps Script routes rows/tabs by it, unchanged.
 No more per-person URLs; an old `?labeler=` link still works as a one-time seed.
 Pages with their own name inputs (chin tuck, bladedness pairs, orientation) stay

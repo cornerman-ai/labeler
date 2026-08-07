@@ -57,58 +57,62 @@
     if (!n) return null;
     writeAll(n);
     syncInputs(n);
-    if (!hasNativeInput()) renderChip();
+    renderChip();
     return n;
   }
 
   function get() { return seed(); }
 
   // ── UI ────────────────────────────────────────────────────────────────
-  // Pages that already have their own name input (#labeler-input on the chin
-  // pages, #bp-labeler on the bladedness pairs) keep it as the only UI — we
-  // just sync it. Every other page gets a small corner widget: an inline
-  // input while unset, a name chip once set. Non-blocking by design.
-  let box = null;
+  // A slim top bar on every page (name content top-left). Pages that had
+  // their own name field (chin pages, bladedness pairs) get it hidden — the
+  // bar is the one UI; the hidden inputs stay synced so page logic works.
+  let bar = null;
 
-  function hasNativeInput() {
-    return !!document.querySelector('#labeler-input, #bp-labeler');
+  function hideNativeInputs() {
+    for (const el of document.querySelectorAll('#labeler-input, #bp-labeler')) {
+      el.style.display = 'none';
+      const lab = document.querySelector('label[for="' + el.id + '"]');
+      if (lab) lab.style.display = 'none';
+    }
   }
 
   function widget() {
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'cm-labeler-chip';
-      box.style.cssText =
-        'position:fixed;left:10px;bottom:10px;z-index:9998;font:12px -apple-system,sans-serif;' +
-        'background:rgba(20,24,34,.92);color:#dfe6f2;border:1px solid rgba(255,255,255,.18);' +
-        'border-radius:14px;padding:5px 10px;display:flex;gap:7px;align-items:center;';
-      document.body.appendChild(box);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'cm-labeler-chip';
+      bar.style.cssText =
+        'position:sticky;top:0;z-index:9998;font:12px -apple-system,sans-serif;' +
+        'background:#121a30;color:#dfe6f2;border-bottom:1px solid rgba(255,255,255,.15);' +
+        'padding:5px 12px;display:flex;gap:7px;align-items:center;';
+      document.body.prepend(bar);
     }
-    box.innerHTML = '';
-    return box;
+    bar.innerHTML = '';
+    return bar;
   }
 
   function renderInput() {
     const b = widget();
-    b.style.borderColor = '#e8b45a';
+    b.style.background = '#2a2113';
     const label = document.createElement('span');
     label.textContent = '\u{1F464} Your name:';
     const input = document.createElement('input');
     input.placeholder = 'e.g. John';
     input.style.cssText =
-      'width:90px;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.25);' +
+      'width:110px;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.25);' +
       'background:#0d111a;color:#fff;font:12px -apple-system,sans-serif;';
     const commit = () => { if (normalize(input.value)) set(input.value); };
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
     input.addEventListener('blur', commit);
     b.append(label, input);
+    return b;
   }
 
   function renderChip() {
     const name = get();
     if (!name) return renderInput();
     const b = widget();
-    b.style.borderColor = 'rgba(255,255,255,.18)';
+    b.style.background = '#121a30';
     const label = document.createElement('span');
     label.textContent = '\u{1F464} ' + name;
     const change = document.createElement('a');
@@ -122,10 +126,9 @@
   window.CMLabeler = { get, set, normalize };
 
   document.addEventListener('DOMContentLoaded', () => {
+    hideNativeInputs();
     const n = get();
-    if (n) syncInputs(n);
-    if (hasNativeInput()) return;      // page's own input is the UI
-    if (n) renderChip();
+    if (n) { syncInputs(n); renderChip(); }
     else renderInput();
   });
 })();
