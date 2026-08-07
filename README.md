@@ -1,4 +1,4 @@
-# cornerman-labeler
+# labeler
 
 The labelers — the web tools the labeling team uses to produce Cornerman's
 training labels. One folder per labeler; every tool saves straight to the
