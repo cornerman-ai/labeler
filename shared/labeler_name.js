@@ -57,81 +57,75 @@
     if (!n) return null;
     writeAll(n);
     syncInputs(n);
-    renderChip();
+    if (!hasNativeInput()) renderChip();
     return n;
   }
 
   function get() { return seed(); }
 
   // ── UI ────────────────────────────────────────────────────────────────
-  let chipEl = null;
+  // Pages that already have their own name input (#labeler-input on the chin
+  // pages, #bp-labeler on the bladedness pairs) keep it as the only UI — we
+  // just sync it. Every other page gets a small corner widget: an inline
+  // input while unset, a name chip once set. Non-blocking by design.
+  let box = null;
+
+  function hasNativeInput() {
+    return !!document.querySelector('#labeler-input, #bp-labeler');
+  }
+
+  function widget() {
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'cm-labeler-chip';
+      box.style.cssText =
+        'position:fixed;left:10px;bottom:10px;z-index:9998;font:12px -apple-system,sans-serif;' +
+        'background:rgba(20,24,34,.92);color:#dfe6f2;border:1px solid rgba(255,255,255,.18);' +
+        'border-radius:14px;padding:5px 10px;display:flex;gap:7px;align-items:center;';
+      document.body.appendChild(box);
+    }
+    box.innerHTML = '';
+    return box;
+  }
+
+  function renderInput() {
+    const b = widget();
+    b.style.borderColor = '#e8b45a';
+    const label = document.createElement('span');
+    label.textContent = '\u{1F464} Your name:';
+    const input = document.createElement('input');
+    input.placeholder = 'e.g. John';
+    input.style.cssText =
+      'width:90px;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.25);' +
+      'background:#0d111a;color:#fff;font:12px -apple-system,sans-serif;';
+    const commit = () => { if (normalize(input.value)) set(input.value); };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
+    input.addEventListener('blur', commit);
+    b.append(label, input);
+  }
 
   function renderChip() {
     const name = get();
-    if (!name) return;
-    if (!chipEl) {
-      chipEl = document.createElement('div');
-      chipEl.id = 'cm-labeler-chip';
-      chipEl.style.cssText =
-        'position:fixed;right:10px;bottom:10px;z-index:9998;font:12px -apple-system,sans-serif;' +
-        'background:rgba(20,24,34,.92);color:#dfe6f2;border:1px solid rgba(255,255,255,.18);' +
-        'border-radius:14px;padding:5px 10px;display:flex;gap:8px;align-items:center;';
-      document.body.appendChild(chipEl);
-    }
-    chipEl.innerHTML = '';
+    if (!name) return renderInput();
+    const b = widget();
+    b.style.borderColor = 'rgba(255,255,255,.18)';
     const label = document.createElement('span');
     label.textContent = '\u{1F464} ' + name;
     const change = document.createElement('a');
     change.textContent = 'change';
     change.href = '#';
     change.style.cssText = 'color:#8ab4ff;text-decoration:none;';
-    change.onclick = (e) => { e.preventDefault(); askOverlay(true); };
-    chipEl.append(label, change);
-  }
-
-  function askOverlay(isChange) {
-    if (document.getElementById('cm-labeler-overlay')) return;
-    const ov = document.createElement('div');
-    ov.id = 'cm-labeler-overlay';
-    ov.style.cssText =
-      'position:fixed;inset:0;z-index:9999;background:rgba(8,10,16,.78);' +
-      'display:flex;align-items:center;justify-content:center;font:14px -apple-system,sans-serif;';
-    const card = document.createElement('div');
-    card.style.cssText =
-      'background:#161b26;color:#dfe6f2;border:1px solid rgba(255,255,255,.15);' +
-      'border-radius:12px;padding:22px 24px;min-width:280px;box-shadow:0 12px 40px rgba(0,0,0,.5);';
-    card.innerHTML =
-      '<div style="font-size:16px;font-weight:650;margin-bottom:4px;">Who’s labeling?</div>' +
-      '<div style="opacity:.65;margin-bottom:12px;">Your name is saved with every label.</div>';
-    const input = document.createElement('input');
-    input.placeholder = 'e.g. John';
-    input.value = isChange ? (get() || '') : '';
-    input.style.cssText =
-      'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;' +
-      'border:1px solid rgba(255,255,255,.25);background:#0d111a;color:#fff;margin-bottom:12px;';
-    const btn = document.createElement('button');
-    btn.textContent = 'Start labeling';
-    btn.style.cssText =
-      'width:100%;padding:8px 10px;border-radius:8px;border:0;cursor:pointer;' +
-      'background:#3b82f6;color:#fff;font-weight:600;';
-    const submit = () => {
-      if (!normalize(input.value)) { input.focus(); return; }
-      set(input.value);
-      ov.remove();
-    };
-    btn.onclick = submit;
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-    card.append(input, btn);
-    ov.appendChild(card);
-    document.body.appendChild(ov);
-    input.focus();
+    change.onclick = (e) => { e.preventDefault(); renderInput(); };
+    b.append(label, change);
   }
 
   window.CMLabeler = { get, set, normalize };
 
   document.addEventListener('DOMContentLoaded', () => {
     const n = get();
-    if (n) { renderChip(); syncInputs(n); }
-    else askOverlay(false);
+    if (n) syncInputs(n);
+    if (hasNativeInput()) return;      // page's own input is the UI
+    if (n) renderChip();
+    else renderInput();
   });
 })();
