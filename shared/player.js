@@ -31,7 +31,11 @@ Object.assign(state, {
   videoName: '',
 });
 
-const LABELER_ID = new URLSearchParams(window.location.search).get('labeler') || '';
+// Labeler identity comes from the shared name store (labeler_name.js);
+// the old ?labeler= URL param remains a fallback/seed for old links.
+const labelerId = () =>
+  (window.CMLabeler && window.CMLabeler.get()) ||
+  new URLSearchParams(window.location.search).get('labeler') || '';
 
 // ============================================================
 // URL / time helpers
@@ -78,7 +82,8 @@ function showToast(message, type = 'info') {
 // ============================================================
 function sheetUrl(params) {
   const url = new URL(state.scriptUrl);
-  if (LABELER_ID) url.searchParams.set('labeler', LABELER_ID);
+  const _lid = labelerId();
+  if (_lid) url.searchParams.set('labeler', _lid);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url.toString();
 }

@@ -911,9 +911,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupPlayer();
 
   const labelerInput = document.getElementById('labeler-input');
-  try { labelerInput.value = localStorage.getItem('orient_labeler_name') || ''; } catch {}
+  try {
+    labelerInput.value = (window.CMLabeler && window.CMLabeler.get()) ||
+      localStorage.getItem('orient_labeler_name') || '';
+  } catch {}
   labelerInput.addEventListener('change', async () => {
     try { localStorage.setItem('orient_labeler_name', labelerInput.value.trim()); } catch {}
+    if (window.CMLabeler) window.CMLabeler.set(labelerInput.value);
     if (state.currentStem && state.samples.length) {
       syncFromSheet();
     } else {

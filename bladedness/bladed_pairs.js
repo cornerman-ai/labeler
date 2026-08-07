@@ -305,7 +305,9 @@ function finish() {
 
 // ─── boot ──────────────────────────────────────────────────────────────────
 async function rebuildQueue() {
-  S.labeler = $('bp-labeler').value.trim();
+  S.labeler = $('bp-labeler').value.trim() ||
+    (window.CMLabeler ? (window.CMLabeler.get() || '') : '');
+  if (S.labeler && window.CMLabeler) window.CMLabeler.set(S.labeler);
   localStorage.setItem('bp_labeler', S.labeler);
   if (!S.labeler) { setStatus('enter your name to start', 'err'); return; }
 

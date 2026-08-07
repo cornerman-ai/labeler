@@ -24,9 +24,19 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 | `bladedness/` | Pairwise "which stance is more squared?" (shoulder pairs + hip pairs), plus the **coach review** where the coach scores curated frontal frames | The too-squared/too-bladed research — pair judgements calibrate the candidate metrics; the coach review is the expert reference |
 | `axiality/` | Review of ground truth vs model direction predictions | QA pass on the axiality model |
 
+## Identity — one name, every tool
+
+Every labeler asks **"Who's labeling?"** once per browser (`shared/labeler_name.js`),
+stores the name, shows it as a corner chip (with *change*), and sends it as the
+`labeler` field on every save — the Apps Script routes rows/tabs by it, unchanged.
+No more per-person URLs; an old `?labeler=` link still works as a one-time seed.
+Pages with their own name inputs (chin tuck, bladedness pairs, orientation) stay
+in sync with the same stored name automatically.
+
 ## Shared pieces
 
 - `shared/player.js` — the video player + Sheet-posting core every video labeler uses
+- `shared/labeler_name.js` — the ask-once labeler identity (see above)
 - `shared/style.css` — common styling
 - `shared/videos.json` — which videos the video-based labelers list (regenerate with `shared/build_videos_json.py`)
 - `shared/apps_script.js` — the Google Apps Script backend (deployed as a Web App — see SETUP.md); labels land in the Sheet at Drive `Cornerman/data/labels/labeling_team/`
