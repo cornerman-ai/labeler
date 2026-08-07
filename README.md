@@ -20,7 +20,6 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 | `chin_tuck/` | Three chin-vs-shoulder questions per sampled frame | **Current chin labeling.** Repeated samples measure each labeler's self-agreement ceiling. `chin_tuck_john.html` is the earlier chin labeler, frozen for reference |
 | `guard_drop/` | Hands-down moments in a round | Ground truth for the guard-drop rule |
 | `hip_rotation/` | Rotation-quality rubric per punch | Ground truth behind the hip-rotation rule |
-| `orientation/` | 8-bin facing direction per frame | Tuned the stance-width foreshortening correction + ankle-orientation constants. Self-contained (own config + Apps Script) |
 | `bladedness/` | Pairwise "which stance is more squared?" (shoulder pairs + hip pairs), plus the **coach review** where the coach scores curated frontal frames | The too-squared/too-bladed research — pair judgements calibrate the candidate metrics; the coach review is the expert reference |
 | `axiality/` | Review of ground truth vs model direction predictions | QA pass on the axiality model |
 
@@ -50,3 +49,5 @@ in sync with the same stored name automatically.
 - Frame/clip media that pages display is exported by the backend research
   scripts (`cornerman-backend/ml/research/<topic>/`) and committed here so
   GitHub Pages hosts it.
+
+Retired labelers live in `cornerman-archive/legacy-labelers/` (orientation, 2026-08-07 — its 8-bin labels shipped as the ankle-orientation constants).
