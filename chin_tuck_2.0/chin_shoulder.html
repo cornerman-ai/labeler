@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chin &amp; Shoulder</title>
+<style>
+/* ── 2.0 owns its own styling ───────────────────────────────────────────────
+   Deliberately NOT ../shared/style.css: that sheet dresses the punch-labeling
+   pages (dark navy, dense control strips) and every other labeler inherits it.
+   This page is meant to be quiet — a frame, a count, four questions — so it
+   carries its own stylesheet rather than fighting a shared one, and nothing
+   here can affect the 1.0 pages.
+   ------------------------------------------------------------------------ */
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --line: rgba(0,0,0,.10);
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  --accent: #0071e3;
+  --yes: #34c759;
+  --no: #ff3b30;
+  --maybe: #ff9f0a;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
+    --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    --shadow: 0 1px 2px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* labeler_name.js prepends a shared identity strip to every page. Here it is a
+   full-width line spent on one short word, above a tool whose whole point is
+   the picture — so it is hidden and the name sits inline in the side panel
+   instead. Page-scoped: every other labeler keeps the shared bar. */
+#cm-labeler-chip { display: none !important; }
+
+/* …which means this page has to un-hide its own name field, since that script
+   hides #labeler-input by inline style on load. !important outranks it. */
+/* Your name sits at the head of the team list rather than in a panel of its
+   own: it is the same fact as the rows below it — who is labeling — and a
+   whole card for one short field read as an empty box. Filled-field styling,
+   no border, the way a system settings field looks. */
+#name-row { display: flex; gap: 6px; margin-bottom: 10px; }
+#labeler-input {
+  display: block !important;
+  flex: 1; min-width: 0;
+  border: 0; border-radius: 9px;
+  background: rgba(120,120,128,.12); color: var(--ink);
+  padding: 9px 12px; font-size: 14px; font-weight: 500;
+}
+#name-go {
+  flex: none; padding: 0 15px; border: 0; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
+}
+#name-go:disabled { opacity: .3; cursor: default; }
+#labeler-input::placeholder { color: var(--ink-dim); font-weight: 400; }
+#labeler-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-color-scheme: dark) {
+  #labeler-input { background: rgba(120,120,128,.24); }
+}
+
+/* Position and total head the overview, which is the one place that already
+   answers "where am I in this queue" — a bar of their own cost the frame ~50px
+   of height, and a progress bar restated what 3,791 dots already show. */
+#head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+#count {
+  font: 600 17px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: -.02em; white-space: nowrap;
+}
+#count small { color: var(--ink-dim); font-weight: 400; font-size: 13px; }
+#done { font-size: 12px; color: var(--ink-dim); white-space: nowrap; margin-left: auto; }
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+/* No right padding here: the side panel runs to the window edge so its
+   scrollbar sits in the corner. The gap that keeps the cards off the edge is
+   #side's own padding-right, which a scrollbar renders outside of. */
+#wrap { display: flex; gap: 12px; padding: 16px 0 16px 16px;
+        align-items: flex-start; height: 100vh; }
+#stage-card {
+  flex: 1; min-width: 0; height: 100%;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+/* #stage carries the frame's aspect ratio (set from naturalWidth/Height on
+   load) and the image fills it exactly. Every marker is positioned in % of
+   #stage, so this is what makes the overlay and the image the same box —
+   letting the img size itself and overlaying inset:0 does NOT, because the
+   img's max-height:100% resolves against a parent with no definite height and
+   the picture silently overflows its own overlay. */
+#stage { position: relative; display: block; max-width: 100%; max-height: 100%;
+         aspect-ratio: 9 / 16; cursor: crosshair; user-select: none;
+         transform-origin: 0 0; }   /* 0 0 is what makes zoom-at-cursor solvable */
+#stage img { display: block; width: 100%; height: 100%; }
+#stage img.broken { background: repeating-linear-gradient(45deg,
+  rgba(255,59,48,.10) 0 10px, rgba(255,59,48,.20) 10px 20px); }
+#stage.zoomed { cursor: grab; }
+#stage.panning { cursor: grabbing; }
+#marks { position: absolute; inset: 0; pointer-events: none; }
+
+/* Points are deliberately tiny — a big marker hides the very pixels the
+   question is about (is the chin safe?). 5px reads at a glance and still
+   leaves the jawline visible; zoom is there when it isn't enough. */
+/* --inv is 1/zoom, set by applyTransform(). The dots sit inside the scaled
+   stage so their POSITION tracks the frame, but counter-scaling keeps their
+   SIZE constant on screen — without it a 5px dot is 60px at 12x and buries the
+   chin it is pointing at. */
+.pt { position: absolute; width: 5px; height: 5px; border-radius: 50%;
+      transform: translate(-50%, -50%) scale(var(--inv, 1));
+      box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
+.pt.chin { background: #ff375f; }
+.pt.sh   { background: #32d74b; }
+/* The shoulder the questions are asked against gets a ring: question 1 asks
+   whether THAT point is right, so it has to be identifiable among the two. */
+.pt.used { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 3.5px rgba(50,215,75,.45); }
+/* Guide cross follows the cursor — a straight edge for "is the chin past the
+   shoulder", which is hard to eyeball on a tilted body. */
+#gx, #gy { position: absolute; background: rgba(0,180,255,.55); pointer-events: none;
+           display: none; }
+#gx { left: 0; right: 0; height: 1px; }
+#gy { top: 0; bottom: 0; width: 1px; }
+#stage-card.guide #gx, #stage-card.guide #gy { display: block; }
+/* Until this labeler's saved rows have arrived, answering is a lost answer:
+   start() jumps to their first unlabeled frame the moment the list lands, which
+   discards anything picked before that.
+   Only the ANSWERING is blocked. An earlier version dimmed and blurred the
+   whole stage, which meant a slow — or failed — label load looked exactly like
+   a broken tool: no image, dead buttons, no explanation. The frame is always
+   safe to look at, so it stays fully visible and the notice sits inline. */
+/* Frozen until this labeler's saved rows have arrived: start() lands them on
+   their first unlabeled frame, so anything answered before that is discarded.
+   The FRAME stays fully visible — an earlier version blurred the whole stage,
+   which made a slow label load look exactly like a broken tool. Only the
+   controls that act on a frame are inert. */
+body:not(.ready) #q-card .q,
+body:not(.ready) #act-card,
+body:not(.ready) #ov { opacity: .4; pointer-events: none; }
+
+#q-lock {
+  display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
+  background: rgba(120,120,128,.14); color: var(--ink-dim);
+  font-size: 12px; font-weight: 500;
+}
+#q-lock.err { background: rgba(255,59,48,.14); color: var(--no); }
+@media (prefers-color-scheme: dark) {
+  #q-lock { background: rgba(120,120,128,.24); }
+}
+
+#hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+        color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
+        padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+
+/* ── right column ───────────────────────────────────────────────────────── */
+/* 342 = 330 card + 2 padding + 10 scroll gutter, so the cards keep their width
+   and sit 12px off the window edge — the same 12px that separates them from
+   the canvas — while the track runs down the corner. The gutter is 10 because
+   `scrollbar-width: thin` wins over the ::-webkit-scrollbar width below, which
+   this engine ignores. scrollbar-gutter: stable reserves it even when the panel
+   does not overflow, otherwise the cards would shift sideways as content grows. */
+#side { width: 342px; padding-right: 2px; flex: none; height: 100%;
+        overflow-y: auto; scrollbar-gutter: stable;
+        display: flex; flex-direction: column; gap: 12px;
+        scrollbar-width: thin; scrollbar-color: rgba(120,120,128,.45) transparent; }
+#side::-webkit-scrollbar { width: 8px; }
+#side::-webkit-scrollbar-track { background: transparent; }
+#side::-webkit-scrollbar-thumb {
+  background: rgba(120,120,128,.45); border-radius: 4px;
+}
+#side::-webkit-scrollbar-thumb:hover { background: rgba(120,120,128,.7); }
+.card { background: var(--card); border-radius: var(--radius);
+        box-shadow: var(--shadow); padding: 14px; }
+.q + .q { margin-top: 14px; }
+.q-t { font-size: 13px; font-weight: 590; margin: 0 0 7px; letter-spacing: -.01em; }
+.q-t b { color: var(--ink-dim); font-weight: 400; margin-right: 5px; }
+.opts { display: flex; gap: 6px; }
+.opt {
+  flex: 1; padding: 8px 4px; border-radius: 8px; text-align: center;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; transition: all .12s ease;
+}
+.opt:hover { border-color: var(--ink-dim); }
+.opt[aria-pressed="true"] { color: #fff; border-color: transparent; }
+/* Every question is phrased so that YES is the good answer — the point is
+   correct, the chin is safe — so green/red carries the same meaning on all
+   four and never has to be read against the question. */
+.opt[data-v="yes"][aria-pressed="true"] { background: var(--yes); }
+.opt[data-v="no"][aria-pressed="true"] { background: var(--no); }
+.opt[data-v="hard_to_say"][aria-pressed="true"] { background: var(--maybe); }
+.opt kbd { font: inherit; opacity: .5; margin-left: 3px; }
+
+#save {
+  width: 100%; padding: 11px; border: none; border-radius: 10px;
+  background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
+}
+#save:disabled { opacity: .35; cursor: default; }
+#skip {
+  width: 100%; padding: 11px; margin-top: 8px; border-radius: 10px;
+  border: 1px solid var(--line); background: transparent; font-weight: 510;
+}
+#skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
+/* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
+   it out only made three buttons compete for the same glance. Next-unlabeled
+   keeps its words because it is the one action you cannot infer from a glyph. */
+#nav { display: flex; gap: 8px; margin-top: 10px; }
+#seg { display: flex; flex: none; }
+#seg button {
+  width: 42px; padding: 8px 0; font-size: 17px; line-height: 1;
+  border: 1px solid var(--line); background: transparent;
+}
+#seg button:first-child { border-radius: 8px 0 0 8px; }
+#seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+#nextnew {
+  flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 13px; font-weight: 510;
+  border: 1px solid var(--line); background: transparent;
+}
+#nav button:hover { border-color: var(--ink-dim); z-index: 1; }
+#nav button:active { background: rgba(120,120,128,.14); }
+#status { font-size: 12px; color: var(--ink-dim); margin-top: 9px; min-height: 15px; }
+#status.err { color: var(--no); }
+#status.ok { color: var(--yes); }
+
+/* Overview — one dot per frame, so 3,791 fit without scrolling forever. */
+#ov { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
+      max-height: 190px; overflow-y: auto; }
+#ov i { width: 9px; height: 9px; border-radius: 2px; background: rgba(120,120,128,.22);
+        cursor: pointer; }
+#ov i.done { background: var(--yes); }
+#ov i.part { background: var(--maybe); }
+#ov i.skip { background: var(--ink-dim); }
+/* A save that came back with an error. Optimistic saving means the labeler has
+   already moved on, so the frame has to stay visible until they deal with it. */
+#ov i.fail { background: var(--no); }
+#ov i.here { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Team panel — name, count, bar. Nothing else.
+   It used to carry the queue position and a relative timestamp on every row
+   too, which is four facts per person in a 330px column. Position was the
+   redundant one: for anyone working forward it just restates the count. What
+   is NOT derivable from the count is whether someone is working RIGHT NOW, so
+   that became a single dot, and the detail moved to the row's tooltip. */
+#team { display: grid; grid-template-columns: 1fr auto;
+        column-gap: 10px; align-items: baseline; font-size: 13px; }
+.who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; font-weight: 500; }
+.who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
+.who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
+/* Present only while someone is actively labeling, so an idle row is a plain
+   name and the eye is drawn to whoever is moving. */
+.who-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+           background: var(--yes); margin-left: 6px; vertical-align: middle; }
+.who-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px;
+           background: rgba(120,120,128,.16); margin: 6px 0 12px;
+           overflow: hidden; }
+.who-bar:last-child { margin-bottom: 0; }
+.who-bar i { display: block; height: 100%; border-radius: 2px;
+             background: var(--ink-dim); min-width: 2px; }
+.who-me .who-n { color: var(--accent); font-weight: 600; }
+.who-me .who-c { color: var(--accent); }
+.who-me .who-bar i { background: var(--accent); }
+#team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
+
+#legend { display: flex; gap: 10px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
+#legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+/* One row per action, keys right-aligned in their own column — as a wrapped
+   sentence of dot-separated pairs this took the same space and could not be
+   scanned for the one key you were after. */
+#keys { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+        margin: 0; font-size: 11.5px; align-items: center; }
+#keys dt { color: var(--ink-dim); }
+#keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
+#keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
+#keys kbd, #save kbd, #skip kbd {
+  font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 5px; min-width: 18px; text-align: center;
+  color: var(--ink); background: rgba(120,120,128,.10);
+}
+@media (prefers-color-scheme: dark) {
+  #keys kbd { background: rgba(120,120,128,.22); }
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div id="stage-card">
+    <div id="stage">
+      <img id="frame" alt="">
+      <div id="marks">
+        <div class="pt chin" id="p-chin"></div>
+        <div class="pt sh" id="p-l"></div>
+        <div class="pt sh" id="p-r"></div>
+      </div>
+    </div>
+    <!-- Outside #stage on purpose: #stage is the scaled element, so anything
+         inside it is measured in its LOCAL space and inherits the zoom. The
+         guide cross and the hint are screen furniture — they must not move or
+         thicken when the frame is zoomed. -->
+    <div id="gx"></div><div id="gy"></div>
+    <div id="hint">scroll = zoom · drag = pan · double-click = reset</div>
+  </div>
+
+  <div id="side">
+    <!-- Identity and team are one panel: your name is the first row of the
+         same list the others appear in. -->
+    <div class="card">
+      <!-- labeler_name.js keeps this synced with localStorage; the CSS above
+           overrides the display:none it sets. -->
+      <div id="name-row">
+        <input id="labeler-input" placeholder="Your name" title="Your name"
+               autocomplete="off" spellcheck="false">
+        <button id="name-go" disabled>Start</button>
+      </div>
+      <div id="team"><div id="team-empty">No labels saved yet</div></div>
+    </div>
+
+    <div class="card" id="q-card">
+      <div id="q-lock">Loading…</div>
+      <div class="q" data-q="shoulder_ok">
+        <p class="q-t"><b>1</b>Lead shoulder point okay?</p>
+        <div class="opts">
+          <button class="opt" data-q="shoulder_ok" data-v="yes">Yes<kbd>1</kbd></button>
+          <button class="opt" data-q="shoulder_ok" data-v="no">No<kbd>2</kbd></button>
+        </div>
+      </div>
+      <div class="q" data-q="chin_ok">
+        <p class="q-t"><b>2</b>Chin point okay?</p>
+        <div class="opts">
+          <button class="opt" data-q="chin_ok" data-v="yes">Yes<kbd>Q</kbd></button>
+          <button class="opt" data-q="chin_ok" data-v="no">No<kbd>W</kbd></button>
+        </div>
+      </div>
+      <div class="q" data-q="lateral_safe">
+        <p class="q-t"><b>3</b>Chin laterally safe? <span style="color:var(--ink-dim);font-weight:400">(from a hook)</span></p>
+        <div class="opts">
+          <button class="opt" data-q="lateral_safe" data-v="yes">Yes<kbd>A</kbd></button>
+          <button class="opt" data-q="lateral_safe" data-v="no">No<kbd>S</kbd></button>
+          <button class="opt" data-q="lateral_safe" data-v="hard_to_say">Hard<kbd>D</kbd></button>
+        </div>
+      </div>
+      <div class="q" data-q="frontal_safe">
+        <p class="q-t"><b>4</b>Chin frontally safe? <span style="color:var(--ink-dim);font-weight:400">(from an uppercut)</span></p>
+        <div class="opts">
+          <button class="opt" data-q="frontal_safe" data-v="yes">Yes<kbd>Z</kbd></button>
+          <button class="opt" data-q="frontal_safe" data-v="no">No<kbd>X</kbd></button>
+          <button class="opt" data-q="frontal_safe" data-v="hard_to_say">Hard<kbd>C</kbd></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="act-card">
+      <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
+      <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
+      <div id="nav">
+        <div id="seg">
+          <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
+          <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
+        </div>
+        <button id="nextnew" title="Jump to the first frame you have not saved (G)">Next unlabeled</button>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <div id="head">
+        <div id="count">—<small> / —</small></div>
+        <span id="done">—</span>
+      </div>
+      <div id="ov"></div>
+      <div id="legend">
+        <span><b style="background:var(--yes)"></b>done</span>
+        <span><b style="background:var(--maybe)"></b>partial</span>
+        <span><b style="background:var(--ink-dim)"></b>skipped</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <!-- Order mirrors the question list above, so a key can be found by
+           looking at the same row position as the question it answers. -->
+      <dl id="keys">
+        <dt>Shoulder point</dt>  <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <dt>Chin point</dt>      <dd><kbd>Q</kbd><kbd>W</kbd></dd>
+        <dt>Laterally safe</dt>  <dd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dd>
+        <dt>Frontally safe</dt>  <dd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></dd>
+        <div class="sep"></div>
+        <dt>Save &amp; next</dt> <dd><kbd>↵</kbd></dd>
+        <dt>Skip</dt>            <dd><kbd>K</kbd></dd>
+        <dt>Clear answers</dt>   <dd><kbd>Esc</kbd></dd>
+        <div class="sep"></div>
+        <dt>Prev / next</dt>     <dd><kbd>←</kbd><kbd>→</kbd></dd>
+        <dt>Next unlabeled</dt>  <dd><kbd>G</kbd></dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/labeler_name.js"></script>
+<!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
+     with the queue.json version in chin_shoulder.js. -->
+<script src="chin_shoulder.js?v=27"></script>
+</body>
+</html>
