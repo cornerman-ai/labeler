@@ -281,6 +281,13 @@ function doGet(e) {
     return doGetChinShoulderLabels(p, labeler, action);
   }
 
+  // Chin-shoulder labeler 2.0 (chin_tuck_2.0/chin_shoulder.html). Separate
+  // endpoints and ONE SHEET PER LABELER — see doGetChinShoulderV2.
+  if (action === 'listChinShoulderV2' || action === 'saveChinShoulderV2' ||
+      action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2') {
+    return doGetChinShoulderV2(p, labeler, action);
+  }
+
   // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
   // answered, keyed by (labeler, pair_id). The pair list itself is fixed and
   // seeded in bladed_pairs.json — every labeler answers the SAME comparisons,
@@ -3167,4 +3174,245 @@ function doGetBladedPairs(p, labeler, action) {
   }
 
   return jsonOut({ status: 'error', message: 'unknown action: ' + action });
+}
+
+// ============================================================
+// Chin-shoulder labeler 2.0 (chin_tuck_2.0/chin_shoulder.html)
+//
+// ONE SHEET PER LABELER â€” 'chin_shoulder_labels_John', '..._Arianne'. 1.0 put
+// every labeler in one 'Chin Shoulder Labels' tab; 2.0 splits them so a
+// labeler's rows can be read, sorted, or handed over without touching anyone
+// else's, and so a stray edit cannot reach another labeler's work.
+//
+// Differences from 1.0 that the schema encodes:
+//
+//  * OVERWRITE IN PLACE, not soft-delete-and-append. A re-save updates the row
+//    for (video, round, frame). 1.0's supersede chain preserved history at the
+//    cost of a sheet that only grows; 2.0 trades that away deliberately.
+//  * PARTIAL ANSWERS ARE VALID. The page has an explicit Save and does not
+//    require all four questions, so blanks are a legitimate state â€” there is no
+//    "all answers or a skip" check the way 1.0 had.
+//  * `shoulder_used` is recorded AS SHOWN (LEFT/RIGHT + where it came from),
+//    alongside the chin and shoulder coordinates the labeler actually saw.
+//    Without that, a "the shoulder point is not okay" answer is uninterpretable
+//    later: you cannot tell which point was being rejected.
+//  * `reviewed` is written by the review pass, never by the labeling page.
+//
+// Every response here carries `v2: true`. doGet's default branch answers ANY
+// unrecognised action with {status:'ok', message:'Label receiver is running'},
+// so a page talking to a deployment that predates these endpoints sees a
+// successful save that wrote nothing. The marker is what lets the client tell
+// "handled" from "fell through" — do not drop it from a response.
+// ============================================================
+
+var CS2_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec',
+                   'stance', 'shoulder_used', 'shoulder_src',
+                   'shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe',
+                   'chin_xy', 'l_sh_xy', 'r_sh_xy', 'skipped', 'reviewed'];
+
+// yes/no for the two point-quality checks; the two exposure questions carry a
+// third option because "cannot tell from this frame" is a real answer, and
+// forcing it into yes/no records a judgement that was never made.
+var CS2_VALUES = {
+  shoulder_ok: ['yes', 'no'],
+  chin_ok: ['yes', 'no'],
+  lateral_safe: ['yes', 'no', 'hard_to_say'],
+  frontal_safe: ['yes', 'no', 'hard_to_say']
+};
+var CS2_FIELDS = ['shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe'];
+
+function cs2SheetName(labeler) {
+  var s = String(labeler || '').trim();
+  if (!s) return null;
+  // Title-case so 'john' and 'John' cannot fork into two tabs.
+  return 'chin_shoulder_labels_' + s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function getOrCreateCs2Sheet(labeler) {
+  var name = cs2SheetName(labeler);
+  if (!name) return null;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, 1, CS2_HEADERS.length).setValues([CS2_HEADERS]);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, CS2_HEADERS.length).setValues([CS2_HEADERS]);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  // Append any header this deploy added, so an older sheet self-migrates.
+  // Width comes from the header row, not getLastColumn(), which stops at the
+  // last column WITH CONTENT and would let a new header land on an existing one.
+  var existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+  var lower = existing.map(function (h) { return String(h).toLowerCase(); });
+  var missing = CS2_HEADERS.filter(function (h) {
+    return lower.indexOf(h.toLowerCase()) < 0;
+  });
+  if (missing.length) {
+    var at = existing.length + 1;
+    var need = at + missing.length - 1;
+    if (sh.getMaxColumns() < need) sh.insertColumnsAfter(sh.getMaxColumns(), need - sh.getMaxColumns());
+    sh.getRange(1, at, 1, missing.length).setValues([missing]);
+  }
+  return sh;
+}
+
+// A frame is identified by (video, round, frame). The labeler is the SHEET, so
+// it is not part of the key.
+function cs2RowMatches(row, idx, p) {
+  return String(row[idx.video]) === String(p.video) &&
+         String(row[idx.round]) === String(p.round) &&
+         String(row[idx.frame]) === String(p.frame);
+}
+
+// === STATS across every labeler ===
+// Reads the per-labeler sheets rather than taking a labeler argument, so the
+// page can show the whole team's progress and where each person is working.
+// Deliberately does NOT create a sheet: asking for stats must not conjure a
+// tab for a labeler who has never saved anything.
+function cs2Stats() {
+  var PREFIX = 'chin_shoulder_labels_';
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var out = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name.indexOf(PREFIX) !== 0) continue;
+    var data = sheets[s].getDataRange().getValues();
+    var entry = { labeler: name.substring(PREFIX.length), n: 0, skipped: 0,
+                  last_ts: '', last: null };
+    if (data.length > 1) {
+      var idx = punchDirHeaderIndex(data[0]);
+      for (var r = 1; r < data.length; r++) {
+        var row = data[r];
+        if (row[idx.video] === '' || row[idx.video] === null) continue;
+        entry.n++;
+        if (String(row[idx.skipped]) === '1') entry.skipped++;
+        // ts is an ISO-8601 string, so a plain string compare orders it.
+        var ts = String(row[idx.ts] || '');
+        if (ts > entry.last_ts) {
+          entry.last_ts = ts;
+          entry.last = { video: String(row[idx.video]),
+                         round: Number(row[idx.round]),
+                         frame: Number(row[idx.frame]) };
+        }
+      }
+    }
+    out.push(entry);
+  }
+  out.sort(function (a, b) { return b.n - a.n; });
+  return jsonOut({ status: 'ok', v2: true, labelers: out });
+}
+
+function doGetChinShoulderV2(p, labeler, action) {
+  if (action === 'statsChinShoulderV2') return cs2Stats();
+  var who = p.labeler || labeler;
+  var sh = getOrCreateCs2Sheet(who);
+  if (!sh) return jsonOut({ status: 'error', message: 'missing labeler' });
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  function cell(row, name) {
+    return (idx[name] === undefined || row[idx[name]] === '') ? null : String(row[idx[name]]);
+  }
+
+  // === LIST every row for this labeler ===
+  // The page needs all of them at load to find the first unlabeled frame and to
+  // colour the overview, so there is no per-video filter here.
+  if (action === 'listChinShoulderV2') {
+    var rows = [];
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][idx.video] === '' || data[i][idx.video] === null) continue;
+      rows.push({
+        ts: cell(data[i], 'ts'),
+        video: String(data[i][idx.video]),
+        round: Number(data[i][idx.round]),
+        frame: Number(data[i][idx.frame]),
+        shoulder_ok: cell(data[i], 'shoulder_ok'),
+        chin_ok: cell(data[i], 'chin_ok'),
+        lateral_safe: cell(data[i], 'lateral_safe'),
+        frontal_safe: cell(data[i], 'frontal_safe'),
+        skipped: String(data[i][idx.skipped]) === '1' ? 1 : 0,
+        reviewed: cell(data[i], 'reviewed')
+      });
+    }
+    return jsonOut({ status: 'ok', v2: true, labeler: who, sheet: cs2SheetName(who), rows: rows });
+  }
+
+  // === SAVE â€” overwrite the row for (video, round, frame), else append ===
+  if (action === 'saveChinShoulderV2') {
+    var required = ['video', 'round', 'frame'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var skipped = String(p.skipped || '') === '1';
+    var vals = {};
+    for (var f = 0; f < CS2_FIELDS.length; f++) {
+      var fld = CS2_FIELDS[f];
+      var v = p[fld];
+      if (v === undefined || v === '') { vals[fld] = ''; continue; }
+      if (CS2_VALUES[fld].indexOf(String(v)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid ' + fld + ': ' + v });
+      }
+      vals[fld] = String(v);
+    }
+    // A skip is the absence of a judgement â€” refuse to store both.
+    if (skipped) {
+      for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
+        if (vals[CS2_FIELDS[f2]] !== '') {
+          return jsonOut({ status: 'error',
+                           message: 'a skipped frame cannot also carry answers' });
+        }
+      }
+    }
+
+    var headerRow = data[0];
+    var out = [];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') out.push(new Date().toISOString());
+      else if (col === 'labeler') out.push(who);
+      else if (col === 'video') out.push(String(p.video));
+      else if (col === 'round') out.push(Number(p.round));
+      else if (col === 'frame') out.push(Number(p.frame));
+      else if (col === 'frame_sec') out.push(p.frame_sec === undefined || p.frame_sec === '' ? '' : Number(p.frame_sec));
+      else if (col === 'stance') out.push(String(p.stance || ''));
+      else if (col === 'shoulder_used') out.push(String(p.shoulder_used || ''));
+      else if (col === 'shoulder_src') out.push(String(p.shoulder_src || ''));
+      else if (col === 'chin_xy') out.push(String(p.chin_xy || ''));
+      else if (col === 'l_sh_xy') out.push(String(p.l_sh_xy || ''));
+      else if (col === 'r_sh_xy') out.push(String(p.r_sh_xy || ''));
+      else if (col === 'skipped') out.push(skipped ? '1' : '');
+      else if (CS2_VALUES[col] !== undefined) out.push(vals[col]);
+      else out.push('');
+    }
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (!cs2RowMatches(data[i2], idx, p)) continue;
+      // Overwrite in place. `reviewed` belongs to the review pass, so a
+      // re-label must not silently clear it.
+      if (idx.reviewed !== undefined) out[idx.reviewed] = data[i2][idx.reviewed];
+      sh.getRange(i2 + 1, 1, 1, out.length).setValues([out]);
+      return jsonOut({ status: 'ok', v2: true, updated: 1 });
+    }
+    sh.appendRow(out);
+    return jsonOut({ status: 'ok', v2: true, appended: 1 });
+  }
+
+  // === DELETE â€” remove the row entirely (no soft-delete in 2.0) ===
+  if (action === 'deleteChinShoulderV2') {
+    for (var i3 = data.length - 1; i3 >= 1; i3--) {
+      if (!cs2RowMatches(data[i3], idx, p)) continue;
+      sh.deleteRow(i3 + 1);
+      return jsonOut({ status: 'ok', v2: true, deleted: 1 });
+    }
+    return jsonOut({ status: 'ok', v2: true, deleted: 0 });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown chin-shoulder-v2 action: ' + action });
 }
