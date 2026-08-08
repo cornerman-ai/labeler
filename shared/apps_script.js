@@ -298,10 +298,16 @@ function doGet(e) {
     return doGetCalloutEvents(p, labeler, action);
   }
 
+  // Sentinels match case-insensitively: since 2026-08 the labeler string comes
+  // from labeler_name.js, which capitalizes the first letter, so an old
+  // ?labeler=archive / ?labeler=combined review link now arrives as
+  // "Archive" / "Combined". Matching those literally would drop them into the
+  // per-labeler branch below and auto-create a junk "Labeled Data Archive".
   var sheetName;
-  if (labeler === 'combined') {
+  var labelerLc = String(labeler).toLowerCase();
+  if (labelerLc === 'combined') {
     sheetName = 'Combined Data';
-  } else if (labeler === 'archive') {
+  } else if (labelerLc === 'archive') {
     sheetName = COMBINED_ARCHIVE_NAME;
   } else if (/^\d+$/.test(labeler)) {
     sheetName = 'Labeled Data Software ' + labeler;
@@ -312,7 +318,7 @@ function doGet(e) {
   var pss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = pss.getSheetByName(sheetName);
   if (!sheet) {
-    if (labeler === 'combined' || labeler === 'archive') {
+    if (labelerLc === 'combined' || labelerLc === 'archive') {
       return ContentService
         .createTextOutput(JSON.stringify({ status: 'error', message: 'Sheet not found: ' + sheetName }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -1823,6 +1829,68 @@ var IMPACT_FRAME_SHEET_NAME = 'Impact Frames';
 var IMPACT_FRAME_HEADERS = ['ts', 'labeler', 'punch_uuid', 'video', 'impact_frame', 'fps', 'skip_reason', 'deleted'];
 var IMPACT_FRAME_SKIP_REASONS = ['occluded', 'unclear', 'no_punch', 'bad_clip'];
 
+// Force a column to plain-text format so Sheets stops parsing values that
+// merely READ as dates into serial dates when appendRow writes them.
+//
+// Video names are the case that bit us: "November 15, 2020" is a real raw
+// video, and Sheets stored it as a Date. Every lookup in this file compares
+// the cell to the name string the page sends, and Date !== String, so such a
+// row is invisible to `list` AND to the supersede scan — the labeler sees no
+// labels for the video, re-labels it, and the re-labels append instead of
+// replacing. Same shape as ensureCalloutRawText further down (which guards
+// callout_raw against "1-2" becoming a date).
+function ensureTextColumn(sh, headerName) {
+  var lastCol = sh.getLastColumn();
+  if (lastCol < 1) return;
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (var c = 0; c < header.length; c++) {
+    if (String(header[c]) === headerName) {
+      sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+      return;
+    }
+  }
+}
+
+// The date-shaped raw video names. Extend if a video is ever named something
+// else Sheets would parse as a date.
+var DATE_SHAPED_VIDEO_NAMES = ['November 15, 2020'];
+
+// RUN ONCE from the Apps Script editor, after deploying ensureTextColumn.
+//
+// Setting a column to plain text does NOT convert values already stored as
+// dates — those cells have to be written again as strings. This walks the two
+// sheets that took the hit and rewrites each Date video cell back to its
+// name. Reconstruction is exact for the known name; anything that formats to
+// a name outside DATE_SHAPED_VIDEO_NAMES is left alone and reported rather
+// than guessed at. Safe to re-run — a repaired cell is no longer a Date.
+function repairVideoNameDates() {
+  var sheets = [getOrCreateImpactFrameSheet(), getOrCreateChinShoulderSheet()];
+  var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  var report = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var data = sh.getDataRange().getValues();
+    var idx = punchDirHeaderIndex(data[0]);
+    if (idx.video === undefined) continue;
+    var fixed = 0, skipped = [];
+    for (var i = 1; i < data.length; i++) {
+      var v = data[i][idx.video];
+      if (!(v instanceof Date)) continue;
+      var name = Utilities.formatDate(v, tz, 'MMMM d, yyyy');   // -> "November 15, 2020"
+      if (DATE_SHAPED_VIDEO_NAMES.indexOf(name) === -1) {
+        skipped.push('row ' + (i + 1) + ' -> ' + name);
+        continue;
+      }
+      sh.getRange(i + 1, idx.video + 1).setValue(name);
+      fixed++;
+    }
+    report.push(sh.getName() + ': repaired ' + fixed + ', skipped ' + skipped.length +
+                (skipped.length ? ' (' + skipped.join('; ') + ')' : ''));
+  }
+  Logger.log(report.join('\n'));
+  return report;
+}
+
 function getOrCreateImpactFrameSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(IMPACT_FRAME_SHEET_NAME);
@@ -1836,6 +1904,7 @@ function getOrCreateImpactFrameSheet() {
     sh.appendRow(IMPACT_FRAME_HEADERS);
     sh.setFrozenRows(1);
   }
+  ensureTextColumn(sh, 'video');   // keep video names text, never dates
   return sh;
 }
 
@@ -2263,6 +2332,7 @@ function getOrCreateChinShoulderSheet() {
     sh.appendRow(CHIN_SHOULDER_HEADERS);
     sh.setFrozenRows(1);
   }
+  ensureTextColumn(sh, 'video');   // keep video names text, never dates
   return sh;
 }
 
