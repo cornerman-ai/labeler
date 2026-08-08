@@ -40,7 +40,7 @@ in sync with the same stored name automatically.
 - `shared/labeler_name.js` — the ask-once labeler identity (see above)
 - `shared/style.css` — common styling
 - `shared/videos.json` — which videos the video-based labelers list (regenerate with `shared/build_videos_json.py`)
-- `shared/apps_script.js` — the Google Apps Script backend (deployed as a Web App — see SETUP.md); labels land in the Sheet at Drive `Cornerman/data/labels/labeling_team/`
+- `apps_script/Code.js` — the Google Apps Script backend (deployed as a Web App; auto-deploys from master via GitHub Actions — see `apps_script/README.md`); labels land in the Sheet at Drive `Cornerman/data/labels/labeling_team/`
 
 ## Conventions
 

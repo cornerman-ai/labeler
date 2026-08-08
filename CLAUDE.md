@@ -6,7 +6,9 @@ Web-based video labeling tool for boxing punch annotation.
 
 - One folder per labeler (`punch/`, `chin_tuck/`, `bladedness/`, ...) — each holds
   its page, JS, data, and media; `shared/` holds `player.js`, `style.css`,
-  `videos.json`, and `apps_script.js` (deployed as a Web App); root `index.html`
+  `videos.json`; `apps_script/` holds the backend (`Code.js`, deployed as a
+  Web App — auto-deploys from master via clasp CI, see `apps_script/README.md`,
+  never edit in the Apps Script editor); root `index.html`
   is the landing page listing every labeler
 - Hosted at: https://cornerman-ai.github.io/labeler/
 

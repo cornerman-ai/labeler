@@ -1,0 +1,40 @@
+name: Deploy Apps Script
+on:
+  push:
+    branches: [master]
+    paths: ['apps_script/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install clasp
+        run: npm install -g @google/clasp@3
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::CLASPRC_JSON secret not set — run the one-time setup in apps_script/README.md"
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+      - name: Push code to the Apps Script project
+        working-directory: apps_script
+        run: clasp push -f
+      - name: Update the live web-app deployment (same /exec URL)
+        working-directory: apps_script
+        run: clasp deploy -i "$DEPLOYMENT_ID" -d "${GITHUB_SHA:0:7}"
+        env:
+          # The AKfycb… id inside the /exec URL the labeler pages post to
+          # (shared/player.js scriptUrl). Reusing it keeps the URL and the
+          # execute-as identity unchanged.
+          DEPLOYMENT_ID: AKfycbwM57VoFCXWIhw8jyechZQLtMzlmeT15bhIy0eozKpA0jHlmuZPSqVzyEcS5Vy0A5cS

@@ -8,7 +8,7 @@
 
 ## Step 2: Add the Apps Script
 1. In your Google Sheet, go to **Extensions > Apps Script**
-2. Delete any existing code and paste the contents of `shared/apps_script.js`
+2. Delete any existing code and paste the contents of `apps_script/Code.js`
 3. Click **Save** (name the project anything, e.g. "Label Receiver")
 
 ## Step 3: Deploy the Apps Script
@@ -28,3 +28,8 @@
 3. Click "Save"
 
 That's it! Labels will now auto-save to your Google Sheet in real time. No login required for labelers.
+
+> **Note:** the manual paste above is only for bootstrapping a brand-new
+> Sheet. The production script auto-deploys from GitHub on every merge to
+> master — see `apps_script/README.md`. Don't edit code in the Apps Script
+> editor; it gets overwritten by the next deploy.
