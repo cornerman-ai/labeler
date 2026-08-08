@@ -9,8 +9,7 @@ deployment in place — same `/exec` URL, so nothing in the pages changes.
 
 **GitHub is the only door.** Never EDIT code in the Apps Script editor — the
 next CI run overwrites it (`clasp push -f`). The editor is still where you
-RUN one-off maintenance functions (e.g. `repairVideoNameDates`), just not
-where code changes.
+RUN one-off maintenance functions, just not where code changes.
 
 ## One-time setup (owner account only)
 

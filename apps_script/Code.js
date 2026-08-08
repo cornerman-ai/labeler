@@ -1858,46 +1858,6 @@ function ensureTextColumn(sh, headerName) {
   }
 }
 
-// The date-shaped raw video names. Extend if a video is ever named something
-// else Sheets would parse as a date.
-var DATE_SHAPED_VIDEO_NAMES = ['November 15, 2020'];
-
-// RUN ONCE from the Apps Script editor, after deploying ensureTextColumn.
-//
-// Setting a column to plain text does NOT convert values already stored as
-// dates — those cells have to be written again as strings. This walks the two
-// sheets that took the hit and rewrites each Date video cell back to its
-// name. Reconstruction is exact for the known name; anything that formats to
-// a name outside DATE_SHAPED_VIDEO_NAMES is left alone and reported rather
-// than guessed at. Safe to re-run — a repaired cell is no longer a Date.
-function repairVideoNameDates() {
-  var sheets = [getOrCreateImpactFrameSheet(), getOrCreateChinShoulderSheet()];
-  var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  var report = [];
-  for (var s = 0; s < sheets.length; s++) {
-    var sh = sheets[s];
-    var data = sh.getDataRange().getValues();
-    var idx = punchDirHeaderIndex(data[0]);
-    if (idx.video === undefined) continue;
-    var fixed = 0, skipped = [];
-    for (var i = 1; i < data.length; i++) {
-      var v = data[i][idx.video];
-      if (!(v instanceof Date)) continue;
-      var name = Utilities.formatDate(v, tz, 'MMMM d, yyyy');   // -> "November 15, 2020"
-      if (DATE_SHAPED_VIDEO_NAMES.indexOf(name) === -1) {
-        skipped.push('row ' + (i + 1) + ' -> ' + name);
-        continue;
-      }
-      sh.getRange(i + 1, idx.video + 1).setValue(name);
-      fixed++;
-    }
-    report.push(sh.getName() + ': repaired ' + fixed + ', skipped ' + skipped.length +
-                (skipped.length ? ' (' + skipped.join('; ') + ')' : ''));
-  }
-  Logger.log(report.join('\n'));
-  return report;
-}
-
 function getOrCreateImpactFrameSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(IMPACT_FRAME_SHEET_NAME);
