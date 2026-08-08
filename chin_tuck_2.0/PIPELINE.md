@@ -4,7 +4,7 @@ How the 3,791 frames in this folder were chosen. Every number below was
 measured from the actual run, not estimated.
 
 Built 2026-08-07. Source of truth for the sampling itself is
-`cornerman-backend/ml/research/chin_tuck/chin_sampler_v2.py`.
+`cornerman-backend/ml/research/chin_tuck/v2/chin_sampler_v2.py`.
 
 ## Counts at every step
 
@@ -198,30 +198,47 @@ browser.
 ## Reproducing
 
 ```bash
-python chin_tuck/chin_sampler_v2.py \
+python chin_tuck/v2/chin_sampler_v2.py \
   --caches "<drive>/data/skeleton_data/blazepose" \
   --combined "<path>/Box Labeled Data.xlsx" \
   --out "<repo>/chin_tuck_2.0/chin_frames.json"
 
-python chin_tuck/chin_export_frames.py \
+# per-frame shoulder: lead by stance, the punching hand’s shoulder while
+# inside a documented punch (rewrites the manifest in place)
+python chin_tuck/v2/chin_annotate_shoulder.py \
+  --manifest "<repo>/chin_tuck_2.0/chin_frames.json" \
+  --combined "<path>/Box Labeled Data.xlsx"
+
+python chin_tuck/v1/chin_export_frames.py \
   --manifest "<repo>/chin_tuck_2.0/chin_frames.json" \
   --videos "<drive>/data/raw_videos/full_source_videos" \
   --out "<repo>/chin_tuck_2.0/frames" \
   --hosted-name exported_videos.json \
   --ffmpeg "<path to ffmpeg>"
 
-python chin_tuck/chin_export_skeletons.py \
+python chin_tuck/v2/chin_export_skeletons.py \
   --manifest "<repo>/chin_tuck_2.0/chin_frames.json" \
   --caches "<drive>/data/skeleton_data/blazepose" \
   --out "<repo>/chin_tuck_2.0/skeletons"
 
-python chin_tuck/chin_export_chin_points.py \
+python chin_tuck/v2/chin_export_chin_points.py \
   --skeletons "<repo>/chin_tuck_2.0/skeletons" \
   --manifest "<repo>/chin_tuck_2.0/chin_frames.json" \
   --out "<repo>/chin_tuck_2.0/chins/chin_points.json"
+
+# the fixed global order every labeler walks. --append keeps existing
+# positions and shuffles only NEW frames to the end - labels stay attached.
+python chin_tuck/v2/chin_build_queue.py \
+  --manifest "<repo>/chin_tuck_2.0/chin_frames.json" \
+  --chins "<repo>/chin_tuck_2.0/chins/chin_points.json" \
+  --out "<repo>/chin_tuck_2.0/queue.json" --append
 ```
 
-All run from `cornerman-backend/ml/research/chin_tuck/`. The JPEG export takes
+Every step is deterministic: a re-run against unchanged inputs reproduces
+each file byte-for-byte (verified for the queue and the chin points after
+the scripts moved into `v1/`/`v2/`).
+
+All run from `cornerman-backend/ml/research/` (v1/ holds the shared exporter, v2/ the 2.0-only scripts). The JPEG export takes
 ~1 hour at ~1s/frame, Drive-streaming bound rather than decode bound; the other
 two take seconds. `--hosted-name` matters: without it the exporter writes 1.0's
 `chin_hosted.json`, which is the name `chin_tuck.js` fetches.
@@ -231,8 +248,9 @@ different coefficient reruns offline in seconds.
 
 ## Open
 
-- **Taxonomy is not decided.** No labeler page, sheet, or Apps Script actions
-  exist for 2.0 yet — the question set gates all three.
+- ~~Taxonomy is not decided.~~ Decided and shipped: four questions
+  (shoulder_ok / chin_ok / lateral_safe / frontal_safe), page at
+  `chin_shoulder.html`, one `chin_shoulder_labels_<Name>` tab per labeler.
 - **666 MB is uncommitted.** The repo is already ~600 MB tracked + ~607 MB
   `.git`; adding these full-res frames roughly doubles it, past GitHub's 1 GB
   soft limit, and GitHub Pages serves every one to labelers. Downscaling to
