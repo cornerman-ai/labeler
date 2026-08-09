@@ -567,21 +567,24 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 
     <div class="card">
       <!-- Order mirrors the question list above, so a key can be found by
-           looking at the same row position as the question it answers. -->
+           looking at the same row position as the question it answers. Each
+           label is the wording ON the control it fires, not a paraphrase — the
+           row that said "Team's answers" fired the button labelled Clue, which
+           made the two read as different features. -->
       <dl id="keys">
-        <dt>Shoulder point</dt>  <dd><kbd>1</kbd><kbd>2</kbd></dd>
-        <dt>Chin point</dt>      <dd><kbd>Q</kbd><kbd>W</kbd></dd>
-        <dt>Laterally safe</dt>  <dd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dd>
-        <dt>Frontally safe</dt>  <dd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></dd>
+        <dt>Lead shoulder point</dt> <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <dt>Chin point</dt>          <dd><kbd>Q</kbd><kbd>W</kbd></dd>
+        <dt>Chin laterally safe</dt> <dd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dd>
+        <dt>Chin frontally safe</dt> <dd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></dd>
         <div class="sep"></div>
-        <dt>Save &amp; next</dt> <dd><kbd>↵</kbd></dd>
-        <dt>Skip</dt>            <dd><kbd>K</kbd></dd>
-        <dt>Clear answers</dt>   <dd><kbd>Esc</kbd></dd>
+        <dt>Save &amp; next</dt>     <dd><kbd>↵</kbd></dd>
+        <dt>Skip this frame</dt>     <dd><kbd>K</kbd></dd>
+        <dt>Clear answers</dt>       <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
-        <dt>Prev / next</dt>     <dd><kbd>←</kbd><kbd>→</kbd></dd>
+        <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
-        <dt>Team's answers</dt>  <dd><kbd>H</kbd></dd>
-        <dt>Flag this frame</dt> <dd><kbd>F</kbd></dd>
+        <dt>Clue</dt>                <dd><kbd>H</kbd></dd>
+        <dt>Flag</dt>                <dd><kbd>F</kbd></dd>
       </dl>
     </div>
   </div>
@@ -590,6 +593,6 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=43"></script>
+<script src="chin_shoulder.js?v=44"></script>
 </body>
 </html>

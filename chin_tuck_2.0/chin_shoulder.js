@@ -355,6 +355,20 @@ function placeMarks() {
   }
 }
 
+// Scroll a dot into view WITHOUT touching anything above it in the tree.
+// scrollIntoView cannot do this: it walks every scrollable ancestor, and #side
+// is one — so bringing a dot into its own grid also scrolled the entire right
+// panel, yanking the questions away mid-answer on every frame change. Moving
+// grid.scrollTop by hand is the whole fix; nothing else can move.
+function keepInView(grid, i) {
+  const el = grid.children[i];
+  if (!el) return;
+  const g = grid.getBoundingClientRect();
+  const e = el.getBoundingClientRect();
+  if (e.top < g.top) grid.scrollTop += e.top - g.top;
+  else if (e.bottom > g.bottom) grid.scrollTop += e.bottom - g.bottom;
+}
+
 // One dot per frame. 3,791 dots is a legible density; a scrolling list of rows
 // at that length is not.
 function renderOverview() {
@@ -399,10 +413,7 @@ function renderOverview() {
   // labeler picks yes/no is disorienting.
   if (state.ovScrolledTo !== state.i) {
     state.ovScrolledTo = state.i;
-    for (const grid of [ov, fg]) {
-      const here = grid.children[state.i];
-      if (here) here.scrollIntoView({ block: 'nearest' });
-    }
+    for (const grid of [ov, fg]) keepInView(grid, state.i);
   }
 }
 
