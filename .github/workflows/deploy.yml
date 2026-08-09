@@ -6,6 +6,23 @@ permissions:
   contents: read
   pages: write
   id-token: write
+
+# Pages allows ONE deployment at a time. Without this group, two pushes close
+# together each try to create one and the older loses:
+#   "Deployment request failed ... due to in progress deployment.
+#    Please cancel <newer sha> first or wait for it to complete."
+# which is how f80bbcc failed. The window is wide because the artifact is the
+# whole repo — ~800MB, most of it chin_tuck_2.0/frames — so a deployment takes
+# roughly 25 minutes and any two pushes inside that half hour collide.
+#
+# cancel-in-progress stays FALSE deliberately: an in-flight deployment is
+# allowed to finish, and GitHub drops any run left PENDING behind it when a
+# newer one arrives. So the live site still ends up at the newest commit, and
+# no deployment is ever cancelled halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
