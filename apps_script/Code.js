@@ -876,6 +876,7 @@ function onOpen() {
     .addItem('Refresh Labeler Hours', 'labelerActivityReport')
     .addItem('Set up hourly auto-refresh', 'installLabelerHoursTrigger')
     .addItem('Replace YouTube URLs with Drive URLs', 'replaceVideoUrls') // ONE-TIME: remove this line after running
+    .addItem('Fill blank 0/1 cells (chin-shoulder)', 'cs2BackfillBinaryColumns') // ONE-TIME: remove this line after running
     .addToUi();
 }
 
@@ -3271,6 +3272,47 @@ function getOrCreateCs2Sheet(labeler) {
     sh.getRange(1, at, 1, missing.length).setValues([missing]);
   }
   return sh;
+}
+
+// === ONE-TIME: fill the blanks left in the 0/1 columns by older deploys ===
+// skipped / consulted / flag are all "0 or 1, never blank" — but each of them
+// shipped later than the rows around it, and each earlier deploy wrote '' for
+// the false case. `flag` is the newest and so the worst affected: until
+// 2026-08-09 it held a free-text reason, and an unflagged frame left the cell
+// empty. Those rows only heal when a labeler happens to re-save them, which for
+// most frames is never.
+//
+// Touches nothing else — no ts, no answers — so a row's meaning is unchanged;
+// a blank in these three columns has always meant 0. Safe to run twice.
+// ONE-TIME: remove this function and its menu line once it has been run.
+function cs2BackfillBinaryColumns() {
+  var PREFIX = 'chin_shoulder_labels_';
+  var COLS = ['skipped', 'consulted', 'flag'];
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var report = [];
+  for (var s = 0; s < sheets.length; s++) {
+    if (sheets[s].getName().indexOf(PREFIX) !== 0) continue;
+    var sh = sheets[s];
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) continue;
+    var idx = punchDirHeaderIndex(
+      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+    var filled = 0;
+    for (var c = 0; c < COLS.length; c++) {
+      if (idx[COLS[c]] === undefined) continue;
+      // One read and at most one write per column, not per row.
+      var rng = sh.getRange(2, idx[COLS[c]] + 1, lastRow - 1, 1);
+      var vals = rng.getValues();
+      var touched = false;
+      for (var r = 0; r < vals.length; r++) {
+        if (String(vals[r][0]).trim() === '') { vals[r][0] = 0; touched = true; filled++; }
+      }
+      if (touched) rng.setValues(vals);
+    }
+    report.push(sh.getName() + ': ' + filled);
+  }
+  cs2InvalidateStats();
+  SpreadsheetApp.getUi().alert('Filled blank 0/1 cells\n\n' + report.join('\n'));
 }
 
 // === STATS across every labeler ===
