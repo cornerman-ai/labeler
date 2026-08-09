@@ -390,19 +390,15 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 /* Team panel — name, count, bar. Nothing else.
    It used to carry the queue position and a relative timestamp on every row
    too, which is four facts per person in a 330px column. Position was the
-   redundant one: for anyone working forward it just restates the count. What
-   is NOT derivable from the count is whether someone is working RIGHT NOW, so
-   that became a single dot, and the detail moved to the row's tooltip. */
+   redundant one: for anyone working forward it just restates the count. The
+   detail moved to the row's tooltip, which is where "when did they last save"
+   lives now. */
 #team { display: grid; grid-template-columns: 1fr auto;
         column-gap: 10px; align-items: baseline; font-size: 13px; }
 .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
          white-space: nowrap; font-weight: 500; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
 .who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
-/* Present only while someone is actively labeling, so an idle row is a plain
-   name and the eye is drawn to whoever is moving. */
-.who-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-           background: var(--yes); margin-left: 6px; vertical-align: middle; }
 .who-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px;
            background: rgba(120,120,128,.16); margin: 6px 0 12px;
            overflow: hidden; }
@@ -579,6 +575,6 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=41"></script>
+<script src="chin_shoulder.js?v=42"></script>
 </body>
 </html>

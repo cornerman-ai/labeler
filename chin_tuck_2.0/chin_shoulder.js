@@ -466,16 +466,9 @@ function renderTeam(rows) {
     const mine = r.labeler.toLowerCase() === me;
     const m = mine ? ' who-me' : '';
     const pct = n ? (r.n / n) * 100 : 0;
-    const idle = r.last_ts ? (Date.now() - Date.parse(r.last_ts)) / 1000 : Infinity;
-    const active = isFinite(idle) && idle < 300;      // saved in the last 5 min
 
     const name = add('who-n' + m, '');
     name.textContent = r.labeler;
-    if (active) {
-      const dot = document.createElement('i');
-      dot.className = 'who-dot';
-      name.appendChild(dot);
-    }
     add('who-c' + m, `${r.n.toLocaleString()}<s> / ${n.toLocaleString()}</s>`);
 
     const bar = add('who-bar' + m, '');
