@@ -3184,7 +3184,10 @@ function doGetBladedPairs(p, labeler, action) {
 //    alongside the chin and shoulder coordinates the labeler actually saw.
 //    Without that, a "the shoulder point is not okay" answer is uninterpretable
 //    later: you cannot tell which point was being rejected.
-//  * `reviewed` is written by the review pass, never by the labeling page.
+//  * `reviewed` is written by the review pass, never by the labeling page — but
+//    it starts at 0 rather than blank, so "nobody has reviewed this" is a value
+//    you can filter and count on instead of an empty cell that could equally
+//    mean the column did not exist yet.
 //
 // Every response here carries `v2: true`. doGet's default branch answers ANY
 // unrecognised action with {status:'ok', message:'Label receiver is running'},
@@ -3202,7 +3205,7 @@ function doGetBladedPairs(p, labeler, action) {
 var CS2_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec',
                    'stance', 'shoulder_used',
                    'shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe',
-                   'skipped', 'consulted', 'flag', 'reviewed'];
+                   'skipped', 'consulted', 'flag', 'dwell_sec', 'reviewed'];
 
 // yes/no for the two point-quality checks; the two exposure questions carry a
 // third option because "cannot tell from this frame" is a real answer, and
@@ -3271,23 +3274,59 @@ function getOrCreateCs2Sheet(labeler) {
     if (sh.getMaxColumns() < need) sh.insertColumnsAfter(sh.getMaxColumns(), need - sh.getMaxColumns());
     sh.getRange(1, at, 1, missing.length).setValues([missing]);
   }
+
+  // ORDER is part of the shape too. The add pass above can only append, so a
+  // column introduced in the middle of CS2_HEADERS — dwell_sec, which belongs
+  // after flag — lands last on every sheet that already existed, and the tabs
+  // stop agreeing with each other and with new ones. Everything still WORKS,
+  // because reads and writes go by header name, but a human comparing two tabs
+  // sees two different schemas.
+  //
+  // Permute in memory and write the block back in one call rather than using
+  // moveColumns, whose destination index is relative to the pre-move positions
+  // and is easy to get wrong by one in the direction of travel.
+  var now = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+              .map(function (h) { return String(h).trim().toLowerCase(); });
+  var ordered = true;
+  for (var oi = 0; oi < want.length; oi++) {
+    if (now[oi] !== want[oi]) { ordered = false; break; }
+  }
+  if (!ordered) {
+    var perm = want.map(function (h) { return now.indexOf(h); });
+    var ok = true;
+    for (var pi = 0; pi < perm.length; pi++) if (perm[pi] < 0) { ok = false; break; }
+    if (ok) {
+      var nRows = Math.max(sh.getLastRow(), 1);
+      var block = sh.getRange(1, 1, nRows, now.length).getValues();
+      var moved = block.map(function (row) {
+        return perm.map(function (p) { return row[p]; });
+      });
+      moved[0] = CS2_HEADERS.slice();
+      sh.getRange(1, 1, nRows, want.length).setValues(moved);
+      // Anything past the schema is now a duplicate of a column we just moved.
+      for (var extra = now.length; extra > want.length; extra--) sh.deleteColumn(extra);
+    }
+  }
   return sh;
 }
 
 // === ONE-TIME: fill the blanks left in the 0/1 columns by older deploys ===
-// skipped / consulted / flag are all "0 or 1, never blank" — but each of them
-// shipped later than the rows around it, and each earlier deploy wrote '' for
-// the false case. `flag` is the newest and so the worst affected: until
-// 2026-08-09 it held a free-text reason, and an unflagged frame left the cell
-// empty. Those rows only heal when a labeler happens to re-save them, which for
-// most frames is never.
+// skipped / consulted / flag / reviewed are all "0 or 1, never blank" — but
+// each of them shipped later than the rows around it, and each earlier deploy
+// wrote '' for the false case. `flag` was the worst affected: until 2026-08-09
+// it held a free-text reason, and an unflagged frame left the cell empty.
+// `reviewed` had no default at all until the same day. Those rows only heal
+// when a labeler happens to re-save them, which for most frames is never.
+//
+// dwell_sec is deliberately NOT in the list: 0 there would assert a frame was
+// decided in zero seconds, when the truth is it was never timed.
 //
 // Touches nothing else — no ts, no answers — so a row's meaning is unchanged;
 // a blank in these three columns has always meant 0. Safe to run twice.
 // ONE-TIME: remove this function and its menu line once it has been run.
 function cs2BackfillBinaryColumns() {
   var PREFIX = 'chin_shoulder_labels_';
-  var COLS = ['skipped', 'consulted', 'flag'];
+  var COLS = ['skipped', 'consulted', 'flag', 'reviewed'];
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var report = [];
   for (var s = 0; s < sheets.length; s++) {
@@ -3646,6 +3685,13 @@ function doGetChinShoulderV2(p, labeler, action) {
           v = String(v === null || v === undefined ? '' : v).trim();
           return (v === '' || v === '0') ? 0 : 1;
         })(data[i][idx.flag]),
+        // Sent back so the page can ADD this visit's seconds to it rather than
+        // overwriting — a frame answered, revisited and corrected should report
+        // the total time it cost, not the time of the last glance.
+        dwell_sec: (function (v) {
+          v = Number(v);
+          return isFinite(v) && v > 0 ? v : 0;
+        })(data[i][idx.dwell_sec]),
         reviewed: cell(data[i], 'reviewed')
       });
     }
@@ -3663,6 +3709,8 @@ function doGetChinShoulderV2(p, labeler, action) {
     var skipped = String(p.skipped || '') === '1';
     var consulted = String(p.consulted || '') === '1';
     var flagged = String(p.flag || '') === '1';
+    var dwell = Number(p.dwell_sec);
+    if (!isFinite(dwell) || dwell < 0) dwell = 0;
     var vals = {};
     for (var f = 0; f < CS2_FIELDS.length; f++) {
       var fld = CS2_FIELDS[f];
@@ -3706,6 +3754,13 @@ function doGetChinShoulderV2(p, labeler, action) {
       // whole signal; a reason field went unused and made the column harder to
       // filter on than it was worth.
       else if (col === 'flag') out.push(flagged ? 1 : 0);
+      // Seconds this labeler spent looking at the frame, accumulated across
+      // visits by the page. A number, never blank — 0 means "measured as zero",
+      // which only a save fired within the same tick can produce.
+      else if (col === 'dwell_sec') out.push(dwell);
+      // Not blank: 0 means "not reviewed yet". The review pass overwrites it,
+      // and the branch below preserves whatever it wrote.
+      else if (col === 'reviewed') out.push(0);
       else if (CS2_VALUES[col] !== undefined) out.push(vals[col]);
       else out.push('');
     }
@@ -3715,7 +3770,11 @@ function doGetChinShoulderV2(p, labeler, action) {
       // Overwrite in place. `reviewed` belongs to the review pass, so a
       // re-label must not silently clear it — read back just that one cell.
       if (idx.reviewed !== undefined) {
-        out[idx.reviewed] = sh.getRange(at, idx.reviewed + 1).getValue();
+        var prevReviewed = sh.getRange(at, idx.reviewed + 1).getValue();
+        // A blank here is a row written before the column had a default, not a
+        // review verdict — re-saving it is the chance to make it say 0.
+        out[idx.reviewed] =
+          (prevReviewed === '' || prevReviewed === null) ? 0 : prevReviewed;
       }
       sh.getRange(at, 1, 1, out.length).setValues([out]);
       cs2InvalidateStats();

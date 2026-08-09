@@ -56,24 +56,28 @@ const state = {
   clueCache: new Map(),    // key -> peer rows, so reopening costs nothing
   consulted: new Set(),    // frames whose clue was opened — see the CSS note
   flag: false,             // is this frame flagged for a second look
+  shownAt: 0,              // when the current frame went on screen (ms)
+  agreeBusy: false,        // a comparison is being computed right now
   agreeBody: null,         // last agreement snapshot
   agreeAt: null,           // when it was taken
 };
 
 const $ = (id) => document.getElementById(id);
 
-// The name is asked for on every open. labeler_name.js restores it from
-// localStorage on DOMContentLoaded — useful on the shared labelers, wrong here,
-// where two people use one machine and inheriting the previous session's name
-// files their work under someone else. Our listener is registered after that
-// script's, so it runs after it and wins.
-function clearNameField() {
+// The name is remembered per device: labeler_name.js keeps it in localStorage
+// and pushes it back into #labeler-input, and we start on it without asking.
+// This page used to clear the field on every load, on the theory that two people
+// sharing a machine could inherit each other's name — but that cost everyone a
+// re-entry on every single visit to guard against a case that has not happened.
+// The restored name is not hidden: it sits in the field, green, and one edit
+// changes it, so a second person on the same machine can still see whose it is.
+function restoreName() {
   const el = $('labeler-input');
-  if (el) el.value = '';
-  const go = $('name-go');
-  if (go) go.disabled = true;
+  if (!el || el.value.trim()) return;         // already filled by labeler_name.js
+  let saved = null;
+  try { saved = window.CMLabeler && window.CMLabeler.get && window.CMLabeler.get(); } catch (e) {}
+  if (saved) el.value = saved;
 }
-document.addEventListener('DOMContentLoaded', clearNameField);
 const key = (f) => JSON.stringify([f.stem, f.round, f.frame]);
 
 // Windows strips trailing dots/spaces from directory names, so the exporter
@@ -179,12 +183,30 @@ async function loadLabels() {
 // waiting. The cost of optimism is that a failure surfaces AFTER the labeler
 // has moved on, so a failed frame is rolled back out of state.labels, painted
 // red in the overview, and named in the status line.
+// A single look at a frame, in seconds. Capped because the clock cannot tell
+// deliberation from a tab left open over lunch, and one abandoned afternoon
+// would otherwise dominate every average taken over the column. Two minutes is
+// far beyond any real decision here and still keeps the hard frames legible.
+const DWELL_CAP_SEC = 120;
+
+function dwellFor(k) {
+  const prior = state.labels.get(k);
+  const before = (prior && Number(prior.dwell_sec)) || 0;
+  const seg = state.shownAt ? (Date.now() - state.shownAt) / 1000 : 0;
+  return Math.round((before + Math.min(Math.max(seg, 0), DWELL_CAP_SEC)) * 10) / 10;
+}
+
 function save({ skip = false } = {}) {
   if (!state.ready) return false;
   const name = who();
   if (!name) { status('Enter your name first', 'err'); $('labeler-input').focus(); return false; }
   const f = state.frames[state.i];
   const k = key(f);
+  const dwell = dwellFor(k);
+  // Restart the segment so a second save on this frame — toggling the flag
+  // after answering — adds only the time since the first, never the same
+  // seconds twice.
+  state.shownAt = Date.now();
   const params = {
     action: 'saveChinShoulderV2', labeler: name,
     video: f.stem, round: String(f.round), frame: String(f.frame),
@@ -193,6 +215,7 @@ function save({ skip = false } = {}) {
     skipped: skip ? '1' : '0',
     consulted: state.consulted.has(k) ? '1' : '0',
     flag: state.flag ? '1' : '0',
+    dwell_sec: String(dwell),
   };
   // A skip is the absence of a judgement, so it never carries answers — the
   // backend rejects rows that hold both.
@@ -202,6 +225,7 @@ function save({ skip = false } = {}) {
     video: f.stem, round: f.round, frame: f.frame, skipped: skip ? 1 : 0,
     consulted: state.consulted.has(k) ? 1 : 0,
     flag: state.flag ? 1 : 0,
+    dwell_sec: dwell,
     ...Object.fromEntries(FIELDS.map((fld) => [fld, skip ? null : (state.answers[fld] || null)])),
   };
   const prev = state.labels.get(k);
@@ -249,6 +273,7 @@ function save({ skip = false } = {}) {
 function setReady(on, note, isError) {
   state.ready = !!on;
   renderNameState();
+  syncPanelButtons();
   document.body.classList.toggle('ready', state.ready);
   $('q-lock').textContent = note || '';
   $('q-lock').classList.toggle('err', !!isError);
@@ -293,6 +318,10 @@ function go(i) {
     for (const fld of FIELDS) if (saved[fld]) state.answers[fld] = saved[fld];
   }
   resetClue();
+  // Starts the clock for dwell_sec. Set here rather than on image load: the
+  // question is how long the labeler spent deciding, and their attention moves
+  // to the frame the moment it is asked for.
+  state.shownAt = Date.now();
   render();
   prefetch();
 }
@@ -323,7 +352,7 @@ function render() {
     b.setAttribute('aria-pressed', String(state.answers[b.dataset.q] === b.dataset.v));
   }
   $('skip').setAttribute('aria-pressed', String(state.skipped));
-  $('clue-btn').disabled = !state.ready;
+  syncPanelButtons();
   renderFlag();
   $('save').disabled = state.skipped;
 
@@ -560,10 +589,10 @@ function toggleAgreement() {
 }
 
 async function computeAgreement() {
-  const btn = $('agree-btn');
   const out = $('agree-out');
   if (!who()) return;
-  btn.disabled = true;
+  state.agreeBusy = true;
+  syncPanelButtons();
   out.replaceChildren(note('Reading everyone\u2019s answers…'));
   try {
     const body = await call({ action: 'agreementChinShoulderV2', labeler: who() },
@@ -574,7 +603,8 @@ async function computeAgreement() {
   } catch (e) {
     out.replaceChildren(note(e.message));
   } finally {
-    btn.disabled = false;
+    state.agreeBusy = false;
+    syncPanelButtons();
   }
 }
 
@@ -691,6 +721,20 @@ function renderAgreement(body) {
 //
 // Toggling writes the row immediately and does NOT advance: a flag is a note
 // about the frame in front of you, so jumping away would hide whether it took.
+// Both panels read from the sheet under a labeler's name, so neither means
+// anything until there is one. Comparison was the odd one out: it was clickable
+// with the field empty, and answered by doing nothing at all — toggleAgreement
+// returns early on a missing name, so the click looked broken rather than
+// unavailable. Gated on `ready` rather than on the name alone, so it also stays
+// off while the labels are still loading.
+function syncPanelButtons() {
+  const locked = !state.ready;
+  $('clue-btn').disabled = locked;
+  // agreeBusy is its own reason to stay disabled — a comparison already in
+  // flight must not be fired twice — and must survive a readiness repaint.
+  $('agree-btn').disabled = locked || state.agreeBusy;
+}
+
 // Green only while the box holds the name we actually loaded and the page is
 // unlocked — not merely because a name was typed once. Typing a different name
 // drops it back to blue, which is the honest signal: what is in the box is not
@@ -1145,7 +1189,10 @@ async function start() {
   }
   setReady(false, 'Loading…');
   state.frames.forEach((f, i) => state.index.set(key(f), i));
-  clearNameField();       // DOMContentLoaded may have fired during the fetch
+  // Read it here rather than trusting labeler_name.js's DOMContentLoaded to
+  // have landed first — that fires during the queue.json await, and depending on
+  // it would make the restore a race.
+  restoreName();
   render();
   await start();          // no name yet -> frozen, asking for one
   // Polling only. save() no longer calls loadTeam directly — that doubled the
