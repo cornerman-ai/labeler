@@ -384,10 +384,8 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
 #ov-flags { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
             max-height: 120px; overflow-y: auto; }
 #ov-flags i.flag { background: var(--no); }
-#ov-sub { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 8px; }
-#ov-sub-t { font-size: 11px; font-weight: 590; color: var(--ink-dim);
-            text-transform: uppercase; letter-spacing: .05em; }
-#ov-sub-n { font-size: 11px; color: var(--ink-dim); margin-left: auto; }
+#ov-sub { margin: 14px 0 8px; }
+#ov-sub-n { font-size: 12px; color: var(--ink-dim); }
 /* Team panel — name, count, bar. Nothing else.
    It used to carry the queue position and a relative timestamp on every row
    too, which is four facts per person in a 330px column. Position was the
@@ -539,10 +537,7 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
         <span id="done">—</span>
       </div>
       <div id="ov"></div>
-      <div id="ov-sub">
-        <span id="ov-sub-t">Flagged</span>
-        <span id="ov-sub-n">0</span>
-      </div>
+      <div id="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
       <div id="ov-flags"></div>
       <div id="legend">
         <span><b style="background:var(--yes)"></b>done</span>
@@ -576,6 +571,6 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=39"></script>
+<script src="chin_shoulder.js?v=40"></script>
 </body>
 </html>

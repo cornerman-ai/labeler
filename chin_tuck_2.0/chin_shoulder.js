@@ -389,7 +389,7 @@ function renderOverview() {
     fe.classList.toggle('here', i === state.i);
     fe.title = `#${i + 1}` + (isFlag ? ' · flagged' : '');
   });
-  $('ov-sub-n').textContent = flagged;
+  $('ov-sub-n').textContent = `${flagged} flagged`;
   // Only scroll when the position actually moved. render() also runs on every
   // answer click, and scrolling the overview under the cursor each time a
   // labeler picks yes/no is disorienting.
