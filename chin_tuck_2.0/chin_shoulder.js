@@ -248,6 +248,7 @@ function save({ skip = false } = {}) {
 // can look and zoom while they wait — they just cannot answer yet.
 function setReady(on, note, isError) {
   state.ready = !!on;
+  renderNameState();
   document.body.classList.toggle('ready', state.ready);
   $('q-lock').textContent = note || '';
   $('q-lock').classList.toggle('err', !!isError);
@@ -679,6 +680,16 @@ function renderAgreement(body) {
 //
 // Toggling writes the row immediately and does NOT advance: a flag is a note
 // about the frame in front of you, so jumping away would hide whether it took.
+// Green only while the box holds the name we actually loaded and the page is
+// unlocked — not merely because a name was typed once. Typing a different name
+// drops it back to blue, which is the honest signal: what is in the box is not
+// what answers are being saved under until Start is pressed again.
+function renderNameState() {
+  const live = !!who() && who() === state.loadedFor && state.ready;
+  $('name-row').classList.toggle('saved', live);
+  $('name-go').textContent = live ? 'Saved' : 'Start';
+}
+
 function renderFlag() {
   $('flag-btn').setAttribute('aria-pressed', String(!!state.flag));
   $('flag-label').textContent = state.flag ? 'Flagged' : 'Flag';
@@ -934,7 +945,10 @@ function bind() {
   // keystroke or blur. labeler_name.js also normalises the value ("alex" ->
   // "Alex") and re-dispatches change, so an onchange handler fired twice for a
   // single entry; commitName is idempotent and start() drops a duplicate load.
-  const syncGo = () => { $('name-go').disabled = !who(); };
+  const syncGo = () => {
+    $('name-go').disabled = !who();
+    renderNameState();
+  };
   const commitName = () => {
     if (!who()) return;
     window.CMLabeler && window.CMLabeler.set && window.CMLabeler.set(who());
@@ -1070,6 +1084,7 @@ async function start() {
   } catch (e) {
     if (token === state.loadToken) {
       state.loadingFor = null;
+      renderNameState();
       status(e.message, 'err');
       setReady(false, 'Could not load your labels. Press Start to try again.', true);
     }
@@ -1078,6 +1093,7 @@ async function start() {
   if (token !== state.loadToken) return;       // superseded — discard
   state.loadingFor = null;
   state.loadedFor = name;
+  renderNameState();
   setReady(true);
 
   // Land on the first frame with no row of your own; the last frame if there

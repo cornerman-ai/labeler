@@ -69,6 +69,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
 }
 #name-go:disabled { opacity: .3; cursor: default; }
+/* Committing the name is what unlocks the page and decides which sheet every
+   answer lands in, and until now the only sign it had taken was the frame
+   quietly becoming clickable. Green button, green field: the name in the box
+   is the name being saved under. Edit the box and both revert, because what is
+   typed is no longer what is committed. */
+#name-row.saved #name-go { background: var(--yes); }
+#name-row.saved #labeler-input {
+  box-shadow: inset 0 0 0 1.5px var(--yes);
+  background: color-mix(in srgb, var(--yes) 10%, transparent);
+}
 #labeler-input::placeholder { color: var(--ink-dim); font-weight: 400; }
 #labeler-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 @media (prefers-color-scheme: dark) {
@@ -225,8 +235,10 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 #flag-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+/* The SAME red the flag grid paints, not amber: the button and the dot report
+   one fact, and two colours for it read as two different states. */
 #flag-btn[aria-pressed="true"] {
-  background: var(--maybe); border-color: transparent; color: #fff;
+  background: var(--no); border-color: transparent; color: #fff;
 }
 #flag-btn svg { width: 13px; height: 13px; flex: none; }
 
@@ -385,7 +397,10 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 #ov-flags { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
             max-height: 120px; overflow-y: auto; }
 #ov-flags i.flag { background: var(--no); }
-#ov-sub { margin: 16px 0 8px; }
+/* Right-aligned to line up with "N done" in #head directly above it. The two
+   numbers answer the same shape of question about the grid beneath each of
+   them, so they belong in the same column of the eye's path. */
+#ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
 #ov-sub-n { font-size: 12px; color: var(--ink-dim); }
 /* Team panel — name, count, bar. Nothing else.
    It used to carry the queue position and a relative timestamp on every row
@@ -575,6 +590,6 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=42"></script>
+<script src="chin_shoulder.js?v=43"></script>
 </body>
 </html>
