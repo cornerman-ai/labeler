@@ -378,7 +378,10 @@ function renderOverview() {
     const k = key(f);
     el.className = state.failed.has(k) ? 'fail'
       : !row ? '' : row.skipped ? 'skip'
-      : isFinished(row) ? 'done' : 'part';
+      : isFinished(row) ? 'done'
+      // A row with no answers is not partial progress — it exists only because
+      // the frame was flagged, and flagged is the grid below, not this one.
+      : answered(row) ? 'part' : '';
     el.classList.toggle('here', i === state.i);
     el.title = `#${i + 1}`;
 
@@ -693,7 +696,7 @@ function toggleFlag() {
   if (!state.ready) return;
   state.flag = !state.flag;
   renderFlag();
-  save();
+  save({ skip: state.skipped });
 }
 
 // ── clue: how the rest of the team answered this frame ─────────────────────
@@ -916,7 +919,15 @@ function bind() {
 
   // No await: save() records locally and returns at once, so the queue moves at
   // the speed of the labeler rather than the speed of Apps Script.
-  $('save').onclick = () => { if (save()) advance(); };
+  $('save').onclick = () => {
+    // Saving a frame you answered nothing on is not a partial judgement, it is
+    // no judgement — you looked and moved on. Recorded as a skip so it leaves a
+    // grey dot that is DONE WITH rather than a yellow one promising a return
+    // trip to a frame with nothing to return to.
+    const blank = !FIELDS.some((fld) => state.answers[fld]);
+    if (blank) { state.answers = {}; state.skipped = true; }
+    if (save({ skip: blank })) advance(); else render();
+  };
   $('skip').onclick = () => {
     // Discard any answers first. A skip means "this frame cannot be judged",
     // so it must not carry a judgement.
