@@ -3598,7 +3598,12 @@ function doGetChinShoulderV2(p, labeler, action) {
         frontal_safe: cell(data[i], 'frontal_safe'),
         skipped: String(data[i][idx.skipped]) === '1' ? 1 : 0,
         consulted: String(data[i][idx.consulted]) === '1' ? 1 : 0,
-        flag: cell(data[i], 'flag'),
+        // Rows written before `flag` was binary hold free text; anything not
+        // empty and not '0' meant the frame WAS flagged, so it reads as 1.
+        flag: (function (v) {
+          v = String(v === null || v === undefined ? '' : v).trim();
+          return (v === '' || v === '0') ? 0 : 1;
+        })(data[i][idx.flag]),
         reviewed: cell(data[i], 'reviewed')
       });
     }
@@ -3615,6 +3620,7 @@ function doGetChinShoulderV2(p, labeler, action) {
     }
     var skipped = String(p.skipped || '') === '1';
     var consulted = String(p.consulted || '') === '1';
+    var flagged = String(p.flag || '') === '1';
     var vals = {};
     for (var f = 0; f < CS2_FIELDS.length; f++) {
       var fld = CS2_FIELDS[f];
@@ -3654,9 +3660,10 @@ function doGetChinShoulderV2(p, labeler, action) {
       // computed over these rows measures convergence rather than the
       // questions being clear. This column is what lets the two be separated.
       else if (col === 'consulted') out.push(consulted ? 1 : 0);
-      // One column, not a flag/reason pair: a flag without a reason is not
-      // actionable later, so the reason IS the flag. Empty = not flagged.
-      else if (col === 'flag') out.push(String(p.flag || '').slice(0, 300));
+      // Binary, like `skipped` — 0/1, never blank. "Come back to this" is the
+      // whole signal; a reason field went unused and made the column harder to
+      // filter on than it was worth.
+      else if (col === 'flag') out.push(flagged ? 1 : 0);
       else if (CS2_VALUES[col] !== undefined) out.push(vals[col]);
       else out.push('');
     }

@@ -55,7 +55,9 @@ const state = {
   clueOpen: false,         // the clue panel is expanded
   clueCache: new Map(),    // key -> peer rows, so reopening costs nothing
   consulted: new Set(),    // frames whose clue was opened — see the CSS note
-  flag: '',                // this frame's flag reason ('' = not flagged)
+  flag: false,             // is this frame flagged for a second look
+  agreeBody: null,         // last agreement snapshot
+  agreeAt: null,           // when it was taken
 };
 
 const $ = (id) => document.getElementById(id);
@@ -153,7 +155,10 @@ async function loadLabels() {
   state.consulted = new Set();
   state.clueCache = new Map();
   state.failed = new Map();
-  state.flag = '';
+  state.flag = false;
+  state.agreeBody = null;      // computed FOR the previous labeler
+  state.agreeAt = null;
+  setAgreeOpen(false);
   if (!name) return;
   const body = await call({ action: 'listChinShoulderV2', labeler: name }, 'load labels');
   for (const r of (body.rows || [])) {
@@ -187,7 +192,7 @@ function save({ skip = false } = {}) {
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
     consulted: state.consulted.has(k) ? '1' : '0',
-    flag: state.flag || '',
+    flag: state.flag ? '1' : '0',
   };
   // A skip is the absence of a judgement, so it never carries answers — the
   // backend rejects rows that hold both.
@@ -196,7 +201,7 @@ function save({ skip = false } = {}) {
   const row = {
     video: f.stem, round: f.round, frame: f.frame, skipped: skip ? 1 : 0,
     consulted: state.consulted.has(k) ? 1 : 0,
-    flag: state.flag || null,
+    flag: state.flag ? 1 : 0,
     ...Object.fromEntries(FIELDS.map((fld) => [fld, skip ? null : (state.answers[fld] || null)])),
   };
   const prev = state.labels.get(k);
@@ -281,13 +286,12 @@ function go(i) {
   const f = state.frames[state.i];
   const saved = state.labels.get(key(f));
   state.answers = {};
-  state.flag = (saved && saved.flag) || '';
+  state.flag = !!(saved && saved.flag);
   state.skipped = !!(saved && saved.skipped);
   if (saved && !saved.skipped) {
     for (const fld of FIELDS) if (saved[fld]) state.answers[fld] = saved[fld];
   }
   resetClue();
-  setFlagPanel(false);
   render();
   prefetch();
 }
@@ -354,13 +358,20 @@ function placeMarks() {
 // at that length is not.
 function renderOverview() {
   const ov = $('ov');
+  const fg = $('ov-flags');
+  // Two grids over the same queue in the same order: label state above,
+  // flagged-or-not below. Built together so a position means the same thing in
+  // both and the eye can move straight down.
   if (ov.childElementCount !== state.frames.length) {
-    ov.replaceChildren(...state.frames.map((_, i) => {
+    const mk = () => state.frames.map((_, i) => {
       const el = document.createElement('i');
       el.onclick = () => go(i);
       return el;
-    }));
+    });
+    ov.replaceChildren(...mk());
+    fg.replaceChildren(...mk());
   }
+  let flagged = 0;
   state.frames.forEach((f, i) => {
     const row = state.labels.get(key(f));
     const el = ov.children[i];
@@ -370,14 +381,24 @@ function renderOverview() {
       : isFinished(row) ? 'done' : 'part';
     el.classList.toggle('here', i === state.i);
     el.title = `#${i + 1}`;
+
+    const isFlag = !!(row && row.flag);
+    if (isFlag) flagged++;
+    const fe = fg.children[i];
+    fe.className = isFlag ? 'flag' : '';
+    fe.classList.toggle('here', i === state.i);
+    fe.title = `#${i + 1}` + (isFlag ? ' · flagged' : '');
   });
+  $('ov-sub-n').textContent = flagged;
   // Only scroll when the position actually moved. render() also runs on every
   // answer click, and scrolling the overview under the cursor each time a
   // labeler picks yes/no is disorienting.
   if (state.ovScrolledTo !== state.i) {
     state.ovScrolledTo = state.i;
-    const here = ov.children[state.i];
-    if (here) here.scrollIntoView({ block: 'nearest' });
+    for (const grid of [ov, fg]) {
+      const here = grid.children[state.i];
+      if (here) here.scrollIntoView({ block: 'nearest' });
+    }
   }
 }
 
@@ -512,24 +533,40 @@ function scheduleTeamRefresh() {
 // Scored only over frames BOTH people finished — all four answered, neither
 // skipped — because a blank is not a judgement and counting it would inflate
 // the result.
+// Opens and closes like the clue panel. The result is a SNAPSHOT — it reads
+// every labeler tab, which is slow and not something to re-run on each open —
+// so it is computed once, kept, and stamped with the time it was taken. The
+// footer carries an explicit refresh for a fresh one.
+function setAgreeOpen(open) {
+  $('agree-out').classList.toggle('on', open);
+  $('agree-btn').setAttribute('aria-expanded', String(open));
+  $('agree-label').textContent = open ? 'Hide comparison' : 'Compare with the team';
+}
+
+function toggleAgreement() {
+  if (!who()) return;
+  if ($('agree-out').classList.contains('on')) { setAgreeOpen(false); return; }
+  setAgreeOpen(true);
+  if (state.agreeAt) renderAgreement(state.agreeBody);   // already have one
+  else computeAgreement();
+}
+
 async function computeAgreement() {
   const btn = $('agree-btn');
   const out = $('agree-out');
   if (!who()) return;
   btn.disabled = true;
-  const was = btn.textContent;
-  btn.textContent = 'Comparing…';
-  out.classList.add('on');
   out.replaceChildren(note('Reading everyone\u2019s answers…'));
   try {
     const body = await call({ action: 'agreementChinShoulderV2', labeler: who() },
                             'agreement');
+    state.agreeBody = body;
+    state.agreeAt = new Date();
     renderAgreement(body);
   } catch (e) {
     out.replaceChildren(note(e.message));
   } finally {
     btn.disabled = false;
-    btn.textContent = was;
   }
 }
 
@@ -558,6 +595,14 @@ function renderAgreement(body) {
     out.appendChild(note(rows.length
       ? 'No frames yet that you and a teammate have both finished.'
       : 'Nobody else has labeled anything yet.'));
+    const f0 = document.createElement('div');
+    f0.id = 'agree-foot';
+    const b0 = document.createElement('button');
+    b0.id = 'agree-refresh';
+    b0.textContent = 'Refresh';
+    b0.onclick = computeAgreement;
+    f0.appendChild(b0);
+    out.appendChild(f0);
     return;
   }
 
@@ -572,123 +617,81 @@ function renderAgreement(body) {
     who_.textContent = r.labeler;
     const n = document.createElement('span');
     n.className = 'ag-n';
-    n.textContent = `${r.shared} shared · ${Math.round(100 * r.all_four_match / r.shared)}% identical`;
+    n.textContent = `${r.shared} frames`;
     head.append(who_, n);
+    // Everything that used to be a line of prose lives here instead.
+    const ind = r.independent || { shared: 0, all_four_match: 0 };
+    head.title = `${r.all_four_match} of ${r.shared} frames identical on all four`
+      + (ind.shared
+          ? ` · without the clue: ${ind.all_four_match} of ${ind.shared}`
+          : ' · no clue-free shared frames yet');
     block.appendChild(head);
 
-    const dl = document.createElement('dl');
-    dl.className = 'ag-q';
     for (const fld of FIELDS) {
       const q = r.questions[fld] || {};
-      const dt = document.createElement('dt');
-      dt.textContent = QUESTION_LABELS[fld];
-      const agree = document.createElement('dd');
-      agree.textContent = q.agree === null || q.agree === undefined
-        ? '—' : `${Math.round(q.agree * 100)}%`;
-      const kap = document.createElement('dd');
-      kap.textContent = q.kappa === null || q.kappa === undefined
-        ? 'κ —' : `κ ${q.kappa.toFixed(2)}`;
-      kap.className = kappaClass(q.kappa);
-      dl.append(dt, agree, kap);
+      const pct = (q.agree === null || q.agree === undefined) ? null : q.agree * 100;
+
+      const row = document.createElement('div');
+      row.className = 'ag-row';
+      row.title = pct === null ? 'not enough shared frames'
+        : `${Math.round(pct)}% same answer · kappa `
+          + (q.kappa === null || q.kappa === undefined ? '—' : q.kappa.toFixed(2))
+          + ' (agreement beyond chance)';
+
+      const lbl = document.createElement('span');
+      lbl.className = 'ag-lbl';
+      lbl.textContent = QUESTION_LABELS[fld];
+
+      const bar = document.createElement('span');
+      bar.className = 'ag-bar';
+      const fill = document.createElement('i');
+      fill.style.width = `${pct === null ? 0 : pct}%`;
+      fill.className = pct === null ? 'k-na' : (kappaClass(q.kappa) || 'k-na');
+      bar.appendChild(fill);
+
+      const val = document.createElement('span');
+      val.className = 'ag-pct';
+      val.textContent = pct === null ? '—' : `${Math.round(pct)}%`;
+
+      row.append(lbl, bar, val);
+      block.appendChild(row);
     }
-    block.appendChild(dl);
-
-    const legend = document.createElement('div');
-    legend.className = 'ag-legend';
-    legend.textContent = 'raw agreement · κ = agreement beyond chance';
-    block.appendChild(legend);
-
-    // The honest number. If most shared frames were answered after opening the
-    // clue panel, the headline above measures convergence rather than two
-    // people independently seeing the same thing.
-    const ind = r.independent || { shared: 0, all_four_match: 0 };
-    const indep = document.createElement('div');
-    indep.className = 'ag-indep';
-    indep.textContent = ind.shared
-      ? `Without the clue: ${ind.shared} frames, `
-        + `${Math.round(100 * ind.all_four_match / ind.shared)}% identical`
-      : 'Without the clue: no shared frames yet';
-    block.appendChild(indep);
 
     out.appendChild(block);
   }
+
+  const foot = document.createElement('div');
+  foot.id = 'agree-foot';
+  const when = document.createElement('span');
+  when.id = 'agree-when';
+  when.textContent = state.agreeAt
+    ? 'as of ' + state.agreeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const again = document.createElement('button');
+  again.id = 'agree-refresh';
+  again.textContent = 'Refresh';
+  again.onclick = computeAgreement;
+  foot.append(when, again);
+  out.appendChild(foot);
 }
 
 // ── flag: "I answered, but come back to this" ──────────────────────────────
-// Distinct from skip. Skip means the frame cannot be judged; a flag means it
-// was judged but deserves another look. Presets exist because a free-text-only
-// field produces thirty spellings of the same thought, which nobody can filter
-// on later; the note is for the detail a preset cannot carry.
-const FLAG_PRESETS = [
-  'Go back later',
-  'Not sure',
-  'Points look wrong',
-  'Ask the team',
-  'Good example',
-];
-
-function buildFlagPresets() {
-  const box = $('flag-presets');
-  box.replaceChildren(...FLAG_PRESETS.map((label) => {
-    const b = document.createElement('button');
-    b.className = 'flag-chip';
-    b.textContent = label;
-    b.onclick = () => {
-      // Re-clicking the chosen preset clears it, so a mis-tap is one tap to fix.
-      const cur = $('flag-note').dataset.preset || '';
-      const next = cur === label ? '' : label;
-      $('flag-note').dataset.preset = next;
-      paintFlagChips();
-    };
-    return b;
-  }));
-}
-
-function paintFlagChips() {
-  const sel = $('flag-note').dataset.preset || '';
-  for (const b of document.querySelectorAll('.flag-chip')) {
-    b.classList.toggle('sel', b.textContent === sel);
-  }
-}
-
-// The flag as stored: "Preset — note", or whichever half exists.
-function composeFlag() {
-  const preset = ($('flag-note').dataset.preset || '').trim();
-  const note = ($('flag-note').value || '').trim();
-  if (preset && note) return preset + ' — ' + note;
-  return preset || note;
-}
-
+// Binary, like skip — but skip means the frame CANNOT be judged, while a flag
+// means it was judged and deserves another look. Deliberately no reason field:
+// one was tried and the presets went unused, while the free text produced
+// variants nobody could filter on. The signal is the frame, not the wording.
+//
+// Toggling writes the row immediately and does NOT advance: a flag is a note
+// about the frame in front of you, so jumping away would hide whether it took.
 function renderFlag() {
-  const on = !!state.flag;
-  $('flag-btn').classList.toggle('on', on);
-  $('flag-label').textContent = on ? 'Flagged' : 'Flag';
-  $('flag-why').hidden = !on;
-  $('flag-why').textContent = state.flag;
+  $('flag-btn').setAttribute('aria-pressed', String(!!state.flag));
+  $('flag-label').textContent = state.flag ? 'Flagged' : 'Flag';
   $('flag-btn').disabled = !state.ready;
 }
 
-function setFlagPanel(open) {
-  $('flag-panel').classList.toggle('open', open);
-  $('flag-btn').setAttribute('aria-expanded', String(open));
-  if (open) {
-    // Seed the editor from whatever is already on the frame, so reopening a
-    // flagged frame edits it rather than starting blank.
-    const cur = state.flag || '';
-    const hit = FLAG_PRESETS.find((p) => cur === p || cur.startsWith(p + ' — '));
-    $('flag-note').dataset.preset = hit || '';
-    $('flag-note').value = hit ? cur.slice(hit.length + 3) : cur;
-    paintFlagChips();
-  }
-}
-
-// A flag is part of the row, so setting one saves the frame. It deliberately
-// does NOT advance — save() never does; only its callers do — because flagging
-// is a note about the frame in front of you, and jumping away would hide
-// whether it took.
-function applyFlag(value) {
-  state.flag = value;
-  setFlagPanel(false);
+function toggleFlag() {
+  if (!state.ready) return;
+  state.flag = !state.flag;
   renderFlag();
   save();
 }
@@ -923,11 +926,6 @@ function bind() {
   };
   $('prev').onclick = () => go(state.i - 1);
   $('next').onclick = () => go(state.i + 1);
-  $('nextnew').onclick = () => {
-    const n = firstUnlabeled(state.i + 1);
-    if (n < 0) status('No unlabeled frames after this one');
-    else go(n);
-  };
   // The name is committed deliberately — by the button or Enter — not on every
   // keystroke or blur. labeler_name.js also normalises the value ("alex" ->
   // "Alex") and re-dispatches change, so an onchange handler fired twice for a
@@ -946,24 +944,9 @@ function bind() {
   };
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
-  $('agree-btn').onclick = computeAgreement;
+  $('agree-btn').onclick = toggleAgreement;
 
-  buildFlagPresets();
-  $('flag-btn').onclick = () => {
-    if (!state.ready) return;
-    setFlagPanel(!$('flag-panel').classList.contains('open'));
-  };
-  $('flag-save').onclick = () => {
-    const v = composeFlag();
-    if (!v) return;                       // a flag with no reason is not useful
-    applyFlag(v);
-  };
-  $('flag-clear').onclick = () => applyFlag('');
-  $('flag-note').onkeydown = (e) => {
-    e.stopPropagation();                  // shortcuts must not fire while typing
-    if (e.key === 'Enter') $('flag-save').click();
-    if (e.key === 'Escape') setFlagPanel(false);
-  };
+  $('flag-btn').onclick = toggleFlag;
 
   const stage = $('stage');
   const card = $('stage-card');
@@ -1030,10 +1013,11 @@ function bind() {
     else if (k === 'k') $('skip').click();
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
-    else if (k === 'g') $('nextnew').click();
-    // H, not C: C already answers frontal_safe = hard_to_say, and the KEYS map
-    // is consulted first, so a C binding here would silently never fire.
+    // Clue keeps H. Flag takes F — the free mnemonic letter. Neither may use a
+    // letter from the KEYS map above (1/2, Q/W, A/S/D, Z/X/C): that map is
+    // consulted first, so such a binding would silently never fire.
     else if (k === 'h') toggleClue();
+    else if (k === 'f') toggleFlag();
     else if (e.key === 'Escape') { state.answers = {}; state.skipped = false; render(); }
     else return;
     e.preventDefault();
