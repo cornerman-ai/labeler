@@ -52,6 +52,10 @@ const state = {
   teamRows: null,          // last team payload, mutated locally between polls
   teamTimer: null,         // debounce for the post-save refresh
   ready: false,            // this labeler's saved rows have arrived
+  clueOpen: false,         // the clue panel is expanded
+  clueCache: new Map(),    // key -> peer rows, so reopening costs nothing
+  consulted: new Set(),    // frames whose clue was opened — see the CSS note
+  flag: '',                // this frame's flag reason ('' = not flagged)
 };
 
 const $ = (id) => document.getElementById(id);
@@ -139,11 +143,25 @@ function isResolved(row) {
 
 async function loadLabels() {
   const name = who();
+  // EVERYTHING per-labeler resets together. Miss one and it leaks across a
+  // name switch: an inherited `consulted` set marks the next labeler's rows as
+  // having seen answers they never saw — corrupting the column that exists to
+  // tell independent judgements from calibrated ones — and an inherited clue
+  // cache shows them a peer list computed for somebody else (filtered to
+  // exclude the wrong person).
   state.labels = new Map();
+  state.consulted = new Set();
+  state.clueCache = new Map();
+  state.failed = new Map();
+  state.flag = '';
   if (!name) return;
   const body = await call({ action: 'listChinShoulderV2', labeler: name }, 'load labels');
   for (const r of (body.rows || [])) {
-    state.labels.set(JSON.stringify([r.video, r.round, r.frame]), r);
+    const k = JSON.stringify([r.video, r.round, r.frame]);
+    state.labels.set(k, r);
+    // The flag lives in the sheet, so a reload — or a different machine — still
+    // knows which frames were answered after looking at the team's answers.
+    if (r.consulted) state.consulted.add(k);
   }
 }
 
@@ -168,6 +186,8 @@ function save({ skip = false } = {}) {
     frame_sec: String(f.pts), stance: f.stance,
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
+    consulted: state.consulted.has(k) ? '1' : '0',
+    flag: state.flag || '',
   };
   // A skip is the absence of a judgement, so it never carries answers — the
   // backend rejects rows that hold both.
@@ -175,6 +195,8 @@ function save({ skip = false } = {}) {
 
   const row = {
     video: f.stem, round: f.round, frame: f.frame, skipped: skip ? 1 : 0,
+    consulted: state.consulted.has(k) ? 1 : 0,
+    flag: state.flag || null,
     ...Object.fromEntries(FIELDS.map((fld) => [fld, skip ? null : (state.answers[fld] || null)])),
   };
   const prev = state.labels.get(k);
@@ -193,6 +215,7 @@ function save({ skip = false } = {}) {
     .then(() => call(params, 'save'))
     .then(() => {
       state.inflight.delete(k);
+      state.clueCache.delete(k);   // this frame's peer view is now stale
       showQueueState();
       scheduleTeamRefresh();
     })
@@ -258,10 +281,13 @@ function go(i) {
   const f = state.frames[state.i];
   const saved = state.labels.get(key(f));
   state.answers = {};
+  state.flag = (saved && saved.flag) || '';
   state.skipped = !!(saved && saved.skipped);
   if (saved && !saved.skipped) {
     for (const fld of FIELDS) if (saved[fld]) state.answers[fld] = saved[fld];
   }
+  resetClue();
+  setFlagPanel(false);
   render();
   prefetch();
 }
@@ -292,6 +318,8 @@ function render() {
     b.setAttribute('aria-pressed', String(state.answers[b.dataset.q] === b.dataset.v));
   }
   $('skip').setAttribute('aria-pressed', String(state.skipped));
+  $('clue-btn').disabled = !state.ready;
+  renderFlag();
   $('save').disabled = state.skipped;
 
   placeMarks();
@@ -477,6 +505,335 @@ function scheduleTeamRefresh() {
   state.teamTimer = setTimeout(loadTeam, 4000);
 }
 
+// ── agreement: how close am I to each teammate, right now ──────────────────
+// A snapshot on demand, not a live number: it reads every labeler tab, and it
+// is a thing you check between stretches of labeling rather than watch.
+//
+// Scored only over frames BOTH people finished — all four answered, neither
+// skipped — because a blank is not a judgement and counting it would inflate
+// the result.
+async function computeAgreement() {
+  const btn = $('agree-btn');
+  const out = $('agree-out');
+  if (!who()) return;
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = 'Comparing…';
+  out.classList.add('on');
+  out.replaceChildren(note('Reading everyone\u2019s answers…'));
+  try {
+    const body = await call({ action: 'agreementChinShoulderV2', labeler: who() },
+                            'agreement');
+    renderAgreement(body);
+  } catch (e) {
+    out.replaceChildren(note(e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
+}
+
+function note(msg) {
+  const d = document.createElement('div');
+  d.className = 'ag-note';
+  d.textContent = msg;
+  return d;
+}
+
+// Landis & Koch bands, which is what "kappa 0.4" is usually read against:
+// <0.4 poor-to-fair, 0.4-0.6 moderate, >0.6 substantial.
+function kappaClass(k) {
+  if (k === null || k === undefined) return '';
+  if (k >= 0.6) return 'k-hi';
+  if (k >= 0.4) return 'k-mid';
+  return 'k-lo';
+}
+
+function renderAgreement(body) {
+  const out = $('agree-out');
+  out.replaceChildren();
+  const rows = body.labelers || [];
+  const scored = rows.filter((r) => r.shared > 0);
+  if (!scored.length) {
+    out.appendChild(note(rows.length
+      ? 'No frames yet that you and a teammate have both finished.'
+      : 'Nobody else has labeled anything yet.'));
+    return;
+  }
+
+  for (const r of scored) {
+    const block = document.createElement('div');
+    block.className = 'ag-block';
+
+    const head = document.createElement('div');
+    head.className = 'ag-head';
+    const who_ = document.createElement('span');
+    who_.className = 'ag-who';
+    who_.textContent = r.labeler;
+    const n = document.createElement('span');
+    n.className = 'ag-n';
+    n.textContent = `${r.shared} shared · ${Math.round(100 * r.all_four_match / r.shared)}% identical`;
+    head.append(who_, n);
+    block.appendChild(head);
+
+    const dl = document.createElement('dl');
+    dl.className = 'ag-q';
+    for (const fld of FIELDS) {
+      const q = r.questions[fld] || {};
+      const dt = document.createElement('dt');
+      dt.textContent = QUESTION_LABELS[fld];
+      const agree = document.createElement('dd');
+      agree.textContent = q.agree === null || q.agree === undefined
+        ? '—' : `${Math.round(q.agree * 100)}%`;
+      const kap = document.createElement('dd');
+      kap.textContent = q.kappa === null || q.kappa === undefined
+        ? 'κ —' : `κ ${q.kappa.toFixed(2)}`;
+      kap.className = kappaClass(q.kappa);
+      dl.append(dt, agree, kap);
+    }
+    block.appendChild(dl);
+
+    const legend = document.createElement('div');
+    legend.className = 'ag-legend';
+    legend.textContent = 'raw agreement · κ = agreement beyond chance';
+    block.appendChild(legend);
+
+    // The honest number. If most shared frames were answered after opening the
+    // clue panel, the headline above measures convergence rather than two
+    // people independently seeing the same thing.
+    const ind = r.independent || { shared: 0, all_four_match: 0 };
+    const indep = document.createElement('div');
+    indep.className = 'ag-indep';
+    indep.textContent = ind.shared
+      ? `Without the clue: ${ind.shared} frames, `
+        + `${Math.round(100 * ind.all_four_match / ind.shared)}% identical`
+      : 'Without the clue: no shared frames yet';
+    block.appendChild(indep);
+
+    out.appendChild(block);
+  }
+}
+
+// ── flag: "I answered, but come back to this" ──────────────────────────────
+// Distinct from skip. Skip means the frame cannot be judged; a flag means it
+// was judged but deserves another look. Presets exist because a free-text-only
+// field produces thirty spellings of the same thought, which nobody can filter
+// on later; the note is for the detail a preset cannot carry.
+const FLAG_PRESETS = [
+  'Go back later',
+  'Not sure',
+  'Points look wrong',
+  'Ask the team',
+  'Good example',
+];
+
+function buildFlagPresets() {
+  const box = $('flag-presets');
+  box.replaceChildren(...FLAG_PRESETS.map((label) => {
+    const b = document.createElement('button');
+    b.className = 'flag-chip';
+    b.textContent = label;
+    b.onclick = () => {
+      // Re-clicking the chosen preset clears it, so a mis-tap is one tap to fix.
+      const cur = $('flag-note').dataset.preset || '';
+      const next = cur === label ? '' : label;
+      $('flag-note').dataset.preset = next;
+      paintFlagChips();
+    };
+    return b;
+  }));
+}
+
+function paintFlagChips() {
+  const sel = $('flag-note').dataset.preset || '';
+  for (const b of document.querySelectorAll('.flag-chip')) {
+    b.classList.toggle('sel', b.textContent === sel);
+  }
+}
+
+// The flag as stored: "Preset — note", or whichever half exists.
+function composeFlag() {
+  const preset = ($('flag-note').dataset.preset || '').trim();
+  const note = ($('flag-note').value || '').trim();
+  if (preset && note) return preset + ' — ' + note;
+  return preset || note;
+}
+
+function renderFlag() {
+  const on = !!state.flag;
+  $('flag-btn').classList.toggle('on', on);
+  $('flag-label').textContent = on ? 'Flagged' : 'Flag';
+  $('flag-why').hidden = !on;
+  $('flag-why').textContent = state.flag;
+  $('flag-btn').disabled = !state.ready;
+}
+
+function setFlagPanel(open) {
+  $('flag-panel').classList.toggle('open', open);
+  $('flag-btn').setAttribute('aria-expanded', String(open));
+  if (open) {
+    // Seed the editor from whatever is already on the frame, so reopening a
+    // flagged frame edits it rather than starting blank.
+    const cur = state.flag || '';
+    const hit = FLAG_PRESETS.find((p) => cur === p || cur.startsWith(p + ' — '));
+    $('flag-note').dataset.preset = hit || '';
+    $('flag-note').value = hit ? cur.slice(hit.length + 3) : cur;
+    paintFlagChips();
+  }
+}
+
+// A flag is part of the row, so setting one saves the frame. It deliberately
+// does NOT advance — save() never does; only its callers do — because flagging
+// is a note about the frame in front of you, and jumping away would hide
+// whether it took.
+function applyFlag(value) {
+  state.flag = value;
+  setFlagPanel(false);
+  renderFlag();
+  save();
+}
+
+// ── clue: how the rest of the team answered this frame ─────────────────────
+// Opened by hand, never automatically. Seeing someone else's answer before you
+// commit turns two independent raters into one, and inter-rater agreement is
+// the number this pipeline exists to produce — so every frame whose clue was
+// opened is recorded in state.consulted and marked on screen. Nothing is
+// blocked; the labeler decides, and the decision is visible afterwards.
+const QUESTION_LABELS = {
+  shoulder_ok: 'Shoulder point',
+  chin_ok: 'Chin point',
+  lateral_safe: 'Laterally safe',
+  frontal_safe: 'Frontally safe',
+};
+
+function setClueOpen(open) {
+  state.clueOpen = !!open;
+  $('clue-wrap').classList.toggle('open', state.clueOpen);
+  $('clue-btn').setAttribute('aria-expanded', String(state.clueOpen));
+  $('clue-label').textContent = state.clueOpen ? 'Hide clue' : 'Clue';
+}
+
+// Collapse on every frame change: leaving it open would show the NEXT frame
+// answers before the labeler has looked at it, which is the failure mode this
+// whole feature has to avoid.
+function resetClue() {
+  setClueOpen(false);
+  $('clue-btn').disabled = !state.ready;
+}
+
+async function toggleClue() {
+  if (!state.ready) return;
+  if (state.clueOpen) { setClueOpen(false); return; }
+
+  const f = state.frames[state.i];
+  const k = key(f);
+  setClueOpen(true);
+
+  if (state.clueCache.has(k)) { showPeers(k, state.clueCache.get(k)); return; }
+  renderClueNote('Loading…');
+  try {
+    const body = await call({
+      action: 'peersChinShoulderV2', labeler: who(),
+      video: f.stem, round: String(f.round), frame: String(f.frame),
+    }, 'clue');
+    const peers = body.peers || [];
+    state.clueCache.set(k, peers);
+    // The labeler may have moved on while this was in flight — in which case
+    // they never saw the answers, so nothing is marked.
+    if (key(state.frames[state.i]) === k && state.clueOpen) showPeers(k, peers);
+  } catch (e) {
+    renderClueNote(e.message);
+  }
+}
+
+// `consulted` means "answered after seeing someone else's answer". Opening the
+// panel on a frame nobody has labeled shows nothing, so it influences nothing
+// and must not be flagged — otherwise the column would mark every curious
+// click and stop identifying the rows whose independence is actually in doubt.
+function showPeers(k, peers) {
+  if (peers.length) state.consulted.add(k);
+  renderClue(peers);
+}
+
+// Nobody else has reached this frame. Deliberately warm rather than an error:
+// it is the expected state early in a run, and it means the labeler is first
+// here — not that anything went wrong.
+function renderClueEmpty() {
+  const body = $('clue-body');
+  body.replaceChildren();
+  const wrap = document.createElement('div');
+  wrap.className = 'clue-empty';
+  wrap.innerHTML =
+    '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true">'
+    + '<circle cx="16" cy="16" r="11" stroke="currentColor" stroke-width="1.6"'
+    + ' stroke-dasharray="3 3.4"/>'
+    + '<path d="M12.4 18.4c.9-1 2.2-1.5 3.6-1.5s2.7.5 3.6 1.5" stroke="currentColor"'
+    + ' stroke-width="1.6" stroke-linecap="round"/>'
+    + '<circle cx="12.6" cy="13.4" r="1.15" fill="currentColor"/>'
+    + '<circle cx="19.4" cy="13.4" r="1.15" fill="currentColor"/></svg>';
+  const h = document.createElement('div');
+  h.className = 'clue-empty-h';
+  h.textContent = 'You are first here';
+  const s = document.createElement('div');
+  s.className = 'clue-empty-s';
+  s.textContent = 'No one else has labeled this frame yet — your call sets the standard.';
+  wrap.append(h, s);
+  body.appendChild(wrap);
+}
+
+function renderClueNote(msg) {
+  const body = $('clue-body');
+  body.replaceChildren();
+  const d = document.createElement('div');
+  d.id = 'clue-note';
+  d.textContent = msg;
+  body.appendChild(d);
+}
+
+function renderClue(peers) {
+  if (!peers.length) {
+    renderClueEmpty();
+    return;
+  }
+  const body = $('clue-body');
+  body.replaceChildren();
+  for (const p of peers) {
+    const row = document.createElement('div');
+    row.className = 'clue-row';
+
+    const who_ = document.createElement('div');
+    who_.className = 'clue-who';
+    who_.textContent = p.labeler;
+    if (p.ts) {
+      const s = document.createElement('s');
+      s.textContent = ago(p.ts);
+      who_.appendChild(s);
+    }
+    row.appendChild(who_);
+
+    if (p.skipped) {
+      const sk = document.createElement('div');
+      sk.className = 'clue-skip';
+      sk.textContent = 'skipped this frame';
+      row.appendChild(sk);
+    } else {
+      const dl = document.createElement('dl');
+      dl.className = 'clue-ans';
+      for (const fld of FIELDS) {
+        const dt = document.createElement('dt');
+        dt.textContent = QUESTION_LABELS[fld];
+        const dd = document.createElement('dd');
+        const v = p[fld];
+        dd.className = v || 'none';
+        dd.textContent = v ? v.replace(/_/g, ' ') : '—';
+        dl.append(dt, dd);
+      }
+      row.appendChild(dl);
+    }
+    body.appendChild(row);
+  }
+}
+
 function status(msg, cls) {
   const el = $('status');
   el.textContent = msg || '';
@@ -588,6 +945,25 @@ function bind() {
     if (e.key === 'Enter') commitName();
   };
   $('name-go').onclick = commitName;
+  $('clue-btn').onclick = toggleClue;
+  $('agree-btn').onclick = computeAgreement;
+
+  buildFlagPresets();
+  $('flag-btn').onclick = () => {
+    if (!state.ready) return;
+    setFlagPanel(!$('flag-panel').classList.contains('open'));
+  };
+  $('flag-save').onclick = () => {
+    const v = composeFlag();
+    if (!v) return;                       // a flag with no reason is not useful
+    applyFlag(v);
+  };
+  $('flag-clear').onclick = () => applyFlag('');
+  $('flag-note').onkeydown = (e) => {
+    e.stopPropagation();                  // shortcuts must not fire while typing
+    if (e.key === 'Enter') $('flag-save').click();
+    if (e.key === 'Escape') setFlagPanel(false);
+  };
 
   const stage = $('stage');
   const card = $('stage-card');
@@ -655,6 +1031,9 @@ function bind() {
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
     else if (k === 'g') $('nextnew').click();
+    // H, not C: C already answers frontal_safe = hard_to_say, and the KEYS map
+    // is consulted first, so a C binding here would silently never fire.
+    else if (k === 'h') toggleClue();
     else if (e.key === 'Escape') { state.answers = {}; state.skipped = false; render(); }
     else return;
     e.preventDefault();

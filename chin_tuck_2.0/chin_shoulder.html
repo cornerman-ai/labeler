@@ -49,12 +49,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
    instead. Page-scoped: every other labeler keeps the shared bar. */
 #cm-labeler-chip { display: none !important; }
 
-/* …which means this page has to un-hide its own name field, since that script
-   hides #labeler-input by inline style on load. !important outranks it. */
 /* Your name sits at the head of the team list rather than in a panel of its
    own: it is the same fact as the rows below it — who is labeling — and a
    whole card for one short field read as an empty box. Filled-field styling,
-   no border, the way a system settings field looks. */
+   no border, the way a system settings field looks.
+   `display: block !important` is load-bearing: labeler_name.js hides this
+   input by inline style on load, on the assumption its own bar is the name UI,
+   and an inline style only loses to !important. */
 #name-row { display: flex; gap: 6px; margin-bottom: 10px; }
 #labeler-input {
   display: block !important;
@@ -115,9 +116,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Points are deliberately tiny — a big marker hides the very pixels the
    question is about (is the chin safe?). 5px reads at a glance and still
-   leaves the jawline visible; zoom is there when it isn't enough. */
-/* --inv is 1/zoom, set by applyTransform(). The dots sit inside the scaled
-   stage so their POSITION tracks the frame, but counter-scaling keeps their
+   leaves the jawline visible; zoom is there when it isn't enough.
+   --inv is 1/zoom, set by applyTransform(): the dots sit inside the scaled
+   stage so their POSITION tracks the frame, while counter-scaling keeps their
    SIZE constant on screen — without it a 5px dot is 60px at 12x and buries the
    chin it is pointing at. */
 .pt { position: absolute; width: 5px; height: 5px; border-radius: 50%;
@@ -135,21 +136,147 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #gx { left: 0; right: 0; height: 1px; }
 #gy { top: 0; bottom: 0; width: 1px; }
 #stage-card.guide #gx, #stage-card.guide #gy { display: block; }
-/* Until this labeler's saved rows have arrived, answering is a lost answer:
-   start() jumps to their first unlabeled frame the moment the list lands, which
-   discards anything picked before that.
-   Only the ANSWERING is blocked. An earlier version dimmed and blurred the
-   whole stage, which meant a slow — or failed — label load looked exactly like
-   a broken tool: no image, dead buttons, no explanation. The frame is always
-   safe to look at, so it stays fully visible and the notice sits inline. */
 /* Frozen until this labeler's saved rows have arrived: start() lands them on
    their first unlabeled frame, so anything answered before that is discarded.
-   The FRAME stays fully visible — an earlier version blurred the whole stage,
-   which made a slow label load look exactly like a broken tool. Only the
-   controls that act on a frame are inert. */
+   The FRAME stays fully visible — an earlier version dimmed and blurred the
+   whole stage, which made a slow (or failed) label load look exactly like a
+   broken tool: no image, dead buttons, no explanation. Only the controls that
+   act on a frame are inert. */
 body:not(.ready) #q-card .q,
 body:not(.ready) #act-card,
 body:not(.ready) #ov { opacity: .4; pointer-events: none; }
+
+/* Clue — how the rest of the team answered THIS frame.
+   Expands in place rather than opening a dialog: a modal would cover the frame,
+   and the whole point is to compare their answer against what you are looking
+   at. Collapsed by default and never auto-opened, because seeing someone else's
+   answer first is what turns two independent raters into one — the agreement
+   numbers stop meaning anything. `state.consulted` records which frames were
+   opened so a run can be audited later. */
+#clue-bar { margin-bottom: 12px; }
+#clue-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#clue-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#clue-btn:disabled { opacity: .35; cursor: default; }
+#clue-btn[aria-expanded="true"] {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+#clue-btn svg { width: 13px; height: 13px; flex: none; }
+#clue-chev { transition: transform .2s ease; }
+#clue-btn[aria-expanded="true"] #clue-chev { transform: rotate(180deg); }
+
+/* Visibility is a plain display toggle and the motion is a one-shot animation
+   on top. An earlier version animated grid-template-rows 0fr->1fr, which is
+   prettier but makes the OPEN STATE ITSELF depend on a transition finishing —
+   if it is interrupted or never runs, the panel stays 0px tall while reporting
+   itself open, and the labeler sees nothing. Correctness first, polish second. */
+#clue-wrap { display: none; margin-bottom: 0; }
+#clue-wrap.open { display: block; margin-bottom: 14px; animation: clue-in .2s ease both; }
+@keyframes clue-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { #clue-wrap.open { animation: none; } }
+#clue-inner { min-height: 0; }
+#clue-body {
+  border-radius: 10px; padding: 10px 12px;
+  background: rgba(120,120,128,.10); font-size: 12px;
+}
+@media (prefers-color-scheme: dark) { #clue-body { background: rgba(120,120,128,.18); } }
+#clue-note { color: var(--ink-dim); font-size: 11px; }
+
+/* Nobody else has answered this frame — the common case early in a run, so it
+   reads as an invitation rather than a failure. */
+.clue-empty { text-align: center; padding: 6px 4px 4px; color: var(--ink-dim); }
+.clue-empty svg { width: 30px; height: 30px; opacity: .5; margin-bottom: 6px; }
+.clue-empty-h { font-size: 12.5px; font-weight: 590; color: var(--ink); }
+.clue-empty-s { font-size: 11.5px; margin-top: 3px; line-height: 1.4; }
+
+.clue-row + .clue-row { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
+.clue-who { font-weight: 590; margin-bottom: 5px; }
+.clue-who s { font-weight: 400; color: var(--ink-dim); text-decoration: none; margin-left: 5px; }
+.clue-ans { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; }
+.clue-ans dt { color: var(--ink-dim); }
+.clue-ans dd { margin: 0; justify-self: end; font-weight: 590; }
+/* Same colour language as the answer buttons, so a glance reads the same way. */
+.clue-ans dd.yes { color: var(--yes); }
+.clue-ans dd.no { color: var(--no); }
+.clue-ans dd.hard_to_say { color: var(--maybe); }
+.clue-ans dd.none { color: var(--ink-dim); font-weight: 400; }
+.clue-skip { color: var(--ink-dim); font-style: italic; }
+
+/* Flag — "I answered, but come back to this". Distinct from skip, which means
+   the frame cannot be judged at all. A flag always carries a reason: a bare
+   flag is not actionable weeks later, so the reason IS the flag and an empty
+   reason means not flagged. */
+#flag-btn {
+  width: 100%; padding: 9px; margin-top: 8px; border-radius: 10px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; color: var(--ink-dim);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+#flag-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#flag-btn.on { background: var(--maybe); border-color: transparent; color: #fff; }
+#flag-btn svg { width: 13px; height: 13px; flex: none; }
+#flag-why {
+  font-size: 11px; color: var(--maybe); margin-top: 6px; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#flag-panel { display: none; margin-top: 8px; }
+#flag-panel.open { display: block; animation: clue-in .18s ease both; }
+#flag-presets { display: flex; flex-wrap: wrap; gap: 5px; }
+.flag-chip {
+  padding: 5px 10px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-dim);
+}
+.flag-chip:hover { border-color: var(--ink-dim); color: var(--ink); }
+.flag-chip.sel { background: var(--maybe); border-color: transparent; color: #fff; }
+#flag-note {
+  width: 100%; margin-top: 7px; border: 0; border-radius: 8px;
+  background: rgba(120,120,128,.12); color: var(--ink);
+  padding: 7px 10px; font: inherit; font-size: 12.5px;
+}
+#flag-note::placeholder { color: var(--ink-dim); }
+#flag-note:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+#flag-actions { display: flex; gap: 6px; margin-top: 7px; }
+#flag-actions button {
+  flex: 1; padding: 7px; border-radius: 8px; font-size: 12.5px; font-weight: 510;
+  border: 1px solid var(--line); background: transparent;
+}
+#flag-save { background: var(--maybe) !important; border-color: transparent !important; color: #fff; }
+@media (prefers-color-scheme: dark) { #flag-note { background: rgba(120,120,128,.24); } }
+
+/* Agreement — a snapshot, computed on demand, over frames both people
+   finished. Lives under the team list because that is the question it answers:
+   how close are we, not how far along. */
+#agree-btn {
+  width: 100%; margin-top: 12px; padding: 8px; border-radius: 9px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12.5px; font-weight: 510; color: var(--ink-dim);
+}
+#agree-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#agree-btn:disabled { opacity: .4; cursor: default; }
+#agree-out { margin-top: 10px; font-size: 12px; display: none; }
+#agree-out.on { display: block; animation: clue-in .2s ease both; }
+.ag-block + .ag-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ag-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.ag-who { font-weight: 590; }
+.ag-n { color: var(--ink-dim); font-size: 11px; margin-left: auto; }
+.ag-q { display: grid; grid-template-columns: 1fr auto auto; gap: 3px 10px;
+        align-items: baseline; font-size: 11.5px; }
+.ag-q dt { color: var(--ink-dim); }
+.ag-q dd { margin: 0; justify-self: end; font-variant-numeric: tabular-nums; }
+.ag-q dd.k-hi { color: var(--yes); font-weight: 590; }
+.ag-q dd.k-mid { color: var(--maybe); font-weight: 590; }
+.ag-q dd.k-lo { color: var(--no); font-weight: 590; }
+.ag-legend { font-size: 10.5px; color: var(--ink-dim); margin-top: 5px; }
+.ag-indep { font-size: 11px; color: var(--ink-dim); margin-top: 6px; }
+.ag-note { font-size: 11.5px; color: var(--ink-dim); }
 
 #q-lock {
   display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
@@ -326,10 +453,23 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
         <button id="name-go" disabled>Start</button>
       </div>
       <div id="team"><div id="team-empty">No labels saved yet</div></div>
+      <button id="agree-btn">Compare with the team</button>
+      <div id="agree-out"></div>
     </div>
 
     <div class="card" id="q-card">
       <div id="q-lock">Loading…</div>
+      <div id="clue-bar">
+        <button id="clue-btn" aria-expanded="false" aria-controls="clue-wrap"
+                title="How the rest of the team answered this frame">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1.4a4 4 0 0 0-2.3 7.27c.3.22.47.55.47.92V10h3.66v-.41c0-.37.17-.7.47-.92A4 4 0 0 0 7 1.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.6 12h2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="clue-label">Clue</span><svg id="clue-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div id="clue-wrap"><div id="clue-inner">
+        <div id="clue-body">
+          <div id="clue-note">Loading…</div>
+        </div>
+      </div></div>
       <div class="q" data-q="shoulder_ok">
         <p class="q-t"><b>1</b>Lead shoulder point okay?</p>
         <div class="opts">
@@ -365,6 +505,18 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
+      <button id="flag-btn" aria-expanded="false"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.4 1.6v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.4 2.4h6.9l-1.5 2.4 1.5 2.4H3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="flag-label">Flag</span></button>
+      <div id="flag-why" hidden></div>
+      <div id="flag-panel">
+        <div id="flag-presets"></div>
+        <input id="flag-note" placeholder="Why? (optional detail)" maxlength="300"
+               autocomplete="off" spellcheck="false">
+        <div id="flag-actions">
+          <button id="flag-clear">Remove flag</button>
+          <button id="flag-save">Flag frame</button>
+        </div>
+      </div>
+
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -403,6 +555,8 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
         <div class="sep"></div>
         <dt>Prev / next</dt>     <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <dt>Next unlabeled</dt>  <dd><kbd>G</kbd></dd>
+        <div class="sep"></div>
+        <dt>Team's answers</dt>  <dd><kbd>H</kbd></dd>
       </dl>
     </div>
   </div>
@@ -411,6 +565,6 @@ body:not(.ready) #ov { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=27"></script>
+<script src="chin_shoulder.js?v=34"></script>
 </body>
 </html>

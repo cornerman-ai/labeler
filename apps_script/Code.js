@@ -296,7 +296,8 @@ function doGet(e) {
   // Chin-shoulder labeler 2.0 (chin_tuck_2.0/chin_shoulder.html). Separate
   // endpoints and ONE SHEET PER LABELER — see doGetChinShoulderV2.
   if (action === 'listChinShoulderV2' || action === 'saveChinShoulderV2' ||
-      action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2') {
+      action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2' ||
+      action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action);
   }
 
@@ -3200,7 +3201,7 @@ function doGetBladedPairs(p, labeler, action) {
 var CS2_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec',
                    'stance', 'shoulder_used',
                    'shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe',
-                   'skipped', 'reviewed'];
+                   'skipped', 'consulted', 'flag', 'reviewed'];
 
 // yes/no for the two point-quality checks; the two exposure questions carry a
 // third option because "cannot tell from this frame" is a real answer, and
@@ -3270,14 +3271,6 @@ function getOrCreateCs2Sheet(labeler) {
     sh.getRange(1, at, 1, missing.length).setValues([missing]);
   }
   return sh;
-}
-
-// A frame is identified by (video, round, frame). The labeler is the SHEET, so
-// it is not part of the key.
-function cs2RowMatches(row, idx, p) {
-  return String(row[idx.video]) === String(p.video) &&
-         String(row[idx.round]) === String(p.round) &&
-         String(row[idx.frame]) === String(p.frame);
 }
 
 // === STATS across every labeler ===
@@ -3359,8 +3352,194 @@ function cs2Stats() {
            .setMimeType(ContentService.MimeType.JSON);
 }
 
+// === Agreement between this labeler and each other one, right now ===
+// Scored ONLY over frames both people finished: all four answered, neither
+// skipped. A partially answered row is not a judgement yet, and scoring it
+// would count blanks as agreement.
+//
+// Reports raw agreement AND Cohen's kappa. Raw agreement alone flatters a
+// skewed question — if 90% of frames are "yes", two people guessing yes agree
+// 81% of the time while sharing no judgement at all. Kappa subtracts exactly
+// that chance agreement, so a high raw number next to a low kappa means the
+// question is lopsided, not that the labelers are aligned.
+//
+// Also split by `consulted`: rows where the labeler opened the clue panel are
+// not independent evidence — they may agree because one saw the other. The
+// `independent` block is the honest number; the headline is the calibrated one.
+function cs2Agreement(p, who) {
+  var PREFIX = 'chin_shoulder_labels_';
+  var mineName = (cs2SheetName(who) || '').toLowerCase();
+  if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
+
+  // Read one labeler tab into key -> {answers, consulted}, finished rows only.
+  function readFinished(sh) {
+    var out = {};
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return out;
+    var idx = punchDirHeaderIndex(
+      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+    var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+    for (var r = 0; r < data.length; r++) {
+      var row = data[r];
+      if (row[idx.video] === '' || row[idx.video] === null) continue;
+      if (String(row[idx.skipped]) === '1') continue;
+      var rec = {}, full = true;
+      for (var f = 0; f < CS2_FIELDS.length; f++) {
+        var v = String(row[idx[CS2_FIELDS[f]]] || '');
+        if (v === '') { full = false; break; }
+        rec[CS2_FIELDS[f]] = v;
+      }
+      if (!full) continue;
+      rec._consulted = String(row[idx.consulted]) === '1';
+      out[[row[idx.video], row[idx.round], row[idx.frame]].join('\u0000')] = rec;
+    }
+    return out;
+  }
+
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var mineSheet = null, others = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name.indexOf(PREFIX) !== 0) continue;
+    if (name.toLowerCase() === mineName) mineSheet = sheets[s];
+    else others.push(sheets[s]);
+  }
+  if (!mineSheet) return jsonOut({ status: 'ok', v2: true, me: who, mine: 0, labelers: [] });
+
+  var mine = readFinished(mineSheet);
+  var mineN = 0;
+  for (var mk in mine) if (mine.hasOwnProperty(mk)) mineN++;
+
+  var out = [];
+  for (var o = 0; o < others.length; o++) {
+    var theirs = readFinished(others[o]);
+    var keys = [];
+    for (var k in theirs) if (theirs.hasOwnProperty(k) && mine[k]) keys.push(k);
+
+    var per = {}, bothAll = 0, indepKeys = [];
+    for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
+      per[CS2_FIELDS[f2]] = { n: 0, agree: 0, pairs: {} };
+    }
+    for (var i = 0; i < keys.length; i++) {
+      var a = mine[keys[i]], b = theirs[keys[i]];
+      var allMatch = true;
+      for (var f3 = 0; f3 < CS2_FIELDS.length; f3++) {
+        var fld = CS2_FIELDS[f3], av = a[fld], bv = b[fld];
+        var cell = per[fld];
+        cell.n++;
+        if (av === bv) cell.agree++; else allMatch = false;
+        var pk = av + '|' + bv;
+        cell.pairs[pk] = (cell.pairs[pk] || 0) + 1;
+      }
+      if (allMatch) bothAll++;
+      if (!a._consulted && !b._consulted) indepKeys.push(keys[i]);
+    }
+
+    // Cohen's kappa from the confusion counts collected above.
+    var questions = {};
+    for (var f4 = 0; f4 < CS2_FIELDS.length; f4++) {
+      var fld2 = CS2_FIELDS[f4], c = per[fld2];
+      var rowM = {}, colM = {};
+      for (var pk2 in c.pairs) {
+        if (!c.pairs.hasOwnProperty(pk2)) continue;
+        var parts = pk2.split('|'), cnt = c.pairs[pk2];
+        rowM[parts[0]] = (rowM[parts[0]] || 0) + cnt;
+        colM[parts[1]] = (colM[parts[1]] || 0) + cnt;
+      }
+      var po = c.n ? c.agree / c.n : 0, pe = 0;
+      for (var v2 in rowM) {
+        if (rowM.hasOwnProperty(v2) && colM[v2]) pe += (rowM[v2] / c.n) * (colM[v2] / c.n);
+      }
+      questions[fld2] = {
+        n: c.n,
+        agree: c.n ? Math.round(po * 1000) / 1000 : null,
+        kappa: (c.n && pe < 1) ? Math.round(((po - pe) / (1 - pe)) * 1000) / 1000 : null
+      };
+    }
+
+    var indepAll = 0;
+    for (var j = 0; j < indepKeys.length; j++) {
+      var a2 = mine[indepKeys[j]], b2 = theirs[indepKeys[j]], m = true;
+      for (var f5 = 0; f5 < CS2_FIELDS.length; f5++) {
+        if (a2[CS2_FIELDS[f5]] !== b2[CS2_FIELDS[f5]]) { m = false; break; }
+      }
+      if (m) indepAll++;
+    }
+
+    out.push({
+      labeler: others[o].getName().substring(PREFIX.length),
+      shared: keys.length,
+      all_four_match: bothAll,
+      questions: questions,
+      independent: { shared: indepKeys.length, all_four_match: indepAll }
+    });
+  }
+  out.sort(function (a, b) { return b.shared - a.shared; });
+  return jsonOut({ status: 'ok', v2: true, me: who, mine: mineN, labelers: out });
+}
+
+// === What everyone ELSE answered for one frame ===
+// Backs the "clue" panel. Reads every labeler tab, so it is deliberately
+// on-demand — the page asks only when a labeler opens the panel, never on
+// navigation, and never in bulk.
+//
+// Serving this at all is a considered trade: a labeler who consults it before
+// answering is no longer an independent rater, and inter-rater agreement is the
+// number this whole pipeline is built to measure. Hence `consulted` in the
+// response — the page marks the frame locally so a run can be audited — and
+// hence the requesting labeler is filtered out here rather than client-side,
+// so their own answer can never be mistaken for corroboration.
+function cs2Peers(p, who) {
+  var required = ['video', 'round', 'frame'];
+  for (var k = 0; k < required.length; k++) {
+    if (p[required[k]] === undefined || p[required[k]] === '') {
+      return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+    }
+  }
+  var PREFIX = 'chin_shoulder_labels_';
+  var mine = (cs2SheetName(who) || '').toLowerCase();
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var out = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name.indexOf(PREFIX) !== 0) continue;
+    if (name.toLowerCase() === mine) continue;          // never your own row
+    var sh = sheets[s];
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) continue;
+    var idx = punchDirHeaderIndex(
+      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+    // Key columns first to find the row, then read only that row in full —
+    // the alternative is pulling every labeler's whole sheet for one frame.
+    var lo = Math.min(idx.video, idx.round, idx.frame);
+    var hi = Math.max(idx.video, idx.round, idx.frame);
+    var keys = sh.getRange(2, lo + 1, lastRow - 1, hi - lo + 1).getValues();
+    var at = 0;
+    for (var r = 0; r < keys.length; r++) {
+      if (String(keys[r][idx.video - lo]) === String(p.video) &&
+          String(keys[r][idx.round - lo]) === String(p.round) &&
+          String(keys[r][idx.frame - lo]) === String(p.frame)) { at = r + 2; break; }
+    }
+    if (!at) continue;
+    var row = sh.getRange(at, 1, 1, sh.getLastColumn()).getValues()[0];
+    var val = function (col) {
+      return (idx[col] === undefined || row[idx[col]] === '') ? null : String(row[idx[col]]);
+    };
+    out.push({
+      labeler: name.substring(PREFIX.length),
+      shoulder_ok: val('shoulder_ok'), chin_ok: val('chin_ok'),
+      lateral_safe: val('lateral_safe'), frontal_safe: val('frontal_safe'),
+      skipped: String(row[idx.skipped]) === '1' ? 1 : 0,
+      ts: val('ts')
+    });
+  }
+  return jsonOut({ status: 'ok', v2: true, peers: out });
+}
+
 function doGetChinShoulderV2(p, labeler, action) {
   if (action === 'statsChinShoulderV2') return cs2Stats();
+  if (action === 'peersChinShoulderV2') return cs2Peers(p, p.labeler || labeler);
+  if (action === 'agreementChinShoulderV2') return cs2Agreement(p, p.labeler || labeler);
   var who = p.labeler || labeler;
   var name = cs2SheetName(who);
   if (!name) return jsonOut({ status: 'error', message: 'missing labeler' });
@@ -3418,6 +3597,8 @@ function doGetChinShoulderV2(p, labeler, action) {
         lateral_safe: cell(data[i], 'lateral_safe'),
         frontal_safe: cell(data[i], 'frontal_safe'),
         skipped: String(data[i][idx.skipped]) === '1' ? 1 : 0,
+        consulted: String(data[i][idx.consulted]) === '1' ? 1 : 0,
+        flag: cell(data[i], 'flag'),
         reviewed: cell(data[i], 'reviewed')
       });
     }
@@ -3433,6 +3614,7 @@ function doGetChinShoulderV2(p, labeler, action) {
       }
     }
     var skipped = String(p.skipped || '') === '1';
+    var consulted = String(p.consulted || '') === '1';
     var vals = {};
     for (var f = 0; f < CS2_FIELDS.length; f++) {
       var fld = CS2_FIELDS[f];
@@ -3465,6 +3647,16 @@ function doGetChinShoulderV2(p, labeler, action) {
       else if (col === 'stance') out.push(String(p.stance || ''));
       else if (col === 'shoulder_used') out.push(String(p.shoulder_used || ''));
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
+      // Did this labeler open the clue panel — see what the others answered —
+      // before saving? 0/1, never blank. Consulting is allowed and encouraged
+      // (the team is calibrating deliberately), but a frame answered after
+      // seeing someone else's answer is not independent evidence, so agreement
+      // computed over these rows measures convergence rather than the
+      // questions being clear. This column is what lets the two be separated.
+      else if (col === 'consulted') out.push(consulted ? 1 : 0);
+      // One column, not a flag/reason pair: a flag without a reason is not
+      // actionable later, so the reason IS the flag. Empty = not flagged.
+      else if (col === 'flag') out.push(String(p.flag || '').slice(0, 300));
       else if (CS2_VALUES[col] !== undefined) out.push(vals[col]);
       else out.push('');
     }
