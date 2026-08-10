@@ -1332,5 +1332,9 @@ async function start() {
   await start();          // no name yet -> frozen, asking for one
   // Polling only. save() no longer calls loadTeam directly — that doubled the
   // requests per frame for a panel nobody is watching mid-keystroke.
-  setInterval(loadTeam, TEAM_POLL_MS);
+  // BOTH, not just the team panel. The comparison grid was refreshed only at
+  // startup and four seconds after your own saves, so a teammate's answers
+  // never reached it — the third panel sat on whatever it read when the page
+  // opened, which is what made it look permanently behind the other two.
+  setInterval(() => { loadTeam(); loadOverlap(); }, TEAM_POLL_MS);
 })();

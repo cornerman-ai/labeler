@@ -3477,13 +3477,27 @@ function cs2BackfillBinaryColumns() {
 var CS2_STATS_CACHE_KEY = 'cs2_stats_v1';
 var CS2_STATS_TTL = 60;   // seconds
 
-function cs2InvalidateStats(spec) {
+function cs2InvalidateStats(spec, labeler) {
   spec = spec || CS2_SPEC;
-  // Only the stats key. The per-labeler overlap entries cannot be dropped here
-  // — one labeler saving changes the verdicts on everyone ELSE's grid, and
-  // Apps Script's cache has no way to enumerate or wildcard keys. Those ride
-  // their 60-second TTL instead, which is why it is short.
-  try { CacheService.getScriptCache().remove(spec.statsKey); } catch (e) {}
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) { return; }
+  if (!cache) return;
+  try { cache.remove(spec.statsKey); } catch (e) {}
+
+  // AND this labeler's own overlap entry. Without it the comparison grid showed
+  // pre-save data for up to a full TTL: the page refreshes it four seconds after
+  // a burst of saves, and that refresh was served the cached answer computed
+  // before those saves existed — so a frame you had just labeled stayed blank
+  // in the third panel while everything else on screen had moved on.
+  //
+  // Only this labeler's. A save changes the verdicts on everyone ELSE's grid
+  // too, but Apps Script's cache cannot enumerate or wildcard keys, so those
+  // ride the TTL — which is why it is short. Your own edits are the ones you
+  // are watching for; a teammate's arriving up to a minute later is invisible.
+  if (labeler) {
+    var nm = cs2SheetName(labeler, spec);
+    if (nm) { try { cache.remove(spec.overlapKey + nm.toLowerCase()); } catch (e) {} }
+  }
 }
 
 function cs2Stats(spec) {
@@ -3602,7 +3616,8 @@ function cs2ReadFinished(sh, spec) {
 // enough to carry all 3,791 of them.
 //
 // Cached like stats — it reads every labeler tab in full and the answer is the
-// same for everyone asking. Any save drops the cache through cs2InvalidateStats.
+// same for everyone asking. A save drops the SAVING labeler's entry (see
+// cs2InvalidateStats); everyone else's rides the TTL.
 var CS2_OVERLAP_TTL = 60;   // seconds
 
 function cs2Overlap(p, who, spec) {
@@ -4021,13 +4036,13 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
           (prevReviewed === '' || prevReviewed === null) ? 0 : prevReviewed;
       }
       sh.getRange(at, 1, 1, out.length).setValues([out]);
-      cs2InvalidateStats(spec);
+      cs2InvalidateStats(spec, who);
       return csOut(spec, { updated: 1 });
     }
     // setValues on the next row rather than appendRow: appendRow re-scans the
     // sheet for its insertion point, which is the slower of the two.
     sh.getRange(lastRow + 1, 1, 1, out.length).setValues([out]);
-    cs2InvalidateStats(spec);
+    cs2InvalidateStats(spec, who);
     return csOut(spec, { appended: 1 });
   }
 
@@ -4036,7 +4051,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
     var gone = findRow();
     if (gone) {
       sh.deleteRow(gone);
-      cs2InvalidateStats(spec);
+      cs2InvalidateStats(spec, who);
       return csOut(spec, { deleted: 1 });
     }
     return csOut(spec, { deleted: 0 });
