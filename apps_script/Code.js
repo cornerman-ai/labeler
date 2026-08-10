@@ -3312,16 +3312,17 @@ function getOrCreateCs2Sheet(labeler, spec) {
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
-    sh.getRange(1, 1, 1, HEADERS.length).setValues([CS2_HEADERS]);
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     sh.setFrozenRows(1);
     return sh;
   }
   if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, HEADERS.length).setValues([CS2_HEADERS]);
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     sh.setFrozenRows(1);
     return sh;
   }
-  // Reconcile the header row with CS2_HEADERS in BOTH directions, so a sheet
+  // Reconcile the header row with THIS generation's headers in BOTH directions,
+  // so a sheet
   // created by an older deploy heals itself. Adding only was not enough: a
   // column this schema has dropped (chin_xy / l_sh_xy / r_sh_xy) stayed in the
   // sheet forever, and the save loop walks the SHEET's header row, so the stale
@@ -3329,7 +3330,7 @@ function getOrCreateCs2Sheet(labeler, spec) {
   //
   // Deleting a column is destructive, which is acceptable only because this tab
   // family is entirely code-owned — the labeler page is the sole writer, and
-  // CS2_HEADERS is the definition of its shape. Do not hand-add columns to a
+  // spec.headers is the definition of its shape. Do not hand-add columns to a
   // chin_shoulder_labels_* sheet; they will be removed on the next request.
   var existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
   var want = HEADERS.map(function (h) { return h.toLowerCase(); });
@@ -3356,7 +3357,7 @@ function getOrCreateCs2Sheet(labeler, spec) {
   }
 
   // ORDER is part of the shape too. The add pass above can only append, so a
-  // column introduced in the middle of CS2_HEADERS — dwell_sec, which belongs
+  // column introduced in the middle of spec.headers — dwell_sec, which belongs
   // after flag — lands last on every sheet that already existed, and the tabs
   // stop agreeing with each other and with new ones. Everything still WORKS,
   // because reads and writes go by header name, but a human comparing two tabs
