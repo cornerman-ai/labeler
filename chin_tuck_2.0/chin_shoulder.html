@@ -268,11 +268,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #agree-out.on { display: block; animation: clue-in .2s ease both; }
 #agree-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; }
 #agree-when { font-size: 10.5px; color: var(--ink-dim); }
-#agree-refresh {
-  margin-left: auto; padding: 0; border: 0; background: none;
-  font-size: 11px; color: var(--accent); font-weight: 500;
-}
-.ag-block + .ag-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .ag-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
 .ag-who { font-weight: 590; font-size: 13px; }
 .ag-n { color: var(--ink-dim); font-size: 11px; margin-left: auto; }
@@ -296,6 +291,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .ag-bar i.k-na  { background: var(--ink-dim); }
 .ag-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
 .ag-note { font-size: 11.5px; color: var(--ink-dim); }
+
+/* Two slots and a verb. Exactly one pair can be asked about at a time, which is
+   why this is two selects rather than a multi-select: a control that can express
+   "three people" would have to reject it afterwards. */
+#ag-pick { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.ag-sel {
+  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+  padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink);
+}
+#ag-vs { flex: none; font-size: 11px; color: var(--ink-dim); }
+#ag-go {
+  flex: none; padding: 6px 11px; border-radius: 8px; border: 0;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 590;
+}
+#ag-go:disabled { opacity: .4; cursor: default; }
 
 #q-lock {
   display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
@@ -516,7 +527,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       </div>
       <div id="team"><div id="team-empty">No labels saved yet</div></div>
       <button id="agree-btn" aria-expanded="false" aria-controls="agree-out">
-        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="agree-label">Compare with the team</span><svg id="agree-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="agree-label">Compare two labelers</span><svg id="agree-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div id="agree-out"></div>
     </div>
@@ -635,6 +646,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=49"></script>
+<script src="chin_shoulder.js?v=50"></script>
 </body>
 </html>

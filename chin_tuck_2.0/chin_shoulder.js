@@ -59,6 +59,8 @@ const state = {
   shownAt: 0,              // when the current frame went on screen (ms)
   overlap: new Map(),      // frame key -> 'a' | 'p' | 'd' | 'o' (see cs2Overlap)
   overlapPeers: 0,         // how many other labelers existed when it was read
+  pairA: null,             // the two labelers the comparison panel is set to
+  pairB: null,
   agreeBusy: false,        // a comparison is being computed right now
   agreeBody: null,         // last agreement snapshot
   agreeAt: null,           // when it was taken
@@ -164,8 +166,10 @@ async function loadLabels() {
   state.clueCache = new Map();
   state.failed = new Map();
   state.flag = false;
-  state.agreeBody = null;      // computed FOR the previous labeler
+  state.agreeBody = null;      // computed for whichever pair was last picked
   state.agreeAt = null;
+  state.pairA = null;          // default the picker to the new name
+  state.pairB = null;
   setAgreeOpen(false);
   if (!name) return;
   const body = await call({ action: 'listChinShoulderV2', labeler: name }, 'load labels');
@@ -612,48 +616,127 @@ function scheduleTeamRefresh() {
   state.teamTimer = setTimeout(() => { loadTeam(); loadOverlap(); }, 4000);
 }
 
-// ── agreement: how close am I to each teammate, right now ──────────────────
-// A snapshot on demand, not a live number: it reads every labeler tab, and it
-// is a thing you check between stretches of labeling rather than watch.
+// ── agreement: pick TWO labelers and score that pair ───────────────────
+// One pair per request, either slot free to be anyone with a tab — including
+// two people who are not you. Scoring yourself against everybody, which is what
+// this did before, cannot show the disagreement that matters once more than two
+// people are labeling: the pair that reads a question differently may not
+// include you at all.
 //
-// Scored only over frames BOTH people finished — all four answered, neither
-// skipped — because a blank is not a judgement and counting it would inflate
-// the result.
-// Opens and closes like the clue panel. The result is a SNAPSHOT — it reads
-// every labeler tab, which is slow and not something to re-run on each open —
-// so it is computed once, kept, and stamped with the time it was taken. The
-// footer carries an explicit refresh for a fresh one.
+// A snapshot on demand, not a live number: it reads both tabs in full, and it
+// is a thing you check between stretches of labeling rather than watch.
 function setAgreeOpen(open) {
   $('agree-out').classList.toggle('on', open);
   $('agree-btn').setAttribute('aria-expanded', String(open));
-  $('agree-label').textContent = open ? 'Hide comparison' : 'Compare with the team';
+  $('agree-label').textContent = open ? 'Hide comparison' : 'Compare two labelers';
 }
 
 function toggleAgreement() {
-  if (!who()) return;
+  if (!state.ready) return;
   if ($('agree-out').classList.contains('on')) { setAgreeOpen(false); return; }
   setAgreeOpen(true);
-  if (state.agreeAt) renderAgreement(state.agreeBody);   // already have one
-  else computeAgreement();
+  renderAgreePanel();
+}
+
+// Everyone with a tab, plus you — your own row is bumped locally the moment you
+// save, so it can be present here before the team poll has ever run.
+function labelerNames() {
+  const names = (state.teamRows || []).map((r) => r.labeler);
+  const me = who();
+  if (me && !names.some((n) => n.toLowerCase() === me.toLowerCase())) names.push(me);
+  return names.sort((a, b) => a.localeCompare(b));
+}
+
+// The picker persists across opens (state.pairA / pairB) so re-checking the same
+// pair after more labeling is one click, not three.
+function renderAgreePanel() {
+  const out = $('agree-out');
+  const names = labelerNames();
+  out.replaceChildren();
+
+  if (names.length < 2) {
+    out.appendChild(note('Only one labeler so far — nothing to compare yet.'));
+    return;
+  }
+  if (!state.pairA || !names.includes(state.pairA)) state.pairA = who() || names[0];
+  if (!state.pairB || !names.includes(state.pairB) || state.pairB === state.pairA) {
+    state.pairB = names.find((n) => n !== state.pairA) || names[0];
+  }
+
+  const pick = document.createElement('div');
+  pick.id = 'ag-pick';
+  const mk = (slot) => {
+    const sel = document.createElement('select');
+    sel.className = 'ag-sel';
+    sel.setAttribute('aria-label', slot === 'pairA' ? 'First labeler' : 'Second labeler');
+    for (const n of names) {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n + (n.toLowerCase() === (who() || '').toLowerCase() ? ' (you)' : '');
+      o.selected = state[slot] === n;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => {
+      state[slot] = sel.value;
+      // Exactly one pair, and a labeler cannot be compared with themselves, so
+      // the other slot steps aside rather than showing an error after the fact.
+      const other = slot === 'pairA' ? 'pairB' : 'pairA';
+      if (state[other] === sel.value) {
+        state[other] = names.find((n) => n !== sel.value) || sel.value;
+      }
+      state.agreeBody = null;
+      state.agreeAt = null;
+      renderAgreePanel();
+    };
+    return sel;
+  };
+  const vs = document.createElement('span');
+  vs.id = 'ag-vs';
+  vs.textContent = 'vs';
+  const go_ = document.createElement('button');
+  go_.id = 'ag-go';
+  go_.textContent = 'Compare';
+  go_.onclick = computeAgreement;
+  pick.append(mk('pairA'), vs, mk('pairB'), go_);
+  out.appendChild(pick);
+
+  const body = document.createElement('div');
+  body.id = 'ag-body';
+  out.appendChild(body);
+
+  if (state.agreeBody && state.agreeBody._a === state.pairA
+      && state.agreeBody._b === state.pairB) {
+    renderAgreement(state.agreeBody);
+  } else {
+    body.appendChild(note('Press Compare.'));
+  }
 }
 
 async function computeAgreement() {
-  const out = $('agree-out');
-  if (!who()) return;
+  if (!state.pairA || !state.pairB) return;
+  const body = $('ag-body');
   state.agreeBusy = true;
   syncPanelButtons();
-  out.replaceChildren(note('Reading everyone\u2019s answers…'));
+  $('ag-go').disabled = true;
+  body.replaceChildren(note(`Reading ${state.pairA} and ${state.pairB}\u2026`));
   try {
-    const body = await call({ action: 'agreementChinShoulderV2', labeler: who() },
-                            'agreement');
-    state.agreeBody = body;
+    const res = await call({ action: 'agreementChinShoulderV2',
+                             labeler: who(), a: state.pairA, b: state.pairB },
+                           'comparison');
+    // Stamped with the pair it describes, so switching the picker cannot leave
+    // last pair's numbers on screen under two new names.
+    res._a = state.pairA;
+    res._b = state.pairB;
+    state.agreeBody = res;
     state.agreeAt = new Date();
-    renderAgreement(body);
+    renderAgreement(res);
   } catch (e) {
-    out.replaceChildren(note(e.message));
+    body.replaceChildren(note(e.message));
   } finally {
     state.agreeBusy = false;
     syncPanelButtons();
+    const g = $('ag-go');
+    if (g) g.disabled = false;
   }
 }
 
@@ -673,78 +756,62 @@ function kappaClass(k) {
   return 'k-lo';
 }
 
-function renderAgreement(body) {
-  const out = $('agree-out');
-  out.replaceChildren();
-  const rows = body.labelers || [];
-  const scored = rows.filter((r) => r.shared > 0);
-  if (!scored.length) {
-    out.appendChild(note(rows.length
-      ? 'No frames yet that you and a teammate have both finished.'
-      : 'Nobody else has labeled anything yet.'));
-    const f0 = document.createElement('div');
-    f0.id = 'agree-foot';
-    const b0 = document.createElement('button');
-    b0.id = 'agree-refresh';
-    b0.textContent = 'Refresh';
-    b0.onclick = computeAgreement;
-    f0.appendChild(b0);
-    out.appendChild(f0);
+function renderAgreement(r) {
+  const body = $('ag-body');
+  if (!body) return;
+  body.replaceChildren();
+
+  if (!r.shared) {
+    body.appendChild(note(r.note
+      || `${r.a} and ${r.b} have not both finished any frame yet.`));
     return;
   }
 
-  for (const r of scored) {
-    const block = document.createElement('div');
-    block.className = 'ag-block';
+  const head = document.createElement('div');
+  head.className = 'ag-head';
+  const who_ = document.createElement('span');
+  who_.className = 'ag-who';
+  who_.textContent = `${r.a} vs ${r.b}`;
+  const n = document.createElement('span');
+  n.className = 'ag-n';
+  n.textContent = `${r.shared} frames`;
+  head.append(who_, n);
+  // Everything that used to be a line of prose lives here instead.
+  const ind = r.independent || { shared: 0, all_four_match: 0 };
+  head.title = `${r.all_four_match} of ${r.shared} frames identical on all four`
+    + (ind.shared
+        ? ` · without the clue: ${ind.all_four_match} of ${ind.shared}`
+        : ' · no clue-free shared frames yet');
+  body.appendChild(head);
 
-    const head = document.createElement('div');
-    head.className = 'ag-head';
-    const who_ = document.createElement('span');
-    who_.className = 'ag-who';
-    who_.textContent = r.labeler;
-    const n = document.createElement('span');
-    n.className = 'ag-n';
-    n.textContent = `${r.shared} frames`;
-    head.append(who_, n);
-    // Everything that used to be a line of prose lives here instead.
-    const ind = r.independent || { shared: 0, all_four_match: 0 };
-    head.title = `${r.all_four_match} of ${r.shared} frames identical on all four`
-      + (ind.shared
-          ? ` · without the clue: ${ind.all_four_match} of ${ind.shared}`
-          : ' · no clue-free shared frames yet');
-    block.appendChild(head);
+  for (const fld of FIELDS) {
+    const q = r.questions[fld] || {};
+    const pct = (q.agree === null || q.agree === undefined) ? null : q.agree * 100;
 
-    for (const fld of FIELDS) {
-      const q = r.questions[fld] || {};
-      const pct = (q.agree === null || q.agree === undefined) ? null : q.agree * 100;
+    const row = document.createElement('div');
+    row.className = 'ag-row';
+    row.title = pct === null ? 'not enough shared frames'
+      : `${Math.round(pct)}% same answer · kappa `
+        + (q.kappa === null || q.kappa === undefined ? '—' : q.kappa.toFixed(2))
+        + ' (agreement beyond chance)';
 
-      const row = document.createElement('div');
-      row.className = 'ag-row';
-      row.title = pct === null ? 'not enough shared frames'
-        : `${Math.round(pct)}% same answer · kappa `
-          + (q.kappa === null || q.kappa === undefined ? '—' : q.kappa.toFixed(2))
-          + ' (agreement beyond chance)';
+    const lbl = document.createElement('span');
+    lbl.className = 'ag-lbl';
+    lbl.textContent = QUESTION_LABELS[fld];
 
-      const lbl = document.createElement('span');
-      lbl.className = 'ag-lbl';
-      lbl.textContent = QUESTION_LABELS[fld];
+    const bar = document.createElement('span');
+    bar.className = 'ag-bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${pct === null ? 0 : pct}%`;
+    fill.className = pct === null ? 'k-na' : (kappaClass(q.kappa) || 'k-na');
+    bar.appendChild(fill);
 
-      const bar = document.createElement('span');
-      bar.className = 'ag-bar';
-      const fill = document.createElement('i');
-      fill.style.width = `${pct === null ? 0 : pct}%`;
-      fill.className = pct === null ? 'k-na' : (kappaClass(q.kappa) || 'k-na');
-      bar.appendChild(fill);
+    const val = document.createElement('span');
+    val.className = 'ag-pct';
+    val.textContent = pct === null ? '—' : `${Math.round(pct)}%`;
 
-      const val = document.createElement('span');
-      val.className = 'ag-pct';
-      val.textContent = pct === null ? '—' : `${Math.round(pct)}%`;
-
-      row.append(lbl, bar, val);
-      block.appendChild(row);
-    }
-
-    out.appendChild(block);
+    row.append(lbl, bar, val);
+    body.appendChild(row);
   }
 
   const foot = document.createElement('div');
@@ -754,12 +821,8 @@ function renderAgreement(body) {
   when.textContent = state.agreeAt
     ? 'as of ' + state.agreeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
-  const again = document.createElement('button');
-  again.id = 'agree-refresh';
-  again.textContent = 'Refresh';
-  again.onclick = computeAgreement;
-  foot.append(when, again);
-  out.appendChild(foot);
+  foot.appendChild(when);
+  body.appendChild(foot);
 }
 
 // ── flag: "I answered, but come back to this" ──────────────────────────────

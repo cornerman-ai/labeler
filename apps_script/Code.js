@@ -3546,10 +3546,18 @@ function cs2Overlap(p, who) {
            .setMimeType(ContentService.MimeType.JSON);
 }
 
-// === Agreement between this labeler and each other one, right now ===
-// Scored ONLY over frames both people finished: all four answered, neither
-// skipped. A partially answered row is not a judgement yet, and scoring it
-// would count blanks as agreement.
+// === Agreement between ONE NAMED PAIR of labelers ===
+// Takes two names rather than scoring me against everybody. The old shape
+// answered "how do I compare to each of them", which is the wrong question once
+// more than two people are labeling: the pair that disagrees may not include
+// you, and a list of rows against your own name cannot show it.
+//
+// Either name may be anyone with a tab, including you — the endpoint has no
+// notion of a caller, which is what lets Bob be compared with Cara.
+//
+// Scored ONLY over frames BOTH finished: all four answered, neither skipped. A
+// partially answered row is not a judgement yet, and scoring it would count
+// blanks as agreement.
 //
 // Reports raw agreement AND Cohen's kappa. Raw agreement alone flatters a
 // skewed question — if 90% of frames are "yes", two people guessing yes agree
@@ -3557,95 +3565,98 @@ function cs2Overlap(p, who) {
 // that chance agreement, so a high raw number next to a low kappa means the
 // question is lopsided, not that the labelers are aligned.
 //
-// Also split by `consulted`: rows where the labeler opened the clue panel are
-// not independent evidence — they may agree because one saw the other. The
+// Also split by `consulted`: a row where either of them opened the clue panel
+// is not independent evidence — they may agree because one saw the other. The
 // `independent` block is the honest number; the headline is the calibrated one.
 function cs2Agreement(p, who) {
   var PREFIX = 'chin_shoulder_labels_';
-  var mineName = (cs2SheetName(who) || '').toLowerCase();
-  if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
-  var readFinished = cs2ReadFinished;
-
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
-  var mineSheet = null, others = [];
-  for (var s = 0; s < sheets.length; s++) {
-    var name = sheets[s].getName();
-    if (name.indexOf(PREFIX) !== 0) continue;
-    if (name.toLowerCase() === mineName) mineSheet = sheets[s];
-    else others.push(sheets[s]);
+  // `who` is only a fallback for the first slot, so an older page that sends
+  // just its own name still resolves to something sensible rather than erroring.
+  var aName = cs2SheetName(p.a || who);
+  var bName = cs2SheetName(p.b);
+  if (!aName || !bName) {
+    return jsonOut({ status: 'error', message: 'pick two labelers to compare' });
   }
-  if (!mineSheet) return jsonOut({ status: 'ok', v2: true, me: who, mine: 0, labelers: [] });
-
-  var mine = readFinished(mineSheet);
-  var mineN = 0;
-  for (var mk in mine) if (mine.hasOwnProperty(mk)) mineN++;
-
-  var out = [];
-  for (var o = 0; o < others.length; o++) {
-    var theirs = readFinished(others[o]);
-    var keys = [];
-    for (var k in theirs) if (theirs.hasOwnProperty(k) && mine[k]) keys.push(k);
-
-    var per = {}, bothAll = 0, indepKeys = [];
-    for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
-      per[CS2_FIELDS[f2]] = { n: 0, agree: 0, pairs: {} };
-    }
-    for (var i = 0; i < keys.length; i++) {
-      var a = mine[keys[i]], b = theirs[keys[i]];
-      var allMatch = true;
-      for (var f3 = 0; f3 < CS2_FIELDS.length; f3++) {
-        var fld = CS2_FIELDS[f3], av = a[fld], bv = b[fld];
-        var cell = per[fld];
-        cell.n++;
-        if (av === bv) cell.agree++; else allMatch = false;
-        var pk = av + '|' + bv;
-        cell.pairs[pk] = (cell.pairs[pk] || 0) + 1;
-      }
-      if (allMatch) bothAll++;
-      if (!a._consulted && !b._consulted) indepKeys.push(keys[i]);
-    }
-
-    // Cohen's kappa from the confusion counts collected above.
-    var questions = {};
-    for (var f4 = 0; f4 < CS2_FIELDS.length; f4++) {
-      var fld2 = CS2_FIELDS[f4], c = per[fld2];
-      var rowM = {}, colM = {};
-      for (var pk2 in c.pairs) {
-        if (!c.pairs.hasOwnProperty(pk2)) continue;
-        var parts = pk2.split('|'), cnt = c.pairs[pk2];
-        rowM[parts[0]] = (rowM[parts[0]] || 0) + cnt;
-        colM[parts[1]] = (colM[parts[1]] || 0) + cnt;
-      }
-      var po = c.n ? c.agree / c.n : 0, pe = 0;
-      for (var v2 in rowM) {
-        if (rowM.hasOwnProperty(v2) && colM[v2]) pe += (rowM[v2] / c.n) * (colM[v2] / c.n);
-      }
-      questions[fld2] = {
-        n: c.n,
-        agree: c.n ? Math.round(po * 1000) / 1000 : null,
-        kappa: (c.n && pe < 1) ? Math.round(((po - pe) / (1 - pe)) * 1000) / 1000 : null
-      };
-    }
-
-    var indepAll = 0;
-    for (var j = 0; j < indepKeys.length; j++) {
-      var a2 = mine[indepKeys[j]], b2 = theirs[indepKeys[j]], m = true;
-      for (var f5 = 0; f5 < CS2_FIELDS.length; f5++) {
-        if (a2[CS2_FIELDS[f5]] !== b2[CS2_FIELDS[f5]]) { m = false; break; }
-      }
-      if (m) indepAll++;
-    }
-
-    out.push({
-      labeler: others[o].getName().substring(PREFIX.length),
-      shared: keys.length,
-      all_four_match: bothAll,
-      questions: questions,
-      independent: { shared: indepKeys.length, all_four_match: indepAll }
-    });
+  if (aName.toLowerCase() === bName.toLowerCase()) {
+    return jsonOut({ status: 'error', message: 'pick two DIFFERENT labelers' });
   }
-  out.sort(function (a, b) { return b.shared - a.shared; });
-  return jsonOut({ status: 'ok', v2: true, me: who, mine: mineN, labelers: out });
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var aSheet = ss.getSheetByName(aName), bSheet = ss.getSheetByName(bName);
+  var a_ = aName.substring(PREFIX.length), b_ = bName.substring(PREFIX.length);
+  if (!aSheet || !bSheet) {
+    return jsonOut({ status: 'ok', v2: true, a: a_, b: b_, shared: 0,
+                     all_four_match: 0, questions: {},
+                     independent: { shared: 0, all_four_match: 0 },
+                     note: (!aSheet ? a_ : b_) + ' has not saved anything yet' });
+  }
+
+  var A = cs2ReadFinished(aSheet), B = cs2ReadFinished(bSheet);
+  var aN = 0, bN = 0;
+  for (var ka in A) if (A.hasOwnProperty(ka)) aN++;
+  for (var kb in B) if (B.hasOwnProperty(kb)) bN++;
+
+  var keys = [];
+  for (var k in B) if (B.hasOwnProperty(k) && A[k]) keys.push(k);
+
+  var per = {}, bothAll = 0, indepKeys = [];
+  for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
+    per[CS2_FIELDS[f2]] = { n: 0, agree: 0, pairs: {} };
+  }
+  for (var i = 0; i < keys.length; i++) {
+    var ra = A[keys[i]], rb = B[keys[i]];
+    var allMatch = true;
+    for (var f3 = 0; f3 < CS2_FIELDS.length; f3++) {
+      var fld = CS2_FIELDS[f3], av = ra[fld], bv = rb[fld];
+      var cell = per[fld];
+      cell.n++;
+      if (av === bv) cell.agree++; else allMatch = false;
+      var pk = av + '|' + bv;
+      cell.pairs[pk] = (cell.pairs[pk] || 0) + 1;
+    }
+    if (allMatch) bothAll++;
+    if (!ra._consulted && !rb._consulted) indepKeys.push(keys[i]);
+  }
+
+  // Cohen's kappa from the confusion counts collected above.
+  var questions = {};
+  for (var f4 = 0; f4 < CS2_FIELDS.length; f4++) {
+    var fld2 = CS2_FIELDS[f4], c = per[fld2];
+    var rowM = {}, colM = {};
+    for (var pk2 in c.pairs) {
+      if (!c.pairs.hasOwnProperty(pk2)) continue;
+      var parts = pk2.split('|'), cnt = c.pairs[pk2];
+      rowM[parts[0]] = (rowM[parts[0]] || 0) + cnt;
+      colM[parts[1]] = (colM[parts[1]] || 0) + cnt;
+    }
+    var po = c.n ? c.agree / c.n : 0, pe = 0;
+    for (var v2 in rowM) {
+      if (rowM.hasOwnProperty(v2) && colM[v2]) pe += (rowM[v2] / c.n) * (colM[v2] / c.n);
+    }
+    questions[fld2] = {
+      n: c.n,
+      agree: c.n ? Math.round(po * 1000) / 1000 : null,
+      kappa: (c.n && pe < 1) ? Math.round(((po - pe) / (1 - pe)) * 1000) / 1000 : null
+    };
+  }
+
+  var indepAll = 0;
+  for (var j = 0; j < indepKeys.length; j++) {
+    var a2 = A[indepKeys[j]], b2 = B[indepKeys[j]], m = true;
+    for (var f5 = 0; f5 < CS2_FIELDS.length; f5++) {
+      if (a2[CS2_FIELDS[f5]] !== b2[CS2_FIELDS[f5]]) { m = false; break; }
+    }
+    if (m) indepAll++;
+  }
+
+  return jsonOut({
+    status: 'ok', v2: true,
+    a: a_, b: b_, a_total: aN, b_total: bN,
+    shared: keys.length,
+    all_four_match: bothAll,
+    questions: questions,
+    independent: { shared: indepKeys.length, all_four_match: indepAll }
+  });
 }
 
 // === What everyone ELSE answered for one frame ===
