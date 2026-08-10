@@ -507,8 +507,32 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    the list is shown, so the collapsed card keeps its tight two-pill stack. */
 #team.on { display: grid; animation: clue-in .2s ease both;
            margin: 12px 0 6px; }
-.who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
-         white-space: nowrap; font-weight: 500; }
+/* The name cell is a flex row now so the hide control can sit beside the text
+   without the ellipsis swallowing it: .who-t takes the truncation, the button
+   is flex:none. A fourth grid cell would NOT work here — #team is the grid, so
+   an extra cell per labeler would break the column alignment between rows. */
+.who-n { display: flex; align-items: baseline; gap: 5px;
+         min-width: 0; font-weight: 500; }
+.who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; }
+/* Invisible until the pointer is somewhere in the panel. Six permanently-lit
+   icons is exactly the clutter this list was cleaned up to avoid, but a control
+   nobody can find is not a control — revealing the whole column on panel hover
+   costs nothing at rest and needs no hunting. */
+.who-eye { flex: none; padding: 0; border: 0; background: none; line-height: 0;
+           color: var(--ink-dim); opacity: 0; transition: opacity .12s ease; }
+#team:hover .who-eye { opacity: .45; }
+.who-eye:hover, .who-eye:focus-visible { opacity: 1; color: var(--ink); }
+.who-eye svg { width: 13px; height: 13px; display: block; }
+/* Always visible when anything is hidden. A row that vanished with no trace of
+   why reads as lost data, so the count stays on screen and the way back is one
+   click next to it. */
+.who-hidden { grid-column: 1 / -1; display: flex; align-items: baseline;
+              gap: 8px; font-size: 11.5px; color: var(--ink-dim);
+              margin-top: 2px; }
+.who-show-all { padding: 0; border: 0; background: none; font: inherit;
+                color: var(--accent); font-weight: 500; }
+.who-show-all:hover { text-decoration: underline; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
 .who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
 .who-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px;
@@ -673,6 +697,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=3"></script>
+<script src="chin_tuck3.js?v=4"></script>
 </body>
 </html>

@@ -45,6 +45,11 @@ const ZOOM_SPEED = 0.0018;  // 100px of wheel ≈ 1.20x
 
 const TEAM_POLL_MS = 45000;   // how often the team panel refreshes
 
+// Per generation: 2.0 and 3.0 have different rosters, so hiding a name in one
+// must not hide it in the other.
+const HIDE_KEY = 'cs_hidden_v3';
+const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
+
 const state = {
   frames: [],              // queue.json order
   index: new Map(),        // key -> queue position, for "who is at #N"
@@ -71,6 +76,7 @@ const state = {
   shownAt: 0,              // when the current frame went on screen (ms)
   overlap: new Map(),      // frame key -> 'a' | 'p' | 'd' | 'o' (see cs2Overlap)
   overlapPeers: 0,         // how many other labelers existed when it was read
+  hidden: new Set(),       // names this device hides from the team list
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
@@ -502,7 +508,8 @@ function renderOverview() {
     fe.title = `#${i + 1}` + (isFlag ? ' · flagged' : '');
 
     // Blank until the read lands, and blank forever for frames you have not
-    // finished — there is no answer of yours to compare with.
+    // judged — there is no answer of yours to compare with. A SKIP counts as
+    // judged, so skipped frames are coloured here like any other.
     const v = state.overlap.get(k);
     if (v && v !== 'o') compared++;
     const ce = cg.children[i];
@@ -577,6 +584,32 @@ function renderTeamLabel() {
     : (n ? `Everyone's progress (${n})` : "Everyone's progress");
 }
 
+// Names this device has hidden from the progress list. A VIEW preference, so it
+// lives in localStorage and never reaches the sheet — one person tidying their
+// own list must not change what anybody else sees.
+//
+// Scoped to the list and nothing else. Hidden labelers still count in the
+// comparison picker, the clue panel and every agreement/overlap verdict: those
+// are facts about the frames, and letting a cosmetic toggle move them would
+// make a green dot mean different things on different machines.
+function loadHidden() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDE_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map((s) => String(s).toLowerCase()) : []);
+  } catch (e) { return new Set(); }
+}
+
+function saveHidden() {
+  try { localStorage.setItem(HIDE_KEY, JSON.stringify([...state.hidden])); } catch (e) {}
+}
+
+function setNameHidden(name, hidden) {
+  const k = String(name).toLowerCase();
+  if (hidden) state.hidden.add(k); else state.hidden.delete(k);
+  saveHidden();
+  renderTeam(state.teamRows || []);
+}
+
 function renderTeam(rows) {
   state.teamRows = rows;
   renderTeamLabel();
@@ -587,6 +620,14 @@ function renderTeam(rows) {
   }
   const me = who().toLowerCase();
   const n = state.frames.length;
+
+  // You can never hide yourself: your own progress is the one row that is
+  // always relevant, and a missing "me" row would read as a bug rather than a
+  // choice. Counted over PRESENT rows only, so names hidden long ago that have
+  // since stopped labeling do not inflate the tally.
+  const isMe = (r) => r.labeler.toLowerCase() === me;
+  const shown = rows.filter((r) => isMe(r) || !state.hidden.has(r.labeler.toLowerCase()));
+  const hiddenNow = rows.length - shown.length;
 
   // #team is the grid, so each labeler contributes cells directly to it rather
   // than a wrapper — a wrapper would become the grid item and the columns
@@ -600,13 +641,25 @@ function renderTeam(rows) {
     return s;
   };
 
-  rows.forEach((r) => {
-    const mine = r.labeler.toLowerCase() === me;
+  shown.forEach((r) => {
+    const mine = isMe(r);
     const m = mine ? ' who-me' : '';
     const pct = n ? (r.n / n) * 100 : 0;
 
     const name = add('who-n' + m, '');
-    name.textContent = r.labeler;
+    const text = document.createElement('span');
+    text.className = 'who-t';
+    text.textContent = r.labeler;
+    name.appendChild(text);
+    if (!mine) {
+      const eye = document.createElement('button');
+      eye.className = 'who-eye';
+      eye.innerHTML = EYE_SVG;
+      eye.title = `Hide ${r.labeler} from this list`;
+      eye.setAttribute('aria-label', eye.title);
+      eye.onclick = (e) => { e.stopPropagation(); setNameHidden(r.labeler, true); };
+      name.appendChild(eye);
+    }
     add('who-c' + m, `${r.n.toLocaleString()}<s> / ${n.toLocaleString()}</s>`);
 
     const bar = add('who-bar' + m, '');
@@ -627,9 +680,22 @@ function renderTeam(rows) {
     if (at !== undefined) detail.push(`at #${at + 1}`);
     if (r.last_ts) detail.push(ago(r.last_ts));
     const tip = detail.join(' · ');
-    name.title = tip; bar.title = tip;
+    text.title = tip; bar.title = tip;
     cells[cells.length - 2].title = tip;            // the count cell
   });
+
+  if (hiddenNow) {
+    const foot = document.createElement('div');
+    foot.className = 'who-hidden';
+    const lbl = document.createElement('span');
+    lbl.textContent = `${hiddenNow} hidden`;
+    const all = document.createElement('button');
+    all.className = 'who-show-all';
+    all.textContent = 'Show all';
+    all.onclick = () => { state.hidden.clear(); saveHidden(); renderTeam(state.teamRows || []); };
+    foot.append(lbl, all);
+    cells.push(foot);
+  }
   el.replaceChildren(...cells);
 }
 
@@ -1319,6 +1385,7 @@ async function start() {
 }
 
 (async function init() {
+  state.hidden = loadHidden();
   bind();
   try {
     const res = await fetch(`${DATA}queue.json?v=7`);
