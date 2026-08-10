@@ -25,12 +25,25 @@
   --no: #ff3b30;
   --maybe: #ff9f0a;
   --radius: 12px;
+  /* Expanded disclosure pills (clue / progress / compare) — a light wash rather
+     than a solid accent fill. Solid blue gave them the weight of a primary
+     action, the same as Save, when all they do is open a panel. Driven from
+     variables so the three buttons cannot drift apart, and so the dark scheme
+     can mix toward white instead of black without restating the selectors. */
+  --open-bg: color-mix(in srgb, var(--accent) 13%, transparent);
+  --open-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --open-ink: color-mix(in srgb, var(--accent) 82%, black);
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
     --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    /* Same wash, but the ink lightens instead of darkening: on a near-black
+       card the accent needs to come UP off the background, not down into it. */
+    --open-bg: color-mix(in srgb, var(--accent) 24%, transparent);
+    --open-line: color-mix(in srgb, var(--accent) 45%, transparent);
+    --open-ink: color-mix(in srgb, var(--accent) 55%, white);
     --shadow: 0 1px 2px rgba(0,0,0,.5);
   }
 }
@@ -178,7 +191,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #clue-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
 #clue-btn:disabled { opacity: .35; cursor: default; }
 #clue-btn[aria-expanded="true"] {
-  background: var(--accent); border-color: transparent; color: #fff;
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
 }
 #clue-btn svg { width: 13px; height: 13px; flex: none; }
 #clue-chev { transition: transform .2s ease; }
@@ -262,7 +276,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
 #team-btn:disabled { opacity: .4; cursor: default; }
 #team-btn[aria-expanded="true"] {
-  background: var(--accent); border-color: transparent; color: #fff;
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
 }
 #team-btn svg { width: 13px; height: 13px; flex: none; }
 #team-chev { transition: transform .2s ease; }
@@ -283,7 +298,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #agree-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
 #agree-btn:disabled { opacity: .4; cursor: default; }
 #agree-btn[aria-expanded="true"] {
-  background: var(--accent); border-color: transparent; color: #fff;
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
 }
 #agree-btn svg { width: 13px; height: 13px; flex: none; }
 #agree-chev { transition: transform .2s ease; }
