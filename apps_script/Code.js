@@ -297,7 +297,8 @@ function doGet(e) {
   // endpoints and ONE SHEET PER LABELER — see doGetChinShoulderV2.
   if (action === 'listChinShoulderV2' || action === 'saveChinShoulderV2' ||
       action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2' ||
-      action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2') {
+      action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2' ||
+      action === 'overlapChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action);
   }
 
@@ -3433,6 +3434,118 @@ function cs2Stats() {
            .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Joins (video, round, frame) into one lookup key. NUL because a video stem can
+// contain very nearly anything else — these carry spaces, dots, braces and
+// full-width characters — but never this.
+var KEY_SEP = '\u0000';
+
+// Read one labeler tab into key -> {answers, consulted}, FINISHED rows only:
+// all four questions answered and not skipped. A partial row is not a judgement
+// yet, and letting one in would score its blanks as agreement.
+function cs2ReadFinished(sh) {
+  var out = {};
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return out;
+  var idx = punchDirHeaderIndex(
+    sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+  var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+  for (var r = 0; r < data.length; r++) {
+    var row = data[r];
+    if (row[idx.video] === '' || row[idx.video] === null) continue;
+    if (String(row[idx.skipped]) === '1') continue;
+    var rec = {}, full = true;
+    for (var f = 0; f < CS2_FIELDS.length; f++) {
+      var v = String(row[idx[CS2_FIELDS[f]]] || '');
+      if (v === '') { full = false; break; }
+      rec[CS2_FIELDS[f]] = v;
+    }
+    if (!full) continue;
+    rec._consulted = String(row[idx.consulted]) === '1';
+    out[[row[idx.video], row[idx.round], row[idx.frame]].join(KEY_SEP)] = rec;
+  }
+  return out;
+}
+
+
+// === Per-frame verdict: how does my answer sit against everyone else's? ===
+// One letter per frame I have finished, for the third overview grid:
+//
+//   a  agree     every labeler who finished this frame gave the same four answers
+//   p  partial   at least one question where at least one other labeler matches me
+//   d  disagree  not one question where anybody matches me
+//   o  only me   nobody else has finished it, so there is nothing to compare
+//
+// The o/d split is the point. A frame nobody else has reached is not a
+// disagreement, and painting it red would bury the frames that actually need a
+// conversation — which on this taxonomy is exactly what we are hunting for.
+//
+// Sent as [video, round, frame, letter] tuples rather than an object keyed by a
+// composite string: the page builds its own key, and the payload stays flat
+// enough to carry all 3,791 of them.
+//
+// Cached like stats — it reads every labeler tab in full and the answer is the
+// same for everyone asking. Any save drops the cache through cs2InvalidateStats.
+var CS2_OVERLAP_TTL = 60;   // seconds
+
+function cs2Overlap(p, who) {
+  var PREFIX = 'chin_shoulder_labels_';
+  var mineName = (cs2SheetName(who) || '').toLowerCase();
+  if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
+
+  var ckey = 'cs2_overlap_' + mineName;
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  if (cache) {
+    var hit = cache.get(ckey);
+    if (hit) return ContentService.createTextOutput(hit)
+                     .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var mineSheet = null, others = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var nm = sheets[s].getName();
+    if (nm.indexOf(PREFIX) !== 0) continue;
+    if (nm.toLowerCase() === mineName) mineSheet = sheets[s];
+    else others.push(sheets[s]);
+  }
+  if (!mineSheet) return jsonOut({ status: 'ok', v2: true, me: who, peers: 0, rows: [] });
+
+  var mine = cs2ReadFinished(mineSheet);
+  var theirs = [];
+  for (var o = 0; o < others.length; o++) theirs.push(cs2ReadFinished(others[o]));
+
+  var rows = [];
+  for (var k in mine) {
+    if (!mine.hasOwnProperty(k)) continue;
+    var a = mine[k];
+    var peers = [];
+    for (var t = 0; t < theirs.length; t++) if (theirs[t][k]) peers.push(theirs[t][k]);
+
+    var letter;
+    if (!peers.length) {
+      letter = 'o';
+    } else {
+      var anyMatch = false, allMatch = true;
+      for (var f = 0; f < CS2_FIELDS.length; f++) {
+        var fld = CS2_FIELDS[f];
+        for (var q = 0; q < peers.length; q++) {
+          if (peers[q][fld] === a[fld]) anyMatch = true; else allMatch = false;
+        }
+      }
+      letter = allMatch ? 'a' : (anyMatch ? 'p' : 'd');
+    }
+    var parts = k.split(KEY_SEP);
+    rows.push([parts[0], Number(parts[1]), Number(parts[2]), letter]);
+  }
+
+  var payload = JSON.stringify({ status: 'ok', v2: true, me: who,
+                                 peers: others.length, rows: rows });
+  if (cache) { try { cache.put(ckey, payload, CS2_OVERLAP_TTL); } catch (e) {} }
+  return ContentService.createTextOutput(payload)
+           .setMimeType(ContentService.MimeType.JSON);
+}
+
 // === Agreement between this labeler and each other one, right now ===
 // Scored ONLY over frames both people finished: all four answered, neither
 // skipped. A partially answered row is not a judgement yet, and scoring it
@@ -3451,31 +3564,7 @@ function cs2Agreement(p, who) {
   var PREFIX = 'chin_shoulder_labels_';
   var mineName = (cs2SheetName(who) || '').toLowerCase();
   if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
-
-  // Read one labeler tab into key -> {answers, consulted}, finished rows only.
-  function readFinished(sh) {
-    var out = {};
-    var lastRow = sh.getLastRow();
-    if (lastRow < 2) return out;
-    var idx = punchDirHeaderIndex(
-      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
-    var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-    for (var r = 0; r < data.length; r++) {
-      var row = data[r];
-      if (row[idx.video] === '' || row[idx.video] === null) continue;
-      if (String(row[idx.skipped]) === '1') continue;
-      var rec = {}, full = true;
-      for (var f = 0; f < CS2_FIELDS.length; f++) {
-        var v = String(row[idx[CS2_FIELDS[f]]] || '');
-        if (v === '') { full = false; break; }
-        rec[CS2_FIELDS[f]] = v;
-      }
-      if (!full) continue;
-      rec._consulted = String(row[idx.consulted]) === '1';
-      out[[row[idx.video], row[idx.round], row[idx.frame]].join('\u0000')] = rec;
-    }
-    return out;
-  }
+  var readFinished = cs2ReadFinished;
 
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var mineSheet = null, others = [];
@@ -3621,6 +3710,7 @@ function doGetChinShoulderV2(p, labeler, action) {
   if (action === 'statsChinShoulderV2') return cs2Stats();
   if (action === 'peersChinShoulderV2') return cs2Peers(p, p.labeler || labeler);
   if (action === 'agreementChinShoulderV2') return cs2Agreement(p, p.labeler || labeler);
+  if (action === 'overlapChinShoulderV2') return cs2Overlap(p, p.labeler || labeler);
   var who = p.labeler || labeler;
   var name = cs2SheetName(who);
   if (!name) return jsonOut({ status: 'error', message: 'missing labeler' });

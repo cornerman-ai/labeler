@@ -57,6 +57,8 @@ const state = {
   consulted: new Set(),    // frames whose clue was opened — see the CSS note
   flag: false,             // is this frame flagged for a second look
   shownAt: 0,              // when the current frame went on screen (ms)
+  overlap: new Map(),      // frame key -> 'a' | 'p' | 'd' | 'o' (see cs2Overlap)
+  overlapPeers: 0,         // how many other labelers existed when it was read
   agreeBusy: false,        // a comparison is being computed right now
   agreeBody: null,         // last agreement snapshot
   agreeAt: null,           // when it was taken
@@ -156,6 +158,8 @@ async function loadLabels() {
   // cache shows them a peer list computed for somebody else (filtered to
   // exclude the wrong person).
   state.labels = new Map();
+  state.overlap = new Map();      // computed FOR the previous labeler
+  state.overlapPeers = 0;
   state.consulted = new Set();
   state.clueCache = new Map();
   state.failed = new Map();
@@ -398,6 +402,35 @@ function keepInView(grid, i) {
   else if (e.bottom > g.bottom) grid.scrollTop += e.bottom - g.bottom;
 }
 
+// How each of my finished frames sits against everyone else's answers. Read
+// alongside the team panel rather than before the labels, because the grid is
+// background information: it costs a full pass over every labeler tab, and
+// nothing on screen has to wait for it.
+const CMP_CLASS = { a: 'agree', p: 'part', d: 'dis', o: 'alone' };
+const CMP_TITLE = {
+  a: 'everyone who did this frame answered the same',
+  p: 'some answers match, some do not',
+  d: 'no answer of yours matches anyone',
+  o: 'only you have finished this frame',
+};
+
+async function loadOverlap() {
+  const name = who();
+  if (!name) return;
+  let body;
+  try {
+    body = await call({ action: 'overlapChinShoulderV2', labeler: name }, 'comparison');
+  } catch (e) {
+    return;                     // silent: the other two grids are still correct
+  }
+  if (name !== who()) return;   // the name changed while we were reading
+  const m = new Map();
+  for (const r of (body.rows || [])) m.set(JSON.stringify([r[0], r[1], r[2]]), r[3]);
+  state.overlap = m;
+  state.overlapPeers = body.peers || 0;
+  renderOverview();
+}
+
 // One dot per frame. 3,791 dots is a legible density; a scrolling list of rows
 // at that length is not.
 function renderOverview() {
@@ -406,6 +439,7 @@ function renderOverview() {
   // Two grids over the same queue in the same order: label state above,
   // flagged-or-not below. Built together so a position means the same thing in
   // both and the eye can move straight down.
+  const cg = $('ov-cmp');
   if (ov.childElementCount !== state.frames.length) {
     const mk = () => state.frames.map((_, i) => {
       const el = document.createElement('i');
@@ -414,8 +448,10 @@ function renderOverview() {
     });
     ov.replaceChildren(...mk());
     fg.replaceChildren(...mk());
+    cg.replaceChildren(...mk());
   }
   let flagged = 0;
+  let compared = 0;
   state.frames.forEach((f, i) => {
     const row = state.labels.get(key(f));
     const el = ov.children[i];
@@ -435,14 +471,27 @@ function renderOverview() {
     fe.className = isFlag ? 'flag' : '';
     fe.classList.toggle('here', i === state.i);
     fe.title = `#${i + 1}` + (isFlag ? ' · flagged' : '');
+
+    // Blank until the read lands, and blank forever for frames you have not
+    // finished — there is no answer of yours to compare with.
+    const v = state.overlap.get(k);
+    if (v && v !== 'o') compared++;
+    const ce = cg.children[i];
+    ce.className = CMP_CLASS[v] || '';
+    ce.classList.toggle('here', i === state.i);
+    ce.title = `#${i + 1}` + (v ? ' · ' + CMP_TITLE[v] : '');
   });
   $('ov-sub-n').textContent = `${flagged} flagged`;
+  // Counts frames somebody else has ALSO finished — the ones the colours above
+  // are actually saying something about. "only you" is not a comparison.
+  $('ov-cmp-n').textContent = state.overlap.size
+    ? `${compared} compared` : '— compared';
   // Only scroll when the position actually moved. render() also runs on every
   // answer click, and scrolling the overview under the cursor each time a
   // labeler picks yes/no is disorienting.
   if (state.ovScrolledTo !== state.i) {
     state.ovScrolledTo = state.i;
-    for (const grid of [ov, fg]) keepInView(grid, state.i);
+    for (const grid of [ov, fg, cg]) keepInView(grid, state.i);
   }
 }
 
@@ -560,7 +609,7 @@ function bumpMyTeamRow() {
 // in the first place.
 function scheduleTeamRefresh() {
   clearTimeout(state.teamTimer);
-  state.teamTimer = setTimeout(loadTeam, 4000);
+  state.teamTimer = setTimeout(() => { loadTeam(); loadOverlap(); }, 4000);
 }
 
 // ── agreement: how close am I to each teammate, right now ──────────────────
@@ -1133,6 +1182,7 @@ async function start() {
   // roughly double the wait — which read as "the team panel is slow" when it
   // was simply going second. Nothing in it depends on the label list.
   loadTeam();
+  loadOverlap();
 
   try {
     await loadLabels();

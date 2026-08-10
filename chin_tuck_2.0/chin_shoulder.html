@@ -155,7 +155,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 body:not(.ready) #q-card .q,
 body:not(.ready) #act-card,
 body:not(.ready) #ov,
-body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
+body:not(.ready) #ov-flags,
+body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
 /* Clue — how the rest of the team answered THIS frame.
    Expands in place rather than opening a dialog: a modal would cover the frame,
@@ -353,9 +354,25 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
   background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
 }
 #save:disabled { opacity: .35; cursor: default; }
+/* Filled grey rather than the transparent outline it had: skip is a real action
+   with a real cost — the frame leaves the queue judged unjudgeable — so it needs
+   to be visible, but it must never compete with the blue Save above it. Grey
+   fill, dimmed label, full-strength ink on hover. */
 #skip {
   width: 100%; padding: 11px; margin-top: 8px; border-radius: 10px;
-  border: 1px solid var(--line); background: transparent; font-weight: 510;
+  border: 1px solid transparent; font-weight: 510;
+  background: rgba(120,120,128,.14);
+  /* Not --ink-dim outright: against this fill that lands at 4.3:1, just under
+     the 4.5 a body label needs. Mixed back toward --ink it reads at 6:1 in both
+     schemes and still looks demoted next to Save. */
+  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
+}
+#skip:hover:not([aria-pressed="true"]) {
+  background: rgba(120,120,128,.20); color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  #skip { background: rgba(120,120,128,.26); }
+  #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
@@ -375,10 +392,14 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 #status.err { color: var(--no); }
 #status.ok { color: var(--yes); }
 
-/* Overview — one dot per frame, so 3,791 fit without scrolling forever. */
+/* Overview — one dot per frame, so 3,791 fit without scrolling forever.
+   The two grids share this height rather than each naming its own: they hold
+   the same 3,791 dots in the same order, and different heights made them look
+   like different amounts of work. One variable so they cannot drift again. */
+:root { --grid-h: 150px; }
 #ov { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
-      max-height: 190px; overflow-y: auto; }
-#ov i, #ov-flags i {
+      max-height: var(--grid-h); overflow-y: auto; }
+#ov i, #ov-flags i, #ov-cmp i {
   width: 9px; height: 9px; border-radius: 2px;
   background: rgba(120,120,128,.22); cursor: pointer;
 }
@@ -388,20 +409,33 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 /* A save that came back with an error. Optimistic saving means the labeler has
    already moved on, so the frame has to stay visible until they deal with it. */
 #ov i.fail { background: var(--no); }
-#ov i.here, #ov-flags i.here { outline: 2px solid var(--accent); outline-offset: 1px; }
+#ov i.here, #ov-flags i.here, #ov-cmp i.here {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
 
 /* Second grid, same frames in the same order, showing one thing only: flagged
    or not. Kept separate from the grid above rather than layered onto it —
    flagged is orthogonal to label state, and two facts on one dot is what made
    the corner-pip version hard to scan. */
 #ov-flags { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
-            max-height: 120px; overflow-y: auto; }
+            max-height: var(--grid-h); overflow-y: auto; }
 #ov-flags i.flag { background: var(--no); }
+
+/* Third grid: how each of your answers sits against everyone else's.
+   Green and red mean what they mean everywhere else on this page, and the
+   fourth state is the important one — a frame nobody else has reached is not a
+   disagreement, so it stays grey rather than joining the red. */
+#ov-cmp { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
+          max-height: var(--grid-h); overflow-y: auto; }
+#ov-cmp i.agree { background: var(--yes); }
+#ov-cmp i.part  { background: var(--maybe); }
+#ov-cmp i.dis   { background: var(--no); }
+#ov-cmp i.alone { background: var(--ink-dim); }
 /* Right-aligned to line up with "N done" in #head directly above it. The two
    numbers answer the same shape of question about the grid beneath each of
    them, so they belong in the same column of the eye's path. */
-#ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
-#ov-sub-n { font-size: 12px; color: var(--ink-dim); }
+.ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
+#ov-sub-n, #ov-cmp-n { font-size: 12px; color: var(--ink-dim); }
 /* Team panel — name, count, bar. Nothing else.
    It used to carry the queue position and a relative timestamp on every row
    too, which is four facts per person in a 330px column. Position was the
@@ -557,11 +591,19 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
         <span><b style="background:var(--maybe)"></b>partial</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
       </div>
-      <div id="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
+      <div class="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
       <div id="ov-flags"></div>
       <div class="legend">
         <span><b style="background:var(--no)"></b>flagged</span>
         <span><b style="background:rgba(120,120,128,.22)"></b>not flagged</span>
+      </div>
+      <div class="ov-sub"><span id="ov-cmp-n">— compared</span></div>
+      <div id="ov-cmp"></div>
+      <div class="legend">
+        <span><b style="background:var(--yes)"></b>agree</span>
+        <span><b style="background:var(--maybe)"></b>partly</span>
+        <span><b style="background:var(--no)"></b>disagree</span>
+        <span><b style="background:var(--ink-dim)"></b>only you</span>
       </div>
     </div>
 
@@ -593,6 +635,6 @@ body:not(.ready) #ov-flags { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=46"></script>
+<script src="chin_shoulder.js?v=49"></script>
 </body>
 </html>
