@@ -3726,7 +3726,12 @@ function cs2ReadJudged(sh, spec) {
 // Cached like stats — it reads every labeler tab in full and the answer is the
 // same for everyone asking. A save drops the SAVING labeler's entry (see
 // cs2InvalidateStats); everyone else's rides the TTL.
-var CS2_OVERLAP_TTL = 60;   // seconds
+// Short on purpose. A save drops the SAVING labeler's entry, but nobody else's
+// — Apps Script's cache cannot enumerate or wildcard keys — so this is the only
+// thing that gets a teammate's answers onto my comparison grid. At 60s a change
+// could sit invisible for longer than the 45s poll interval, which read as the
+// grid being stale; 20 means the next poll almost always recomputes.
+var CS2_OVERLAP_TTL = 20;   // seconds
 
 function cs2Overlap(p, who, spec) {
   spec = spec || CS2_SPEC;

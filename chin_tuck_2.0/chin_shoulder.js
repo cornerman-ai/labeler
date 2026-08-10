@@ -57,6 +57,7 @@ const state = {
   teamRows: null,          // last team payload, mutated locally between polls
   teamTimer: null,         // debounce for the post-save team refresh
   cmpTimer: null,          // ... and the shorter one for the comparison grid
+  overlapToken: 0,         // discards an overlap read that a newer one outran
   ready: false,            // this labeler's saved rows have arrived
   clueOpen: false,         // the clue panel is expanded
   clueCache: new Map(),    // key -> peer rows, so reopening costs nothing
@@ -157,6 +158,17 @@ function isFinished(row) {
 // so counting it as progress would overstate how much is left.
 function isResolved(row) {
   return isFinished(row) || !!(row && row.skipped);
+}
+
+// Saved rows whose frame is in the CURRENT queue. A tab can hold rows that are
+// not: duplicates left by the date-stem bug, probe rows, anything from a queue
+// that has since been rebuilt. They are real rows, so they load — but counting
+// them as progress toward 3,791 overstates it, and it made "N done" disagree
+// with the grids beside it, which iterate frames and so never saw them.
+function myRowsInQueue() {
+  const out = [];
+  for (const [k, row] of state.labels) if (state.index.has(k)) out.push(row);
+  return out;
 }
 
 async function loadLabels() {
@@ -358,7 +370,7 @@ function render() {
   const f = state.frames[state.i];
 
   $('count').innerHTML = `${state.i + 1}<small> / ${n}</small>`;
-  const resolved = [...state.labels.values()].filter(isResolved).length;
+  const resolved = myRowsInQueue().filter(isResolved).length;
   $('done').textContent = `${resolved} done`;
 
   const img = $('frame');
@@ -429,12 +441,19 @@ const CMP_TITLE = {
 async function loadOverlap() {
   const name = who();
   if (!name) return;
+  // Two of these can easily be in flight at once — the 600ms post-save refresh
+  // and the 45s poll — and they do not come back in the order they were sent.
+  // Without a token, a read that STARTED before your save could land after it
+  // and overwrite the fresh map with pre-save verdicts, so the frame you just
+  // answered lost its colour until something else happened to refresh it.
+  const token = ++state.overlapToken;
   let body;
   try {
     body = await call({ action: 'overlapChinShoulderV2', labeler: name }, 'comparison');
   } catch (e) {
     return;                     // silent: the other two grids are still correct
   }
+  if (token !== state.overlapToken) return;   // a newer read already answered
   if (name !== who()) return;   // the name changed while we were reading
   const m = new Map();
   for (const r of (body.rows || [])) m.set(JSON.stringify([r[0], r[1], r[2]]), r[3]);
@@ -686,8 +705,12 @@ function bumpMyTeamRow() {
   const rows = state.teamRows || [];
   let mine = rows.find((r) => r.labeler.toLowerCase() === me.toLowerCase());
   if (!mine) { mine = { labeler: me, n: 0, skipped: 0, last_ts: '', last: null }; rows.push(mine); }
-  mine.n = [...state.labels.values()].filter(isResolved).length;
-  mine.skipped = [...state.labels.values()].filter((r) => r.skipped).length;
+  // Same rule as the header, so the two cannot disagree. Only YOUR row can be
+  // corrected this way — cs2Stats counts every row in a tab and has no idea
+  // what the queue contains, so a teammate's number stays the server's.
+  const mineRows = myRowsInQueue();
+  mine.n = mineRows.filter(isResolved).length;
+  mine.skipped = mineRows.filter((r) => r.skipped).length;
   mine.last_ts = new Date().toISOString();
   const f = state.frames[state.i];
   if (f) mine.last = { video: f.stem, round: f.round, frame: f.frame };
