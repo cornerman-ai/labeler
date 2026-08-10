@@ -3569,10 +3569,24 @@ function cs2Stats(spec) {
 // full-width characters — but never this.
 var KEY_SEP = '\u0000';
 
-// Read one labeler tab into key -> {answers, consulted}, FINISHED rows only:
-// all four questions answered and not skipped. A partial row is not a judgement
-// yet, and letting one in would score its blanks as agreement.
-function cs2ReadFinished(sh, spec) {
+// "This frame cannot be judged" is itself a judgement, and two labelers who both
+// reached for Skip agree about the frame every bit as much as two who both
+// answered yes. So a skip is carried as a pseudo-answer on EVERY question rather
+// than dropped, which makes it comparable without a second code path:
+//
+//   both skipped        -> every field equal   -> agree
+//   one skipped, one not-> no field equal      -> disagree
+//   only I skipped      -> no peer row at all  -> only me
+//
+// SKIP_ANSWER is never written to a sheet and is not a member of any
+// spec.values list, so it cannot be confused with a real answer.
+var SKIP_ANSWER = 'skip';
+
+// Read one labeler tab into key -> {answers, consulted}, JUDGED rows only: every
+// question answered, or deliberately skipped. A PARTIAL row is still excluded —
+// it is not a judgement yet, and letting one in would score its blanks as
+// agreement.
+function cs2ReadJudged(sh, spec) {
   spec = spec || CS2_SPEC;
   var FIELDS = spec.fields;
   var out = {};
@@ -3584,14 +3598,19 @@ function cs2ReadFinished(sh, spec) {
   for (var r = 0; r < data.length; r++) {
     var row = data[r];
     if (row[idx.video] === '' || row[idx.video] === null) continue;
-    if (String(row[idx.skipped]) === '1') continue;
     var rec = {}, full = true;
-    for (var f = 0; f < FIELDS.length; f++) {
-      var v = String(row[idx[FIELDS[f]]] || '');
-      if (v === '') { full = false; break; }
-      rec[FIELDS[f]] = v;
+    if (String(row[idx.skipped]) === '1') {
+      // The answer cells of a skipped row are 0 (or blank, on rows written
+      // before that default). Neither is read — the skip itself is the answer.
+      for (var sf = 0; sf < FIELDS.length; sf++) rec[FIELDS[sf]] = SKIP_ANSWER;
+    } else {
+      for (var f = 0; f < FIELDS.length; f++) {
+        var v = String(row[idx[FIELDS[f]]] || '');
+        if (v === '') { full = false; break; }
+        rec[FIELDS[f]] = v;
+      }
+      if (!full) continue;
     }
-    if (!full) continue;
     rec._consulted = String(row[idx.consulted]) === '1';
     out[[row[idx.video], row[idx.round], row[idx.frame]].join(KEY_SEP)] = rec;
   }
@@ -3602,10 +3621,14 @@ function cs2ReadFinished(sh, spec) {
 // === Per-frame verdict: how does my answer sit against everyone else's? ===
 // One letter per frame I have finished, for the third overview grid:
 //
-//   a  agree     every labeler who finished this frame gave the same four answers
+//   a  agree     every labeler who judged this frame gave the same answers
 //   p  partial   at least one question where at least one other labeler matches me
 //   d  disagree  not one question where anybody matches me
-//   o  only me   nobody else has finished it, so there is nothing to compare
+//   o  only me   nobody else has judged it, so there is nothing to compare
+//
+// "Judged" includes SKIPPED (see cs2ReadJudged): a frame everybody skipped is
+// unanimous and paints green, and a frame only I skipped is grey rather than
+// red — nobody disagreed with me, they simply have not reached it.
 //
 // The o/d split is the point. A frame nobody else has reached is not a
 // disagreement, and painting it red would bury the frames that actually need a
@@ -3645,9 +3668,9 @@ function cs2Overlap(p, who, spec) {
   }
   if (!mineSheet) return csOut(spec, { me: who, peers: 0, rows: [] });
 
-  var mine = cs2ReadFinished(mineSheet, spec);
+  var mine = cs2ReadJudged(mineSheet, spec);
   var theirs = [];
-  for (var o = 0; o < others.length; o++) theirs.push(cs2ReadFinished(others[o], spec));
+  for (var o = 0; o < others.length; o++) theirs.push(cs2ReadJudged(others[o], spec));
 
   var rows = [];
   for (var k in mine) {
@@ -3688,9 +3711,11 @@ function cs2Overlap(p, who, spec) {
 // Either name may be anyone with a tab, including you — the endpoint has no
 // notion of a caller, which is what lets Bob be compared with Cara.
 //
-// Scored ONLY over frames BOTH finished: all four answered, neither skipped. A
-// partially answered row is not a judgement yet, and scoring it would count
-// blanks as agreement.
+// Scored over frames BOTH JUDGED: every question answered, or skipped. A skip
+// counts — see cs2ReadJudged — so two people who both gave up on a frame are
+// scored as agreeing, and one skipping while the other answers is a
+// disagreement on every question. A partially answered row is still excluded:
+// it is not a judgement yet, and scoring it would count blanks as agreement.
 //
 // Reports raw agreement AND Cohen's kappa. Raw agreement alone flatters a
 // skewed question — if 90% of frames are "yes", two people guessing yes agree
@@ -3725,7 +3750,7 @@ function cs2Agreement(p, who, spec) {
                          note: (!aSheet ? a_ : b_) + ' has not saved anything yet' });
   }
 
-  var A = cs2ReadFinished(aSheet, spec), B = cs2ReadFinished(bSheet, spec);
+  var A = cs2ReadJudged(aSheet, spec), B = cs2ReadJudged(bSheet, spec);
   var aN = 0, bN = 0;
   for (var ka in A) if (A.hasOwnProperty(ka)) aN++;
   for (var kb in B) if (B.hasOwnProperty(kb)) bN++;
