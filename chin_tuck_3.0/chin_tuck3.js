@@ -67,7 +67,8 @@ const state = {
   chains: new Map(),       // key -> promise chain, serialising same-frame saves
   failed: new Map(),       // key -> why its save failed
   teamRows: null,          // last team payload, mutated locally between polls
-  teamTimer: null,         // debounce for the post-save refresh
+  teamTimer: null,         // debounce for the post-save team refresh
+  cmpTimer: null,          // ... and the shorter one for the comparison grid
   ready: false,            // this labeler's saved rows have arrived
   clueOpen: false,         // the clue panel is expanded
   clueCache: new Map(),    // key -> peer rows, so reopening costs nothing
@@ -721,9 +722,20 @@ function bumpMyTeamRow() {
 // One real refresh after a burst of saves, not one per save: the stats call
 // reads every labeler sheet, and firing it per frame is what made saving slow
 // in the first place.
+// Two debounces, not one. They were sharing 4s, which is right for the team
+// panel — stats reads every labeler tab in full and nobody is watching their
+// colleagues' counters mid-keystroke — but it made the comparison grid the one
+// part of the overview that visibly trailed the other two. The overlap read is
+// ~1.4s against stats' ~1.5s but is the thing being looked at, so it goes as
+// soon as the labeler pauses.
+//
+// Still debounced rather than immediate: a burst of fast saves collapses into a
+// single refresh at the end instead of one request per frame.
 function scheduleTeamRefresh() {
   clearTimeout(state.teamTimer);
-  state.teamTimer = setTimeout(() => { loadTeam(); loadOverlap(); }, 4000);
+  state.teamTimer = setTimeout(loadTeam, 4000);
+  clearTimeout(state.cmpTimer);
+  state.cmpTimer = setTimeout(loadOverlap, 600);
 }
 
 // ── agreement: pick TWO labelers and score that pair ───────────────────
