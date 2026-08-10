@@ -887,6 +887,7 @@ function onOpen() {
     .addItem('Set up hourly auto-refresh', 'installLabelerHoursTrigger')
     .addItem('Replace YouTube URLs with Drive URLs', 'replaceVideoUrls') // ONE-TIME: remove this line after running
     .addItem('Fill blank 0/1 cells (chin-shoulder)', 'cs2BackfillBinaryColumns') // ONE-TIME: remove this line after running
+    .addItem('Remove duplicate chin rows', 'cs2DedupeRows') // ONE-TIME: remove this line after running
     .addToUi();
 }
 
@@ -3314,6 +3315,11 @@ function getOrCreateCs2Sheet(labeler, spec) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     sh.setFrozenRows(1);
+    // See cs2SameVideo: a date-like stem must never be parsed into a Date.
+    var vcol = HEADERS.indexOf('video');
+    if (vcol >= 0) {
+      try { sh.getRange(1, vcol + 1, sh.getMaxRows(), 1).setNumberFormat('@'); } catch (e) {}
+    }
     return sh;
   }
   if (sh.getLastRow() === 0) {
@@ -3389,6 +3395,57 @@ function getOrCreateCs2Sheet(labeler, spec) {
     }
   }
   return sh;
+}
+
+// === ONE-TIME: collapse rows duplicated by the date-stem bug ===
+// While a mangled row could not be found, every save on that frame appended
+// another copy. Groups by (video, round, frame) exactly as stored — the mangled
+// copies all share the same Date, so they group together — keeps the row with
+// the NEWEST ts, and deletes the rest.
+//
+// Deliberately does not try to repair the stem. There is no way back from a
+// Date to the string that produced it, and the queue lives in the page rather
+// than here; the surviving row heals itself the next time that frame is saved,
+// because findRow can now see it.
+// ONE-TIME: remove this function and its menu line once it has been run.
+function cs2DedupeRows() {
+  var SPECS = [CS2_SPEC, CS3_SPEC];
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var report = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s], nm = sh.getName(), spec = null;
+    for (var sp = 0; sp < SPECS.length; sp++) {
+      if (nm.indexOf(SPECS[sp].prefix) === 0) { spec = SPECS[sp]; break; }
+    }
+    if (!spec) continue;
+    var lastRow = sh.getLastRow();
+    if (lastRow < 3) continue;
+    var idx = punchDirHeaderIndex(
+      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+    var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+
+    var best = {};      // key -> {row, ts}
+    var drop = [];
+    for (var r = 0; r < data.length; r++) {
+      var v = data[r][idx.video];
+      if (v === '' || v === null) continue;
+      var k = [String(v), String(data[r][idx.round]), String(data[r][idx.frame])].join(KEY_SEP);
+      var ts = String(data[r][idx.ts] || '');
+      var rowNum = r + 2;
+      if (!best[k]) { best[k] = { row: rowNum, ts: ts }; continue; }
+      // Keep the newer; the loser is dropped whichever side it is on.
+      if (ts > best[k].ts) { drop.push(best[k].row); best[k] = { row: rowNum, ts: ts }; }
+      else { drop.push(rowNum); }
+    }
+    // Bottom-up: deleting a row renumbers everything below it.
+    drop.sort(function (a, b) { return b - a; });
+    for (var d = 0; d < drop.length; d++) sh.deleteRow(drop[d]);
+    if (drop.length) report.push(nm + ': removed ' + drop.length);
+  }
+  cs2InvalidateStats(CS2_SPEC);
+  cs2InvalidateStats(CS3_SPEC);
+  SpreadsheetApp.getUi().alert(
+    'Duplicate rows removed\n\n' + (report.length ? report.join('\n') : '(none)'));
 }
 
 // === ONE-TIME: fill the blanks left in the 0/1 columns by older deploys ===
@@ -3562,6 +3619,34 @@ function cs2Stats(spec) {
   if (cache) { try { cache.put(spec.statsKey, payload, CS2_STATS_TTL); } catch (e) {} }
   return ContentService.createTextOutput(payload)
            .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Google Sheets PARSES a date-like cell on write. The stem "November 15, 2020"
+// goes in as text and comes back as a Date, and from then on the
+// (video, round, frame) key never matches itself again. Three symptoms, all of
+// which looked like separate bugs:
+//
+//   * the clue panel always said "you are first here" — cs2Peers could not find
+//     anybody else's row for the frame;
+//   * the frame could never be marked done, so every reload dumped the labeler
+//     straight back onto it;
+//   * every save appended ANOTHER copy, because the update path found nothing
+//     to overwrite.
+//
+// New rows are written into a plain-text-formatted cell (see the save path), so
+// this cannot recur. This function is what recognises the rows already mangled,
+// so the next save finds one and heals it in place instead of adding a copy.
+//
+// Compares CALENDAR PARTS, not the instant: the spreadsheet's timezone and the
+// script's need not agree, and a few hours of offset must not break a match.
+function cs2SameVideo(cell, want) {
+  if (String(cell) === String(want)) return true;
+  if (Object.prototype.toString.call(cell) !== '[object Date]') return false;
+  var d = new Date(want);
+  if (isNaN(d.getTime())) return false;
+  return d.getFullYear() === cell.getFullYear()
+      && d.getMonth() === cell.getMonth()
+      && d.getDate() === cell.getDate();
 }
 
 // Joins (video, round, frame) into one lookup key. NUL because a video stem can
@@ -3856,7 +3941,7 @@ function cs2Peers(p, who, spec) {
     var keys = sh.getRange(2, lo + 1, lastRow - 1, hi - lo + 1).getValues();
     var at = 0;
     for (var r = 0; r < keys.length; r++) {
-      if (String(keys[r][idx.video - lo]) === String(p.video) &&
+      if (cs2SameVideo(keys[r][idx.video - lo], p.video) &&
           String(keys[r][idx.round - lo]) === String(p.round) &&
           String(keys[r][idx.frame - lo]) === String(p.frame)) { at = r + 2; break; }
     }
@@ -3919,7 +4004,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
     var hi = Math.max(idx.video, idx.round, idx.frame);
     var keys = sh.getRange(2, lo + 1, lastRow - 1, hi - lo + 1).getValues();
     for (var i = 0; i < keys.length; i++) {
-      if (String(keys[i][idx.video - lo]) === String(p.video) &&
+      if (cs2SameVideo(keys[i][idx.video - lo], p.video) &&
           String(keys[i][idx.round - lo]) === String(p.round) &&
           String(keys[i][idx.frame - lo]) === String(p.frame)) return i + 2;
     }
@@ -4049,6 +4134,14 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
       else out.push('');
     }
 
+    // Plain text, so a date-like stem stays the string it was. Set on the ONE
+    // cell being written rather than the whole column: this runs on every save,
+    // and reformatting a thousand rows each time to protect one is waste.
+    function keepVideoAsText(rowNum) {
+      if (idx.video === undefined) return;
+      try { sh.getRange(rowNum, idx.video + 1).setNumberFormat('@'); } catch (e) {}
+    }
+
     var at = findRow();
     if (at) {
       // Overwrite in place. `reviewed` belongs to the review pass, so a
@@ -4060,12 +4153,14 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
         out[idx.reviewed] =
           (prevReviewed === '' || prevReviewed === null) ? 0 : prevReviewed;
       }
+      keepVideoAsText(at);
       sh.getRange(at, 1, 1, out.length).setValues([out]);
       cs2InvalidateStats(spec, who);
       return csOut(spec, { updated: 1 });
     }
     // setValues on the next row rather than appendRow: appendRow re-scans the
     // sheet for its insertion point, which is the slower of the two.
+    keepVideoAsText(lastRow + 1);
     sh.getRange(lastRow + 1, 1, 1, out.length).setValues([out]);
     cs2InvalidateStats(spec, who);
     return csOut(spec, { appended: 1 });
