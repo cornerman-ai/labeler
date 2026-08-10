@@ -11,8 +11,8 @@
    This page is meant to be quiet — a frame, a count, one question — so it
    carries its own stylesheet rather than fighting a shared one, and nothing
    here can affect the 1.0 or 2.0 pages. It is a COPY of 2.0's sheet, not a
-   share: the two are free to drift, and 3.0's flipped answer colours below are
-   the first place they already have.
+   share: the two are free to drift, and the single-question rules below —
+   no amber "partial" dot, no hard_to_say — are where they already have.
    ------------------------------------------------------------------------ */
 :root {
   --bg: #f5f5f7;
@@ -232,11 +232,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .clue-ans dt { color: var(--ink-dim); }
 .clue-ans dd { margin: 0; justify-self: end; font-weight: 590; }
 /* Same colour language as the answer buttons, so a glance reads the same way. */
-/* Flipped with the option buttons: a peer answering "yes" said the tuck IS
-   bad, so yes is the red one here too. No hard_to_say rule — 3.0 has no such
-   value. */
-.clue-ans dd.yes { color: var(--no); }
-.clue-ans dd.no { color: var(--yes); }
+/* Same convention as the option buttons above: the colour is the answer, not a
+   verdict on the boxing. No hard_to_say rule — 3.0 has no such value. */
+.clue-ans dd.yes { color: var(--yes); }
+.clue-ans dd.no { color: var(--no); }
 .clue-ans dd.none { color: var(--ink-dim); font-weight: 400; }
 .clue-skip { color: var(--ink-dim); font-style: italic; }
 
@@ -396,11 +395,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 /* Every question is phrased so that YES is the good answer — the point is
    correct, the chin is safe — so green/red carries the same meaning on all
    four and never has to be read against the question. */
-/* FLIPPED against 2.0, deliberately. There "yes" was always the good answer,
-   so yes was green. Here "yes" means the tuck IS bad — colouring it green would
-   say the opposite of what it means. Red stays "bad boxing" across the tool. */
-.opt[data-v="yes"][aria-pressed="true"] { background: var(--no); }
-.opt[data-v="no"][aria-pressed="true"] { background: var(--yes); }
+/* Green for yes, red for no — the same as 2.0 and every other yes/no in the
+   tool. The colour tracks the ANSWER, not whether the boxing is any good; this
+   question is the one place where those two point opposite ways, and a labeler
+   pressing the same button in both generations should not have it change colour
+   under them. Read "green = the answer is yes", not "green = good tuck". */
+.opt[data-v="yes"][aria-pressed="true"] { background: var(--yes); }
+.opt[data-v="no"][aria-pressed="true"] { background: var(--no); }
 .q-hint { font-size: 11.5px; color: var(--ink-dim); margin: 7px 0 0; }
 .opt kbd { font: inherit; opacity: .5; margin-left: 3px; }
 
@@ -628,8 +629,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
           <button class="opt" data-q="bad_tuck" data-v="yes">Yes<kbd>1</kbd></button>
           <button class="opt" data-q="bad_tuck" data-v="no">No<kbd>2</kbd></button>
         </div>
-        <p class="q-hint">Only the blatant ones. Anything you have to think
-          about is a No.</p>
+        <p class="q-hint">Remember: anything you have to think about is a no.</p>
       </div>
     </div>
 
@@ -697,6 +697,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=5"></script>
+<script src="chin_tuck3.js?v=7"></script>
 </body>
 </html>

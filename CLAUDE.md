@@ -106,8 +106,10 @@ ts | labeler | video | round | frame | frame_sec | stance | shoulder_used | shou
 ts | labeler | video | round | frame | frame_sec | stance | shoulder_used | bad_tuck | skipped | consulted | flag | dwell_sec | reviewed
 
 `bad_tuck` is `yes` / `no` — "is this a no-brainer bad chin tuck". **Polarity is
-inverted against 2.0**, where yes was always the good answer; here yes means the
-tuck is bad, which is why 3.0 colours the yes button red. No `hard_to_say`: "no"
+inverted against 2.0**, where yes was always the GOOD answer; here yes means the
+tuck is BAD. Anything reading this column has to remember that. The buttons are
+still green-for-yes / red-for-no as everywhere else in the tool — the colour
+tracks the answer, not whether the boxing is any good. No `hard_to_say`: "no"
 already absorbs the ambiguous ones, and an unjudgeable frame is a skip.
 
 Shared columns: `skipped` / `consulted` / `flag` / `reviewed` are 0/1, never
