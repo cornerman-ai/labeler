@@ -469,7 +469,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #ov-cmp { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
           max-height: var(--grid-h); overflow-y: auto; }
 #ov-cmp i.agree { background: var(--yes); }
-#ov-cmp i.part  { background: var(--maybe); }
+/* No .part rule: one yes/no has no middle verdict, so the comparison grid is
+   green, red or grey. See CMP_CLASS. */
 #ov-cmp i.dis   { background: var(--no); }
 #ov-cmp i.alone { background: var(--ink-dim); }
 /* Right-aligned to line up with "N done" in #head directly above it. The two
@@ -622,7 +623,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <div id="ov-cmp"></div>
       <div class="legend">
         <span><b style="background:var(--yes)"></b>agree</span>
-        <span><b style="background:var(--maybe)"></b>split</span>
         <span><b style="background:var(--no)"></b>disagree</span>
         <span><b style="background:var(--ink-dim)"></b>only you</span>
       </div>
@@ -653,6 +653,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=1"></script>
+<script src="chin_tuck3.js?v=2"></script>
 </body>
 </html>

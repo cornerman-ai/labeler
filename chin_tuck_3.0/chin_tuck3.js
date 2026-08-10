@@ -425,13 +425,20 @@ function keepInView(grid, i) {
 // alongside the team panel rather than before the labels, because the grid is
 // background information: it costs a full pass over every labeler tab, and
 // nothing on screen has to wait for it.
-const CMP_CLASS = { a: 'agree', p: 'part', d: 'dis', o: 'alone' };
-// With four questions 'p' meant some of them matched. With one it can only
-// mean some PEOPLE matched — the team is split on this frame — which is the
-// more useful reading of the two.
+// TWO verdicts, not three. With one yes/no there is no useful middle: either
+// everybody who did this frame answered as you did, or somebody did not — and
+// "somebody did not" is the whole signal, whether it is one peer or all of them.
+// So the endpoint's 'p' (some peers matched, some did not) is painted the same
+// red as 'd' (none matched). It still reports both, and the tooltip still tells
+// them apart; only the colour is collapsed, because a labeler scanning the grid
+// for frames worth re-examining wants one question answered, not two.
+//
+// 'o' stays grey and separate. A frame nobody else has reached is not agreement
+// and not disagreement — painting it either way would assert something untrue.
+const CMP_CLASS = { a: 'agree', p: 'dis', d: 'dis', o: 'alone' };
 const CMP_TITLE = {
   a: 'everyone who did this frame answered the same',
-  p: 'the team is split on this frame',
+  p: 'at least one labeler answered differently',
   d: 'nobody who did this frame agrees with you',
   o: 'only you have finished this frame',
 };
