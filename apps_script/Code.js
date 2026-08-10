@@ -3406,6 +3406,7 @@ function getOrCreateCs2Sheet(labeler, spec) {
 // a blank in these three columns has always meant 0. Safe to run twice.
 // ONE-TIME: remove this function and its menu line once it has been run.
 function cs2BackfillBinaryColumns() {
+  var SPECS = [CS2_SPEC, CS3_SPEC];
   var PREFIXES = [CS2_SPEC.prefix, CS3_SPEC.prefix];
   var COLS = ['skipped', 'consulted', 'flag', 'reviewed'];
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
@@ -3432,6 +3433,30 @@ function cs2BackfillBinaryColumns() {
         if (String(vals[r][0]).trim() === '') { vals[r][0] = 0; touched = true; filled++; }
       }
       if (touched) rng.setValues(vals);
+    }
+
+    // Skipped rows written before answers-are-0: fill THEIR answer columns with
+    // 0 too. Guarded on skipped === 1, so a partially answered row keeps its
+    // blanks — those are genuinely "not answered yet", which is a different
+    // thing from "answered nothing, deliberately".
+    var spec = null;
+    for (var sp = 0; sp < SPECS.length; sp++) {
+      if (sh.getName().indexOf(SPECS[sp].prefix) === 0) { spec = SPECS[sp]; break; }
+    }
+    if (spec && idx.skipped !== undefined) {
+      var skipCol = sh.getRange(2, idx.skipped + 1, lastRow - 1, 1).getValues();
+      for (var fi = 0; fi < spec.fields.length; fi++) {
+        var ci = idx[spec.fields[fi]];
+        if (ci === undefined) continue;
+        var arng = sh.getRange(2, ci + 1, lastRow - 1, 1);
+        var avals = arng.getValues();
+        var atouched = false;
+        for (var ar = 0; ar < avals.length; ar++) {
+          if (String(skipCol[ar][0]) !== '1') continue;
+          if (String(avals[ar][0]).trim() === '') { avals[ar][0] = 0; atouched = true; filled++; }
+        }
+        if (atouched) arng.setValues(avals);
+      }
     }
     report.push(sh.getName() + ': ' + filled);
   }
@@ -3897,8 +3922,15 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
       });
       // Whatever THIS generation asks. Added after the fixed columns rather
       // than among them so one question or four is the same code.
+      //
+      // A skipped row stores 0 in these columns (see the save branch); that is a
+      // written-down "no answer", not an answer, so it is reported as null. Not
+      // cosmetic: cell() would hand back the STRING '0', which is truthy in JS,
+      // and the page's answered() would then count a skipped frame as answered.
+      var wasSkipped = rows[rows.length - 1].skipped === 1;
       for (var q = 0; q < spec.fields.length; q++) {
-        rows[rows.length - 1][spec.fields[q]] = cell(data[i], spec.fields[q]);
+        rows[rows.length - 1][spec.fields[q]] =
+          wasSkipped ? null : cell(data[i], spec.fields[q]);
       }
     }
     return csOut(spec, { labeler: who, sheet: cs2SheetName(who, spec), rows: rows });
@@ -3967,7 +3999,13 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
       // Not blank: 0 means "not reviewed yet". The review pass overwrites it,
       // and the branch below preserves whatever it wrote.
       else if (col === 'reviewed') out.push(0);
-      else if (spec.values[col] !== undefined) out.push(vals[col]);
+      // A skipped frame carries no answers, and a BLANK is not the same
+      // statement as "no answer" — a blank could equally mean the column did
+      // not exist when the row was written. 0 says it outright, and matches
+      // skipped/consulted/flag/reviewed, none of which are ever blank.
+      // 0 is not a member of any spec.values list, so it can never be mistaken
+      // for a real answer.
+      else if (spec.values[col] !== undefined) out.push(skipped ? 0 : vals[col]);
       else out.push('');
     }
 
