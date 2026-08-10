@@ -95,6 +95,39 @@ or a `skip_reason` (`occluded` / `unclear`), never both. Keyed by (labeler,
 video, round, frame); a re-save supersedes (soft `deleted=1`). Actions:
 `listChinShoulderLabels` / `saveChinShoulderLabel` / `deleteChinShoulderLabel`.
 
+**chin_shoulder_labels_{Name} / chin_tuck3_labels_{Name}** — the two LIVE chin
+generations. One code-owned tab per labeler (do not hand-add columns: the header
+row is reconciled to the schema, in both membership and order, on every save).
+
+2.0 (`chin_tuck_2.0/chin_shoulder.html`) — four questions:
+ts | labeler | video | round | frame | frame_sec | stance | shoulder_used | shoulder_ok | chin_ok | lateral_safe | frontal_safe | skipped | consulted | flag | dwell_sec | reviewed
+
+3.0 (`chin_tuck_3.0/chin_tuck3.html`) — the same frames and queue, ONE question:
+ts | labeler | video | round | frame | frame_sec | stance | shoulder_used | bad_tuck | skipped | consulted | flag | dwell_sec | reviewed
+
+`bad_tuck` is `yes` / `no` — "is this a no-brainer bad chin tuck". **Polarity is
+inverted against 2.0**, where yes was always the good answer; here yes means the
+tuck is bad, which is why 3.0 colours the yes button red. No `hard_to_say`: "no"
+already absorbs the ambiguous ones, and an unjudgeable frame is a skip.
+
+Shared columns: `skipped` / `consulted` / `flag` / `reviewed` are 0/1, never
+blank (`consulted` = the labeler opened the clue panel and it showed at least
+one peer answer, so agreement over those rows measures convergence rather than
+independence); `dwell_sec` accumulates across visits, capped at 120s per look.
+
+Both generations run the SAME backend functions, parameterized by `CS2_SPEC` /
+`CS3_SPEC` (prefix, headers, values, fields, cache keys, action suffix). Actions
+are `{list,save,delete,stats,peers,agreement,overlap}` + `ChinShoulderV2` or
+`ChinTuck3`. Every response carries its generation's marker (`v2` / `v3`) —
+doGet answers unknown actions with a success shape, so without the marker a page
+talking to an older deployment would read a save as successful having written
+nothing. The prefixes are what keep the two generations from seeing each other's
+tabs in stats, agreement, clue and comparison.
+
+3.0 has NO data of its own: it reads `../chin_tuck_2.0/queue.json` and
+`../chin_tuck_2.0/frames/`. The frames are 666MB against a 1GB Pages limit, so a
+copy would not fit — moving or deleting `chin_tuck_2.0/` breaks 3.0.
+
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.
 

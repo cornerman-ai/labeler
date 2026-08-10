@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chin Tuck 3.0</title>
+<style>
+/* ── 3.0 owns its own styling ───────────────────────────────────────────────
+   Deliberately NOT ../shared/style.css: that sheet dresses the punch-labeling
+   pages (dark navy, dense control strips) and every other labeler inherits it.
+   This page is meant to be quiet — a frame, a count, one question — so it
+   carries its own stylesheet rather than fighting a shared one, and nothing
+   here can affect the 1.0 or 2.0 pages. It is a COPY of 2.0's sheet, not a
+   share: the two are free to drift, and 3.0's flipped answer colours below are
+   the first place they already have.
+   ------------------------------------------------------------------------ */
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --line: rgba(0,0,0,.10);
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  --accent: #0071e3;
+  --yes: #34c759;
+  --no: #ff3b30;
+  --maybe: #ff9f0a;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
+    --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    --shadow: 0 1px 2px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* labeler_name.js prepends a shared identity strip to every page. Here it is a
+   full-width line spent on one short word, above a tool whose whole point is
+   the picture — so it is hidden and the name sits inline in the side panel
+   instead. Page-scoped: every other labeler keeps the shared bar. */
+#cm-labeler-chip { display: none !important; }
+
+/* Your name sits at the head of the team list rather than in a panel of its
+   own: it is the same fact as the rows below it — who is labeling — and a
+   whole card for one short field read as an empty box. Filled-field styling,
+   no border, the way a system settings field looks.
+   `display: block !important` is load-bearing: labeler_name.js hides this
+   input by inline style on load, on the assumption its own bar is the name UI,
+   and an inline style only loses to !important. */
+#name-row { display: flex; gap: 6px; margin-bottom: 10px; }
+#labeler-input {
+  display: block !important;
+  flex: 1; min-width: 0;
+  border: 0; border-radius: 9px;
+  background: rgba(120,120,128,.12); color: var(--ink);
+  padding: 9px 12px; font-size: 14px; font-weight: 500;
+}
+#name-go {
+  flex: none; padding: 0 15px; border: 0; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
+}
+#name-go:disabled { opacity: .3; cursor: default; }
+/* Committing the name is what unlocks the page and decides which sheet every
+   answer lands in, and until now the only sign it had taken was the frame
+   quietly becoming clickable. Green button, green field: the name in the box
+   is the name being saved under. Edit the box and both revert, because what is
+   typed is no longer what is committed. */
+#name-row.saved #name-go { background: var(--yes); }
+#name-row.saved #labeler-input {
+  box-shadow: inset 0 0 0 1.5px var(--yes);
+  background: color-mix(in srgb, var(--yes) 10%, transparent);
+}
+#labeler-input::placeholder { color: var(--ink-dim); font-weight: 400; }
+#labeler-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-color-scheme: dark) {
+  #labeler-input { background: rgba(120,120,128,.24); }
+}
+
+/* Position and total head the overview, which is the one place that already
+   answers "where am I in this queue" — a bar of their own cost the frame ~50px
+   of height, and a progress bar restated what 3,791 dots already show. */
+#head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+#count {
+  font: 600 17px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: -.02em; white-space: nowrap;
+}
+#count small { color: var(--ink-dim); font-weight: 400; font-size: 13px; }
+#done { font-size: 12px; color: var(--ink-dim); white-space: nowrap; margin-left: auto; }
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+/* No right padding here: the side panel runs to the window edge so its
+   scrollbar sits in the corner. The gap that keeps the cards off the edge is
+   #side's own padding-right, which a scrollbar renders outside of. */
+#wrap { display: flex; gap: 12px; padding: 16px 0 16px 16px;
+        align-items: flex-start; height: 100vh; }
+#stage-card {
+  flex: 1; min-width: 0; height: 100%;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+/* #stage carries the frame's aspect ratio (set from naturalWidth/Height on
+   load) and the image fills it exactly. Every marker is positioned in % of
+   #stage, so this is what makes the overlay and the image the same box —
+   letting the img size itself and overlaying inset:0 does NOT, because the
+   img's max-height:100% resolves against a parent with no definite height and
+   the picture silently overflows its own overlay. */
+#stage { position: relative; display: block; max-width: 100%; max-height: 100%;
+         aspect-ratio: 9 / 16; cursor: crosshair; user-select: none;
+         transform-origin: 0 0; }   /* 0 0 is what makes zoom-at-cursor solvable */
+#stage img { display: block; width: 100%; height: 100%; }
+#stage img.broken { background: repeating-linear-gradient(45deg,
+  rgba(255,59,48,.10) 0 10px, rgba(255,59,48,.20) 10px 20px); }
+#stage.zoomed { cursor: grab; }
+#stage.panning { cursor: grabbing; }
+#marks { position: absolute; inset: 0; pointer-events: none; }
+
+/* Points are deliberately tiny — a big marker hides the very pixels the
+   question is about (is the chin safe?). 5px reads at a glance and still
+   leaves the jawline visible; zoom is there when it isn't enough.
+   --inv is 1/zoom, set by applyTransform(): the dots sit inside the scaled
+   stage so their POSITION tracks the frame, while counter-scaling keeps their
+   SIZE constant on screen — without it a 5px dot is 60px at 12x and buries the
+   chin it is pointing at. */
+.pt { position: absolute; width: 5px; height: 5px; border-radius: 50%;
+      transform: translate(-50%, -50%) scale(var(--inv, 1));
+      box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
+.pt.chin { background: #ff375f; }
+.pt.sh   { background: #32d74b; }
+/* The shoulder the questions are asked against gets a ring: question 1 asks
+   whether THAT point is right, so it has to be identifiable among the two. */
+.pt.used { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 3.5px rgba(50,215,75,.45); }
+/* Guide cross follows the cursor — a straight edge for "is the chin past the
+   shoulder", which is hard to eyeball on a tilted body. */
+#gx, #gy { position: absolute; background: rgba(0,180,255,.55); pointer-events: none;
+           display: none; }
+#gx { left: 0; right: 0; height: 1px; }
+#gy { top: 0; bottom: 0; width: 1px; }
+#stage-card.guide #gx, #stage-card.guide #gy { display: block; }
+/* Frozen until this labeler's saved rows have arrived: start() lands them on
+   their first unlabeled frame, so anything answered before that is discarded.
+   The FRAME stays fully visible — an earlier version dimmed and blurred the
+   whole stage, which made a slow (or failed) label load look exactly like a
+   broken tool: no image, dead buttons, no explanation. Only the controls that
+   act on a frame are inert. */
+body:not(.ready) #q-card .q,
+body:not(.ready) #act-card,
+body:not(.ready) #ov,
+body:not(.ready) #ov-flags,
+body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
+
+/* Clue — how the rest of the team answered THIS frame.
+   Expands in place rather than opening a dialog: a modal would cover the frame,
+   and the whole point is to compare their answer against what you are looking
+   at. Collapsed by default and never auto-opened, because seeing someone else's
+   answer first is what turns two independent raters into one — the agreement
+   numbers stop meaning anything. `state.consulted` records which frames were
+   opened so a run can be audited later. */
+#clue-bar { margin-bottom: 12px; }
+#clue-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#clue-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#clue-btn:disabled { opacity: .35; cursor: default; }
+#clue-btn[aria-expanded="true"] {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+#clue-btn svg { width: 13px; height: 13px; flex: none; }
+#clue-chev { transition: transform .2s ease; }
+#clue-btn[aria-expanded="true"] #clue-chev { transform: rotate(180deg); }
+
+/* Visibility is a plain display toggle and the motion is a one-shot animation
+   on top. An earlier version animated grid-template-rows 0fr->1fr, which is
+   prettier but makes the OPEN STATE ITSELF depend on a transition finishing —
+   if it is interrupted or never runs, the panel stays 0px tall while reporting
+   itself open, and the labeler sees nothing. Correctness first, polish second. */
+#clue-wrap { display: none; margin-bottom: 0; }
+#clue-wrap.open { display: block; margin-bottom: 14px; animation: clue-in .2s ease both; }
+@keyframes clue-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { #clue-wrap.open { animation: none; } }
+#clue-inner { min-height: 0; }
+#clue-body {
+  border-radius: 10px; padding: 10px 12px;
+  background: rgba(120,120,128,.10); font-size: 12px;
+}
+@media (prefers-color-scheme: dark) { #clue-body { background: rgba(120,120,128,.18); } }
+#clue-note { color: var(--ink-dim); font-size: 11px; }
+
+/* Nobody else has answered this frame — the common case early in a run, so it
+   reads as an invitation rather than a failure. */
+.clue-empty { text-align: center; padding: 6px 4px 4px; color: var(--ink-dim); }
+.clue-empty svg { width: 30px; height: 30px; opacity: .5; margin-bottom: 6px; }
+.clue-empty-h { font-size: 12.5px; font-weight: 590; color: var(--ink); }
+.clue-empty-s { font-size: 11.5px; margin-top: 3px; line-height: 1.4; }
+
+.clue-row + .clue-row { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
+.clue-who { font-weight: 590; margin-bottom: 5px; }
+.clue-who s { font-weight: 400; color: var(--ink-dim); text-decoration: none; margin-left: 5px; }
+.clue-ans { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; }
+.clue-ans dt { color: var(--ink-dim); }
+.clue-ans dd { margin: 0; justify-self: end; font-weight: 590; }
+/* Same colour language as the answer buttons, so a glance reads the same way. */
+/* Flipped with the option buttons: a peer answering "yes" said the tuck IS
+   bad, so yes is the red one here too. No hard_to_say rule — 3.0 has no such
+   value. */
+.clue-ans dd.yes { color: var(--no); }
+.clue-ans dd.no { color: var(--yes); }
+.clue-ans dd.none { color: var(--ink-dim); font-weight: 400; }
+.clue-skip { color: var(--ink-dim); font-style: italic; }
+
+/* Flag — "I answered, but come back to this". Distinct from skip, which means
+   the frame cannot be judged at all. Binary: a reason field was tried and the
+   presets went unused while the free text produced variants nobody could
+   filter on, so the signal is the frame, not the wording.
+   Sits in the nav row, in the slot "next unlabeled" used to hold — the queue is
+   walked in order, so jumping to the next gap was a control nobody reached for,
+   while marking the frame in front of you is. */
+#flag-btn {
+  flex: 1; padding: 8px 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; color: var(--ink-dim);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+#flag-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+/* The SAME red the flag grid paints, not amber: the button and the dot report
+   one fact, and two colours for it read as two different states. */
+#flag-btn[aria-pressed="true"] {
+  background: var(--no); border-color: transparent; color: #fff;
+}
+#flag-btn svg { width: 13px; height: 13px; flex: none; }
+
+/* Two pills, one shape. The progress list used to sit open above them, which is
+   fine at two labelers and a wall of name-count-bar at six — and it was the one
+   block on this page that could not be put away. Folded by default: the count
+   rides on the button, so how many people are labeling is answerable without
+   opening anything. */
+#team-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#team-btn:disabled { opacity: .4; cursor: default; }
+#team-btn[aria-expanded="true"] {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+#team-btn svg { width: 13px; height: 13px; flex: none; }
+#team-chev { transition: transform .2s ease; }
+#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
+
+/* Agreement — a snapshot, computed on demand, over frames both people
+   finished. Lives under the team list because that is the question it answers:
+   how close are we, not how far along. Same pill as #clue-btn — both are
+   "show me more, in place", and one shape means the panel below is understood
+   before it is opened. */
+#agree-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#agree-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#agree-btn:disabled { opacity: .4; cursor: default; }
+#agree-btn[aria-expanded="true"] {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+#agree-btn svg { width: 13px; height: 13px; flex: none; }
+#agree-chev { transition: transform .2s ease; }
+#agree-btn[aria-expanded="true"] #agree-chev { transform: rotate(180deg); }
+
+#agree-out { margin-top: 10px; font-size: 12px; display: none; }
+#agree-out.on { display: block; animation: clue-in .2s ease both; }
+#agree-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; }
+#agree-when { font-size: 10.5px; color: var(--ink-dim); }
+.ag-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+.ag-who { font-weight: 590; font-size: 13px; }
+.ag-n { color: var(--ink-dim); font-size: 11px; margin-left: auto; }
+
+/* One row per question: label, bar, number. The bar LENGTH is how often the two
+   of you gave the same answer; its COLOUR is Cohen's kappa, i.e. whether that
+   number means anything. Encoding kappa as colour rather than a second column
+   is the whole point — a lopsided question can read 96% while the two of you
+   share no judgement at all, and a red bar says so without a labeler needing to
+   know what kappa is. The exact figures are in the row's tooltip. */
+.ag-row { display: grid; grid-template-columns: 92px 1fr 34px;
+          align-items: center; gap: 8px; margin-top: 5px; font-size: 11.5px; }
+.ag-lbl { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis;
+          white-space: nowrap; }
+.ag-bar { height: 6px; border-radius: 3px; background: rgba(120,120,128,.18);
+          overflow: hidden; }
+.ag-bar i { display: block; height: 100%; border-radius: 3px; }
+.ag-bar i.k-hi  { background: var(--yes); }
+.ag-bar i.k-mid { background: var(--maybe); }
+.ag-bar i.k-lo  { background: var(--no); }
+.ag-bar i.k-na  { background: var(--ink-dim); }
+.ag-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.ag-note { font-size: 11.5px; color: var(--ink-dim); }
+
+/* Two slots and a verb. Exactly one pair can be asked about at a time, which is
+   why this is two selects rather than a multi-select: a control that can express
+   "three people" would have to reject it afterwards. */
+#ag-pick { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.ag-sel {
+  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+  padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink);
+}
+#ag-vs { flex: none; font-size: 11px; color: var(--ink-dim); }
+#ag-go {
+  flex: none; padding: 6px 11px; border-radius: 8px; border: 0;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 590;
+}
+#ag-go:disabled { opacity: .4; cursor: default; }
+
+#q-lock {
+  display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
+  background: rgba(120,120,128,.14); color: var(--ink-dim);
+  font-size: 12px; font-weight: 500;
+}
+#q-lock.err { background: rgba(255,59,48,.14); color: var(--no); }
+@media (prefers-color-scheme: dark) {
+  #q-lock { background: rgba(120,120,128,.24); }
+}
+
+#hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+        color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
+        padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+
+/* ── right column ───────────────────────────────────────────────────────── */
+/* 342 = 330 card + 2 padding + 10 scroll gutter, so the cards keep their width
+   and sit 12px off the window edge — the same 12px that separates them from
+   the canvas — while the track runs down the corner. The gutter is 10 because
+   `scrollbar-width: thin` wins over the ::-webkit-scrollbar width below, which
+   this engine ignores. scrollbar-gutter: stable reserves it even when the panel
+   does not overflow, otherwise the cards would shift sideways as content grows. */
+#side { width: 342px; padding-right: 2px; flex: none; height: 100%;
+        overflow-y: auto; scrollbar-gutter: stable;
+        display: flex; flex-direction: column; gap: 12px;
+        scrollbar-width: thin; scrollbar-color: rgba(120,120,128,.45) transparent; }
+#side::-webkit-scrollbar { width: 8px; }
+#side::-webkit-scrollbar-track { background: transparent; }
+#side::-webkit-scrollbar-thumb {
+  background: rgba(120,120,128,.45); border-radius: 4px;
+}
+#side::-webkit-scrollbar-thumb:hover { background: rgba(120,120,128,.7); }
+.card { background: var(--card); border-radius: var(--radius);
+        box-shadow: var(--shadow); padding: 14px; }
+.q + .q { margin-top: 14px; }
+.q-t { font-size: 13px; font-weight: 590; margin: 0 0 7px; letter-spacing: -.01em; }
+.q-t b { color: var(--ink-dim); font-weight: 400; margin-right: 5px; }
+.opts { display: flex; gap: 6px; }
+.opt {
+  flex: 1; padding: 8px 4px; border-radius: 8px; text-align: center;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; transition: all .12s ease;
+}
+.opt:hover { border-color: var(--ink-dim); }
+.opt[aria-pressed="true"] { color: #fff; border-color: transparent; }
+/* Every question is phrased so that YES is the good answer — the point is
+   correct, the chin is safe — so green/red carries the same meaning on all
+   four and never has to be read against the question. */
+/* FLIPPED against 2.0, deliberately. There "yes" was always the good answer,
+   so yes was green. Here "yes" means the tuck IS bad — colouring it green would
+   say the opposite of what it means. Red stays "bad boxing" across the tool. */
+.opt[data-v="yes"][aria-pressed="true"] { background: var(--no); }
+.opt[data-v="no"][aria-pressed="true"] { background: var(--yes); }
+.q-hint { font-size: 11.5px; color: var(--ink-dim); margin: 7px 0 0; }
+.opt kbd { font: inherit; opacity: .5; margin-left: 3px; }
+
+#save {
+  width: 100%; padding: 11px; border: none; border-radius: 10px;
+  background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
+}
+#save:disabled { opacity: .35; cursor: default; }
+/* Filled grey rather than the transparent outline it had: skip is a real action
+   with a real cost — the frame leaves the queue judged unjudgeable — so it needs
+   to be visible, but it must never compete with the blue Save above it. Grey
+   fill, dimmed label, full-strength ink on hover. */
+#skip {
+  width: 100%; padding: 11px; margin-top: 8px; border-radius: 10px;
+  border: 1px solid transparent; font-weight: 510;
+  background: rgba(120,120,128,.14);
+  /* Not --ink-dim outright: against this fill that lands at 4.3:1, just under
+     the 4.5 a body label needs. Mixed back toward --ink it reads at 6:1 in both
+     schemes and still looks demoted next to Save. */
+  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
+}
+#skip:hover:not([aria-pressed="true"]) {
+  background: rgba(120,120,128,.20); color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  #skip { background: rgba(120,120,128,.26); }
+  #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
+}
+#skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
+/* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
+   it out only made three buttons compete for the same glance. Next-unlabeled
+   keeps its words because it is the one action you cannot infer from a glyph. */
+#nav { display: flex; gap: 8px; margin-top: 10px; }
+#seg { display: flex; flex: none; }
+#seg button {
+  width: 42px; padding: 8px 0; font-size: 17px; line-height: 1;
+  border: 1px solid var(--line); background: transparent;
+}
+#seg button:first-child { border-radius: 8px 0 0 8px; }
+#seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+#nav button:hover { border-color: var(--ink-dim); z-index: 1; }
+#nav button:active { background: rgba(120,120,128,.14); }
+#status { font-size: 12px; color: var(--ink-dim); margin-top: 9px; min-height: 15px; }
+#status.err { color: var(--no); }
+#status.ok { color: var(--yes); }
+
+/* Overview — one dot per frame, so 3,791 fit without scrolling forever.
+   The two grids share this height rather than each naming its own: they hold
+   the same 3,791 dots in the same order, and different heights made them look
+   like different amounts of work. One variable so they cannot drift again. */
+:root { --grid-h: 150px; }
+#ov { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
+      max-height: var(--grid-h); overflow-y: auto; }
+#ov i, #ov-flags i, #ov-cmp i {
+  width: 9px; height: 9px; border-radius: 2px;
+  background: rgba(120,120,128,.22); cursor: pointer;
+}
+#ov i.done { background: var(--yes); }
+/* No .part here. With one question a frame is answered or it is not, so the
+   main grid has no amber state; #ov-cmp below still does, where amber means the
+   team is split rather than the answers are half done. */
+#ov i.skip { background: var(--ink-dim); }
+/* A save that came back with an error. Optimistic saving means the labeler has
+   already moved on, so the frame has to stay visible until they deal with it. */
+#ov i.fail { background: var(--no); }
+#ov i.here, #ov-flags i.here, #ov-cmp i.here {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+/* Second grid, same frames in the same order, showing one thing only: flagged
+   or not. Kept separate from the grid above rather than layered onto it —
+   flagged is orthogonal to label state, and two facts on one dot is what made
+   the corner-pip version hard to scan. */
+#ov-flags { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
+            max-height: var(--grid-h); overflow-y: auto; }
+#ov-flags i.flag { background: var(--no); }
+
+/* Third grid: how each of your answers sits against everyone else's.
+   Green and red mean what they mean everywhere else on this page, and the
+   fourth state is the important one — a frame nobody else has reached is not a
+   disagreement, so it stays grey rather than joining the red. */
+#ov-cmp { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
+          max-height: var(--grid-h); overflow-y: auto; }
+#ov-cmp i.agree { background: var(--yes); }
+#ov-cmp i.part  { background: var(--maybe); }
+#ov-cmp i.dis   { background: var(--no); }
+#ov-cmp i.alone { background: var(--ink-dim); }
+/* Right-aligned to line up with "N done" in #head directly above it. The two
+   numbers answer the same shape of question about the grid beneath each of
+   them, so they belong in the same column of the eye's path. */
+.ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
+#ov-sub-n, #ov-cmp-n { font-size: 12px; color: var(--ink-dim); }
+/* Team panel — name, count, bar. Nothing else.
+   It used to carry the queue position and a relative timestamp on every row
+   too, which is four facts per person in a 330px column. Position was the
+   redundant one: for anyone working forward it just restates the count. The
+   detail moved to the row's tooltip, which is where "when did they last save"
+   lives now. */
+#team { display: none; grid-template-columns: 1fr auto;
+        column-gap: 10px; align-items: baseline; font-size: 13px; }
+#team.on { display: grid; animation: clue-in .2s ease both; }
+.who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; font-weight: 500; }
+.who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
+.who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
+.who-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px;
+           background: rgba(120,120,128,.16); margin: 6px 0 12px;
+           overflow: hidden; }
+.who-bar:last-child { margin-bottom: 0; }
+.who-bar i { display: block; height: 100%; border-radius: 2px;
+             background: var(--ink-dim); min-width: 2px; }
+.who-me .who-n { color: var(--accent); font-weight: 600; }
+.who-me .who-c { color: var(--accent); }
+.who-me .who-bar i { background: var(--accent); }
+#team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
+
+/* One per grid, directly under the grid it explains. A single legend at the
+   bottom of the card described the FIRST grid while sitting under the SECOND,
+   which is the one place it could not mean what it said. */
+.legend { display: flex; gap: 10px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
+.legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+/* One row per action, keys right-aligned in their own column — as a wrapped
+   sentence of dot-separated pairs this took the same space and could not be
+   scanned for the one key you were after. */
+#keys { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+        margin: 0; font-size: 11.5px; align-items: center; }
+#keys dt { color: var(--ink-dim); }
+#keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
+#keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
+#keys kbd, #save kbd, #skip kbd {
+  font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 5px; min-width: 18px; text-align: center;
+  color: var(--ink); background: rgba(120,120,128,.10);
+}
+@media (prefers-color-scheme: dark) {
+  #keys kbd { background: rgba(120,120,128,.22); }
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div id="stage-card">
+    <div id="stage">
+      <img id="frame" alt="">
+      <div id="marks">
+        <div class="pt chin" id="p-chin"></div>
+        <div class="pt sh" id="p-l"></div>
+        <div class="pt sh" id="p-r"></div>
+      </div>
+    </div>
+    <!-- Outside #stage on purpose: #stage is the scaled element, so anything
+         inside it is measured in its LOCAL space and inherits the zoom. The
+         guide cross and the hint are screen furniture — they must not move or
+         thicken when the frame is zoomed. -->
+    <div id="gx"></div><div id="gy"></div>
+    <div id="hint">scroll = zoom · drag = pan · double-click = reset</div>
+  </div>
+
+  <div id="side">
+    <!-- Identity and team are one panel: your name is the first row of the
+         same list the others appear in. -->
+    <div class="card">
+      <!-- labeler_name.js keeps this synced with localStorage; the CSS above
+           overrides the display:none it sets. -->
+      <div id="name-row">
+        <input id="labeler-input" placeholder="Your name" title="Your name"
+               autocomplete="off" spellcheck="false">
+        <button id="name-go" disabled>Start</button>
+      </div>
+      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone's progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div id="team"><div id="team-empty">No labels saved yet</div></div>
+      <button id="agree-btn" aria-expanded="false" aria-controls="agree-out">
+        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="agree-label">Compare two labelers</span><svg id="agree-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div id="agree-out"></div>
+    </div>
+
+    <div class="card" id="q-card">
+      <div id="q-lock">Loading…</div>
+      <div id="clue-bar">
+        <button id="clue-btn" aria-expanded="false" aria-controls="clue-wrap"
+                title="How the rest of the team answered this frame">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1.4a4 4 0 0 0-2.3 7.27c.3.22.47.55.47.92V10h3.66v-.41c0-.37.17-.7.47-.92A4 4 0 0 0 7 1.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.6 12h2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="clue-label">Clue</span><svg id="clue-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div id="clue-wrap"><div id="clue-inner">
+        <div id="clue-body">
+          <div id="clue-note">Loading…</div>
+        </div>
+      </div></div>
+      <div class="q" data-q="bad_tuck">
+        <p class="q-t">No-brainer bad chin tuck?</p>
+        <div class="opts">
+          <button class="opt" data-q="bad_tuck" data-v="yes">Yes<kbd>1</kbd></button>
+          <button class="opt" data-q="bad_tuck" data-v="no">No<kbd>2</kbd></button>
+        </div>
+        <p class="q-hint">Only the blatant ones. Anything you have to think
+          about is a No.</p>
+      </div>
+    </div>
+
+    <div class="card" id="act-card">
+      <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
+      <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
+      <div id="nav">
+        <div id="seg">
+          <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
+          <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
+        </div>
+        <button id="flag-btn" aria-pressed="false"
+                title="Mark this frame to come back to (F)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.4 1.6v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.4 2.4h6.9l-1.5 2.4 1.5 2.4H3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="flag-label">Flag</span></button>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <div id="head">
+        <div id="count">—<small> / —</small></div>
+        <span id="done">—</span>
+      </div>
+      <div id="ov"></div>
+      <div class="legend">
+        <span><b style="background:var(--yes)"></b>done</span>
+        <span><b style="background:var(--ink-dim)"></b>skipped</span>
+      </div>
+      <div class="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
+      <div id="ov-flags"></div>
+      <div class="legend">
+        <span><b style="background:var(--no)"></b>flagged</span>
+        <span><b style="background:rgba(120,120,128,.22)"></b>not flagged</span>
+      </div>
+      <div class="ov-sub"><span id="ov-cmp-n">— compared</span></div>
+      <div id="ov-cmp"></div>
+      <div class="legend">
+        <span><b style="background:var(--yes)"></b>agree</span>
+        <span><b style="background:var(--maybe)"></b>split</span>
+        <span><b style="background:var(--no)"></b>disagree</span>
+        <span><b style="background:var(--ink-dim)"></b>only you</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <!-- Order mirrors the question list above, so a key can be found by
+           looking at the same row position as the question it answers. Each
+           label is the wording ON the control it fires, not a paraphrase — the
+           row that said "Team's answers" fired the button labelled Clue, which
+           made the two read as different features. -->
+      <dl id="keys">
+        <dt>Bad tuck? yes / no</dt>  <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <div class="sep"></div>
+        <dt>Save &amp; next</dt>     <dd><kbd>↵</kbd></dd>
+        <dt>Skip this frame</dt>     <dd><kbd>K</kbd></dd>
+        <dt>Clear answers</dt>       <dd><kbd>Esc</kbd></dd>
+        <div class="sep"></div>
+        <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
+        <div class="sep"></div>
+        <dt>Clue</dt>                <dd><kbd>H</kbd></dd>
+        <dt>Flag</dt>                <dd><kbd>F</kbd></dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/labeler_name.js"></script>
+<!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
+     with the queue.json version in chin_tuck3.js. -->
+<script src="chin_tuck3.js?v=1"></script>
+</body>
+</html>

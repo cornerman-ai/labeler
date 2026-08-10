@@ -299,7 +299,16 @@ function doGet(e) {
       action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2' ||
       action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2' ||
       action === 'overlapChinShoulderV2') {
-    return doGetChinShoulderV2(p, labeler, action);
+    return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
+  }
+
+  // Chin-tuck labeler 3.0 (chin_tuck_3.0/chin_tuck3.html). Same frames and the
+  // same machinery, one question instead of four — see CS3_SPEC.
+  if (action === 'listChinTuck3' || action === 'saveChinTuck3' ||
+      action === 'deleteChinTuck3' || action === 'statsChinTuck3' ||
+      action === 'peersChinTuck3' || action === 'agreementChinTuck3' ||
+      action === 'overlapChinTuck3') {
+    return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
 
   // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
@@ -3219,26 +3228,96 @@ var CS2_VALUES = {
 };
 var CS2_FIELDS = ['shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe'];
 
-function cs2SheetName(labeler) {
+// THE definition of a chin_tuck3_labels_* sheet — labeler 3.0. Same frames, same
+// queue, same order as 2.0; ONE question instead of four.
+//
+// 3.0 asks whether the frame is an OBVIOUS bad chin tuck. It is deliberately not
+// a finer-grained version of 2.0's four: those ask where the chin sits relative
+// to the shoulder and whether the two baked points are any good, and the 2026-08
+// inter-rater run put three of the four below trainable. A single yes/no on the
+// blatant cases trades resolution for a label people can actually agree on.
+//
+// `stance` and `shoulder_used` are carried over unchanged. Neither is asked
+// about any more, but both come free from queue.json and they are what says
+// WHICH fighter, on which side, a row was judging — without them a row on a
+// two-person frame is not interpretable later.
+var CS3_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec',
+                   'stance', 'shoulder_used',
+                   'bad_tuck',
+                   'skipped', 'consulted', 'flag', 'dwell_sec', 'reviewed'];
+
+// No `hard_to_say`. 2.0's two exposure questions carry one because "cannot tell"
+// is a real answer about a borderline chin. Here it is not: "no" already means
+// "not blatantly bad", which absorbs both the clean tucks and the ambiguous
+// ones, and a frame that cannot be judged at all is a skip.
+var CS3_VALUES = { bad_tuck: ['yes', 'no'] };
+var CS3_FIELDS = ['bad_tuck'];
+
+// One spec per generation. Every function below takes one and defaults to 2.0,
+// so the machinery is shared but neither generation can see the other's tabs:
+// the prefix is what separates them, and `fields` is what makes one question or
+// four the same code path.
+var CS2_SPEC = {
+  tag: 'v2',
+  prefix: 'chin_shoulder_labels_',
+  headers: CS2_HEADERS,
+  values: CS2_VALUES,
+  fields: CS2_FIELDS,
+  statsKey: 'cs2_stats_v1',
+  overlapKey: 'cs2_overlap_',
+  action: 'ChinShoulderV2'
+};
+var CS3_SPEC = {
+  tag: 'v3',
+  prefix: 'chin_tuck3_labels_',
+  headers: CS3_HEADERS,
+  values: CS3_VALUES,
+  fields: CS3_FIELDS,
+  statsKey: 'cs3_stats_v1',
+  overlapKey: 'cs3_overlap_',
+  action: 'ChinTuck3'
+};
+
+// Every response carries its GENERATION's marker. doGet answers an action it
+// does not recognise with {status:'ok', message:'Label receiver is running'}, so
+// a page talking to a deployment older than its own generation would read a save
+// as successful while nothing was written. 2.0 looks for v2, 3.0 looks for v3,
+// and a deployment that predates 3.0 sends neither — which is the point.
+function csOut(spec, o) {
+  o.status = 'ok';
+  o[spec.tag] = true;
+  return jsonOut(o);
+}
+
+function csPayload(spec, o) {
+  o.status = 'ok';
+  o[spec.tag] = true;
+  return JSON.stringify(o);
+}
+
+function cs2SheetName(labeler, spec) {
+  spec = spec || CS2_SPEC;
   var s = String(labeler || '').trim();
   if (!s) return null;
   // Title-case so 'john' and 'John' cannot fork into two tabs.
-  return 'chin_shoulder_labels_' + s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  return spec.prefix + s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-function getOrCreateCs2Sheet(labeler) {
-  var name = cs2SheetName(labeler);
+function getOrCreateCs2Sheet(labeler, spec) {
+  spec = spec || CS2_SPEC;
+  var HEADERS = spec.headers;
+  var name = cs2SheetName(labeler, spec);
   if (!name) return null;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
-    sh.getRange(1, 1, 1, CS2_HEADERS.length).setValues([CS2_HEADERS]);
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([CS2_HEADERS]);
     sh.setFrozenRows(1);
     return sh;
   }
   if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, CS2_HEADERS.length).setValues([CS2_HEADERS]);
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([CS2_HEADERS]);
     sh.setFrozenRows(1);
     return sh;
   }
@@ -3253,7 +3332,7 @@ function getOrCreateCs2Sheet(labeler) {
   // CS2_HEADERS is the definition of its shape. Do not hand-add columns to a
   // chin_shoulder_labels_* sheet; they will be removed on the next request.
   var existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
-  var want = CS2_HEADERS.map(function (h) { return h.toLowerCase(); });
+  var want = HEADERS.map(function (h) { return h.toLowerCase(); });
 
   // Right to left: deleting shifts every column to its right.
   var dropped = 0;
@@ -3266,7 +3345,7 @@ function getOrCreateCs2Sheet(labeler) {
   // state (nothing to reconcile) should cost one 1-row read, not two.
   if (dropped) existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
   var lower = existing.map(function (h) { return String(h).toLowerCase(); });
-  var missing = CS2_HEADERS.filter(function (h) {
+  var missing = HEADERS.filter(function (h) {
     return lower.indexOf(h.toLowerCase()) < 0;
   });
   if (missing.length) {
@@ -3302,7 +3381,7 @@ function getOrCreateCs2Sheet(labeler) {
       var moved = block.map(function (row) {
         return perm.map(function (p) { return row[p]; });
       });
-      moved[0] = CS2_HEADERS.slice();
+      moved[0] = HEADERS.slice();
       sh.getRange(1, 1, nRows, want.length).setValues(moved);
       // Anything past the schema is now a duplicate of a column we just moved.
       for (var extra = now.length; extra > want.length; extra--) sh.deleteColumn(extra);
@@ -3326,12 +3405,16 @@ function getOrCreateCs2Sheet(labeler) {
 // a blank in these three columns has always meant 0. Safe to run twice.
 // ONE-TIME: remove this function and its menu line once it has been run.
 function cs2BackfillBinaryColumns() {
-  var PREFIX = 'chin_shoulder_labels_';
+  var PREFIXES = [CS2_SPEC.prefix, CS3_SPEC.prefix];
   var COLS = ['skipped', 'consulted', 'flag', 'reviewed'];
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var report = [];
   for (var s = 0; s < sheets.length; s++) {
-    if (sheets[s].getName().indexOf(PREFIX) !== 0) continue;
+    var nm = sheets[s].getName(), owned = false;
+    for (var px = 0; px < PREFIXES.length; px++) {
+      if (nm.indexOf(PREFIXES[px]) === 0) { owned = true; break; }
+    }
+    if (!owned) continue;
     var sh = sheets[s];
     var lastRow = sh.getLastRow();
     if (lastRow < 2) continue;
@@ -3351,7 +3434,8 @@ function cs2BackfillBinaryColumns() {
     }
     report.push(sh.getName() + ': ' + filled);
   }
-  cs2InvalidateStats();
+  cs2InvalidateStats(CS2_SPEC);
+  cs2InvalidateStats(CS3_SPEC);
   SpreadsheetApp.getUi().alert('Filled blank 0/1 cells\n\n' + report.join('\n'));
 }
 
@@ -3367,19 +3451,25 @@ function cs2BackfillBinaryColumns() {
 var CS2_STATS_CACHE_KEY = 'cs2_stats_v1';
 var CS2_STATS_TTL = 60;   // seconds
 
-function cs2InvalidateStats() {
-  try { CacheService.getScriptCache().remove(CS2_STATS_CACHE_KEY); } catch (e) {}
+function cs2InvalidateStats(spec) {
+  spec = spec || CS2_SPEC;
+  // Only the stats key. The per-labeler overlap entries cannot be dropped here
+  // — one labeler saving changes the verdicts on everyone ELSE's grid, and
+  // Apps Script's cache has no way to enumerate or wildcard keys. Those ride
+  // their 60-second TTL instead, which is why it is short.
+  try { CacheService.getScriptCache().remove(spec.statsKey); } catch (e) {}
 }
 
-function cs2Stats() {
+function cs2Stats(spec) {
+  spec = spec || CS2_SPEC;
   var cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) {}
   if (cache) {
-    var hit = cache.get(CS2_STATS_CACHE_KEY);
+    var hit = cache.get(spec.statsKey);
     if (hit) return ContentService.createTextOutput(hit)
                      .setMimeType(ContentService.MimeType.JSON);
   }
-  var PREFIX = 'chin_shoulder_labels_';
+  var PREFIX = spec.prefix;
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
@@ -3399,7 +3489,7 @@ function cs2Stats() {
       // DONE with — all four answered, or skipped — not every row they have
       // touched. A half-answered row is still on their pile.
       var cols = [idx.ts, idx.video, idx.round, idx.frame, idx.skipped];
-      for (var c = 0; c < CS2_FIELDS.length; c++) cols.push(idx[CS2_FIELDS[c]]);
+      for (var c = 0; c < spec.fields.length; c++) cols.push(idx[spec.fields[c]]);
       var lo = Math.min.apply(null, cols);
       var hi = Math.max.apply(null, cols);
       var block = sh.getRange(2, lo + 1, lastRow - 1, hi - lo + 1).getValues();
@@ -3408,8 +3498,8 @@ function cs2Stats() {
         if (row[idx.video - lo] === '' || row[idx.video - lo] === null) continue;
         var isSkip = String(row[idx.skipped - lo]) === '1';
         var full = true;
-        for (var fi = 0; fi < CS2_FIELDS.length; fi++) {
-          if (String(row[idx[CS2_FIELDS[fi]] - lo] || '') === '') { full = false; break; }
+        for (var fi = 0; fi < spec.fields.length; fi++) {
+          if (String(row[idx[spec.fields[fi]] - lo] || '') === '') { full = false; break; }
         }
         if (isSkip || full) entry.n++;
         if (isSkip) entry.skipped++;
@@ -3428,8 +3518,8 @@ function cs2Stats() {
     out.push(entry);
   }
   out.sort(function (a, b) { return b.n - a.n; });
-  var payload = JSON.stringify({ status: 'ok', v2: true, labelers: out });
-  if (cache) { try { cache.put(CS2_STATS_CACHE_KEY, payload, CS2_STATS_TTL); } catch (e) {} }
+  var payload = csPayload(spec, { labelers: out });
+  if (cache) { try { cache.put(spec.statsKey, payload, CS2_STATS_TTL); } catch (e) {} }
   return ContentService.createTextOutput(payload)
            .setMimeType(ContentService.MimeType.JSON);
 }
@@ -3442,7 +3532,9 @@ var KEY_SEP = '\u0000';
 // Read one labeler tab into key -> {answers, consulted}, FINISHED rows only:
 // all four questions answered and not skipped. A partial row is not a judgement
 // yet, and letting one in would score its blanks as agreement.
-function cs2ReadFinished(sh) {
+function cs2ReadFinished(sh, spec) {
+  spec = spec || CS2_SPEC;
+  var FIELDS = spec.fields;
   var out = {};
   var lastRow = sh.getLastRow();
   if (lastRow < 2) return out;
@@ -3454,10 +3546,10 @@ function cs2ReadFinished(sh) {
     if (row[idx.video] === '' || row[idx.video] === null) continue;
     if (String(row[idx.skipped]) === '1') continue;
     var rec = {}, full = true;
-    for (var f = 0; f < CS2_FIELDS.length; f++) {
-      var v = String(row[idx[CS2_FIELDS[f]]] || '');
+    for (var f = 0; f < FIELDS.length; f++) {
+      var v = String(row[idx[FIELDS[f]]] || '');
       if (v === '') { full = false; break; }
-      rec[CS2_FIELDS[f]] = v;
+      rec[FIELDS[f]] = v;
     }
     if (!full) continue;
     rec._consulted = String(row[idx.consulted]) === '1';
@@ -3487,12 +3579,13 @@ function cs2ReadFinished(sh) {
 // same for everyone asking. Any save drops the cache through cs2InvalidateStats.
 var CS2_OVERLAP_TTL = 60;   // seconds
 
-function cs2Overlap(p, who) {
-  var PREFIX = 'chin_shoulder_labels_';
-  var mineName = (cs2SheetName(who) || '').toLowerCase();
+function cs2Overlap(p, who, spec) {
+  spec = spec || CS2_SPEC;
+  var PREFIX = spec.prefix;
+  var mineName = (cs2SheetName(who, spec) || '').toLowerCase();
   if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
 
-  var ckey = 'cs2_overlap_' + mineName;
+  var ckey = spec.overlapKey + mineName;
   var cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) {}
   if (cache) {
@@ -3509,11 +3602,11 @@ function cs2Overlap(p, who) {
     if (nm.toLowerCase() === mineName) mineSheet = sheets[s];
     else others.push(sheets[s]);
   }
-  if (!mineSheet) return jsonOut({ status: 'ok', v2: true, me: who, peers: 0, rows: [] });
+  if (!mineSheet) return csOut(spec, { me: who, peers: 0, rows: [] });
 
-  var mine = cs2ReadFinished(mineSheet);
+  var mine = cs2ReadFinished(mineSheet, spec);
   var theirs = [];
-  for (var o = 0; o < others.length; o++) theirs.push(cs2ReadFinished(others[o]));
+  for (var o = 0; o < others.length; o++) theirs.push(cs2ReadFinished(others[o], spec));
 
   var rows = [];
   for (var k in mine) {
@@ -3527,8 +3620,8 @@ function cs2Overlap(p, who) {
       letter = 'o';
     } else {
       var anyMatch = false, allMatch = true;
-      for (var f = 0; f < CS2_FIELDS.length; f++) {
-        var fld = CS2_FIELDS[f];
+      for (var f = 0; f < spec.fields.length; f++) {
+        var fld = spec.fields[f];
         for (var q = 0; q < peers.length; q++) {
           if (peers[q][fld] === a[fld]) anyMatch = true; else allMatch = false;
         }
@@ -3539,8 +3632,7 @@ function cs2Overlap(p, who) {
     rows.push([parts[0], Number(parts[1]), Number(parts[2]), letter]);
   }
 
-  var payload = JSON.stringify({ status: 'ok', v2: true, me: who,
-                                 peers: others.length, rows: rows });
+  var payload = csPayload(spec, { me: who, peers: others.length, rows: rows });
   if (cache) { try { cache.put(ckey, payload, CS2_OVERLAP_TTL); } catch (e) {} }
   return ContentService.createTextOutput(payload)
            .setMimeType(ContentService.MimeType.JSON);
@@ -3568,12 +3660,13 @@ function cs2Overlap(p, who) {
 // Also split by `consulted`: a row where either of them opened the clue panel
 // is not independent evidence — they may agree because one saw the other. The
 // `independent` block is the honest number; the headline is the calibrated one.
-function cs2Agreement(p, who) {
-  var PREFIX = 'chin_shoulder_labels_';
+function cs2Agreement(p, who, spec) {
+  spec = spec || CS2_SPEC;
+  var PREFIX = spec.prefix;
   // `who` is only a fallback for the first slot, so an older page that sends
   // just its own name still resolves to something sensible rather than erroring.
-  var aName = cs2SheetName(p.a || who);
-  var bName = cs2SheetName(p.b);
+  var aName = cs2SheetName(p.a || who, spec);
+  var bName = cs2SheetName(p.b, spec);
   if (!aName || !bName) {
     return jsonOut({ status: 'error', message: 'pick two labelers to compare' });
   }
@@ -3585,13 +3678,13 @@ function cs2Agreement(p, who) {
   var aSheet = ss.getSheetByName(aName), bSheet = ss.getSheetByName(bName);
   var a_ = aName.substring(PREFIX.length), b_ = bName.substring(PREFIX.length);
   if (!aSheet || !bSheet) {
-    return jsonOut({ status: 'ok', v2: true, a: a_, b: b_, shared: 0,
-                     all_four_match: 0, questions: {},
-                     independent: { shared: 0, all_four_match: 0 },
-                     note: (!aSheet ? a_ : b_) + ' has not saved anything yet' });
+    return csOut(spec, { a: a_, b: b_, shared: 0,
+                         all_four_match: 0, questions: {},
+                         independent: { shared: 0, all_four_match: 0 },
+                         note: (!aSheet ? a_ : b_) + ' has not saved anything yet' });
   }
 
-  var A = cs2ReadFinished(aSheet), B = cs2ReadFinished(bSheet);
+  var A = cs2ReadFinished(aSheet, spec), B = cs2ReadFinished(bSheet, spec);
   var aN = 0, bN = 0;
   for (var ka in A) if (A.hasOwnProperty(ka)) aN++;
   for (var kb in B) if (B.hasOwnProperty(kb)) bN++;
@@ -3600,14 +3693,14 @@ function cs2Agreement(p, who) {
   for (var k in B) if (B.hasOwnProperty(k) && A[k]) keys.push(k);
 
   var per = {}, bothAll = 0, indepKeys = [];
-  for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
-    per[CS2_FIELDS[f2]] = { n: 0, agree: 0, pairs: {} };
+  for (var f2 = 0; f2 < spec.fields.length; f2++) {
+    per[spec.fields[f2]] = { n: 0, agree: 0, pairs: {} };
   }
   for (var i = 0; i < keys.length; i++) {
     var ra = A[keys[i]], rb = B[keys[i]];
     var allMatch = true;
-    for (var f3 = 0; f3 < CS2_FIELDS.length; f3++) {
-      var fld = CS2_FIELDS[f3], av = ra[fld], bv = rb[fld];
+    for (var f3 = 0; f3 < spec.fields.length; f3++) {
+      var fld = spec.fields[f3], av = ra[fld], bv = rb[fld];
       var cell = per[fld];
       cell.n++;
       if (av === bv) cell.agree++; else allMatch = false;
@@ -3620,8 +3713,8 @@ function cs2Agreement(p, who) {
 
   // Cohen's kappa from the confusion counts collected above.
   var questions = {};
-  for (var f4 = 0; f4 < CS2_FIELDS.length; f4++) {
-    var fld2 = CS2_FIELDS[f4], c = per[fld2];
+  for (var f4 = 0; f4 < spec.fields.length; f4++) {
+    var fld2 = spec.fields[f4], c = per[fld2];
     var rowM = {}, colM = {};
     for (var pk2 in c.pairs) {
       if (!c.pairs.hasOwnProperty(pk2)) continue;
@@ -3643,14 +3736,13 @@ function cs2Agreement(p, who) {
   var indepAll = 0;
   for (var j = 0; j < indepKeys.length; j++) {
     var a2 = A[indepKeys[j]], b2 = B[indepKeys[j]], m = true;
-    for (var f5 = 0; f5 < CS2_FIELDS.length; f5++) {
-      if (a2[CS2_FIELDS[f5]] !== b2[CS2_FIELDS[f5]]) { m = false; break; }
+    for (var f5 = 0; f5 < spec.fields.length; f5++) {
+      if (a2[spec.fields[f5]] !== b2[spec.fields[f5]]) { m = false; break; }
     }
     if (m) indepAll++;
   }
 
-  return jsonOut({
-    status: 'ok', v2: true,
+  return csOut(spec, {
     a: a_, b: b_, a_total: aN, b_total: bN,
     shared: keys.length,
     all_four_match: bothAll,
@@ -3670,15 +3762,16 @@ function cs2Agreement(p, who) {
 // response — the page marks the frame locally so a run can be audited — and
 // hence the requesting labeler is filtered out here rather than client-side,
 // so their own answer can never be mistaken for corroboration.
-function cs2Peers(p, who) {
+function cs2Peers(p, who, spec) {
+  spec = spec || CS2_SPEC;
   var required = ['video', 'round', 'frame'];
   for (var k = 0; k < required.length; k++) {
     if (p[required[k]] === undefined || p[required[k]] === '') {
       return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
     }
   }
-  var PREFIX = 'chin_shoulder_labels_';
-  var mine = (cs2SheetName(who) || '').toLowerCase();
+  var PREFIX = spec.prefix;
+  var mine = (cs2SheetName(who, spec) || '').toLowerCase();
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
@@ -3706,36 +3799,46 @@ function cs2Peers(p, who) {
     var val = function (col) {
       return (idx[col] === undefined || row[idx[col]] === '') ? null : String(row[idx[col]]);
     };
-    out.push({
+    var peer = {
       labeler: name.substring(PREFIX.length),
-      shoulder_ok: val('shoulder_ok'), chin_ok: val('chin_ok'),
-      lateral_safe: val('lateral_safe'), frontal_safe: val('frontal_safe'),
       skipped: String(row[idx.skipped]) === '1' ? 1 : 0,
       ts: val('ts')
-    });
+    };
+    // Whatever THIS generation asks, rather than 2.0's four by name.
+    for (var q = 0; q < spec.fields.length; q++) peer[spec.fields[q]] = val(spec.fields[q]);
+    out.push(peer);
   }
-  return jsonOut({ status: 'ok', v2: true, peers: out });
+  return csOut(spec, { peers: out });
 }
 
-function doGetChinShoulderV2(p, labeler, action) {
-  if (action === 'statsChinShoulderV2') return cs2Stats();
-  if (action === 'peersChinShoulderV2') return cs2Peers(p, p.labeler || labeler);
-  if (action === 'agreementChinShoulderV2') return cs2Agreement(p, p.labeler || labeler);
-  if (action === 'overlapChinShoulderV2') return cs2Overlap(p, p.labeler || labeler);
+function doGetChinShoulderV2(p, labeler, action, spec) {
+  spec = spec || CS2_SPEC;
+  // The action arrives as its full name so existing callers are unchanged; the
+  // generation's suffix is stripped to leave the OPERATION, which is what this
+  // handler actually branches on. Both generations share every branch below.
+  var op = String(action);
+  if (op.length > spec.action.length
+      && op.slice(-spec.action.length) === spec.action) {
+    op = op.slice(0, op.length - spec.action.length);
+  }
+  if (op === 'stats') return cs2Stats(spec);
+  if (op === 'peers') return cs2Peers(p, p.labeler || labeler, spec);
+  if (op === 'agreement') return cs2Agreement(p, p.labeler || labeler, spec);
+  if (op === 'overlap') return cs2Overlap(p, p.labeler || labeler, spec);
   var who = p.labeler || labeler;
-  var name = cs2SheetName(who);
+  var name = cs2SheetName(who, spec);
   if (!name) return jsonOut({ status: 'error', message: 'missing labeler' });
 
   // Same rule as the chin tab above: only a SAVE creates a sheet. The page
   // lists as soon as a name is typed, so creating on read meant every typo'd
   // or half-typed name left an empty chin_shoulder_labels_* tab behind.
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
-  if (!sh && action !== 'saveChinShoulderV2') {
-    return action === 'deleteChinShoulderV2'
-      ? jsonOut({ status: 'ok', v2: true, deleted: 0 })
-      : jsonOut({ status: 'ok', v2: true, labeler: who, sheet: name, rows: [] });
+  if (!sh && op !== 'save') {
+    return op === 'delete'
+      ? csOut(spec, { deleted: 0 })
+      : csOut(spec, { labeler: who, sheet: name, rows: [] });
   }
-  sh = getOrCreateCs2Sheet(who);
+  sh = getOrCreateCs2Sheet(who, spec);
   // Header row only. Pulling the whole sheet took seconds, and only LIST
   // actually needs every row — save and delete just have to FIND one row.
   var headerRow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
@@ -3764,7 +3867,7 @@ function doGetChinShoulderV2(p, labeler, action) {
   // === LIST every row for this labeler ===
   // The page needs all of them at load to find the first unlabeled frame and to
   // colour the overview, so there is no per-video filter here.
-  if (action === 'listChinShoulderV2') {
+  if (op === 'list') {
     var data = sh.getDataRange().getValues();
     var rows = [];
     for (var i = 1; i < data.length; i++) {
@@ -3774,10 +3877,6 @@ function doGetChinShoulderV2(p, labeler, action) {
         video: String(data[i][idx.video]),
         round: Number(data[i][idx.round]),
         frame: Number(data[i][idx.frame]),
-        shoulder_ok: cell(data[i], 'shoulder_ok'),
-        chin_ok: cell(data[i], 'chin_ok'),
-        lateral_safe: cell(data[i], 'lateral_safe'),
-        frontal_safe: cell(data[i], 'frontal_safe'),
         skipped: String(data[i][idx.skipped]) === '1' ? 1 : 0,
         consulted: String(data[i][idx.consulted]) === '1' ? 1 : 0,
         // Rows written before `flag` was binary hold free text; anything not
@@ -3795,12 +3894,17 @@ function doGetChinShoulderV2(p, labeler, action) {
         })(data[i][idx.dwell_sec]),
         reviewed: cell(data[i], 'reviewed')
       });
+      // Whatever THIS generation asks. Added after the fixed columns rather
+      // than among them so one question or four is the same code.
+      for (var q = 0; q < spec.fields.length; q++) {
+        rows[rows.length - 1][spec.fields[q]] = cell(data[i], spec.fields[q]);
+      }
     }
-    return jsonOut({ status: 'ok', v2: true, labeler: who, sheet: cs2SheetName(who), rows: rows });
+    return csOut(spec, { labeler: who, sheet: cs2SheetName(who, spec), rows: rows });
   }
 
   // === SAVE â€” overwrite the row for (video, round, frame), else append ===
-  if (action === 'saveChinShoulderV2') {
+  if (op === 'save') {
     var required = ['video', 'round', 'frame'];
     for (var k = 0; k < required.length; k++) {
       if (p[required[k]] === undefined || p[required[k]] === '') {
@@ -3813,19 +3917,19 @@ function doGetChinShoulderV2(p, labeler, action) {
     var dwell = Number(p.dwell_sec);
     if (!isFinite(dwell) || dwell < 0) dwell = 0;
     var vals = {};
-    for (var f = 0; f < CS2_FIELDS.length; f++) {
-      var fld = CS2_FIELDS[f];
+    for (var f = 0; f < spec.fields.length; f++) {
+      var fld = spec.fields[f];
       var v = p[fld];
       if (v === undefined || v === '') { vals[fld] = ''; continue; }
-      if (CS2_VALUES[fld].indexOf(String(v)) === -1) {
+      if (spec.values[fld].indexOf(String(v)) === -1) {
         return jsonOut({ status: 'error', message: 'invalid ' + fld + ': ' + v });
       }
       vals[fld] = String(v);
     }
     // A skip is the absence of a judgement â€” refuse to store both.
     if (skipped) {
-      for (var f2 = 0; f2 < CS2_FIELDS.length; f2++) {
-        if (vals[CS2_FIELDS[f2]] !== '') {
+      for (var f2 = 0; f2 < spec.fields.length; f2++) {
+        if (vals[spec.fields[f2]] !== '') {
           return jsonOut({ status: 'error',
                            message: 'a skipped frame cannot also carry answers' });
         }
@@ -3862,7 +3966,7 @@ function doGetChinShoulderV2(p, labeler, action) {
       // Not blank: 0 means "not reviewed yet". The review pass overwrites it,
       // and the branch below preserves whatever it wrote.
       else if (col === 'reviewed') out.push(0);
-      else if (CS2_VALUES[col] !== undefined) out.push(vals[col]);
+      else if (spec.values[col] !== undefined) out.push(vals[col]);
       else out.push('');
     }
 
@@ -3878,26 +3982,27 @@ function doGetChinShoulderV2(p, labeler, action) {
           (prevReviewed === '' || prevReviewed === null) ? 0 : prevReviewed;
       }
       sh.getRange(at, 1, 1, out.length).setValues([out]);
-      cs2InvalidateStats();
-      return jsonOut({ status: 'ok', v2: true, updated: 1 });
+      cs2InvalidateStats(spec);
+      return csOut(spec, { updated: 1 });
     }
     // setValues on the next row rather than appendRow: appendRow re-scans the
     // sheet for its insertion point, which is the slower of the two.
     sh.getRange(lastRow + 1, 1, 1, out.length).setValues([out]);
-    cs2InvalidateStats();
-    return jsonOut({ status: 'ok', v2: true, appended: 1 });
+    cs2InvalidateStats(spec);
+    return csOut(spec, { appended: 1 });
   }
 
   // === DELETE â€” remove the row entirely (no soft-delete in 2.0) ===
-  if (action === 'deleteChinShoulderV2') {
+  if (op === 'delete') {
     var gone = findRow();
     if (gone) {
       sh.deleteRow(gone);
-      cs2InvalidateStats();
-      return jsonOut({ status: 'ok', v2: true, deleted: 1 });
+      cs2InvalidateStats(spec);
+      return csOut(spec, { deleted: 1 });
     }
-    return jsonOut({ status: 'ok', v2: true, deleted: 0 });
+    return csOut(spec, { deleted: 0 });
   }
 
-  return jsonOut({ status: 'error', message: 'unknown chin-shoulder-v2 action: ' + action });
+  return jsonOut({ status: 'error',
+                   message: 'unknown chin-shoulder action: ' + action });
 }
