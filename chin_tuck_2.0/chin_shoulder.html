@@ -492,7 +492,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    lives now. */
 #team { display: none; grid-template-columns: 1fr auto;
         column-gap: 10px; align-items: baseline; font-size: 13px; }
-#team.on { display: grid; animation: clue-in .2s ease both; }
+/* Air on both sides when open. The list sat flush against the pill above and
+   the pill below, so the three read as one clump; the margins only exist while
+   the list is shown, so the collapsed card keeps its tight two-pill stack. */
+#team.on { display: grid; animation: clue-in .2s ease both;
+           margin: 12px 0 6px; }
 .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
          white-space: nowrap; font-weight: 500; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
