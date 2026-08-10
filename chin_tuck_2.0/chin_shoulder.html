@@ -243,6 +243,27 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 #flag-btn svg { width: 13px; height: 13px; flex: none; }
 
+/* Two pills, one shape. The progress list used to sit open above them, which is
+   fine at two labelers and a wall of name-count-bar at six — and it was the one
+   block on this page that could not be put away. Folded by default: the count
+   rides on the button, so how many people are labeling is answerable without
+   opening anything. */
+#team-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#team-btn:disabled { opacity: .4; cursor: default; }
+#team-btn[aria-expanded="true"] {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+#team-btn svg { width: 13px; height: 13px; flex: none; }
+#team-chev { transition: transform .2s ease; }
+#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
+
 /* Agreement — a snapshot, computed on demand, over frames both people
    finished. Lives under the team list because that is the question it answers:
    how close are we, not how far along. Same pill as #clue-btn — both are
@@ -250,7 +271,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    before it is opened. */
 #agree-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  margin-top: 12px; padding: 6px 11px; border-radius: 999px;
+  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent;
   font-size: 12px; font-weight: 500; color: var(--ink-dim);
   transition: background .12s ease, color .12s ease, border-color .12s ease;
@@ -453,8 +474,9 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    redundant one: for anyone working forward it just restates the count. The
    detail moved to the row's tooltip, which is where "when did they last save"
    lives now. */
-#team { display: grid; grid-template-columns: 1fr auto;
+#team { display: none; grid-template-columns: 1fr auto;
         column-gap: 10px; align-items: baseline; font-size: 13px; }
+#team.on { display: grid; animation: clue-in .2s ease both; }
 .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis;
          white-space: nowrap; font-weight: 500; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
@@ -525,6 +547,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
                autocomplete="off" spellcheck="false">
         <button id="name-go" disabled>Start</button>
       </div>
+      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone's progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div id="team"><div id="team-empty">No labels saved yet</div></div>
       <button id="agree-btn" aria-expanded="false" aria-controls="agree-out">
         <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="agree-label">Compare two labelers</span><svg id="agree-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -646,6 +669,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=50"></script>
+<script src="chin_shoulder.js?v=51"></script>
 </body>
 </html>

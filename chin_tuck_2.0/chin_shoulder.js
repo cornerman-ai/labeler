@@ -59,6 +59,7 @@ const state = {
   shownAt: 0,              // when the current frame went on screen (ms)
   overlap: new Map(),      // frame key -> 'a' | 'p' | 'd' | 'o' (see cs2Overlap)
   overlapPeers: 0,         // how many other labelers existed when it was read
+  teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
   agreeBusy: false,        // a comparison is being computed right now
@@ -534,8 +535,27 @@ function ago(iso) {
   return `${Math.round(s / 86400)}d ago`;
 }
 
+// Folded like the comparison panel, and for the same reason: it answers a
+// question you ask between stretches of labeling, not one you watch. The button
+// carries the head count so the common question — how many of us are on this —
+// needs no click at all.
+function setTeamOpen(open) {
+  state.teamOpen = !!open;
+  $('team').classList.toggle('on', state.teamOpen);
+  $('team-btn').setAttribute('aria-expanded', String(state.teamOpen));
+  renderTeamLabel();
+}
+
+function renderTeamLabel() {
+  const n = (state.teamRows || []).length;
+  $('team-label').textContent = state.teamOpen
+    ? 'Hide progress'
+    : (n ? `Everyone's progress (${n})` : "Everyone's progress");
+}
+
 function renderTeam(rows) {
   state.teamRows = rows;
+  renderTeamLabel();
   const el = $('team');
   if (!rows || !rows.length) {
     el.innerHTML = '<div id="team-empty">No labels saved yet</div>';
@@ -842,6 +862,7 @@ function renderAgreement(r) {
 function syncPanelButtons() {
   const locked = !state.ready;
   $('clue-btn').disabled = locked;
+  $('team-btn').disabled = locked;
   // agreeBusy is its own reason to stay disabled — a comparison already in
   // flight must not be fired twice — and must survive a readiness repaint.
   $('agree-btn').disabled = locked || state.agreeBusy;
@@ -1129,6 +1150,7 @@ function bind() {
   };
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
+  $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
   $('agree-btn').onclick = toggleAgreement;
 
   $('flag-btn').onclick = toggleFlag;
