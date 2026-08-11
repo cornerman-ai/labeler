@@ -31,6 +31,11 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyech
 
 const FIELDS = ['bad_tuck'];
 const PREFETCH = 4;        // frames to warm ahead — see prefetch()
+// A batch is 100 frames laid out as five rows of 20 — see the grid CSS, which
+// pins the column count so this arithmetic is possible at all, and explains why
+// 20 rather than the 23 that would merely fit.
+const BATCH = 100;
+const BATCH_COLS = 20;
 
 // Zoom 1 = the frame fitted to the canvas. Going BELOW 1 shrinks the frame
 // inside the canvas, which is what lets a labeler pull back and read the whole
@@ -434,10 +439,13 @@ function placeMarks() {
 function keepInView(grid, i) {
   const el = grid.children[i];
   if (!el) return;
-  const g = grid.getBoundingClientRect();
+  // The wrapper scrolls, not the grid: the batch numbers live beside the dots
+  // inside it and have to move with them.
+  const sc = grid.parentElement;
+  const g = sc.getBoundingClientRect();
   const e = el.getBoundingClientRect();
-  if (e.top < g.top) grid.scrollTop += e.top - g.top;
-  else if (e.bottom > g.bottom) grid.scrollTop += e.bottom - g.bottom;
+  if (e.top < g.top) sc.scrollTop += e.top - g.top;
+  else if (e.bottom > g.bottom) sc.scrollTop += e.bottom - g.bottom;
 }
 
 // How each of my finished frames sits against everyone else's answers. Read
@@ -496,11 +504,36 @@ function renderOverview() {
   // both and the eye can move straight down.
   const cg = $('ov-cmp');
   if (ov.childElementCount !== state.frames.length) {
+    // The marker goes on the FIRST row of each batch — every dot of it, since a
+    // margin on one grid item only moves that item — and never on the very
+    // first batch, which needs no gap above it.
     const mk = () => state.frames.map((_, i) => {
       const el = document.createElement('i');
+      if (i >= BATCH && i % BATCH < BATCH_COLS) el.dataset.batch = '1';
       el.onclick = () => go(i);
       return el;
     });
+    // Heights are derived from the same geometry the dots use — 25 per row,
+    // 9px tall, 3px apart — so a label cannot drift out of step with its batch.
+    const numbers = () => {
+      const col = document.createDocumentFragment();
+      for (let b = 0; b * BATCH < state.frames.length; b++) {
+        const count = Math.min(BATCH, state.frames.length - b * BATCH);
+        const rows = Math.ceil(count / BATCH_COLS);
+        const n = document.createElement('b');
+        n.textContent = b + 1;
+        n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+        n.style.lineHeight = '9px';
+        // 10px, not the 7px the dots' margin adds: the pitch between batches is
+        // that margin PLUS the 3px row gap the grid puts between any two rows.
+        // Leaving the gap out drifted every label 3px further off than the last.
+        if (b) n.style.marginTop = '10px';
+        n.title = `frames ${b * BATCH + 1}\u2013${b * BATCH + count}`;
+        col.appendChild(n);
+      }
+      return col;
+    };
+    for (const w of document.querySelectorAll('.ovn')) w.replaceChildren(numbers());
     ov.replaceChildren(...mk());
     fg.replaceChildren(...mk());
     cg.replaceChildren(...mk());
@@ -1249,6 +1282,21 @@ function bind() {
     state.skipped = true;
     if (save({ skip: true })) advance(); else render();
   };
+  // 1-based in, 0-based out: the labeler reads "703 / 3791" off the panel, so
+  // typing 703 has to land on that frame and not the one after it.
+  const gotoFrame = () => {
+    const el = $('goto-n');
+    const n = parseInt(el.value, 10);
+    if (!isFinite(n) || !state.frames.length) return;
+    go(Math.max(0, Math.min(state.frames.length - 1, n - 1)));
+    el.blur();                        // so the arrow keys go back to the queue
+  };
+  $('goto-go').onclick = gotoFrame;
+  $('goto-n').onkeydown = (e) => {
+    e.stopPropagation();              // Enter here must not fire Save & next
+    if (e.key === 'Enter') gotoFrame();
+  };
+
   $('prev').onclick = () => go(state.i - 1);
   $('next').onclick = () => go(state.i + 1);
   // The name is committed deliberately — by the button or Enter — not on every

@@ -104,6 +104,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
    answers "where am I in this queue" — a bar of their own cost the frame ~50px
    of height, and a progress bar restated what 3,791 dots already show. */
 #head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+/* Jumping by number. The overview is clickable, but finding frame 2300 among
+   3,791 dots by eye is not a thing anyone should have to do. */
+#goto { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+#goto label { font-size: 11.5px; color: var(--ink-dim); flex: none; }
+#goto-n {
+  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink);
+}
+#goto-n:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+#goto-go {
+  flex: none; padding: 5px 11px; border-radius: 8px; border: 0;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 590;
+}
+#goto-go:disabled { opacity: .4; cursor: default; }
 #count {
   font: 600 17px/1 ui-monospace, "SF Mono", Menlo, monospace;
   letter-spacing: -.02em; white-space: nowrap;
@@ -453,12 +468,37 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    the same 3,791 dots in the same order, and different heights made them look
    like different amounts of work. One variable so they cannot drift again. */
 :root { --grid-h: 150px; }
-#ov { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
-      max-height: var(--grid-h); overflow-y: auto; }
+/* The grid and its batch numbers scroll TOGETHER, so the scroller is the
+   wrapper rather than the grid — otherwise the numbers stay put while the dots
+   move and every label points at the wrong batch. */
+.ovw { display: flex; gap: 6px; max-height: var(--grid-h);
+        overflow-y: auto; overflow-x: hidden; }
+/* One label per batch, its height computed from the rows that batch actually
+   occupies (the last one is short: 3,791 is 75 full batches and then 41). The
+   7px lead matches the gap the dots take, which is what keeps a number level
+   with the batch it names. */
+.ovn { flex: none; width: 18px; }
+.ovn b {
+  display: block; text-align: right; font-weight: 500;
+  font: 500 9px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
+}
+#ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov i, #ov-flags i, #ov-cmp i {
   width: 9px; height: 9px; border-radius: 2px;
   background: rgba(120,120,128,.22); cursor: pointer;
 }
+/* A gap every 100 frames, so a position can be counted off in batches instead
+   of squinting at 3,791 identical dots. The columns above are pinned to make
+   this expressible at all: under auto-fill the row length changed with the
+   panel, so no fixed arithmetic could line up with a batch boundary.
+   20 is the widest count that BOTH divides 100 evenly — five clean rows per
+   batch — and fits: the card gives 302px, the number gutter takes 24, and 25
+   columns wanted 297 of the remaining 278, which is what put a horizontal
+   scrollbar under every grid. 20 * 9 + 19 * 3 = 237px.
+   Marked with a data attribute rather than a class because renderOverview
+   rewrites className on every paint and would wipe a class straight off. */
+#ov i[data-batch], #ov-flags i[data-batch], #ov-cmp i[data-batch] { margin-top: 7px; }
 #ov i.done { background: var(--yes); }
 /* No .part here. With one question a frame is answered or it is not, so the
    main grid has no amber state; #ov-cmp below still does, where amber means the
@@ -475,16 +515,14 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    or not. Kept separate from the grid above rather than layered onto it —
    flagged is orthogonal to label state, and two facts on one dot is what made
    the corner-pip version hard to scan. */
-#ov-flags { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
-            max-height: var(--grid-h); overflow-y: auto; }
+#ov-flags { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov-flags i.flag { background: var(--no); }
 
 /* Third grid: how each of your answers sits against everyone else's.
    Green and red mean what they mean everywhere else on this page, and the
    fourth state is the important one — a frame nobody else has reached is not a
    disagreement, so it stays grey rather than joining the red. */
-#ov-cmp { display: grid; grid-template-columns: repeat(auto-fill, 9px); gap: 3px;
-          max-height: var(--grid-h); overflow-y: auto; }
+#ov-cmp { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov-cmp i.agree { background: var(--yes); }
 /* No .part rule: one yes/no has no middle verdict, so the comparison grid is
    green, red or grey. See CMP_CLASS. */
@@ -652,19 +690,25 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <div id="count">—<small> / —</small></div>
         <span id="done">—</span>
       </div>
-      <div id="ov"></div>
+      <div id="goto">
+        <label for="goto-n">Go to frame</label>
+        <input id="goto-n" type="number" min="1" inputmode="numeric"
+               autocomplete="off" placeholder="e.g. 2300">
+        <button id="goto-go">Go</button>
+      </div>
+      <div class="ovw"><div class="ovn"></div><div id="ov"></div></div>
       <div class="legend">
         <span><b style="background:var(--yes)"></b>done</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
       </div>
       <div class="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
-      <div id="ov-flags"></div>
+      <div class="ovw"><div class="ovn"></div><div id="ov-flags"></div></div>
       <div class="legend">
         <span><b style="background:var(--no)"></b>flagged</span>
         <span><b style="background:rgba(120,120,128,.22)"></b>not flagged</span>
       </div>
       <div class="ov-sub"><span id="ov-cmp-n">— compared</span></div>
-      <div id="ov-cmp"></div>
+      <div class="ovw"><div class="ovn"></div><div id="ov-cmp"></div></div>
       <div class="legend">
         <span><b style="background:var(--yes)"></b>agree</span>
         <span><b style="background:var(--no)"></b>disagree</span>
@@ -697,6 +741,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=7"></script>
+<script src="chin_tuck3.js?v=8"></script>
 </body>
 </html>
