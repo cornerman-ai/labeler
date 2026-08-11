@@ -4164,6 +4164,30 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
       try { sh.getRange(rowNum, idx.video + 1).setNumberFormat('@'); } catch (e) {}
     }
 
+    // Apps Script serves concurrent web-app requests as PARALLEL executions, and
+    // the row this appends to was computed from a getLastRow() taken when the
+    // request began. Two saves for different frames — which is just a labeler
+    // answering quickly, since the page saves optimistically and moves on —
+    // both read the same last row and both wrote to it. The second silently
+    // overwrote the first, and roughly half of a fast run vanished.
+    //
+    // A script lock makes the find-then-write one atomic step, and lastRow is
+    // re-read INSIDE it so it reflects whatever the previous holder appended.
+    // The lock is the fix; the re-read is what makes it correct rather than
+    // merely less likely.
+    var lock = null;
+    try {
+      lock = LockService.getScriptLock();
+      lock.waitLock(25000);
+    } catch (e) {
+      // Refused rather than written to a row we cannot trust. The page rolls the
+      // frame back, paints it red and names it, so the labeler is told — which
+      // is the whole difference between this and the bug it replaces.
+      return jsonOut({ status: 'error',
+                       message: 'the sheet was busy — nothing saved, try again' });
+    }
+    try {
+    lastRow = sh.getLastRow();          // whatever the previous holder left
     var at = findRow();
     if (at) {
       // Overwrite in place. `reviewed` belongs to the review pass, so a
@@ -4186,17 +4210,35 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
     sh.getRange(lastRow + 1, 1, 1, out.length).setValues([out]);
     cs2InvalidateStats(spec, who);
     return csOut(spec, { appended: 1 });
+    } finally {
+      lock.releaseLock();
+    }
   }
 
   // === DELETE â€” remove the row entirely (no soft-delete in 2.0) ===
   if (op === 'delete') {
-    var gone = findRow();
-    if (gone) {
-      sh.deleteRow(gone);
-      cs2InvalidateStats(spec, who);
-      return csOut(spec, { deleted: 1 });
+    // Deleting renumbers every row beneath it, so a concurrent save holding a
+    // row number from before would write to the wrong one.
+    var dlock = null;
+    try {
+      dlock = LockService.getScriptLock();
+      dlock.waitLock(25000);
+    } catch (e) {
+      return jsonOut({ status: 'error',
+                       message: 'the sheet was busy — nothing deleted, try again' });
     }
-    return csOut(spec, { deleted: 0 });
+    try {
+      lastRow = sh.getLastRow();
+      var gone = findRow();
+      if (gone) {
+        sh.deleteRow(gone);
+        cs2InvalidateStats(spec, who);
+        return csOut(spec, { deleted: 1 });
+      }
+      return csOut(spec, { deleted: 0 });
+    } finally {
+      dlock.releaseLock();
+    }
   }
 
   return jsonOut({ status: 'error',
