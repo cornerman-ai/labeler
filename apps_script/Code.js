@@ -3229,7 +3229,7 @@ var CS2_VALUES = {
 };
 var CS2_FIELDS = ['shoulder_ok', 'chin_ok', 'lateral_safe', 'frontal_safe'];
 
-// THE definition of a chin_tuck3_labels_* sheet — labeler 3.0. Same frames, same
+// THE definition of a chin_shoulder_v3_labels_* sheet — labeler 3.0. Same frames, same
 // queue, same order as 2.0; ONE question instead of four.
 //
 // 3.0 asks whether the frame is an OBVIOUS bad chin tuck. It is deliberately not
@@ -3270,7 +3270,7 @@ var CS2_SPEC = {
 };
 var CS3_SPEC = {
   tag: 'v3',
-  prefix: 'chin_tuck3_labels_',
+  prefix: 'chin_shoulder_v3_labels_',
   headers: CS3_HEADERS,
   values: CS3_VALUES,
   fields: CS3_FIELDS,

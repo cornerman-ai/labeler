@@ -95,7 +95,7 @@ or a `skip_reason` (`occluded` / `unclear`), never both. Keyed by (labeler,
 video, round, frame); a re-save supersedes (soft `deleted=1`). Actions:
 `listChinShoulderLabels` / `saveChinShoulderLabel` / `deleteChinShoulderLabel`.
 
-**chin_shoulder_labels_{Name} / chin_tuck3_labels_{Name}** — the two LIVE chin
+**chin_shoulder_labels_{Name} / chin_shoulder_v3_labels_{Name}** — the two LIVE chin
 generations. One code-owned tab per labeler (do not hand-add columns: the header
 row is reconciled to the schema, in both membership and order, on every save).
 
