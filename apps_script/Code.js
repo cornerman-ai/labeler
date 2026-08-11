@@ -4211,6 +4211,12 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
     cs2InvalidateStats(spec, who);
     return csOut(spec, { appended: 1 });
     } finally {
+      // Commit BEFORE releasing. Apps Script buffers spreadsheet writes, so the
+      // append can still be pending when the lock is handed over — and the next
+      // holder's getLastRow() then returns a row number that does not include
+      // it, and overwrites it. The lock alone took the loss from about half to
+      // one in eight; this is what closes it.
+      try { SpreadsheetApp.flush(); } catch (e) {}
       lock.releaseLock();
     }
   }
@@ -4237,6 +4243,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
       }
       return csOut(spec, { deleted: 0 });
     } finally {
+      try { SpreadsheetApp.flush(); } catch (e) {}
       dlock.releaseLock();
     }
   }
