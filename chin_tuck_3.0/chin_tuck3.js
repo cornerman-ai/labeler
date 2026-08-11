@@ -54,6 +54,7 @@ const TEAM_POLL_MS = 45000;   // how often the team panel refreshes
 // must not hide it in the other.
 const HIDE_KEY = 'cs_hidden_v3';
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
+const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const state = {
   frames: [],              // queue.json order
@@ -84,6 +85,8 @@ const state = {
   overlap: new Map(),      // frame key -> 'a' | 'p' | 'd' | 'o' (see cs2Overlap)
   overlapPeers: 0,         // how many other labelers existed when it was read
   hidden: new Set(),       // names this device hides from the team list
+  openRanges: new Set(),   // team rows unfolded to show their frame ranges
+  rangeCache: new Map(),   // labeler -> { n, ranges } (see loadRanges)
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
@@ -203,6 +206,8 @@ async function loadLabels() {
   state.overlapPeers = 0;
   state.consulted = new Set();
   state.clueCache = new Map();
+  state.rangeCache = new Map();   // "mine" resolves differently per labeler
+  state.openRanges = new Set();
   state.failed = new Map();
   state.flag = false;
   state.agreeBody = null;      // computed for whichever pair was last picked
@@ -630,6 +635,56 @@ function setTeamOpen(open) {
   renderTeamLabel();
 }
 
+// Consecutive queue positions collapse into one run, so "1-100, 401-1100" is
+// three facts rather than eleven hundred.
+function frameRuns(indices) {
+  const s = [...indices].sort((a, b) => a - b);
+  const out = [];
+  let start = null, prev = null;
+  for (const i of s) {
+    if (start === null) { start = prev = i; continue; }
+    if (i === prev) continue;                  // a duplicate row for one frame
+    if (i === prev + 1) { prev = i; continue; }
+    out.push([start, prev]);
+    start = prev = i;
+  }
+  if (start !== null) out.push([start, prev]);
+  return out;
+}
+
+// Interval notation rather than a dash, because the dash left it open whether
+// the second number was the last frame done or the first one after it. Closed
+// on both sides: every number printed is a frame the labeler actually did.
+// No thousands separators inside an interval — the comma in there is already
+// the endpoint separator, and "[401, 1,100]" reads as three numbers.
+function fmtRanges(runs) {
+  return runs.map(([a, b]) => `[${a + 1}, ${b + 1}]`).join('  ·  ');
+}
+
+// Fetched only when a row is unfolded — this is a full read of one labeler's
+// tab, which is far too much to pull for everybody on a 45s poll.
+async function loadRanges(labeler, n) {
+  let rows;
+  try {
+    if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
+      rows = myRowsInQueue();                  // already in hand, no request
+    } else {
+      const body = await call({ action: 'listChinTuck3', labeler }, 'frames');
+      rows = body.rows || [];
+    }
+  } catch (e) {
+    state.rangeCache.set(labeler, { n, ranges: [], error: e.message });
+    return;
+  }
+  const idx = [];
+  for (const r of rows) {
+    if (!isResolved(r)) continue;              // same set the count is over
+    const i = state.index.get(JSON.stringify([r.video, r.round, r.frame]));
+    if (i !== undefined) idx.push(i);          // rows outside the queue are not shown
+  }
+  state.rangeCache.set(labeler, { n, ranges: frameRuns(idx) });
+}
+
 function renderTeamLabel() {
   const n = (state.teamRows || []).length;
   $('team-label').textContent = state.teamOpen
@@ -700,10 +755,22 @@ function renderTeam(rows) {
     const pct = n ? (r.n / n) * 100 : 0;
 
     const name = add('who-n' + m, '');
-    const text = document.createElement('span');
+    const open = state.openRanges.has(r.labeler);
+    if (open) name.classList.add('open');
+    const text = document.createElement('button');
     text.className = 'who-t';
     text.textContent = r.labeler;
-    name.appendChild(text);
+    text.title = 'Show which frames ' + r.labeler + ' has done';
+    text.setAttribute('aria-expanded', String(open));
+    text.onclick = () => {
+      if (state.openRanges.has(r.labeler)) state.openRanges.delete(r.labeler);
+      else state.openRanges.add(r.labeler);
+      renderTeam(state.teamRows || []);
+    };
+    const chev = document.createElement('i');
+    chev.className = 'who-chev';
+    chev.innerHTML = CHEV_SVG;
+    name.append(text, chev);
     if (!mine) {
       const eye = document.createElement('button');
       eye.className = 'who-eye';
@@ -733,8 +800,24 @@ function renderTeam(rows) {
     if (at !== undefined) detail.push(`at #${at + 1}`);
     if (r.last_ts) detail.push(ago(r.last_ts));
     const tip = detail.join(' · ');
-    text.title = tip; bar.title = tip;
+    bar.title = tip;
     cells[cells.length - 2].title = tip;            // the count cell
+
+    if (open) {
+      const box = add('who-ranges' + m, '');
+      const got = state.rangeCache.get(r.labeler);
+      if (got && got.n === r.n) {
+        box.textContent = got.error ? got.error
+          : (got.ranges.length ? fmtRanges(got.ranges)
+                               : 'nothing in the current queue');
+      } else {
+        box.textContent = 'Loading…';
+        // Cached by (labeler, count), so a row that has moved on refetches by
+        // itself and one that has not costs nothing to reopen. loadRanges
+        // always caches — including failures — so this cannot loop.
+        loadRanges(r.labeler, r.n).then(() => renderTeam(state.teamRows || []));
+      }
+    }
   });
 
   if (hiddenNow) {

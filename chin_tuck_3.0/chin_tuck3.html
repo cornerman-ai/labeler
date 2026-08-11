@@ -553,7 +553,23 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .who-n { display: flex; align-items: baseline; gap: 5px;
          min-width: 0; font-weight: 500; }
 .who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis;
-         white-space: nowrap; }
+         white-space: nowrap;
+         padding: 0; border: 0; background: none; font: inherit; color: inherit;
+         text-align: left; }
+.who-t:hover { text-decoration: underline; }
+.who-chev { flex: none; width: 10px; height: 10px; color: var(--ink-dim);
+            opacity: .55; pointer-events: none; transition: transform .15s ease; }
+.who-chev svg { display: block; width: 10px; height: 10px; }
+.who-n.open .who-chev { transform: rotate(180deg); }
+/* Which frames, not just how many. A labeler's rows are rarely one run — they
+   pick up where they left off, jump, come back — so the counter alone cannot
+   say whether two people have covered the same ground. Ranges are 1-based and
+   inclusive, matching the numbers on the overview and the go-to box. */
+.who-ranges {
+  grid-column: 1 / -1; margin: -6px 0 12px;
+  font: 500 10.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); word-break: break-word;
+}
 /* Invisible until the pointer is somewhere in the panel. Six permanently-lit
    icons is exactly the clutter this list was cleaned up to avoid, but a control
    nobody can find is not a control — revealing the whole column on panel hover
@@ -741,6 +757,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=8"></script>
+<script src="chin_tuck3.js?v=10"></script>
 </body>
 </html>
