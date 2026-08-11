@@ -3264,8 +3264,8 @@ var CS2_SPEC = {
   headers: CS2_HEADERS,
   values: CS2_VALUES,
   fields: CS2_FIELDS,
-  statsKey: 'cs2_stats_v1',
-  overlapKey: 'cs2_overlap_',
+  statsKey: 'cs_stats_chin_shoulder_labels_',
+  overlapKey: 'cs_overlap_',
   action: 'ChinShoulderV2'
 };
 var CS3_SPEC = {
@@ -3274,8 +3274,8 @@ var CS3_SPEC = {
   headers: CS3_HEADERS,
   values: CS3_VALUES,
   fields: CS3_FIELDS,
-  statsKey: 'cs3_stats_v1',
-  overlapKey: 'cs3_overlap_',
+  statsKey: 'cs_stats_chin_shoulder_v3_labels_',
+  overlapKey: 'cs_overlap_',
   action: 'ChinTuck3'
 };
 
@@ -3295,6 +3295,24 @@ function csPayload(spec, o) {
   o[spec.tag] = true;
   return JSON.stringify(o);
 }
+
+// A cached stats entry IS "the result of scanning every tab with this prefix",
+// so the key has to move when the prefix does. It did not: renaming 3.0's tabs
+// left the old, EMPTY result servable under the same key, and for a TTL after
+// the deploy the team panel, the comparison grid and the pairwise panel all
+// looked broken while the sheets were perfectly fine.
+//
+// Deriving it here rather than trusting the literal above means the two can
+// never disagree again.
+//
+// overlapKey needs no such treatment: it is only ever used as
+// overlapKey + SHEET NAME, and the sheet name already begins with the prefix,
+// so those entries moved on their own when the tabs were renamed. Appending the
+// prefix as well would just spell it twice.
+(function deriveStatsKeys() {
+  var specs = [CS2_SPEC, CS3_SPEC];
+  for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
+})();
 
 function cs2SheetName(labeler, spec) {
   spec = spec || CS2_SPEC;
@@ -3531,7 +3549,6 @@ function cs2BackfillBinaryColumns() {
 // background information polled on a timer, and it is the same answer for
 // everyone. Any save/delete drops the cache, so your own row still moves the
 // instant you label something.
-var CS2_STATS_CACHE_KEY = 'cs2_stats_v1';
 var CS2_STATS_TTL = 60;   // seconds
 
 function cs2InvalidateStats(spec, labeler) {
