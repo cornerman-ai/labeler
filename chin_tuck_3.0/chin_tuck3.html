@@ -570,6 +570,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   font: 500 10.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--ink-dim); word-break: break-word;
 }
+/* Last known ranges, with a fresher read running underneath. Dimmed rather than
+   replaced by a spinner: the numbers are still very nearly right, and blanking
+   them every time a teammate saves a frame would make the panel flicker. */
+.who-ranges.stale { opacity: .55; }
 /* Invisible until the pointer is somewhere in the panel. Six permanently-lit
    icons is exactly the clutter this list was cleaned up to avoid, but a control
    nobody can find is not a control — revealing the whole column on panel hover
@@ -757,6 +761,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=10"></script>
+<script src="chin_tuck3.js?v=11"></script>
 </body>
 </html>

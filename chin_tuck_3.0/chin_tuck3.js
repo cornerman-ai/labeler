@@ -53,6 +53,17 @@ const TEAM_POLL_MS = 45000;   // how often the team panel refreshes
 // Per generation: 2.0 and 3.0 have different rosters, so hiding a name in one
 // must not hide it in the other.
 const HIDE_KEY = 'cs_hidden_v3';
+// Frame ranges survive a reload. One unfold costs a full read of somebody's tab
+// — ~3.2s, and flat in the number of rows, so it is round-trip overhead rather
+// than anything shrinking the payload could fix. The only way to make it fast
+// is to not be making the request when the click happens.
+const RANGE_KEY = 'cs_ranges_v3';
+// A cached entry is shown even when the count has moved on: a labeler who has
+// added eleven frames since has ranges that are still right about the other
+// eight hundred, and a correct-but-slightly-short answer now beats a perfect one
+// in three seconds. The refresh happens behind the displayed text.
+const RANGE_FRESH_MS = 60000;   // don't re-read a tab more often than this
+
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -86,7 +97,9 @@ const state = {
   overlapPeers: 0,         // how many other labelers existed when it was read
   hidden: new Set(),       // names this device hides from the team list
   openRanges: new Set(),   // team rows unfolded to show their frame ranges
-  rangeCache: new Map(),   // labeler -> { n, ranges } (see loadRanges)
+  rangeCache: new Map(),   // labeler -> { n, ranges, at } (see loadRanges)
+  rangePending: new Map(), // labeler -> in-flight promise, so two asks are one read
+  rangesWarmed: false,     // the one unprompted warm has been scheduled
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
@@ -206,7 +219,17 @@ async function loadLabels() {
   state.overlapPeers = 0;
   state.consulted = new Set();
   state.clueCache = new Map();
-  state.rangeCache = new Map();   // "mine" resolves differently per labeler
+  // Only the PREVIOUS labeler's own entry is name-relative (it was computed
+  // from state.labels rather than fetched); everybody else's is a fact about
+  // their tab and survives, which is what makes a reload or a name change
+  // instant instead of another round of reads.
+  state.rangeCache = loadRangeCache();
+  state.rangePending = new Map();
+  // Case-insensitively: the cache is keyed by the sheet's title-cased name and
+  // `name` is whatever was typed into the box.
+  for (const k of [...state.rangeCache.keys()]) {
+    if (k.toLowerCase() === name.toLowerCase()) state.rangeCache.delete(k);
+  }
   state.openRanges = new Set();
   state.failed = new Map();
   state.flag = false;
@@ -606,6 +629,17 @@ async function loadTeam() {
     return;
   }
   renderTeam(rows);
+  prefetchRanges();       // names the poll just learned about, warmed in parallel
+  // ONE unprompted warm per session, whether or not the panel is open — the
+  // first open of the day is otherwise the one that still waits, and the disk
+  // cache makes every open after it free. Delayed so it queues behind the
+  // frames and the first few saves rather than competing with them: Apps
+  // Script gives a single user very little concurrency, so three tab reads
+  // fired at load would be three saves' worth of delay.
+  if (!state.rangesWarmed) {
+    state.rangesWarmed = true;
+    setTimeout(() => prefetchRanges(true), 8000);
+  }
   // Overlay your own authoritative local numbers on top of the server's. The
   // stats read is cached for 60s server-side, so a refresh right after a burst
   // of saves can answer with pre-save counts — and the row would visibly count
@@ -633,6 +667,7 @@ function setTeamOpen(open) {
   $('team').classList.toggle('on', state.teamOpen);
   $('team-btn').setAttribute('aria-expanded', String(state.teamOpen));
   renderTeamLabel();
+  if (state.teamOpen) prefetchRanges();
 }
 
 // Consecutive queue positions collapse into one run, so "1-100, 401-1100" is
@@ -661,9 +696,54 @@ function fmtRanges(runs) {
   return runs.map(([a, b]) => `[${a + 1}, ${b + 1}]`).join('  ·  ');
 }
 
-// Fetched only when a row is unfolded — this is a full read of one labeler's
-// tab, which is far too much to pull for everybody on a 45s poll.
+// Ranges are positions in the CURRENT queue, so a rebuilt queue makes every
+// stored entry meaningless — the length is carried as a cheap version stamp and
+// a mismatch drops the lot. Errors are never stored: a fetch that failed once is
+// worth retrying next session, unlike an answer that is merely a little stale.
+function loadRangeCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
+    if (!raw || !state.frames.length || raw.q !== state.frames.length) return new Map();
+    return new Map(Object.entries(raw.by || {}));
+  } catch (e) { return new Map(); }
+}
+
+function saveRangeCache() {
+  try {
+    const by = {};
+    for (const [k, v] of state.rangeCache) if (!v.error) by[k] = v;
+    localStorage.setItem(RANGE_KEY,
+      JSON.stringify({ q: state.frames.length, by: by }));
+  } catch (e) {}                                 // quota — the cache is a luxury
+}
+
+// Warm every visible row at once. The reads are independent and Apps Script
+// serves them in parallel, so the whole team costs about what one labeler does;
+// doing it when the panel OPENS rather than when a name is clicked is what turns
+// a three-second wait into none. Only rows with nothing cached at all — a stale
+// entry is already on screen and revalidates on its own schedule.
+function prefetchRanges(force) {
+  if ((!state.teamOpen && !force) || !state.frames.length) return;
+  const me = (who() || '').toLowerCase();
+  for (const r of (state.teamRows || [])) {
+    const k = r.labeler.toLowerCase();
+    if (k !== me && state.hidden.has(k)) continue;
+    if (state.rangeCache.has(r.labeler)) continue;
+    loadRanges(r.labeler, r.n).then(() => renderTeam(state.teamRows || []));
+  }
+}
+
+// Fetched only for rows the panel is actually showing — this is a full read of
+// one labeler's tab, far too much to pull on the 45s poll.
 async function loadRanges(labeler, n) {
+  const inflight = state.rangePending.get(labeler);
+  if (inflight) return inflight;                 // a click during a prefetch
+  const p = fetchRanges(labeler, n).finally(() => state.rangePending.delete(labeler));
+  state.rangePending.set(labeler, p);
+  return p;
+}
+
+async function fetchRanges(labeler, n) {
   let rows;
   try {
     if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
@@ -673,7 +753,14 @@ async function loadRanges(labeler, n) {
       rows = body.rows || [];
     }
   } catch (e) {
-    state.rangeCache.set(labeler, { n, ranges: [], error: e.message });
+    // An error must never overwrite ranges already on screen — but the ATTEMPT
+    // is always stamped, on the old entry if there is one. Without that, a
+    // refresh failing behind good ranges leaves `at` ancient, and since every
+    // attempt repaints, the repaint would immediately fire the next attempt.
+    const had = state.rangeCache.get(labeler);
+    state.rangeCache.set(labeler, had
+      ? Object.assign({}, had, { at: Date.now() })
+      : { n, ranges: [], at: Date.now(), error: e.message });
     return;
   }
   const idx = [];
@@ -682,7 +769,8 @@ async function loadRanges(labeler, n) {
     const i = state.index.get(JSON.stringify([r.video, r.round, r.frame]));
     if (i !== undefined) idx.push(i);          // rows outside the queue are not shown
   }
-  state.rangeCache.set(labeler, { n, ranges: frameRuns(idx) });
+  state.rangeCache.set(labeler, { n, ranges: frameRuns(idx), at: Date.now() });
+  saveRangeCache();
 }
 
 function renderTeamLabel() {
@@ -806,17 +894,19 @@ function renderTeam(rows) {
     if (open) {
       const box = add('who-ranges' + m, '');
       const got = state.rangeCache.get(r.labeler);
-      if (got && got.n === r.n) {
-        box.textContent = got.error ? got.error
-          : (got.ranges.length ? fmtRanges(got.ranges)
-                               : 'nothing in the current queue');
-      } else {
-        box.textContent = 'Loading…';
-        // Cached by (labeler, count), so a row that has moved on refetches by
-        // itself and one that has not costs nothing to reopen. loadRanges
-        // always caches — including failures — so this cannot loop.
-        loadRanges(r.labeler, r.n).then(() => renderTeam(state.teamRows || []));
-      }
+      // Whatever we have goes up straight away. Only a row we have NEVER read
+      // shows a spinner; anything else shows its last known ranges while the
+      // refresh runs underneath, so the panel never blanks what it just said.
+      box.textContent = !got ? 'Loading…'
+        : got.error ? got.error
+        : got.ranges.length ? fmtRanges(got.ranges)
+        : 'nothing in the current queue';
+      if (got && got.n !== r.n) box.classList.add('stale');
+      // Refetch when the count has moved on, but no more often than
+      // RANGE_FRESH_MS — the poll would otherwise re-read every open tab every
+      // 45s for a team that is actively labeling.
+      const due = !got || (got.n !== r.n && Date.now() - (got.at || 0) > RANGE_FRESH_MS);
+      if (due) loadRanges(r.labeler, r.n).then(() => renderTeam(state.teamRows || []));
     }
   });
 
