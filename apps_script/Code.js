@@ -298,7 +298,7 @@ function doGet(e) {
   if (action === 'listChinShoulderV2' || action === 'saveChinShoulderV2' ||
       action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2' ||
       action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2' ||
-      action === 'overlapChinShoulderV2') {
+      action === 'overlapChinShoulderV2' || action === 'leadEveryoneChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
   }
 
@@ -307,7 +307,7 @@ function doGet(e) {
   if (action === 'listChinTuck3' || action === 'saveChinTuck3' ||
       action === 'deleteChinTuck3' || action === 'statsChinTuck3' ||
       action === 'peersChinTuck3' || action === 'agreementChinTuck3' ||
-      action === 'overlapChinTuck3') {
+      action === 'overlapChinTuck3' || action === 'leadEveryoneChinTuck3') {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
 
@@ -3638,6 +3638,177 @@ function cs2Stats(spec) {
            .setMimeType(ContentService.MimeType.JSON);
 }
 
+// === LEAD EVERYONE: push one labeler's answers onto every other tab ===========
+//
+// For every frame the caller has JUDGED — all questions answered, or skipped —
+// every other labeler's row for that frame becomes the caller's answer, and a
+// row is created for them where they had none. Frames THEY have answered and
+// the caller has not are left completely alone; this only ever moves outward
+// from the caller's own pile.
+//
+// Nothing is kept. The overwritten answer is gone from the tab it was in, there
+// is no backup sheet and no column recording that the row was led — this is a
+// deliberate choice, not an oversight. The consequence to know about: agreement
+// between two labelers is what this tool exists to measure, and after a lead
+// the led rows agree perfectly with the caller by construction, with nothing
+// left in the sheet to tell them apart from rows two people arrived at
+// independently. Take the agreement numbers you care about BEFORE leading.
+function cs2LeadEveryone(p, who, spec) {
+  spec = spec || CS2_SPEC;
+  var HEADERS = spec.headers;
+  var mineName = cs2SheetName(who, spec);
+  if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName(mineName)) {
+    return jsonOut({ status: 'error', message: 'you have not labeled anything yet' });
+  }
+
+  // One lock for the whole operation. This rewrites entire sheets, so a save
+  // landing halfway through would either be overwritten by the block write or
+  // append onto a row number that no longer means what it did.
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(120000);
+  } catch (e) {
+    return jsonOut({ status: 'error',
+                     message: 'the sheet was busy — nothing changed, try again' });
+  }
+
+  try {
+    // Header reconciliation runs on the caller's tab too: the column layout
+    // below is read from the sheet, so it has to be the schema's first.
+    var mine = getOrCreateCs2Sheet(who, spec);
+    var myIdx = punchDirHeaderIndex(
+      mine.getRange(1, 1, 1, Math.max(mine.getLastColumn(), 1)).getValues()[0]);
+    var myLast = mine.getLastRow();
+    var judged = [];        // [{ key, get: colName -> value }]
+    if (myLast > 1) {
+      var myData = mine.getRange(2, 1, myLast - 1, mine.getLastColumn()).getValues();
+      var seen = {};
+      for (var r = 0; r < myData.length; r++) {
+        var row = myData[r];
+        if (row[myIdx.video] === '' || row[myIdx.video] === null) continue;
+        var isSkip = String(row[myIdx.skipped]) === '1';
+        var full = true;
+        for (var f = 0; f < spec.fields.length; f++) {
+          if (String(row[myIdx[spec.fields[f]]] || '') === '') { full = false; break; }
+        }
+        if (!isSkip && !full) continue;             // a partial is not a judgement
+        var k = [String(row[myIdx.video]), String(row[myIdx.round]),
+                 String(row[myIdx.frame])].join(KEY_SEP);
+        // A duplicate left by the date-stem bug would otherwise be applied
+        // twice; the later row wins, matching the save path's overwrite.
+        seen[k] = { key: k, row: row, idx: myIdx };
+      }
+      for (var sk in seen) judged.push(seen[sk]);
+    }
+    if (!judged.length) {
+      return csOut(spec, { led: [], frames: 0 });
+    }
+
+    // The columns a lead actually carries. The frame facts come along because a
+    // row created from nothing needs them; everything else about the target's
+    // row — their flag, their dwell, their reviewed verdict — is theirs and is
+    // left where it is.
+    var CARRY = ['video', 'round', 'frame', 'frame_sec', 'stance', 'shoulder_used',
+                 'skipped'].concat(spec.fields);
+
+    var sheets = ss.getSheets();
+    var report = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var name = sheets[s].getName();
+      if (name.indexOf(spec.prefix) !== 0) continue;
+      if (name === mineName) continue;
+      var target = name.substring(spec.prefix.length);
+      // getOrCreateCs2Sheet below resolves a LABELER to a tab, and it title-
+      // cases on the way. Every tab this code has ever made round-trips
+      // unchanged; one made by hand might not, and would be silently answered
+      // with a brand-new empty tab that the lead then wrote into while the real
+      // one sat untouched. Left alone and named in the report instead.
+      if (cs2SheetName(target, spec) !== name) {
+        report.push({ labeler: target, updated: 0, added: 0,
+                      skipped: 'tab name does not round-trip: ' + name });
+        continue;
+      }
+
+      var sh = getOrCreateCs2Sheet(target, spec);   // heals headers + order
+      var width = HEADERS.length;
+      if (sh.getMaxColumns() < width) {
+        sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
+      }
+      var lastRow = sh.getLastRow();
+      var block = lastRow > 1
+        ? sh.getRange(2, 1, lastRow - 1, width).getValues() : [];
+      var idx = punchDirHeaderIndex(
+        sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+
+      var at = {};
+      for (var b = 0; b < block.length; b++) {
+        if (block[b][idx.video] === '' || block[b][idx.video] === null) continue;
+        at[[String(block[b][idx.video]), String(block[b][idx.round]),
+            String(block[b][idx.frame])].join(KEY_SEP)] = b;
+      }
+
+      var now = new Date().toISOString();
+      var updated = 0, added = 0;
+      for (var j = 0; j < judged.length; j++) {
+        var src = judged[j];
+        var into = at[src.key];
+        if (into === undefined) {
+          var blank = [];
+          for (var c = 0; c < width; c++) blank.push('');
+          // Only the 0/1 columns need a floor; everything else is filled below
+          // or is legitimately empty on a row nobody has looked at.
+          blank[idx.consulted] = 0;
+          blank[idx.flag] = 0;
+          blank[idx.dwell_sec] = 0;
+          blank[idx.reviewed] = 0;
+          blank[idx.labeler] = target;
+          block.push(blank);
+          into = block.length - 1;
+          added++;
+        } else {
+          updated++;
+        }
+        for (var cc = 0; cc < CARRY.length; cc++) {
+          var col = CARRY[cc];
+          if (idx[col] === undefined || src.idx[col] === undefined) continue;
+          block[into][idx[col]] = src.row[src.idx[col]];
+        }
+        block[into][idx.ts] = now;
+        block[into][idx.labeler] = target;          // it is still their tab
+      }
+
+      if (block.length) {
+        var need = block.length + 1;
+        if (sh.getMaxRows() < need) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        // See cs2SameVideo: a date-like stem must stay the string it was, and
+        // this writes stems into rows that never held one.
+        try { sh.getRange(2, idx.video + 1, block.length, 1).setNumberFormat('@'); } catch (e) {}
+        sh.getRange(2, 1, block.length, width).setValues(block);
+      }
+      report.push({ labeler: target, updated: updated, added: added });
+    }
+
+    // Every tab this touched has a stale overlap entry, and unlike a save we
+    // know all of their names, so none of them has to ride the TTL.
+    cs2InvalidateStats(spec, who);
+    var cache = null;
+    try { cache = CacheService.getScriptCache(); } catch (e) {}
+    if (cache) {
+      for (var q = 0; q < report.length; q++) {
+        var nm = cs2SheetName(report[q].labeler, spec);
+        if (nm) { try { cache.remove(spec.overlapKey + nm.toLowerCase()); } catch (e) {} }
+      }
+    }
+    return csOut(spec, { led: report, frames: judged.length });
+  } finally {
+    try { SpreadsheetApp.flush(); } catch (e) {}
+    lock.releaseLock();
+  }
+}
+
 // Google Sheets PARSES a date-like cell on write. The stem "November 15, 2020"
 // goes in as text and comes back as a Date, and from then on the
 // (video, round, frame) key never matches itself again. Three symptoms, all of
@@ -3995,6 +4166,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
     op = op.slice(0, op.length - spec.action.length);
   }
   if (op === 'stats') return cs2Stats(spec);
+  if (op === 'leadEveryone') return cs2LeadEveryone(p, p.labeler || labeler, spec);
   if (op === 'peers') return cs2Peers(p, p.labeler || labeler, spec);
   if (op === 'agreement') return cs2Agreement(p, p.labeler || labeler, spec);
   if (op === 'overlap') return cs2Overlap(p, p.labeler || labeler, spec);

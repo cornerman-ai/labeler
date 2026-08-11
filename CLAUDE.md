@@ -119,12 +119,22 @@ independence); `dwell_sec` accumulates across visits, capped at 120s per look.
 
 Both generations run the SAME backend functions, parameterized by `CS2_SPEC` /
 `CS3_SPEC` (prefix, headers, values, fields, cache keys, action suffix). Actions
-are `{list,save,delete,stats,peers,agreement,overlap}` + `ChinShoulderV2` or
+are `{list,save,delete,stats,peers,agreement,overlap,leadEveryone}` + `ChinShoulderV2` or
 `ChinTuck3`. Every response carries its generation's marker (`v2` / `v3`) —
 doGet answers unknown actions with a success shape, so without the marker a page
 talking to an older deployment would read a save as successful having written
 nothing. The prefixes are what keep the two generations from seeing each other's
 tabs in stats, agreement, clue and comparison.
+
+**Lead everyone** (the button at the foot of the team panel, both generations):
+every frame the caller has judged — answered or skipped — overwrites every other
+labeler's row for that frame, creating one where they had none. Frames THEY
+judged and the caller did not are untouched, as are their `flag` / `dwell_sec` /
+`reviewed`. **Nothing is kept**: no backup tab, no column marking a row as led,
+and the overwritten answer is gone. So agreement after a lead is 100% by
+construction with nothing in the sheet to say so — take the inter-rater numbers
+BEFORE leading. Rewrites whole sheets, so it holds the script lock for the
+duration, and the page sends it WITHOUT `call()`'s retry.
 
 3.0 has NO data of its own: it reads `../chin_tuck_2.0/queue.json` and
 `../chin_tuck_2.0/frames/`. The frames are 666MB against a 1GB Pages limit, so a

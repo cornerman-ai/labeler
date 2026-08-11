@@ -88,6 +88,7 @@ const state = {
   rangeCache: new Map(),   // labeler -> { n, ranges, at } (see loadRanges)
   rangePending: new Map(), // labeler -> in-flight promise, so two asks are one read
   rangesWarmed: false,     // the one unprompted warm has been scheduled
+  leading: false,          // a lead-everyone request is in flight
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
@@ -749,6 +750,84 @@ async function fetchRanges(labeler, n) {
   saveRangeCache();
 }
 
+// ── lead everyone ──────────────────────────────────────────────────────────
+// My answers overwrite everybody else's, on the frames I have answered. Frames
+// they have answered and I have not are left alone.
+//
+// This is the one thing in the tool that writes to somebody else's tab, and it
+// keeps NOTHING: no backup sheet, no column marking the row as led. The
+// overwritten answer is gone. The dialog exists because that is irreversible,
+// and it carries the real numbers rather than a generic warning — the count is
+// the difference between a labeler who knows what they are about to do and one
+// who does not.
+//
+// Worth knowing: agreement between two labelers is what this tool measures, and
+// afterwards the led rows agree with the caller by construction with nothing in
+// the sheet to say so. Take the agreement numbers before leading.
+function askLead() {
+  if (!who() || state.leading) return;
+  const others = (state.teamRows || [])
+    .filter((r) => r.labeler.toLowerCase() !== who().toLowerCase())
+    .map((r) => r.labeler);
+  if (!others.length) return;
+  const n = myRowsInQueue().filter(isResolved).length;
+  const list = others.length === 1 ? others[0]
+    : others.slice(0, -1).join(', ') + ' and ' + others[others.length - 1];
+  $('lead-what').innerHTML =
+    `Your <b>${n.toLocaleString()}</b> answered frames will replace whatever `
+    + `<b>${list}</b> have on those frames. Where they have nothing, a row is `
+    + 'created for them.';
+  $('lead-keep').textContent =
+    'Frames they have answered and you have not are left alone. So are their '
+    + 'flags and their time spent. Everything else is overwritten, and their '
+    + 'old answers are not kept anywhere.';
+  $('lead-mask').hidden = false;
+  $('lead-cancel').focus();
+}
+
+function closeLead() {
+  $('lead-mask').hidden = true;
+  $('lead-go').disabled = false;
+  $('lead-go').textContent = 'Overwrite';
+}
+
+async function doLead() {
+  if (state.leading) return;
+  state.leading = true;
+  $('lead-go').disabled = true;
+  $('lead-go').textContent = 'Overwriting\u2026';
+  try {
+    // NOT call(): that retries once on a failed response, and this is the only
+    // request in the page that changes somebody else's data. Re-running it is
+    // harmless to the answers — it writes the same values — but the retry would
+    // land after the backup already exists, so a first attempt that half
+    // succeeded would be finished by a second that could no longer be undone.
+    const res = await fetch(api({ action: 'leadEveryoneChinShoulderV2', labeler: who() }),
+                            { redirect: 'follow' });
+    const body = await res.json();
+    if (body.status !== 'ok') throw new Error(body.message || 'unknown error');
+    if (body.v2 !== true) throw new Error('Apps Script is out of date — redeploy it');
+    const led = body.led || [];
+    const touched = led.reduce((a, x) => a + (x.updated || 0) + (x.added || 0), 0);
+    status(led.length
+      ? `Led ${led.length} labeler${led.length > 1 ? 's' : ''} — `
+        + `${touched.toLocaleString()} rows now carry your answers`
+      : 'Nothing to lead');
+    closeLead();
+    // Their counts, the comparison grid and their ranges have all just moved.
+    state.rangeCache = new Map();
+    saveRangeCache();
+    await loadTeam();
+    loadOverlap();
+  } catch (e) {
+    status('Lead failed: ' + e.message, 'err');
+    closeLead();
+  } finally {
+    state.leading = false;
+    renderTeam(state.teamRows || []);
+  }
+}
+
 function renderTeamLabel() {
   const n = (state.teamRows || []).length;
   $('team-label').textContent = state.teamOpen
@@ -885,6 +964,26 @@ function renderTeam(rows) {
       if (due) loadRanges(r.labeler, r.n).then(() => renderTeam(state.teamRows || []));
     }
   });
+
+  // Last in the grid, under everything it acts on. Rendered rather than static
+  // so it can never appear above an empty list — with no team there is nobody
+  // to lead, and the button would be a trap.
+  if (rows.length > 1) {
+    const foot = document.createElement('div');
+    foot.id = 'lead-row';
+    const btn = document.createElement('button');
+    btn.id = 'lead-btn';
+    btn.type = 'button';
+    btn.textContent = 'Lead everyone';
+    btn.disabled = !who() || state.leading;
+    btn.onclick = askLead;
+    const note = document.createElement('div');
+    note.id = 'lead-note';
+    note.textContent = 'Replaces everyone else\u2019s answers with yours, on the '
+                     + 'frames you have answered.';
+    foot.append(btn, note);
+    cells.push(foot);
+  }
 
   if (hiddenNow) {
     const foot = document.createElement('div');
@@ -1473,6 +1572,10 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+  $('lead-cancel').onclick = closeLead;
+  $('lead-go').onclick = doLead;
+  // Clicking the backdrop cancels; clicking the card must not.
+  $('lead-mask').onclick = (e) => { if (e.target === $('lead-mask')) closeLead(); };
   $('agree-btn').onclick = toggleAgreement;
 
   $('flag-btn').onclick = toggleFlag;
@@ -1531,6 +1634,10 @@ function bind() {
   };
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!$('lead-mask').hidden) {
+      if (e.key === 'Escape' && !state.leading) { closeLead(); e.preventDefault(); }
+      return;
+    }
     if (!state.ready) return;      // CSS greys the buttons; it cannot stop a key
     const k = e.key.toLowerCase();
     if (KEYS[k]) {
