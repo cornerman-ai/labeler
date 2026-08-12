@@ -586,14 +586,20 @@ function renderOverview() {
     const row = state.labels.get(key(f));
     const el = ov.children[i];
     const k = key(f);
-    // No 'part' arm: with one question a row is answered or it is not. A row
-    // with no answer exists only because the frame was flagged, and flagged is
-    // the grid below, not this one.
+    // The ANSWER, not just that one exists. No 'part' arm: with one question a
+    // row is answered or it is not, and a row with no answer exists only because
+    // the frame was flagged — which is the grid below, not this one.
+    const ans = row && !row.skipped ? row.bad_tuck : null;
     el.className = state.failed.has(k) ? 'fail'
       : !row ? '' : row.skipped ? 'skip'
-      : isFinished(row) ? 'done' : '';
+      : ans === 'yes' ? 'yes' : ans === 'no' ? 'no' : '';
     el.classList.toggle('here', i === state.i);
-    el.title = `#${i + 1}`;
+    // Spelled out on hover, because at 9px red now means two different things
+    // and only one of them is a problem.
+    el.title = `#${i + 1}`
+      + (state.failed.has(k) ? ' · did not save'
+         : !row ? '' : row.skipped ? ' · skipped'
+         : ans ? ` · bad tuck: ${ans}` : '');
 
     const isFlag = !!(row && row.flag);
     if (isFlag) flagged++;
