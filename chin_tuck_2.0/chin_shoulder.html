@@ -475,6 +475,18 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   font: 500 9px/1 ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--ink-dim);
 }
+/* The batch number, and under it — on the comparison grid only — how many
+   frames in that batch you and somebody else answered differently. A second
+   line rather than a second column: the gutter is 18px and the grids are
+   already at the width where anything wider brings back the horizontal
+   scrollbar, whereas a full batch label is 57px tall and using 18 of it for
+   two 9px lines costs nothing. */
+.ovn b span { display: block; }
+.ovn-d { color: var(--no); font-weight: 700; }
+/* A batch with no disagreements says nothing rather than "0" — the point of the
+   number is to steer the eye to the batches worth re-opening, and 38 zeroes
+   down the side is the opposite of that. */
+.ovn-d:empty { display: none; }
 #ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov i, #ov-flags i, #ov-cmp i {
   width: 9px; height: 9px; border-radius: 2px;
@@ -831,6 +843,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=61"></script>
+<script src="chin_shoulder.js?v=62"></script>
 </body>
 </html>

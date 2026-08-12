@@ -77,6 +77,7 @@ const state = {
   zoom: 1, panX: 0, panY: 0,
   drag: null,
   ovScrolledTo: -1,        // last index the overview was scrolled to
+  cmpGutter: null,        // the comparison grid's batch-number column
   loadingFor: null,        // name whose label list is in flight
   loadedFor: null,         // name whose labels are in state.labels
   loadToken: 0,            // guards against overlapping start() runs
@@ -550,7 +551,11 @@ function renderOverview() {
         const count = Math.min(BATCH, state.frames.length - b * BATCH);
         const rows = Math.ceil(count / BATCH_COLS);
         const n = document.createElement('b');
-        n.textContent = b + 1;
+        const num = document.createElement('span');
+        num.textContent = b + 1;
+        const dis = document.createElement('span');
+        dis.className = 'ovn-d';
+        n.append(num, dis);
         n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
         n.style.lineHeight = '9px';
         // 10px, not the 7px the dots' margin adds: the pitch between batches is
@@ -563,12 +568,20 @@ function renderOverview() {
       return col;
     };
     for (const w of document.querySelectorAll('.ovn')) w.replaceChildren(numbers());
+    // Only the comparison grid's gutter gets filled in below; the other two are
+    // built from the same function so a batch label cannot drift between grids.
+    state.cmpGutter = cg.parentElement.querySelector('.ovn');
     ov.replaceChildren(...mk());
     fg.replaceChildren(...mk());
     cg.replaceChildren(...mk());
   }
   let flagged = 0;
   let compared = 0;
+  // One slot per batch of 100. Counted in the same pass that paints the dots, so
+  // the numbers cannot say something different from the colours beside them —
+  // and they refresh whenever anything does: an answer, a skip, the 45s poll,
+  // the read that lands 600ms after a save.
+  const disPerBatch = new Array(Math.ceil(state.frames.length / BATCH)).fill(0);
   state.frames.forEach((f, i) => {
     const row = state.labels.get(key(f));
     const el = ov.children[i];
@@ -594,11 +607,26 @@ function renderOverview() {
     // judged, so skipped frames are coloured here like any other.
     const v = state.overlap.get(k);
     if (v && v !== 'o') compared++;
+    // Both 'p' and 'd' — anyone answering differently is a disagreement, whether
+    // they differ on one question or on all of them. That is the same set the
+    // grid paints as not-green-not-grey, so the count and the colours agree.
+    if (v === 'p' || v === 'd') disPerBatch[Math.floor(i / BATCH)]++;
     const ce = cg.children[i];
     ce.className = CMP_CLASS[v] || '';
     ce.classList.toggle('here', i === state.i);
     ce.title = `#${i + 1}` + (v ? ' · ' + CMP_TITLE[v] : '');
   });
+  if (state.cmpGutter) {
+    disPerBatch.forEach((n, b) => {
+      const cell = state.cmpGutter.children[b];
+      if (!cell) return;
+      const out = cell.lastElementChild;
+      out.textContent = n ? String(n) : '';
+      cell.title = `frames ${b * BATCH + 1}\u2013`
+        + `${Math.min((b + 1) * BATCH, state.frames.length)}`
+        + (n ? ` \u00b7 ${n} disagree` : '');
+    });
+  }
   $('ov-sub-n').textContent = `${flagged} flagged`;
   // Counts frames somebody else has ALSO finished — the ones the colours above
   // are actually saying something about. "only you" is not a comparison.
