@@ -77,6 +77,7 @@ const state = {
   zoom: 1, panX: 0, panY: 0,
   drag: null,
   ovScrolledTo: -1,        // last index the overview was scrolled to
+  ovGutter: null,         // the first grid's batch-number column
   cmpGutter: null,        // the comparison grid's batch-number column
   loadingFor: null,        // name whose label list is in flight
   loadedFor: null,         // name whose labels are in state.labels
@@ -422,6 +423,10 @@ function render() {
   const resolved = myRowsInQueue().filter(isResolved).length;
   $('done').textContent = `${resolved} done`;
 
+  $('id-video').textContent = f.stem;
+  $('id-round').textContent = f.round;
+  $('id-frame').textContent = f.frame;
+
   const img = $('frame');
   if (img.dataset.k !== key(f)) { img.dataset.k = key(f); img.src = imgSrc(f); }
 
@@ -545,7 +550,11 @@ function renderOverview() {
     });
     // Heights are derived from the same geometry the dots use — 25 per row,
     // 9px tall, 3px apart — so a label cannot drift out of step with its batch.
-    const numbers = () => {
+    // How many count lines a gutter carries under its batch number. They were
+    // identical until each grid started saying something of its own; the batch
+    // number and the geometry are still built once, so a label cannot drift out
+    // of step with the batch it names on one grid and not another.
+    const numbers = (classes) => {
       const col = document.createDocumentFragment();
       for (let b = 0; b * BATCH < state.frames.length; b++) {
         const count = Math.min(BATCH, state.frames.length - b * BATCH);
@@ -553,9 +562,12 @@ function renderOverview() {
         const n = document.createElement('b');
         const num = document.createElement('span');
         num.textContent = b + 1;
-        const dis = document.createElement('span');
-        dis.className = 'ovn-d';
-        n.append(num, dis);
+        n.appendChild(num);
+        for (const c of classes) {
+          const s = document.createElement('span');
+          s.className = c;
+          n.appendChild(s);
+        }
         n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
         n.style.lineHeight = '9px';
         // 10px, not the 7px the dots' margin adds: the pitch between batches is
@@ -567,10 +579,14 @@ function renderOverview() {
       }
       return col;
     };
-    for (const w of document.querySelectorAll('.ovn')) w.replaceChildren(numbers());
-    // Only the comparison grid's gutter gets filled in below; the other two are
-    // built from the same function so a batch label cannot drift between grids.
-    state.cmpGutter = cg.parentElement.querySelector('.ovn');
+    const gutter = (grid) => grid.parentElement.querySelector('.ovn');
+    // First grid: yes / no / skipped. Third: disagreements. The flags grid gets
+    // the bare number — flagged-or-not is already one bar's worth of fact.
+    gutter(ov).replaceChildren(numbers(['ovn-y', 'ovn-n', 'ovn-s']));
+    gutter(fg).replaceChildren(numbers([]));
+    gutter(cg).replaceChildren(numbers(['ovn-d']));
+    state.ovGutter = gutter(ov);
+    state.cmpGutter = gutter(cg);
     ov.replaceChildren(...mk());
     fg.replaceChildren(...mk());
     cg.replaceChildren(...mk());
@@ -581,7 +597,14 @@ function renderOverview() {
   // the numbers cannot say something different from the colours beside them —
   // and they refresh whenever anything does: an answer, a skip, the 45s poll,
   // the read that lands 600ms after a save.
-  const disPerBatch = new Array(Math.ceil(state.frames.length / BATCH)).fill(0);
+  const nBatches = Math.ceil(state.frames.length / BATCH);
+  const disPerBatch = new Array(nBatches).fill(0);
+  // Same idea for the first grid, three ways. Tallied in the paint loop from the
+  // same expression that picks the dot's colour, so a number can never disagree
+  // with the dots above it.
+  const ansPerBatch = { yes: new Array(nBatches).fill(0),
+                        no: new Array(nBatches).fill(0),
+                        skip: new Array(nBatches).fill(0) };
   state.frames.forEach((f, i) => {
     const row = state.labels.get(key(f));
     const el = ov.children[i];
@@ -594,6 +617,8 @@ function renderOverview() {
       : !row ? '' : row.skipped ? 'skip'
       : ans === 'yes' ? 'yes' : ans === 'no' ? 'no' : '';
     el.classList.toggle('here', i === state.i);
+    const bucket = row && row.skipped ? 'skip' : ans;
+    if (ansPerBatch[bucket]) ansPerBatch[bucket][Math.floor(i / BATCH)]++;
     // Spelled out on hover, because at 9px red now means two different things
     // and only one of them is a problem.
     el.title = `#${i + 1}`
@@ -622,6 +647,20 @@ function renderOverview() {
     ce.classList.toggle('here', i === state.i);
     ce.title = `#${i + 1}` + (v ? ' · ' + CMP_TITLE[v] : '');
   });
+  if (state.ovGutter) {
+    for (let b = 0; b < nBatches; b++) {
+      const cell = state.ovGutter.children[b];
+      if (!cell) continue;
+      const [, y, n, s] = cell.children;
+      y.textContent = ansPerBatch.yes[b];
+      n.textContent = ansPerBatch.no[b];
+      s.textContent = ansPerBatch.skip[b];
+      cell.title = `frames ${b * BATCH + 1}–`
+        + `${Math.min((b + 1) * BATCH, state.frames.length)} · `
+        + `${ansPerBatch.yes[b]} yes, ${ansPerBatch.no[b]} no, `
+        + `${ansPerBatch.skip[b]} skipped`;
+    }
+  }
   if (state.cmpGutter) {
     disPerBatch.forEach((n, b) => {
       const cell = state.cmpGutter.children[b];
@@ -1493,6 +1532,61 @@ function renderClue(peers) {
   }
 }
 
+// Copy one part of the frame's key. Separately, because they go to different
+// places: the stem into a file browser or a search, the round and frame into a
+// script or a message about one specific frame.
+const COPY_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const TICK_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2.6 7.4 5.6 10.4 11.4 3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+async function copyText(s) {
+  try {
+    // Needs a secure context — https or localhost, which covers Pages and the
+    // dev server. Everything else falls through to the old selection trick
+    // rather than failing silently.
+    await navigator.clipboard.writeText(s);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = s;
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e2) { return false; }
+  }
+}
+
+function wireCopyButtons() {
+  for (const btn of document.querySelectorAll('.idc')) {
+    btn.onclick = async () => {
+      const src = $(btn.dataset.copy);
+      const ok = await copyText(src ? src.textContent : '');
+      const line = $('status');
+      if (!ok) {
+        status('Could not copy — select the text instead', 'err');
+        line.dataset.copyErr = '1';
+        return;
+      }
+      // Clear a PREVIOUS copy failure, and only that: a save error in the same
+      // line is about the labeler's data and must not be swept away by a
+      // successful click on something unrelated.
+      if (line.dataset.copyErr) { delete line.dataset.copyErr; status(''); }
+      // A tick in place of the icon, and nothing in the status line: this is a
+      // trivial action and it should not push a save error off screen.
+      clearTimeout(btn._t);
+      btn.innerHTML = TICK_SVG;
+      btn.classList.add('ok');
+      btn._t = setTimeout(() => {
+        btn.innerHTML = COPY_SVG;
+        btn.classList.remove('ok');
+      }, 1100);
+    };
+  }
+}
+
 function status(msg, cls) {
   const el = $('status');
   el.textContent = msg || '';
@@ -1627,6 +1721,7 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+  wireCopyButtons();
   $('lead-cancel').onclick = closeLead;
   $('lead-go').onclick = doLead;
   // Clicking the backdrop cancels; clicking the card must not.

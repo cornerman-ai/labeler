@@ -491,10 +491,21 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    two 9px lines costs nothing. */
 .ovn b span { display: block; }
 .ovn-d { color: var(--no); font-weight: 700; }
-/* A batch with no disagreements says nothing rather than "0" — the point of the
-   number is to steer the eye to the batches worth re-opening, and 38 zeroes
-   down the side is the opposite of that. */
+/* A batch with no disagreements says nothing rather than "0" — that number is
+   there to steer the eye to the batches worth re-opening, and 38 zeroes down the
+   side is the opposite of that. The three under the FIRST grid are different:
+   they are a breakdown of a batch everyone has finished, so a zero is a real
+   fact about it ("none of these hundred was a no") and the three always add up
+   to something the reader can check. Hence no :empty rule for them. */
 .ovn-d:empty { display: none; }
+/* Yes / no / skipped for each batch of the first grid, in the same colours as
+   the dots beside them. Four 9px lines in a label that is 57px tall — every
+   batch is five rows, including the short last one, so there is room in all of
+   them. Right-aligned like the batch number, and tabular so a 7 and a 70 line
+   up down the column rather than wandering. */
+.ovn-y { color: var(--yes); font-weight: 700; }
+.ovn-n { color: var(--no); font-weight: 700; }
+.ovn-s { color: var(--ink-dim); font-weight: 700; }
 #ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov i, #ov-flags i, #ov-cmp i {
   width: 9px; height: 9px; border-radius: 2px;
@@ -626,6 +637,31 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .who-me .who-c { color: var(--accent); }
 .who-me .who-bar i { background: var(--accent); }
 #team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
+
+/* Which frame you are actually looking at. The queue position answers "where am
+   I", but (video, round, frame) is the KEY — it is what the sheet stores, what a
+   bug report has to name and what anyone goes back to the source video with, and
+   until now the page never showed it anywhere. One row per part, each separately
+   copyable, because they are pasted into different places. */
+#id-card { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px;
+           align-items: baseline; }
+.idl { font-size: 11px; color: var(--ink-dim); }
+.idv {
+  min-width: 0; font: 500 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  /* Wrapped, not truncated. These stems run to a hundred characters and the
+     point of putting them on screen is to be read; an ellipsis would mean
+     hovering for a tooltip to learn which video you are looking at. */
+  word-break: break-word;
+}
+.idc {
+  flex: none; padding: 2px; border: 0; border-radius: 5px; background: none;
+  color: var(--ink-dim); line-height: 0; opacity: .5;
+  transition: opacity .12s ease, color .12s ease;
+}
+.idc:hover, .idc:focus-visible { opacity: 1; color: var(--ink);
+                                 background: rgba(120,120,128,.14); }
+.idc.ok { opacity: 1; color: var(--yes); }
+.idc svg { width: 13px; height: 13px; display: block; }
 /* The one destructive control on the page, so it is styled as one: it sits
    apart at the foot of the team list, it is not a primary action, and it says
    what it does rather than being an icon. Red only on hover — a permanently red
@@ -733,6 +769,23 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <div id="agree-out"></div>
     </div>
 
+    <!-- Above the question rather than below the grids: it names the thing the
+         question is about, so it reads with the frame. -->
+    <div class="card" id="id-card">
+      <span class="idl">Video</span>
+      <span class="idv" id="id-video">&mdash;</span>
+      <button class="idc" data-copy="id-video" type="button"
+              title="Copy video name" aria-label="Copy video name"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Round</span>
+      <span class="idv" id="id-round">&mdash;</span>
+      <button class="idc" data-copy="id-round" type="button"
+              title="Copy round" aria-label="Copy round"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Frame</span>
+      <span class="idv" id="id-frame">&mdash;</span>
+      <button class="idc" data-copy="id-frame" type="button"
+              title="Copy frame" aria-label="Copy frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+    </div>
+
     <div class="card" id="q-card">
       <div id="q-lock">Loading…</div>
       <div id="clue-bar">
@@ -838,6 +891,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=14"></script>
+<script src="chin_tuck3.js?v=17"></script>
 </body>
 </html>
