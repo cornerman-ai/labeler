@@ -24,6 +24,15 @@
   --yes: #34c759;
   --no: #ff3b30;
   --maybe: #ff9f0a;
+  /* The first overview grid only. Green/red there meant one thing on the dots
+     ("the answer was yes") and the opposite thing everywhere else on the page
+     ("this is good" / "this is a problem"), on a question where yes means the
+     tuck is BAD — so the grid read as a wall of verdicts rather than a wall of
+     answers. Blue and yellow carry no such baggage: they say "one answer or the
+     other" and nothing about which is better. The buttons keep green/no-red,
+     because there the colour is attached to a word you are reading. */
+  --ov-yes: #0071e3;
+  --ov-no:  #e8a600;
   --radius: 12px;
   /* Expanded disclosure pills (clue / progress / compare) — a light wash rather
      than a solid accent fill. Solid blue gave them the weight of a primary
@@ -39,6 +48,9 @@
   :root {
     --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
     --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    /* Both lift off a near-black card; the amber especially, which at #e8a600
+       sits too close to the background to read as a colour at 9px. */
+    --ov-yes: #3d9bff; --ov-no: #ffd60a;
     /* Same wash, but the ink lightens instead of darkening: on a near-black
        card the accent needs to come UP off the background, not down into it. */
     --open-bg: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -503,8 +515,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    batch is five rows, including the short last one, so there is room in all of
    them. Right-aligned like the batch number, and tabular so a 7 and a 70 line
    up down the column rather than wandering. */
-.ovn-y { color: var(--yes); font-weight: 700; }
-.ovn-n { color: var(--no); font-weight: 700; }
+.ovn-y { color: var(--ov-yes); font-weight: 700; }
+.ovn-n { color: var(--ov-no); font-weight: 700; }
 .ovn-s { color: var(--ink-dim); font-weight: 700; }
 #ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov i, #ov-flags i, #ov-cmp i {
@@ -531,17 +543,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    the ANSWER rather than whether the boxing is any good — same as the buttons.
    No .part here: with one question a frame is answered or it is not; #ov-cmp
    below still has an amber-ish state, where it means the team is split. */
-#ov i.yes { background: var(--yes); }
-#ov i.no  { background: var(--no); }
+#ov i.yes { background: var(--ov-yes); }
+#ov i.no  { background: var(--ov-no); }
 #ov i.skip { background: var(--ink-dim); }
 /* A save that came back with an error. Optimistic saving means the labeler has
    already moved on, so the frame has to stay visible until they deal with it.
-   Red is now also the colour of a perfectly good "no", so this cannot be red
-   alone any more — the punched-out centre is what separates a broken save from
-   an answer, and it survives at 9px where a shade of red would not. */
-#ov i.fail { background: var(--no); box-shadow: inset 0 0 0 2.5px var(--card); }
+   Plain red again: with the answers on blue and yellow, red is once more the
+   only alarming thing in this grid and needs no second signal to be told apart
+   from an answer. */
+#ov i.fail { background: var(--no); }
+/* Neutral rather than accent-blue. The first grid now paints "yes" in very
+   nearly the accent, and a blue ring around a blue dot is not a marker. Ink
+   contrasts with all five states in both schemes, and it is the same ring on
+   all three grids — a position that meant one thing here and another there
+   would be worse than the colour it fixes. */
 #ov i.here, #ov-flags i.here, #ov-cmp i.here {
-  outline: 2px solid var(--accent); outline-offset: 1px;
+  outline: 2px solid var(--ink); outline-offset: 1px;
 }
 
 /* Second grid, same frames in the same order, showing one thing only: flagged
@@ -836,8 +853,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       </div>
       <div class="ovw"><div class="ovn"></div><div id="ov"></div></div>
       <div class="legend">
-        <span><b style="background:var(--yes)"></b>yes</span>
-        <span><b style="background:var(--no)"></b>no</span>
+        <span><b style="background:var(--ov-yes)"></b>yes</span>
+        <span><b style="background:var(--ov-no)"></b>no</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
       </div>
       <div class="ov-sub"><span id="ov-sub-n">0 flagged</span></div>
@@ -891,6 +908,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=18"></script>
+<script src="chin_tuck3.js?v=19"></script>
 </body>
 </html>
