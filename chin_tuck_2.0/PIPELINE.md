@@ -1,10 +1,11 @@
 # chin_tuck 2.0 — data pipeline
 
-How the 3,791 frames in this folder were chosen. Every number below was
+How the 3,942 frames in this folder were chosen. Every number below was
 measured from the actual run, not estimated.
 
-Built 2026-08-07. Source of truth for the sampling itself is
-`cornerman-backend/ml/research/chin_tuck/v2/chin_sampler_v2.py`.
+Built 2026-08-07 at 3,791 frames; grown to 3,942 on 2026-08-12 (see
+[Growing a video](#growing-a-video)). Source of truth for the sampling itself
+is `cornerman-backend/ml/research/chin_tuck/v2/chin_sampler_v2.py`.
 
 ## Counts at every step
 
@@ -14,8 +15,11 @@ Built 2026-08-07. Source of truth for the sampling itself is
 | 1 | Have a BlazePose cache | **206** | 472 | 810,493 |
 | 2 | Covered by Combined Data (stance) | **200** | 445 | 775,629 |
 | 3 | Pass the visibility gate | 200 | 445 | **767,485** |
-| 4 | Selected for labeling | 200 | **426** | **3,791** |
-| 5 | Exported as JPEG | 200 | 426 | 3,791 |
+| 4 | Selected for labeling | 200 | **426** | **3,942** |
+| 5 | Exported as JPEG | 200 | 426 | 3,942 |
+
+Steps 0–3 are as first built; the source shelf has since grown to 317 `.mp4`s,
+none of which have pose caches yet.
 
 A **video** is one source file. A **round** is one continuously tracked segment
 inside it — tracking breaks whenever the boxer leaves frame or the camera cuts,
@@ -67,7 +71,8 @@ Per video, from its pool:
 1. shuffle into random order (seeded per video from `seed = 0`)
 2. walk the shuffled list, taking each frame **unless it falls within 2.0s of
    one already taken**
-3. stop at **25**
+3. stop at the video's target — **25** unless raised, see
+   [Growing a video](#growing-a-video)
 4. sort what was taken by timestamp
 
 **All rounds of a video share one pool.** Frames are not drawn per round, so a
@@ -102,9 +107,9 @@ genuine mid-video stance switches (the other 12 are 1–3 row typos). Each frame
 takes the stance of the punch interval containing it, or of the nearest one, and
 records the distance in `stance_dist`.
 
-- **2,050 / 3,791** sit inside a labeled punch (`stance_dist = 0`)
+- **2,135 / 3,942** sit inside a labeled punch (`stance_dist = 0`)
 - median 0.0s, p90 1.0s, max 53s — only 11 frames beyond 30s
-- split is **3,188 Orthodox / 603 Southpaw** (84/16), inherited from the footage
+- split is **3,288 Orthodox / 654 Southpaw** (83/17), inherited from the footage
 
 Nearest-interval lookup is what makes the 12 stray stance typos harmless: a
 single bad row 200s away never wins.
@@ -113,14 +118,60 @@ single bad row 200s away never wins.
 
 ffmpeg seeks each frame's timestamp in the source video and writes a
 full-resolution JPEG (`-q:v 2`), seeking half a frame early so the first decoded
-frame is exactly the sampled one. 3,791 extracted, 0 missing, **666 MB**.
+frame is exactly the sampled one. 3,942 extracted, 0 missing, **724 MB**.
+
+## Growing a video
+
+Raising the target for one video is **additive**. The per-video RNG is seeded
+from `(seed, stem)` and the greedy walk stops at the target, so a larger target
+resumes the same walk at the same point: the new pick set is a strict superset,
+and frames already labeled keep their identity, their position in the queue and
+their labels.
+
+That holds only while `min_gap`, `vis_min`, `seed` and the pose caches are
+unchanged. Change any of them and every pick re-rolls — `--merge` checks for
+this (old frames missing from the new set) and refuses to write.
+
+`--stems` alone would leave a manifest holding ONLY those videos, and
+`chin_build_queue.py` drops any queued frame absent from the manifest — it would
+silently delete the rest of the queue and re-index everything. So a restricted
+run requires `--merge`, which carries unsampled videos over verbatim.
+
+**2026-08-12 run** — four videos raised to `--target 100`, +151 frames:
+
+| video | before | after |
+|---|---|---|
+| Bagwork critique [amZPoRM3s78] | 25 | 77 |
+| 10 Rounds 10 Combos ｜ Boxing Training … | 25 | 65 |
+| Bagwork Submission 97 - 201lbs - 62 [WGxiSon2QgQ] | 25 | 58 |
+| 30 Days of Basic Boxing … #day24 [pbcyfMtMlgU] | 25 | 51 |
+
+None reached 100: at a 2.0s gap a video needs ~267s of eligible footage for
+that, and these span 139–199s. The target is a ceiling, not a quota.
+
+A fifth video was dropped from the run for the same reason — *Light shadow
+boxing session with an app [sROssWEONVU]* has 25.9s of footage and its 11
+frames are already the most a 2.0s gap allows. Videos in that state cannot be
+grown without lowering the gap, which re-rolls their picks and detaches their
+labels.
+
+Verified before the run, against a scratch copy: a restricted re-run at the
+unchanged target reproduced `chin_frames.json` byte-for-byte, and after the run
+all 3,791 pre-existing samples were unchanged against `HEAD` — including the
+shoulder annotations, which `chin_annotate_shoulder.py` recomputes for every
+video on each pass.
+
+**Bump the cache-bust versions after any growth**, or labelers keep the queue
+their browser already cached and never see the new frames: `queue.json?v=` in
+both `chin_shoulder.js` and `chin_tuck_3.0/chin_tuck3.js`, plus each page's
+`<script src="…?v=">` so the changed JS is fetched at all. Four edits.
 
 ## Parameters
 
 | param | value | vs 1.0 |
 |---|---|---|
 | `vis_min` | 0.6 | was 0.5 |
-| `target_per_video` | 25 (flat) | was 4–10/min, capped 40 then 20 |
+| `target_per_video` | 25 (flat); per-video overrides in `params.target_overrides` | was 4–10/min, capped 40 then 20 |
 | `min_gap_sec` | 2.0 | was 1.5 |
 | `repeats` | 0 | was 2/video |
 | `box_scale` | 1.3 | unchanged |
@@ -137,22 +188,22 @@ byte-for-byte (verified).
 
 ```
 chin_tuck_2.0/
-  chin_frames.json       the 3,791 frames to label
+  chin_frames.json       the 3,942 frames to label
   exported_videos.json   the 200 stems whose JPEGs are ready
-  frames/<video>/r<round>_f<frame>.jpg    666 MB
-  skeletons/<video>/r<round>_f<frame>.npy 4.5 MB
-  chins/chin_points.json                  3,791 derived chin points
+  frames/<video>/r<round>_f<frame>.jpg    724 MB
+  skeletons/<video>/r<round>_f<frame>.npy 5.0 MB
+  chins/chin_points.json                  3,942 derived chin points
 ```
 
 The three per-frame folders use one key — `r{round}_f{frame}` — as filename and
-as JSON key, so they join with no name mapping. Verified 1:1: 3,791 JPEGs,
-3,791 `.npy`, 3,791 chin points, 0 unpaired.
+as JSON key, so they join with no name mapping. Verified 1:1: 3,942 JPEGs,
+3,942 `.npy`, 3,942 chin points, 0 unpaired.
 
 **`skeletons/`** — the raw BlazePose-33 row for each frame, `(33, 8)` float32,
 lifted verbatim from the round cache (channels x, y, z, x_world_m, y_world_m,
 z_world_m, visibility, presence). Unfiltered and not subset to the 5 joints
 `chin_frames.json` carries: the manifest holds what the page needs to draw a
-box, this holds everything a model might want. At 4.5 MB it makes the dataset
+box, this holds everything a model might want. At 5 MB it makes the dataset
 usable without the pose cache or a Drive mount.
 
 **`chins/chin_points.json`** — BlazePose has no jaw landmark, so the chin is
@@ -166,7 +217,7 @@ chin  = nose + 2.25 * (mouth - nose)
 `CHIN_COEF = 2.25` was settled in cornerman-shoulder-chin's `02_chin_point/`
 (tried 3, then 2, then 2.25, each validated visually). Our implementation is
 bit-exact against `lib/cornerman_chin.chin_proxy` over 2,000 random skeletons.
-Coordinates are image-normalized and **unclamped** — 3 of 3,791 fall outside
+Coordinates are image-normalized and **unclamped** — 3 of 3,942 fall outside
 `[0, 1]` where the head sits at a frame edge and the extrapolation overshoots.
 
 `chin_frames.json` shape:
@@ -202,6 +253,16 @@ python chin_tuck/v2/chin_sampler_v2.py \
   --caches "<drive>/data/skeleton_data/blazepose" \
   --combined "<path>/Box Labeled Data.xlsx" \
   --out "<repo>/chin_tuck_2.0/chin_frames.json"
+
+# ...or grow named videos only, leaving every other one untouched. --merge is
+# mandatory with --stems; --stems-file avoids shell-quoting the full-width
+# characters in the titles. Everything below is unchanged and re-runs as-is:
+# the exporters skip what already exists, so only the new frames cost anything.
+python chin_tuck/v2/chin_sampler_v2.py \
+  --caches "<drive>/data/skeleton_data/blazepose" \
+  --combined "<path>/Box Labeled Data.xlsx" \
+  --out "<repo>/chin_tuck_2.0/chin_frames.json" \
+  --merge --target 100 --stems-file stems.txt
 
 # per-frame shoulder: lead by stance, the punching hand’s shoulder while
 # inside a documented punch (rewrites the manifest in place)
@@ -239,9 +300,13 @@ each file byte-for-byte (verified for the queue and the chin points after
 the scripts moved into `v1/`/`v2/`).
 
 All run from `cornerman-backend/ml/research/` (v1/ holds the shared exporter, v2/ the 2.0-only scripts). The JPEG export takes
-~1 hour at ~1s/frame, Drive-streaming bound rather than decode bound; the other
-two take seconds. `--hosted-name` matters: without it the exporter writes 1.0's
-`chin_hosted.json`, which is the name `chin_tuck.js` fetches.
+~1 hour at ~1s/frame for a full rebuild, Drive-streaming bound rather than
+decode bound; the other two take seconds. `--hosted-name` matters: without it
+the exporter writes 1.0's `chin_hosted.json`, which is the name `chin_tuck.js`
+fetches.
+
+On Windows, set `PYTHONIOENCODING=utf-8` first — several scripts print stems,
+and the console's cp1252 default dies on the full-width `｜` in the titles.
 
 `chin_export_chin_points.py` reads `skeletons/`, not the Drive cache, so a
 different coefficient reruns offline in seconds.
@@ -251,10 +316,12 @@ different coefficient reruns offline in seconds.
 - ~~Taxonomy is not decided.~~ Decided and shipped: four questions
   (shoulder_ok / chin_ok / lateral_safe / frontal_safe), page at
   `chin_shoulder.html`, one `chin_shoulder_labels_<Name>` tab per labeler.
-- **666 MB is uncommitted.** The repo is already ~600 MB tracked + ~607 MB
-  `.git`; adding these full-res frames roughly doubles it, past GitHub's 1 GB
-  soft limit, and GitHub Pages serves every one to labelers. Downscaling to
-  1080p would cut it to ~200 MB — the chin box is a small fraction of a 4K frame,
-  so detail is not the binding constraint.
+- **The frames are committed, and the repo is near the Pages ceiling.** 1.0's
+  467 MB of frames were untracked to make room (see `.gitignore`); with 2.0's
+  724 MB in, tracked content is ~890 MB against GitHub Pages' 1 GB limit, so
+  roughly **600 more full-res frames** fit. Growing much beyond that means
+  downscaling on export (`-vf scale=-2:1080` cuts ~178 KB/frame to ~50 KB) —
+  the chin box is a small fraction of a 4K frame, so detail is not the binding
+  constraint. Note a downscale would need `--force`, i.e. a full re-extract.
 - **Round coverage** is incidental, not guaranteed. If every round should be
   represented, seed one frame per round before distributing the remainder.

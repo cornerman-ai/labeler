@@ -1758,7 +1758,7 @@ async function start() {
   state.hidden = loadHidden();
   bind();
   try {
-    const res = await fetch(`queue.json?v=7`);
+    const res = await fetch(`queue.json?v=8`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const q = await res.json();
     state.frames = q.frames || [];
