@@ -502,6 +502,31 @@ async function loadOverlap() {
 
 // One dot per frame. 3,791 dots is a legible density; a scrolling list of rows
 // at that length is not.
+// Jump to the next frame you and somebody else answered differently — the same
+// set the third grid paints red and the batch numbers count, so what the button
+// lands on is what you can see coming.
+//
+// Wraps, and deliberately: these get worked through in passes, and stopping
+// dead at the end of the queue would mean scrolling back to the top by hand
+// every time. Starting at i+1 is what keeps it moving off the frame you are
+// already on, and the full-lap bound is what stops it spinning when the only
+// disagreement left is that one.
+function nextDisagreement() {
+  const n = state.frames.length;
+  for (let step = 1; step <= n; step++) {
+    const i = (state.i + step) % n;
+    const v = state.overlap.get(key(state.frames[i]));
+    if (v === 'p' || v === 'd') {
+      go(i);
+      status(`Disagreement at #${i + 1}`);
+      return;
+    }
+  }
+  status(state.overlap.size
+    ? 'No disagreements in the queue'
+    : 'Nobody else has answered these yet');
+}
+
 function renderOverview() {
   const ov = $('ov');
   const fg = $('ov-flags');
@@ -602,6 +627,19 @@ function renderOverview() {
         + `${Math.min((b + 1) * BATCH, state.frames.length)}`
         + (n ? ` \u00b7 ${n} disagree` : '');
     });
+  }
+  // Totalled from the per-batch tally rather than counted again, so the button
+  // and the numbers down the side of the third grid cannot disagree.
+  const nDis = disPerBatch.reduce((a, x) => a + x, 0);
+  const nd = $('next-dis');
+  if (nd) {
+    nd.innerHTML = nDis
+      ? `Go to the next disagreement <b>${nDis.toLocaleString()}</b>`
+      : 'Go to the next disagreement';
+    nd.disabled = !nDis;
+    nd.title = nDis
+      ? `${nDis.toLocaleString()} frame(s) where somebody answered differently`
+      : 'Nothing to settle';
   }
   $('ov-sub-n').textContent = `${flagged} flagged`;
   // Counts frames somebody else has ALSO finished — the ones the colours above
@@ -1638,6 +1676,7 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+  $('next-dis').onclick = nextDisagreement;
   $('lead-cancel').onclick = closeLead;
   $('lead-go').onclick = doLead;
   // Clicking the backdrop cancels; clicking the card must not.

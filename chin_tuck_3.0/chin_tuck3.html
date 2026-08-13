@@ -458,6 +458,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
+/* Navigation, not a verdict — so it is an outline rather than a fill, and sits
+   below Skip in the same way Skip sits below Save. The count is the point of
+   it: it says how much is left to settle without opening the third grid, and
+   the button disables itself when that reaches zero. */
+#next-dis {
+  width: 100%; padding: 9px; margin-top: 8px; border-radius: 10px;
+  border: 1px solid var(--line); background: none;
+  font-size: 13px; font-weight: 500;
+  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
+}
+#next-dis:hover:not(:disabled) {
+  color: var(--no); border-color: color-mix(in srgb, var(--no) 45%, transparent);
+  background: color-mix(in srgb, var(--no) 8%, transparent);
+}
+#next-dis:disabled { opacity: .4; cursor: default; }
+#next-dis b { font-variant-numeric: tabular-nums; font-weight: 600; }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
    it out only made three buttons compete for the same glance. Next-unlabeled
    keeps its words because it is the one action you cannot infer from a glyph. */
@@ -829,6 +845,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
+      <button id="next-dis" type="button" disabled>Go to the next disagreement</button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -908,6 +925,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=20"></script>
+<script src="chin_tuck3.js?v=21"></script>
 </body>
 </html>
