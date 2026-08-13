@@ -533,7 +533,8 @@ async function loadOverlap() {
 // at that length is not.
 // Jump to the next frame you and somebody else answered differently — the same
 // set the third grid paints red and the batch numbers count, so what the button
-// lands on is what you can see coming.
+// lands on is what you can see coming. Returns whether it actually moved, which
+// is what tells its caller to repaint the frame it is still sitting on.
 //
 // Wraps, and deliberately: these get worked through in passes, and stopping
 // dead at the end of the queue would mean scrolling back to the top by hand
@@ -545,15 +546,26 @@ function nextDisagreement() {
   for (let step = 1; step <= n; step++) {
     const i = (state.i + step) % n;
     const v = state.overlap.get(key(state.frames[i]));
-    if (v === 'p' || v === 'd') {
-      go(i);
-      status(`Disagreement at #${i + 1}`);
-      return;
-    }
+    if (v === 'p' || v === 'd') { go(i); return true; }
   }
-  status(state.overlap.size
-    ? 'No disagreements in the queue'
-    : 'Nobody else has answered these yet');
+  return false;
+}
+
+// Said on the button rather than in the status line. The button saves first,
+// and a save writes to that line twice on its own schedule — "saving…" as it
+// goes out, blank when it lands — so a message put there is wiped a moment
+// later by the very click that produced it. Which it was: the one case where
+// this needs saying is the one where nothing visibly happens.
+function flashNextDis(msg) {
+  const nd = $('next-dis');
+  if (!nd) return;
+  clearTimeout(nd._t);
+  if (!nd.dataset.was) nd.dataset.was = nd.textContent;
+  nd.textContent = msg;
+  nd._t = setTimeout(() => {
+    nd.textContent = nd.dataset.was;
+    delete nd.dataset.was;
+  }, 1800);
 }
 
 function renderOverview() {
@@ -1784,7 +1796,24 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
-  $('next-dis').onclick = nextDisagreement;
+  // Same commit as Save & next — including the blank-is-a-skip rule, which has
+  // to be spelled out identically here: a frame left on screen and clicked past
+  // is no judgement, and recording it as a partial would promise a return trip
+  // to a frame with nothing to return to. Only the destination differs.
+  $('next-dis').onclick = () => {
+    const blank = !FIELDS.some((fld) => state.answers[fld]);
+    if (blank) { state.answers = {}; state.skipped = true; }
+    // A refused save has already said why in the status line, and the frame
+    // stays put — repaint it and stop, without also claiming there is nowhere
+    // to go. Only a save that went through gets to look for the next one.
+    if (!save({ skip: blank })) { render(); return; }
+    if (!nextDisagreement()) {
+      flashNextDis(state.overlap.size
+        ? 'No disagreements left'
+        : 'Nobody else has answered yet');
+      render();
+    }
+  };
   wireCopyButtons();
   $('lead-cancel').onclick = closeLead;
   $('lead-go').onclick = doLead;

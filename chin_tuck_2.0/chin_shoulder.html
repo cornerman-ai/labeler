@@ -438,8 +438,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
-/* Navigation, not a verdict — so it is an outline rather than a fill, and sits
-   below Skip in the same way Skip sits below Save.
+/* Save & next, aimed somewhere else: it commits this frame exactly as the blue
+   button above does, then jumps to the next frame somebody answered differently
+   instead of to i+1. Outlined rather than filled because it is the third way
+   out of a frame and must not compete with the two above it.
    It carried a running count of what was left to settle, and that count was a
    lie in the only situation it mattered: the verdicts come from the server and
    only move when it recomputes them, so the number sat still through exactly
@@ -780,7 +782,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
-      <button id="next-dis" type="button">Go to the next disagreement</button>
+      <button id="next-dis" type="button">Save and go to next disagreement</button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -864,6 +866,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=66"></script>
+<script src="chin_shoulder.js?v=68"></script>
 </body>
 </html>
