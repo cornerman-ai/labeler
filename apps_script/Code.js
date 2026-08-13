@@ -29,6 +29,16 @@ function doPost(e) {
   if (action === 'saveCalloutEvents' || action === 'listCalloutEvents') {
     return doGetCalloutEvents(p, labeler, action);
   }
+  // Lead-everyone, for the same reason: it is bounded by a position in the
+  // QUEUE, and the queue order lives in the page — this script has never seen
+  // it. So the page sends the frames the lead is allowed to touch, and that
+  // list packs to ~59KB for a full queue, which no URL will carry.
+  if (action === 'leadEveryoneChinShoulderV2') {
+    return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
+  }
+  if (action === 'leadEveryoneChinTuck3') {
+    return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
+  }
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'error', message: 'Use GET requests' }))
     .setMimeType(ContentService.MimeType.JSON);
@@ -3641,10 +3651,21 @@ function cs2Stats(spec) {
 // === LEAD EVERYONE: push one labeler's answers onto every other tab ===========
 //
 // For every frame the caller has JUDGED — all questions answered, or skipped —
-// every other labeler's row for that frame becomes the caller's answer, and a
-// row is created for them where they had none. Frames THEY have answered and
-// the caller has not are left completely alone; this only ever moves outward
-// from the caller's own pile.
+// AND that the page has listed as in range, every other labeler's row for that
+// frame becomes the caller's answer, and a row is created for them where they
+// had none. Frames THEY have answered and the caller has not are left
+// completely alone; this only ever moves outward from the caller's own pile.
+//
+// The range is "everything up to and including the frame the button was pressed
+// on", counted in QUEUE ORDER — and the queue order is not something this script
+// has ever seen. It lives in queue.json, which the page loads. So the page sends
+// the exact set of frames the lead may touch and this function intersects it
+// with what the caller has actually judged; the cutoff arithmetic happens where
+// the ordering is known, and the sheet side never has to guess.
+//
+// The list is REQUIRED. Without it this refuses rather than falling back to
+// leading everything: an older page, a dropped body or a malformed payload must
+// not silently turn a bounded lead into an unbounded one.
 //
 // Nothing is kept. The overwritten answer is gone from the tab it was in, there
 // is no backup sheet and no column recording that the row was led — this is a
@@ -3661,6 +3682,28 @@ function cs2LeadEveryone(p, who, spec) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss.getSheetByName(mineName)) {
     return jsonOut({ status: 'error', message: 'you have not labeled anything yet' });
+  }
+
+  // { stems: [...], keys: [[stemIndex, round, frame], ...] } — the stems are
+  // interned because they are long and repeat about twenty times each, which is
+  // the difference between a 291KB body and a 59KB one.
+  var allowed = {};
+  var nAllowed = 0;
+  try {
+    var payload = JSON.parse(p.payload || 'null');
+    var stems = payload && payload.stems;
+    var keys = payload && payload.keys;
+    if (!stems || !keys || !keys.length) throw new Error('empty');
+    for (var a = 0; a < keys.length; a++) {
+      var stem = stems[keys[a][0]];
+      if (stem === undefined) continue;
+      allowed[[String(stem), String(keys[a][1]), String(keys[a][2])].join(KEY_SEP)] = 1;
+      nAllowed++;
+    }
+  } catch (err) {
+    return jsonOut({ status: 'error',
+                     message: 'no frame range was sent — nothing was changed. '
+                            + 'Reload the page and try again.' });
   }
 
   // One lock for the whole operation. This rewrites entire sheets, so a save
@@ -3697,6 +3740,7 @@ function cs2LeadEveryone(p, who, spec) {
         if (!isSkip && !full) continue;             // a partial is not a judgement
         var k = [String(row[myIdx.video]), String(row[myIdx.round]),
                  String(row[myIdx.frame])].join(KEY_SEP);
+        if (allowed[k] !== 1) continue;             // past the frame it was pressed on
         // A duplicate left by the date-stem bug would otherwise be applied
         // twice; the later row wins, matching the save path's overwrite.
         seen[k] = { key: k, row: row, idx: myIdx };
@@ -3802,7 +3846,7 @@ function cs2LeadEveryone(p, who, spec) {
         if (nm) { try { cache.remove(spec.overlapKey + nm.toLowerCase()); } catch (e) {} }
       }
     }
-    return csOut(spec, { led: report, frames: judged.length });
+    return csOut(spec, { led: report, frames: judged.length, in_range: nAllowed });
   } finally {
     try { SpreadsheetApp.flush(); } catch (e) {}
     lock.releaseLock();

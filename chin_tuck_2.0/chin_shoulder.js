@@ -792,23 +792,53 @@ async function fetchRanges(labeler, n) {
 // Worth knowing: agreement between two labelers is what this tool measures, and
 // afterwards the led rows agree with the caller by construction with nothing in
 // the sheet to say so. Take the agreement numbers before leading.
+// Everything up to and including the frame you are on, in QUEUE ORDER. The
+// backend has never seen that order — it lives in queue.json, which only the
+// page loads — so the page has to NAME the frames rather than send a number.
+// The stems are interned because they are long and repeat about twenty times
+// each: 291KB of raw keys becomes 59KB.
+function leadRange() {
+  const stems = [];
+  const at = new Map();
+  const keys = [];
+  for (let i = 0; i <= state.i && i < state.frames.length; i++) {
+    const f = state.frames[i];
+    let si = at.get(f.stem);
+    if (si === undefined) { si = stems.length; stems.push(f.stem); at.set(f.stem, si); }
+    keys.push([si, f.round, f.frame]);
+  }
+  return { stems, keys };
+}
+
+// How many of those you have actually judged — the number the dialog quotes,
+// and the number of frames that will really move. Deliberately not your total:
+// leading from #700 with 3,000 answered must not offer to move 3,000.
+function leadCount() {
+  let n = 0;
+  for (let i = 0; i <= state.i && i < state.frames.length; i++) {
+    if (isResolved(state.labels.get(key(state.frames[i])))) n++;
+  }
+  return n;
+}
+
 function askLead() {
   if (!who() || state.leading) return;
   const others = (state.teamRows || [])
     .filter((r) => r.labeler.toLowerCase() !== who().toLowerCase())
     .map((r) => r.labeler);
   if (!others.length) return;
-  const n = myRowsInQueue().filter(isResolved).length;
+  const n = leadCount();
   const list = others.length === 1 ? others[0]
     : others.slice(0, -1).join(', ') + ' and ' + others[others.length - 1];
   $('lead-what').innerHTML =
-    `Your <b>${n.toLocaleString()}</b> answered frames will replace whatever `
-    + `<b>${list}</b> have on those frames. Where they have nothing, a row is `
-    + 'created for them.';
+    `Your <b>${n.toLocaleString()}</b> answered frames in <b>#1&ndash;#`
+    + `${(state.i + 1).toLocaleString()}</b> will replace whatever <b>${list}</b> `
+    + 'have on those frames. Where they have nothing, a row is created for them.';
   $('lead-keep').textContent =
-    'Frames they have answered and you have not are left alone. So are their '
-    + 'flags and their time spent. Everything else is overwritten, and their '
-    + 'old answers are not kept anywhere.';
+    `Nothing after #${(state.i + 1).toLocaleString()} is touched, even where you `
+    + 'have answered it. Neither are frames they have answered and you have not, '
+    + 'nor their flags and their time spent. Everything else is overwritten, and '
+    + 'their old answers are not kept anywhere.';
   $('lead-mask').hidden = false;
   $('lead-cancel').focus();
 }
@@ -830,16 +860,24 @@ async function doLead() {
     // harmless to the answers — it writes the same values — but the retry would
     // land after the backup already exists, so a first attempt that half
     // succeeded would be finished by a second that could no longer be undone.
-    const res = await fetch(api({ action: 'leadEveryoneChinShoulderV2', labeler: who() }),
-                            { redirect: 'follow' });
+    // POST, not GET: the frame list packs to ~59KB and Google rejects a URL
+    // long before that. text/plain keeps it a simple request so there is no CORS
+    // preflight — the same shape the callout labeler has always used.
+    const res = await fetch(api({ action: 'leadEveryoneChinShoulderV2', labeler: who() }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(leadRange()),
+      redirect: 'follow',
+    });
     const body = await res.json();
     if (body.status !== 'ok') throw new Error(body.message || 'unknown error');
     if (body.v2 !== true) throw new Error('Apps Script is out of date — redeploy it');
     const led = body.led || [];
     const touched = led.reduce((a, x) => a + (x.updated || 0) + (x.added || 0), 0);
     status(led.length
-      ? `Led ${led.length} labeler${led.length > 1 ? 's' : ''} — `
-        + `${touched.toLocaleString()} rows now carry your answers`
+      ? `Led ${led.length} labeler${led.length > 1 ? 's' : ''} up to #`
+        + `${(state.i + 1).toLocaleString()} \u2014 ${touched.toLocaleString()} `
+        + 'rows now carry your answers'
       : 'Nothing to lead');
     closeLead();
     // Their counts, the comparison grid and their ranges have all just moved.
@@ -1008,7 +1046,7 @@ function renderTeam(rows) {
     const note = document.createElement('div');
     note.id = 'lead-note';
     note.textContent = 'Replaces everyone else\u2019s answers with yours, on the '
-                     + 'frames you have answered.';
+                     + 'frames you have answered UP TO the one you are on.';
     foot.append(btn, note);
     cells.push(foot);
   }
