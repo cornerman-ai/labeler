@@ -697,19 +697,6 @@ function renderOverview() {
         + (n ? ` \u00b7 ${n} disagree` : '');
     });
   }
-  // Totalled from the per-batch tally rather than counted again, so the button
-  // and the numbers down the side of the third grid cannot disagree.
-  const nDis = disPerBatch.reduce((a, x) => a + x, 0);
-  const nd = $('next-dis');
-  if (nd) {
-    nd.innerHTML = nDis
-      ? `Go to the next disagreement <b>${nDis.toLocaleString()}</b>`
-      : 'Go to the next disagreement';
-    nd.disabled = !nDis;
-    nd.title = nDis
-      ? `${nDis.toLocaleString()} frame(s) where somebody answered differently`
-      : 'Nothing to settle';
-  }
   $('ov-sub-n').textContent = `${flagged} flagged`;
   // Counts frames somebody else has ALSO finished — the ones the colours above
   // are actually saying something about. "only you" is not a comparison.

@@ -439,9 +439,14 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
 /* Navigation, not a verdict — so it is an outline rather than a fill, and sits
-   below Skip in the same way Skip sits below Save. The count is the point of
-   it: it says how much is left to settle without opening the third grid, and
-   the button disables itself when that reaches zero. */
+   below Skip in the same way Skip sits below Save.
+   It carried a running count of what was left to settle, and that count was a
+   lie in the only situation it mattered: the verdicts come from the server and
+   only move when it recomputes them, so the number sat still through exactly
+   the stretch of work that was changing it. Nothing shows a number it cannot
+   keep honest. The button is never disabled either, for the same reason —
+   deciding there is nothing left from data that may be a minute old is worse
+   than letting the click say so. */
 #next-dis {
   width: 100%; padding: 9px; margin-top: 8px; border-radius: 10px;
   border: 1px solid var(--line); background: none;
@@ -453,7 +458,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   background: color-mix(in srgb, var(--no) 8%, transparent);
 }
 #next-dis:disabled { opacity: .4; cursor: default; }
-#next-dis b { font-variant-numeric: tabular-nums; font-weight: 600; }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
    it out only made three buttons compete for the same glance. Next-unlabeled
    keeps its words because it is the one action you cannot infer from a glyph. */
@@ -776,7 +780,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
-      <button id="next-dis" type="button" disabled>Go to the next disagreement</button>
+      <button id="next-dis" type="button">Go to the next disagreement</button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -860,6 +864,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=65"></script>
+<script src="chin_shoulder.js?v=66"></script>
 </body>
 </html>
