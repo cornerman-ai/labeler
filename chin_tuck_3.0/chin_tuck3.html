@@ -331,56 +331,161 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #agree-chev { transition: transform .2s ease; }
 #agree-btn[aria-expanded="true"] #agree-chev { transform: rotate(180deg); }
 
+/* ── comparison panel ───────────────────────────────────────────────────────
+   Rebuilt around the thing it exists to say. The old version put the raw
+   agreement percentage on a bar and hid kappa in a tooltip, which is backwards:
+   on this data shoulder_ok reads 73% agreement at kappa 0.31, because chance
+   alone accounts for 61% of it. A number that flatters the answer while the
+   number that qualifies it needs a hover is a panel that misleads by default.
+   So kappa is on screen for every question, and each bar carries a marker at
+   the chance level — the gap between the marker and the end of the fill IS the
+   agreement beyond chance, drawn rather than described.
+   ------------------------------------------------------------------------ */
 #agree-out { margin-top: 10px; font-size: 12px; display: none; }
 #agree-out.on { display: block; animation: clue-in .2s ease both; }
-#agree-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; }
-#agree-when { font-size: 10.5px; color: var(--ink-dim); }
-.ag-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
-.ag-who { font-weight: 590; font-size: 13px; }
-.ag-n { color: var(--ink-dim); font-size: 11px; margin-left: auto; }
 
-/* One row per question: label, bar, number. The bar LENGTH is how often the two
-   of you gave the same answer; its COLOUR is Cohen's kappa, i.e. whether that
-   number means anything. Encoding kappa as colour rather than a second column
-   is the whole point — a lopsided question can read 96% while the two of you
-   share no judgement at all, and a red bar says so without a labeler needing to
-   know what kappa is. The exact figures are in the row's tooltip. */
-.ag-row { display: grid; grid-template-columns: 92px 1fr 34px;
-          align-items: center; gap: 8px; margin-top: 5px; font-size: 11.5px; }
-.ag-lbl { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis;
-          white-space: nowrap; }
-.ag-bar { height: 6px; border-radius: 3px; background: rgba(120,120,128,.18);
-          overflow: hidden; }
+/* Two names, stacked. They shared one 302px line with the Compare button and
+   were cut to about five characters each, which on a team holding both "Alex"
+   and "Alex_2.0" is the one truncation that loses the distinction that
+   matters. */
+#ag-pick { display: grid; gap: 6px; }
+.ag-field { position: relative; display: block; }
+.ag-field::after {
+  content: ''; position: absolute; right: 11px; top: 50%;
+  width: 6px; height: 6px; pointer-events: none;
+  border-right: 1.5px solid var(--ink-dim);
+  border-bottom: 1.5px solid var(--ink-dim);
+  transform: translateY(-70%) rotate(45deg);
+}
+.ag-sel {
+  width: 100%; appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: 12.5px; font-weight: 500;
+  padding: 8px 26px 8px 11px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+.ag-sel:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+#ag-vs {
+  font-size: 10px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-dim); text-align: center;
+  margin: -2px 0;
+}
+
+/* iOS segmented control. Two options rather than a 41-item dropdown for the
+   one choice that is made every time — "all frames" is the default and should
+   cost nothing to get back to. */
+#ag-scope { display: flex; gap: 3px; margin-top: 8px; padding: 2px;
+            border-radius: 9px; background: rgba(120,120,128,.12); }
+#ag-scope button {
+  flex: 1; padding: 6px 4px; border: 0; border-radius: 7px; background: none;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+#ag-scope button[aria-selected="true"] {
+  background: var(--card); color: var(--ink); font-weight: 590;
+  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  #ag-scope { background: rgba(120,120,128,.20); }
+  /* Lighter than its track, not darker. The card colour made the selected
+     segment the darkest thing in the control, which is upside down: the raised
+     one should catch the light. */
+  #ag-scope button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--ink) 22%, var(--card));
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+#ag-batch-row { margin-top: 6px; }
+#ag-batch-row[hidden] { display: none; }
+#ag-go {
+  width: 100%; margin-top: 8px; padding: 9px; border: 0; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
+}
+#ag-go:disabled { opacity: .4; cursor: default; }
+
+/* The headline: how often these two wrote down the same thing. Everything
+   under it explains that number, so it is the only large type here. */
+.ag-hero { display: flex; align-items: flex-end; gap: 10px;
+           margin: 14px 0 4px; }
+.ag-big {
+  font: 600 30px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: -.03em;
+}
+.ag-big small { font-size: 15px; font-weight: 500; color: var(--ink-dim);
+                margin-left: 1px; }
+.ag-cap { font-size: 11px; color: var(--ink-dim); margin-top: 3px; }
+.ag-meta { margin-left: auto; text-align: right; font-size: 10.5px;
+           line-height: 1.55; color: var(--ink-dim);
+           font-variant-numeric: tabular-nums; }
+/* The weakest question, because that is the one that caps what a model can
+   learn — an average would let three good questions hide a broken one. */
+.ag-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 590;
+  font-variant-numeric: tabular-nums;
+}
+.ag-chip.k-hi  { background: color-mix(in srgb, var(--yes) 14%, transparent);
+                 color: color-mix(in srgb, var(--yes) 72%, var(--ink)); }
+.ag-chip.k-mid { background: color-mix(in srgb, var(--maybe) 16%, transparent);
+                 color: color-mix(in srgb, var(--maybe) 62%, var(--ink)); }
+.ag-chip.k-lo  { background: color-mix(in srgb, var(--no) 13%, transparent);
+                 color: color-mix(in srgb, var(--no) 72%, var(--ink)); }
+.ag-chip.k-na  { background: rgba(120,120,128,.16); color: var(--ink-dim); }
+@media (prefers-color-scheme: dark) {
+  .ag-chip.k-hi  { color: color-mix(in srgb, var(--yes) 60%, white); }
+  .ag-chip.k-mid { color: color-mix(in srgb, var(--maybe) 60%, white); }
+  .ag-chip.k-lo  { color: color-mix(in srgb, var(--no) 55%, white); }
+}
+
+/* One question per row, hairline-separated the way a grouped list is. The bar
+   gets the full width because the chance marker has to be readable on it. */
+.ag-rows { margin-top: 12px; }
+.ag-row { padding: 9px 0; border-top: 1px solid var(--line); }
+.ag-row:first-child { border-top: 0; padding-top: 4px; }
+.ag-row-t { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.ag-lbl { flex: 1; min-width: 0; font-size: 12px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-pct { font: 600 12.5px ui-monospace, "SF Mono", Menlo, monospace;
+          font-variant-numeric: tabular-nums; }
+.ag-k { font-size: 10.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ag-k.k-hi  { color: color-mix(in srgb, var(--yes) 72%, var(--ink)); }
+.ag-k.k-mid { color: color-mix(in srgb, var(--maybe) 62%, var(--ink)); }
+.ag-k.k-lo  { color: color-mix(in srgb, var(--no) 72%, var(--ink)); }
+.ag-k.k-na  { color: var(--ink-dim); }
+@media (prefers-color-scheme: dark) {
+  .ag-k.k-hi  { color: color-mix(in srgb, var(--yes) 60%, white); }
+  .ag-k.k-mid { color: color-mix(in srgb, var(--maybe) 60%, white); }
+  .ag-k.k-lo  { color: color-mix(in srgb, var(--no) 55%, white); }
+}
+/* display:block is load-bearing. The old row was a grid, which blockified this
+   span for free; the row is a plain block now, so an inline span takes no
+   height and the whole bar renders at zero. */
+.ag-bar { display: block; position: relative; height: 5px; border-radius: 3px;
+          background: rgba(120,120,128,.16); }
+/* No entrance animation on the fill. It was a width transition released on the
+   next animation frame, then a scaleX keyframe, and both failed the same way: a
+   tab that is not compositing never advances them, so every bar sat collapsed at
+   zero while the number beside it read 73%. A bar here IS the measurement, not a
+   flourish, and it has to be right on the first paint with no clock involved.
+   The panel already fades in as a whole; the rows do not need their own. */
 .ag-bar i { display: block; height: 100%; border-radius: 3px; }
 .ag-bar i.k-hi  { background: var(--yes); }
 .ag-bar i.k-mid { background: var(--maybe); }
 .ag-bar i.k-lo  { background: var(--no); }
 .ag-bar i.k-na  { background: var(--ink-dim); }
-.ag-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
-.ag-note { font-size: 11.5px; color: var(--ink-dim); }
-
-/* Two slots and a verb. Exactly one pair can be asked about at a time, which is
-   why this is two selects rather than a multi-select: a control that can express
-   "three people" would have to reject it afterwards. */
-#ag-pick { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
-.ag-sel {
-  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
-  padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--card); color: var(--ink);
+/* Where the bar would land if the two of them agreed purely by chance. */
+.ag-chance { position: absolute; top: -3px; bottom: -3px; width: 2px;
+             border-radius: 1px; background: var(--ink); opacity: .38; }
+.ag-legend { display: flex; align-items: center; gap: 6px; margin-top: 10px;
+             font-size: 10.5px; color: var(--ink-dim); }
+.ag-legend b { flex: none; width: 2px; height: 11px; border-radius: 1px;
+               background: var(--ink); opacity: .38; }
+.ag-note { font-size: 11.5px; color: var(--ink-dim); line-height: 1.5; }
+#agree-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 10px;
+              padding-top: 9px; border-top: 1px solid var(--line); }
+#agree-when { font-size: 10.5px; color: var(--ink-dim); }
+@media (prefers-reduced-motion: reduce) {
+  #ag-scope button { transition: none; }
 }
-/* The scope row sits under the two names rather than beside them: three
-   dropdowns on one line at this width truncated every name to four letters,
-   and which frames are being scored is a different question from whose answers
-   they are. */
-#ag-scope { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-#ag-scope label { font-size: 11.5px; color: var(--ink-dim); flex: none; }
-#ag-batch { flex: 1; min-width: 0; }
-#ag-vs { flex: none; font-size: 11px; color: var(--ink-dim); }
-#ag-go {
-  flex: none; padding: 6px 11px; border-radius: 8px; border: 0;
-  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 590;
-}
-#ag-go:disabled { opacity: .4; cursor: default; }
 
 #q-lock {
   display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
@@ -733,6 +838,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
                                  background: rgba(120,120,128,.14); }
 .idc.ok { opacity: 1; color: var(--yes); }
 .idc svg { width: 13px; height: 13px; display: block; }
+/* Excluding the footage sits under the three things that identify it, because
+   that is what it acts on: not this frame, this VIDEO. Quiet until hovered, the
+   same as Lead everyone — a permanently red control under every frame would
+   read as a warning about the frame. */
+#excl-row { grid-column: 1 / -1; margin-top: 10px; padding-top: 9px;
+            border-top: 1px solid var(--line); }
+#excl-btn {
+  width: 100%; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: none; color: var(--ink-dim);
+  font-size: 12px; font-weight: 500;
+}
+#excl-btn:hover:not(:disabled) {
+  color: var(--no); border-color: color-mix(in srgb, var(--no) 45%, transparent);
+  background: color-mix(in srgb, var(--no) 8%, transparent);
+}
+#excl-btn:disabled { opacity: .4; cursor: default; }
 /* The one destructive control on the page, so it is styled as one: it sits
    apart at the foot of the team list, it is not a primary action, and it says
    what it does rather than being an icon. Red only on hover — a permanently red
@@ -855,6 +976,9 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <span class="idv" id="id-frame">&mdash;</span>
       <button class="idc" data-copy="id-frame" type="button"
               title="Copy frame" aria-label="Copy frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <div id="excl-row">
+        <button id="excl-btn" type="button">Exclude this video from the dataset</button>
+      </div>
     </div>
 
     <div class="card" id="q-card">
@@ -964,6 +1088,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=27"></script>
+<script src="chin_tuck3.js?v=33"></script>
 </body>
 </html>

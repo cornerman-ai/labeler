@@ -33,10 +33,12 @@ function doPost(e) {
   // QUEUE, and the queue order lives in the page — this script has never seen
   // it. So the page sends the frames the lead is allowed to touch, and that
   // list packs to ~59KB for a full queue, which no URL will carry.
-  if (action === 'leadEveryoneChinShoulderV2' || action === 'agreementChinShoulderV2') {
+  if (action === 'leadEveryoneChinShoulderV2' || action === 'agreementChinShoulderV2' ||
+      action === 'excludeVideoChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
   }
-  if (action === 'leadEveryoneChinTuck3' || action === 'agreementChinTuck3') {
+  if (action === 'leadEveryoneChinTuck3' || action === 'agreementChinTuck3' ||
+      action === 'excludeVideoChinTuck3') {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
   return ContentService
@@ -308,7 +310,8 @@ function doGet(e) {
   if (action === 'listChinShoulderV2' || action === 'saveChinShoulderV2' ||
       action === 'deleteChinShoulderV2' || action === 'statsChinShoulderV2' ||
       action === 'peersChinShoulderV2' || action === 'agreementChinShoulderV2' ||
-      action === 'overlapChinShoulderV2' || action === 'leadEveryoneChinShoulderV2') {
+      action === 'overlapChinShoulderV2' || action === 'leadEveryoneChinShoulderV2' ||
+      action === 'excludeVideoChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
   }
 
@@ -317,7 +320,8 @@ function doGet(e) {
   if (action === 'listChinTuck3' || action === 'saveChinTuck3' ||
       action === 'deleteChinTuck3' || action === 'statsChinTuck3' ||
       action === 'peersChinTuck3' || action === 'agreementChinTuck3' ||
-      action === 'overlapChinTuck3' || action === 'leadEveryoneChinTuck3') {
+      action === 'overlapChinTuck3' || action === 'leadEveryoneChinTuck3' ||
+      action === 'excludeVideoChinTuck3') {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
 
@@ -3662,14 +3666,160 @@ function cs2DecodeScope(raw) {
   var payload = JSON.parse(raw);
   var stems = payload && payload.stems, keys = payload && payload.keys;
   if (!stems || !keys || !keys.length) throw new Error('empty scope');
-  var out = { set: {}, n: 0 };
+  // `facts` is optional and index-aligned with `keys`: [frame_sec, stance,
+  // shoulder_used] per frame. Only the callers that CREATE rows need it — a
+  // scope that merely filters existing rows can leave it out.
+  var facts = (payload && payload.facts) || null;
+  var out = { set: {}, n: 0, facts: {} };
   for (var i = 0; i < keys.length; i++) {
     var stem = stems[keys[i][0]];
     if (stem === undefined) continue;
-    out.set[[String(stem), String(keys[i][1]), String(keys[i][2])].join(KEY_SEP)] = 1;
+    var k = [String(stem), String(keys[i][1]), String(keys[i][2])].join(KEY_SEP);
+    out.set[k] = 1;
+    if (facts && facts[i]) out.facts[k] = facts[i];
     out.n++;
   }
   return out;
+}
+
+// === EXCLUDE A VIDEO: every frame of it becomes a skip, on every tab =========
+//
+// For when the footage itself is the problem — the wrong fighter, an angle
+// nothing can be read from, a clip that should never have entered the queue.
+// Every labeler's row for every frame the page names is forced to skipped with
+// its answers cleared, and a skipped row is created for anyone who had none, so
+// the video stops appearing as work outstanding for the whole team at once.
+//
+// Which frames belong to a video is a fact about queue.json, and this script has
+// never seen it — so the page names them, in the same interned payload the lead
+// and the scoped agreement already use. The scope is REQUIRED: without it there
+// is no defensible default, and "skip everything for everybody" is not one.
+//
+// Unlike the lead this touches the CALLER's tab as well. They are excluding the
+// footage, not overruling their colleagues, and leaving their own answers on a
+// video they have just declared unusable would be the one row that contradicts
+// the whole point.
+function cs2ExcludeVideo(p, who, spec) {
+  spec = spec || CS2_SPEC;
+  var HEADERS = spec.headers;
+  var scope = null;
+  try {
+    scope = cs2DecodeScope(p.payload);
+    if (!scope) throw new Error('no scope');
+  } catch (err) {
+    return jsonOut({ status: 'error',
+                     message: 'no frames were sent — nothing was changed. '
+                            + 'Reload the page and try again.' });
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(120000);
+  } catch (e) {
+    return jsonOut({ status: 'error',
+                     message: 'the sheet was busy — nothing changed, try again' });
+  }
+
+  try {
+    var sheets = ss.getSheets();
+    var report = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var name = sheets[s].getName();
+      if (name.indexOf(spec.prefix) !== 0) continue;
+      var target = name.substring(spec.prefix.length);
+      // Same guard as the lead: getOrCreateCs2Sheet resolves a LABELER, and a
+      // hand-made tab whose name does not round-trip would be answered with a
+      // new empty one while the real tab sat untouched.
+      if (cs2SheetName(target, spec) !== name) {
+        report.push({ labeler: target, updated: 0, added: 0,
+                      skipped: 'tab name does not round-trip: ' + name });
+        continue;
+      }
+
+      var sh = getOrCreateCs2Sheet(target, spec);
+      var width = HEADERS.length;
+      if (sh.getMaxColumns() < width) {
+        sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
+      }
+      var lastRow = sh.getLastRow();
+      var block = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, width).getValues() : [];
+      var idx = punchDirHeaderIndex(
+        sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+
+      var at = {};
+      for (var b = 0; b < block.length; b++) {
+        if (block[b][idx.video] === '' || block[b][idx.video] === null) continue;
+        at[[String(block[b][idx.video]), String(block[b][idx.round]),
+            String(block[b][idx.frame])].join(KEY_SEP)] = b;
+      }
+
+      var now = new Date().toISOString();
+      var updated = 0, added = 0;
+      for (var k in scope.set) {
+        if (!scope.set.hasOwnProperty(k)) continue;
+        var parts = k.split(KEY_SEP);
+        var into = at[k];
+        if (into === undefined) {
+          var row = [];
+          for (var c = 0; c < width; c++) row.push('');
+          row[idx.labeler] = target;
+          row[idx.video] = parts[0];
+          row[idx.round] = Number(parts[1]);
+          row[idx.frame] = Number(parts[2]);
+          var f = scope.facts[k];
+          if (f) {
+            if (idx.frame_sec !== undefined && f[0] !== undefined && f[0] !== null) {
+              row[idx.frame_sec] = Number(f[0]);
+            }
+            if (idx.stance !== undefined) row[idx.stance] = String(f[1] || '');
+            if (idx.shoulder_used !== undefined) row[idx.shoulder_used] = String(f[2] || '');
+          }
+          row[idx.consulted] = 0;
+          row[idx.flag] = 0;
+          row[idx.dwell_sec] = 0;
+          row[idx.reviewed] = 0;
+          block.push(row);
+          into = block.length - 1;
+          added++;
+        } else {
+          updated++;
+        }
+        block[into][idx.ts] = now;
+        block[into][idx.skipped] = 1;
+        // A skipped row carries no answers, and 0 rather than blank says so
+        // outright — the same convention the save path writes.
+        for (var q = 0; q < spec.fields.length; q++) {
+          if (idx[spec.fields[q]] !== undefined) block[into][idx[spec.fields[q]]] = 0;
+        }
+      }
+
+      if (block.length) {
+        var need = block.length + 1;
+        if (sh.getMaxRows() < need) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        // See cs2SameVideo: a date-like stem must stay the string it was, and
+        // this writes stems into rows that never held one.
+        try { sh.getRange(2, idx.video + 1, block.length, 1).setNumberFormat('@'); } catch (e) {}
+        sh.getRange(2, 1, block.length, width).setValues(block);
+      }
+      report.push({ labeler: target, updated: updated, added: added });
+    }
+
+    cs2InvalidateStats(spec, who);
+    var cache = null;
+    try { cache = CacheService.getScriptCache(); } catch (e) {}
+    if (cache) {
+      for (var r2 = 0; r2 < report.length; r2++) {
+        var nm = cs2SheetName(report[r2].labeler, spec);
+        if (nm) { try { cache.remove(spec.overlapKey + nm.toLowerCase()); } catch (e) {} }
+      }
+    }
+    return csOut(spec, { excluded: report, frames: scope.n });
+  } finally {
+    try { SpreadsheetApp.flush(); } catch (e) {}
+    lock.releaseLock();
+  }
 }
 
 // === LEAD EVERYONE: push one labeler's answers onto every other tab ===========
@@ -4242,6 +4392,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
   }
   if (op === 'stats') return cs2Stats(spec);
   if (op === 'leadEveryone') return cs2LeadEveryone(p, p.labeler || labeler, spec);
+  if (op === 'excludeVideo') return cs2ExcludeVideo(p, p.labeler || labeler, spec);
   if (op === 'peers') return cs2Peers(p, p.labeler || labeler, spec);
   if (op === 'agreement') return cs2Agreement(p, p.labeler || labeler, spec);
   if (op === 'overlap') return cs2Overlap(p, p.labeler || labeler, spec);

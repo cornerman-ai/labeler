@@ -94,6 +94,7 @@ const state = {
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
   agreeBatch: 'all',       // 'all', or a 0-based batch index
+  agreeBatchLast: 0,       // so toggling back to "by batch" returns to it
   agreeBusy: false,        // a comparison is being computed right now
   agreeBody: null,         // last agreement snapshot
   agreeAt: null,           // when it was taken
@@ -227,6 +228,7 @@ async function loadLabels() {
   state.pairA = null;          // default the picker to the new name
   state.pairB = null;
   state.agreeBatch = 'all';
+  state.agreeBatchLast = 0;
   setAgreeOpen(false);
   if (!name) return;
   const body = await call({ action: 'listChinShoulderV2', labeler: name }, 'load labels');
@@ -1180,6 +1182,17 @@ function labelerNames() {
 
 // The frames of one batch, in the {stems, keys} shape the backend decodes.
 // Interned like the lead payload, for the same reason and with the same reader.
+// Changing the scope drops the numbers on screen. They describe the OLD one,
+// and leaving them under a heading that now says something else is how a
+// hundred frames get read as three thousand.
+function setAgreeScope(v) {
+  state.agreeBatch = v;
+  if (v !== 'all') state.agreeBatchLast = v;
+  state.agreeBody = null;
+  state.agreeAt = null;
+  renderAgreePanel();
+}
+
 function batchScope(b) {
   const stems = [];
   const at = new Map();
@@ -1238,6 +1251,8 @@ function renderAgreePanel() {
   const pick = document.createElement('div');
   pick.id = 'ag-pick';
   const mk = (slot) => {
+    const wrap = document.createElement('span');
+    wrap.className = 'ag-field';
     const sel = document.createElement('select');
     sel.className = 'ag-sel';
     sel.setAttribute('aria-label', slot === 'pairA' ? 'First labeler' : 'Second labeler');
@@ -1260,16 +1275,13 @@ function renderAgreePanel() {
       state.agreeAt = null;
       renderAgreePanel();
     };
-    return sel;
+    wrap.appendChild(sel);
+    return wrap;
   };
   const vs = document.createElement('span');
   vs.id = 'ag-vs';
   vs.textContent = 'vs';
-  const go_ = document.createElement('button');
-  go_.id = 'ag-go';
-  go_.textContent = 'Compare';
-  go_.onclick = computeAgreement;
-  pick.append(mk('pairA'), vs, mk('pairB'), go_);
+  pick.append(mk('pairA'), vs, mk('pairB'));
   out.appendChild(pick);
 
   // Which frames to score. Kappa over the whole queue hides the thing you
@@ -1278,36 +1290,50 @@ function renderAgreePanel() {
   // hundred new ones.
   const scope = document.createElement('div');
   scope.id = 'ag-scope';
-  const lab = document.createElement('label');
-  lab.setAttribute('for', 'ag-batch');
-  lab.textContent = 'Frames';
+  scope.setAttribute('role', 'tablist');
+  const seg = (label, on, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(on));
+    b.onclick = fn;
+    return b;
+  };
+  const byBatch = state.agreeBatch !== 'all';
+  scope.append(
+    seg('All frames', !byBatch, () => setAgreeScope('all')),
+    seg('By batch', byBatch, () => setAgreeScope(state.agreeBatchLast)));
+  out.appendChild(scope);
+
+  const brow = document.createElement('div');
+  brow.id = 'ag-batch-row';
+  brow.hidden = !byBatch;
+  const bfield = document.createElement('span');
+  bfield.className = 'ag-field';
   const bsel = document.createElement('select');
   bsel.id = 'ag-batch';
   bsel.className = 'ag-sel';
   const nB = Math.ceil(state.frames.length / BATCH);
-  const opts = [['all', 'All frames']];
   for (let b = 0; b < nB; b++) {
     const lo = b * BATCH + 1;
     const hi = Math.min((b + 1) * BATCH, state.frames.length);
-    opts.push([String(b), `Batch ${b + 1} (#${lo}\u2013#${hi})`]);
-  }
-  for (const [v, t] of opts) {
     const o = document.createElement('option');
-    o.value = v;
-    o.textContent = t;
-    o.selected = String(state.agreeBatch) === v;
+    o.value = String(b);
+    o.textContent = `Batch ${b + 1}  ·  #${lo}\u2013#${hi}`;
+    o.selected = state.agreeBatch === b;
     bsel.appendChild(o);
   }
-  bsel.onchange = () => {
-    state.agreeBatch = bsel.value === 'all' ? 'all' : Number(bsel.value);
-    // The numbers on screen describe the OLD scope. Drop them rather than leave
-    // them sitting under a heading that now says something else.
-    state.agreeBody = null;
-    state.agreeAt = null;
-    renderAgreePanel();
-  };
-  scope.append(lab, bsel);
-  out.appendChild(scope);
+  bsel.onchange = () => setAgreeScope(Number(bsel.value));
+  bfield.appendChild(bsel);
+  brow.appendChild(bfield);
+  out.appendChild(brow);
+
+  const go_ = document.createElement('button');
+  go_.id = 'ag-go';
+  go_.textContent = 'Compare';
+  go_.onclick = computeAgreement;
+  out.appendChild(go_);
 
   const body = document.createElement('div');
   body.id = 'ag-body';
@@ -1373,6 +1399,27 @@ function kappaClass(k) {
   return 'k-lo';
 }
 
+// The same three bands the colour uses. A fourth word put "fair" beside a red
+// bar and left the reader to decide which of the two to believe.
+function kappaWord(k) {
+  if (k === null || k === undefined) return '\u2014';
+  if (k >= 0.6) return 'substantial';
+  if (k >= 0.4) return 'moderate';
+  return 'poor';
+}
+
+// Where the bar would sit if the two of them agreed purely by chance, recovered
+// from the two numbers the backend already sends: kappa is (po - pe)/(1 - pe),
+// so pe is (po - k)/(1 - k). Worth drawing, because it is the whole difference
+// between a real result and a flattering one — on the current data shoulder_ok
+// reads 73% agreement and 61 of those points are chance.
+function chanceLevel(agree, kappa) {
+  if (agree === null || agree === undefined) return null;
+  if (kappa === null || kappa === undefined || kappa >= 1) return null;
+  const pe = (agree - kappa) / (1 - kappa);
+  return (pe >= 0 && pe <= 1) ? pe * 100 : null;
+}
+
 function renderAgreement(r) {
   const body = $('ag-body');
   if (!body) return;
@@ -1386,64 +1433,123 @@ function renderAgreement(r) {
     return;
   }
 
-  const head = document.createElement('div');
-  head.className = 'ag-head';
-  const who_ = document.createElement('span');
-  who_.className = 'ag-who';
-  who_.textContent = `${r.a} vs ${r.b}${where}`;
-  const n = document.createElement('span');
-  n.className = 'ag-n';
-  // "62 of 100" inside a batch: the scored count alone reads as the whole batch
-  // when it is only the part both of them have finished.
-  n.textContent = r.scope_n
-    ? `${r.shared} of ${r.scope_n} frames`
-    : `${r.shared} frames`;
-  head.append(who_, n);
-  // Everything that used to be a line of prose lives here instead.
-  const ind = r.independent || { shared: 0, all_four_match: 0 };
-  head.title = `${r.all_four_match} of ${r.shared} frames identical on all four`
-    + (ind.shared
-        ? ` · without the clue: ${ind.all_four_match} of ${ind.shared}`
-        : ' · no clue-free shared frames yet');
-  body.appendChild(head);
+  // The headline is how often they wrote down the same thing, because that is
+  // what someone opens this panel to ask. Everything below it explains it.
+  const identical = Math.round((r.all_four_match / r.shared) * 100);
+  const kappas = FIELDS
+    .map((f) => (r.questions[f] || {}).kappa)
+    .filter((k) => k !== null && k !== undefined);
+  // The WEAKEST question, not an average: labels can only carry a model as far
+  // as their shakiest question, and a mean lets three clean ones hide a broken
+  // one. With a single question it is simply that question.
+  const worst = kappas.length ? Math.min(...kappas) : null;
 
+  const hero = document.createElement('div');
+  hero.className = 'ag-hero';
+  const left = document.createElement('div');
+  const big = document.createElement('div');
+  big.className = 'ag-big';
+  big.append(String(identical));
+  const pctSign = document.createElement('small');
+  pctSign.textContent = '%';
+  big.append(pctSign);
+  const cap = document.createElement('div');
+  cap.className = 'ag-cap';
+  cap.textContent = FIELDS.length > 1 ? 'answered identically' : 'same answer';
+  left.append(big, cap);
+
+  const meta = document.createElement('div');
+  meta.className = 'ag-meta';
+  meta.style.whiteSpace = 'pre-line';
+  meta.textContent = r.scope_n
+    ? `${r.shared} of ${r.scope_n}\nframes compared`
+    : `${r.shared}\nframes compared`;
+  hero.append(left, meta);
+  body.appendChild(hero);
+
+  const chip = document.createElement('span');
+  chip.className = 'ag-chip ' + (kappaClass(worst) || 'k-na');
+  chip.textContent = (FIELDS.length > 1 ? 'weakest \u03ba ' : '\u03ba ')
+    + (worst === null ? '\u2014' : worst.toFixed(2)) + ' \u00b7 ' + kappaWord(worst);
+  chip.title = 'Cohen\u2019s kappa: agreement left after chance is taken out. '
+             + 'Under 0.4 poor, 0.4 to 0.6 moderate, over 0.6 substantial.';
+  body.appendChild(chip);
+
+  const rows = document.createElement('div');
+  rows.className = 'ag-rows';
+  const grow = [];
   for (const fld of FIELDS) {
     const q = r.questions[fld] || {};
     const pct = (q.agree === null || q.agree === undefined) ? null : q.agree * 100;
+    const kc = pct === null ? 'k-na' : (kappaClass(q.kappa) || 'k-na');
+    const chance = chanceLevel(q.agree, q.kappa);
 
     const row = document.createElement('div');
     row.className = 'ag-row';
     row.title = pct === null ? 'not enough shared frames'
-      : `${Math.round(pct)}% same answer · kappa `
-        + (q.kappa === null || q.kappa === undefined ? '—' : q.kappa.toFixed(2))
-        + ' (agreement beyond chance)';
+      : `${q.n} frames \u00b7 ${Math.round(pct)}% same answer`
+        + (chance === null ? '' : `, ${Math.round(chance)}% expected by chance`);
 
+    const top = document.createElement('div');
+    top.className = 'ag-row-t';
     const lbl = document.createElement('span');
     lbl.className = 'ag-lbl';
     lbl.textContent = QUESTION_LABELS[fld];
+    const val = document.createElement('span');
+    val.className = 'ag-pct';
+    val.textContent = pct === null ? '\u2014' : `${Math.round(pct)}%`;
+    const kap = document.createElement('span');
+    kap.className = 'ag-k ' + kc;
+    kap.textContent = '\u03ba ' + (q.kappa === null || q.kappa === undefined
+      ? '\u2014' : q.kappa.toFixed(2));
+    top.append(lbl, val, kap);
 
     const bar = document.createElement('span');
     bar.className = 'ag-bar';
     const fill = document.createElement('i');
-    fill.style.width = `${pct === null ? 0 : pct}%`;
-    fill.className = pct === null ? 'k-na' : (kappaClass(q.kappa) || 'k-na');
+    fill.className = kc;
+    fill.style.width = (pct === null ? 0 : pct) + '%';
     bar.appendChild(fill);
+    if (chance !== null) {
+      const mark = document.createElement('b');
+      mark.className = 'ag-chance';
+      mark.style.left = `calc(${chance}% - 1px)`;
+      bar.appendChild(mark);
+    }
+    grow.push(pct === null ? 0 : pct);
 
-    const val = document.createElement('span');
-    val.className = 'ag-pct';
-    val.textContent = pct === null ? '—' : `${Math.round(pct)}%`;
+    row.append(top, bar);
+    rows.appendChild(row);
+  }
+  body.appendChild(rows);
 
-    row.append(lbl, bar, val);
-    body.appendChild(row);
+  if (grow.some((w) => w > 0)) {
+    const leg = document.createElement('div');
+    leg.className = 'ag-legend';
+    leg.append(document.createElement('b'),
+               document.createTextNode('agreement expected by chance'));
+    body.appendChild(leg);
   }
 
+  // The clue-free subset used to be buried in a tooltip on the header. It is
+  // the honest number — agreement over frames where neither of them looked at
+  // anyone else's answer first — so it gets a line.
+  const ind = r.independent || { shared: 0, all_four_match: 0 };
   const foot = document.createElement('div');
   foot.id = 'agree-foot';
   const when = document.createElement('span');
   when.id = 'agree-when';
-  when.textContent = state.agreeAt
-    ? 'as of ' + state.agreeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '';
+  when.textContent = (ind.shared
+      ? `${Math.round((ind.all_four_match / ind.shared) * 100)}% without the clue`
+      : 'no clue-free frames yet')
+    + (state.agreeAt
+        ? ' \u00b7 ' + state.agreeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '');
+  when.title = ind.shared
+    ? `${ind.all_four_match} of ${ind.shared} frames matched where NEITHER of them `
+      + 'had opened the clue panel \u2014 the subset that measures independent '
+      + 'judgement rather than convergence'
+    : 'every shared frame had the clue panel opened by one of them';
   foot.appendChild(when);
   body.appendChild(foot);
 }

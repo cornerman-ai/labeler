@@ -119,7 +119,8 @@ independence); `dwell_sec` accumulates across visits, capped at 120s per look.
 
 Both generations run the SAME backend functions, parameterized by `CS2_SPEC` /
 `CS3_SPEC` (prefix, headers, values, fields, cache keys, action suffix). Actions
-are `{list,save,delete,stats,peers,agreement,overlap,leadEveryone}` + `ChinShoulderV2` or
+are `{list,save,delete,stats,peers,agreement,overlap,leadEveryone,excludeVideo}` +
+`ChinShoulderV2` or
 `ChinTuck3`. Every response carries its generation's marker (`v2` / `v3`) —
 doGet answers unknown actions with a success shape, so without the marker a page
 talking to an older deployment would read a save as successful having written
@@ -137,15 +138,24 @@ BEFORE leading. Rewrites whole sheets, so it holds the script lock for the
 duration, and the page sends it WITHOUT `call()`'s retry. It is bounded by the
 frame it was pressed on, in QUEUE order.
 
-**Frame scopes over POST.** Both `leadEveryone` and `agreement` can be limited
+**Exclude video** (`excludeVideo`, the button under the frame's video/round/frame
+card — 3.0 only, though the endpoint serves both): every frame of one video,
+across every round, is forced to `skipped=1` with its answers cleared to 0, on
+EVERY labeler tab including the caller's, creating rows for anyone who had none.
+For footage that should not be in the queue at all. Other videos are untouched,
+as are flags and dwell. Not undoable.
+
+**Frame scopes over POST.** `leadEveryone`, `agreement` and `excludeVideo` can be limited
 to a set of frames the page names, because every scope worth having (up to
 frame N, inside batch N) is defined by queue order and the Apps Script has never
 seen `queue.json`. The page sends `{stems, keys}` with the stems interned (a
 full queue is 291KB raw, 59KB packed) in a POST body via `doPost`, since no URL
 carries that; the query string still holds action and labeler, and
 `Content-Type: text/plain` keeps it preflight-free. `cs2DecodeScope` reads it.
-For `leadEveryone` the scope is REQUIRED — a missing or malformed one refuses
-rather than falling back to leading everything. For `agreement` it is optional:
+`cs2DecodeScope` also carries an optional index-aligned `facts` array
+(`[frame_sec, stance, shoulder_used]`) for the callers that CREATE rows.
+For `leadEveryone` and `excludeVideo` the scope is REQUIRED — a missing or
+malformed one refuses rather than falling back to acting on everything. For `agreement` it is optional:
 no payload means the whole queue, which is what "All frames" and every older
 page send, so the default request is unchanged.
 
