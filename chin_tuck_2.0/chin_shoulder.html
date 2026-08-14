@@ -566,7 +566,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   text-transform: uppercase; color: var(--ink-dim);
   margin: 2px 0 7px 4px;
 }
-.list-card { padding: 0; overflow: hidden; }
+/* flex-shrink: 0 is load-bearing, not decoration. #side is a flex column,
+   and a flex item auto-sizes its minimum to its CONTENT height only when
+   overflow is visible — for any other overflow value (hidden, here, so the
+   grouped list corners clip) the spec-defined automatic minimum is zero. The
+   flex algorithm was free to shrink this card to nothing, and did: it rendered
+   two real, correctly styled rows at zero height, invisible and unclickable,
+   while every OTHER card on the page — none of which set overflow — was immune
+   without ever having to say so. */
+.list-card { padding: 0; overflow: hidden; flex-shrink: 0; }
 .row-act {
   display: block; width: 100%; min-height: 38px; padding: 10px 14px;
   border: 0; background: none; text-align: left;
