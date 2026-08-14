@@ -524,6 +524,33 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .opt[data-v="hard_to_say"][aria-pressed="true"] { background: var(--maybe); }
 .opt kbd { font: inherit; opacity: .5; margin-left: 3px; }
 
+/* Vertical twin of #ag-scope: same track, same raised selected segment, turned
+   90°. Stacked because the two buttons it governs are themselves stacked —
+   the switcher should read as their label, not as a third thing competing with
+   them for a horizontal row. */
+#mode-switch { display: flex; flex-direction: column; gap: 3px;
+               margin-bottom: 10px; padding: 2px; border-radius: 9px;
+               background: rgba(120,120,128,.12); }
+#mode-switch button {
+  padding: 7px 4px; border: 0; border-radius: 7px; background: none;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-dim);
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+#mode-switch button[aria-selected="true"] {
+  background: var(--card); color: var(--ink); font-weight: 590;
+  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  #mode-switch { background: rgba(120,120,128,.20); }
+  #mode-switch button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--ink) 22%, var(--card));
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #mode-switch button { transition: none; }
+}
+
 #save {
   width: 100%; padding: 11px; border: none; border-radius: 10px;
   background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
@@ -550,29 +577,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
-/* Same button as Skip, halved: two of these read as a matched pair sitting
-   right under the control they extend, rather than a list of plain-text links
-   floating in a separately captioned section. No icons, no colour-coding --
-   Skip itself has neither, and matching it is what makes these look like
-   BUTTONS in the first place. */
-#review-row { display: flex; gap: 8px; margin-top: 8px; }
-#next-dis, #skip-dis {
-  flex: 1; min-width: 0; padding: 9px 6px; border-radius: 10px;
-  border: 1px solid transparent; font-weight: 510; font-size: 11.5px;
-  line-height: 1.3; text-align: center;
-  background: rgba(120,120,128,.14);
-  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
-}
-#next-dis:hover:not(:disabled), #skip-dis:hover:not(:disabled) {
-  background: rgba(120,120,128,.20); color: var(--ink);
-}
-#next-dis:disabled, #skip-dis:disabled { opacity: .4; cursor: default; }
-@media (prefers-color-scheme: dark) {
-  #next-dis, #skip-dis { background: rgba(120,120,128,.26); }
-  #next-dis:hover:not(:disabled), #skip-dis:hover:not(:disabled) {
-    background: rgba(120,120,128,.34);
-  }
-}
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
    it out only made three buttons compete for the same glance. Next-unlabeled
    keeps its words because it is the one action you cannot infer from a glyph. */
@@ -1050,14 +1054,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     </div>
 
     <div class="card" id="act-card">
-      <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
-      <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
-      <div id="review-row">
-        <button id="next-dis" type="button"
-                title="Save this frame, then jump to the next frame somebody answered differently"><span class="rv-t">Save &amp; next disagreement</span></button>
-        <button id="skip-dis" type="button"
-                title="Skip this frame, then jump to the next frame somebody answered differently"><span class="rv-t">Skip &amp; next disagreement</span></button>
+      <div id="mode-switch" role="tablist" aria-label="Working mode">
+        <button type="button" data-mode="active" aria-selected="true">Active</button>
+        <button type="button" data-mode="reviewer" aria-selected="false">Reviewer</button>
       </div>
+      <button id="save"><span class="rv-t">Save &amp; next</span> <kbd style="opacity:.6">↵</kbd></button>
+      <button id="skip"><span class="rv-t">Skip this frame</span> <kbd style="opacity:.6">K</kbd></button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>

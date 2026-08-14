@@ -107,6 +107,8 @@ const state = {
   videos: [],              // [{stem, n, rounds}], every distinct video, built once
   vidxOpen: false,
   vidxSearch: '',          // persists the search box across opens
+  // 'active' or 'reviewer' — see setMode() for what this retargets.
+  mode: localStorage.getItem('csMode3') === 'reviewer' ? 'reviewer' : 'active',
   confirmRun: null,        // what the red button in the dialog will do
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
@@ -567,11 +569,11 @@ function nextDisagreement() {
 // later by the very click that produced it. Which it was: the one case where
 // this needs saying is the one where nothing visibly happens.
 function flashNextDis(msg, id) {
-  const nd = $(id || 'next-dis');
+  const nd = $(id);
   if (!nd) return;
-  // The LABEL, not the button: the button also holds an icon, and writing
-  // textContent on it would take the icon with the message and never bring it
-  // back.
+  // The LABEL, not the button: it also holds the kbd hint, and writing
+  // textContent on the button would take that with the message and never
+  // bring it back.
   const t = nd.querySelector('.rv-t') || nd;
   clearTimeout(nd._t);
   if (!nd.dataset.was) nd.dataset.was = t.textContent;
@@ -2221,6 +2223,31 @@ function zoomAt(px, clientX, clientY) {
 }
 
 // ── wiring ─────────────────────────────────────────────────────────────────
+// ── mode: active vs reviewer ─────────────────────────────────────────────
+// Working the queue in order and working through disagreements only differ
+// in what happens AFTER a save — the save itself is identical — so the mode
+// retargets Save/Skip's post-save destination and label rather than showing
+// a second pair of buttons underneath them.
+function setMode(mode) {
+  state.mode = mode;
+  localStorage.setItem('csMode3', mode);
+  renderMode();
+}
+function renderMode() {
+  for (const b of document.querySelectorAll('#mode-switch button')) {
+    b.setAttribute('aria-selected', String(b.dataset.mode === state.mode));
+  }
+  const reviewer = state.mode === 'reviewer';
+  $('save').querySelector('.rv-t').textContent =
+    reviewer ? 'Save & next disagreement' : 'Save & next';
+  $('skip').querySelector('.rv-t').textContent =
+    reviewer ? 'Skip & next disagreement' : 'Skip this frame';
+  $('save').title = reviewer
+    ? 'Save this frame, then jump to the next frame somebody answered differently' : '';
+  $('skip').title = reviewer
+    ? 'Skip this frame, then jump to the next frame somebody answered differently' : '';
+}
+
 function bind() {
   for (const b of document.querySelectorAll('.opt')) {
     b.onclick = () => {
@@ -2242,6 +2269,7 @@ function bind() {
     // trip to a frame with nothing to return to.
     const blank = !FIELDS.some((fld) => state.answers[fld]);
     if (blank) { state.answers = {}; state.skipped = true; }
+    if (state.mode === 'reviewer') { jumpAfter(blank, 'save'); return; }
     if (save({ skip: blank })) advance(); else render();
   };
   $('skip').onclick = () => {
@@ -2249,8 +2277,13 @@ function bind() {
     // so it must not carry a judgement.
     state.answers = {};
     state.skipped = true;
+    if (state.mode === 'reviewer') { jumpAfter(true, 'skip'); return; }
     if (save({ skip: true })) advance(); else render();
   };
+  for (const b of document.querySelectorAll('#mode-switch button')) {
+    b.onclick = () => setMode(b.dataset.mode);
+  }
+  renderMode();
   // 1-based in, 0-based out: the labeler reads "703 / 3791" off the panel, so
   // typing 703 has to land on that frame and not the one after it.
   const gotoFrame = () => {
@@ -2290,20 +2323,13 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
-  // Same commit as Save & next — including the blank-is-a-skip rule, which has
-  // to be spelled out identically here: a frame left on screen and clicked past
-  // is no judgement, and recording it as a partial would promise a return trip
-  // to a frame with nothing to return to. Only the destination differs.
-  // The same pair as Save & next / Skip above, both aimed at the next
-  // disagreement instead of at i+1. Written as one function taking the flag,
-  // because the ONLY difference between them is what gets committed — letting
-  // the two drift apart is how the destination or the miss handling ends up
-  // meaning one thing on one button and something else on the other.
-  // `btn` is which button was CLICKED, and it is passed in rather than derived
-  // from `skip`. Those two come apart on the one case that matters: Save & jump
-  // on a frame with no answer commits a SKIP, and deriving the target from the
-  // flag flashed the message on the skip button while the one you actually
-  // pressed sat there saying nothing had happened.
+  // What Save/Skip do in reviewer mode: the same commit as active mode —
+  // including the blank-is-a-skip rule — aimed at the next disagreement
+  // instead of at i+1. `btn` is which button was CLICKED, passed in rather
+  // than derived from `skip`: those two come apart on the one case that
+  // matters, Save on a blank frame commits a SKIP, and deriving the flash
+  // target from the flag would land the message on Skip while the button
+  // actually pressed sat there saying nothing had happened.
   const jumpAfter = (skip, btn) => {
     // A refused save has already said why in the status line, and the frame
     // stays put. Repaint it and stop, without also claiming there is nowhere
@@ -2315,18 +2341,6 @@ function bind() {
         : 'Nobody else has answered yet', btn);
       render();
     }
-  };
-  $('skip-dis').onclick = () => {
-    // Discard any answers first, exactly as Skip does. A skip means "this frame
-    // cannot be judged", so it must not carry a judgement.
-    state.answers = {};
-    state.skipped = true;
-    jumpAfter(true, 'skip-dis');
-  };
-  $('next-dis').onclick = () => {
-    const blank = !FIELDS.some((fld) => state.answers[fld]);
-    if (blank) { state.answers = {}; state.skipped = true; }
-    jumpAfter(blank, 'next-dis');
   };
   wireCopyButtons();
   $('lead-cancel').onclick = closeLead;
