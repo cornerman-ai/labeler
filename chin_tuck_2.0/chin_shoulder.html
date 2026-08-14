@@ -550,49 +550,29 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
-/* ── grouped lists ─────────────────────────────────────────────────────────
-   The platform pattern this page was reaching for and getting inside out. A
-   grouped list is the ELEVATED surface — a white group on a recessed page — and
-   the previous version put a grey well inside a white card, which is the
-   inverse. So the card IS the list, its header sits outside and above it in
-   secondary text, and the rows are the card's own children.
-   Rows that perform an action are their label in the tint colour, with no
-   decoration: that is how a list says "this does something" rather than "this
-   shows something". A destructive row is the same row in red. The icons and the
-   coloured pills that were here before were both louder than the platform ever
-   is about an action used a few times an hour. */
-.sec-h {
-  font-size: 11px; font-weight: 590; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--ink-dim);
-  margin: 2px 0 7px 4px;
+/* Same button as Skip, halved: two of these read as a matched pair sitting
+   right under the control they extend, rather than a list of plain-text links
+   floating in a separately captioned section. No icons, no colour-coding --
+   Skip itself has neither, and matching it is what makes these look like
+   BUTTONS in the first place. */
+#review-row { display: flex; gap: 8px; margin-top: 8px; }
+#next-dis, #skip-dis {
+  flex: 1; min-width: 0; padding: 9px 6px; border-radius: 10px;
+  border: 1px solid transparent; font-weight: 510; font-size: 11.5px;
+  line-height: 1.3; text-align: center;
+  background: rgba(120,120,128,.14);
+  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
 }
-/* flex-shrink: 0 is load-bearing, not decoration. #side is a flex column,
-   and a flex item auto-sizes its minimum to its CONTENT height only when
-   overflow is visible — for any other overflow value (hidden, here, so the
-   grouped list corners clip) the spec-defined automatic minimum is zero. The
-   flex algorithm was free to shrink this card to nothing, and did: it rendered
-   two real, correctly styled rows at zero height, invisible and unclickable,
-   while every OTHER card on the page — none of which set overflow — was immune
-   without ever having to say so. */
-.list-card { padding: 0; overflow: hidden; flex-shrink: 0; }
-.row-act {
-  display: block; width: 100%; min-height: 38px; padding: 10px 14px;
-  border: 0; background: none; text-align: left;
-  font-size: 13px; font-weight: 400; color: var(--accent);
-  transition: background .12s ease;
+#next-dis:hover:not(:disabled), #skip-dis:hover:not(:disabled) {
+  background: rgba(120,120,128,.20); color: var(--ink);
 }
-/* Inset to the label, which is where a grouped list puts a separator between
-   two rows of the same group. */
-.row-act + .row-act { position: relative; }
-.row-act + .row-act::before {
-  content: ''; position: absolute; left: 14px; right: 0; top: 0; height: 1px;
-  background: var(--line);
+#next-dis:disabled, #skip-dis:disabled { opacity: .4; cursor: default; }
+@media (prefers-color-scheme: dark) {
+  #next-dis, #skip-dis { background: rgba(120,120,128,.26); }
+  #next-dis:hover:not(:disabled), #skip-dis:hover:not(:disabled) {
+    background: rgba(120,120,128,.34);
+  }
 }
-.row-act:hover:not(:disabled) { background: rgba(120,120,128,.08); }
-.row-act:active:not(:disabled) { background: rgba(120,120,128,.14); }
-.row-act:disabled { color: var(--ink-dim); opacity: .55; cursor: default; }
-.row-act.destructive { color: var(--no); }
-@media (prefers-reduced-motion: reduce) { .row-act { transition: none; } }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
    it out only made three buttons compete for the same glance. Next-unlabeled
    keeps its words because it is the one action you cannot infer from a glyph. */
@@ -1072,6 +1052,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
+      <div id="review-row">
+        <button id="next-dis" type="button"
+                title="Save this frame, then jump to the next frame somebody answered differently"><span class="rv-t">Save &amp; next disagreement</span></button>
+        <button id="skip-dis" type="button"
+                title="Skip this frame, then jump to the next frame somebody answered differently"><span class="rv-t">Skip &amp; next disagreement</span></button>
+      </div>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -1081,16 +1067,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
                 title="Mark this frame to come back to (F)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.4 1.6v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.4 2.4h6.9l-1.5 2.4 1.5 2.4H3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="flag-label">Flag</span></button>
       </div>
       <div id="status"></div>
-    </div>
-
-
-    <!-- Working through disagreements is a different job from labeling the
-         queue in order, so it gets its own section rather than two more
-         full-width buttons under Save. -->
-    <div class="sec-h">Review</div>
-    <div class="card list-card" id="review-card">
-      <button id="next-dis" class="row-act" type="button"><span class="rv-t">Save and go to next disagreement</span></button>
-      <button id="skip-dis" class="row-act" type="button"><span class="rv-t">Skip and go to next disagreement</span></button>
     </div>
 
     <div class="card">
