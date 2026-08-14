@@ -134,7 +134,20 @@ judged and the caller did not are untouched, as are their `flag` / `dwell_sec` /
 and the overwritten answer is gone. So agreement after a lead is 100% by
 construction with nothing in the sheet to say so — take the inter-rater numbers
 BEFORE leading. Rewrites whole sheets, so it holds the script lock for the
-duration, and the page sends it WITHOUT `call()`'s retry.
+duration, and the page sends it WITHOUT `call()`'s retry. It is bounded by the
+frame it was pressed on, in QUEUE order.
+
+**Frame scopes over POST.** Both `leadEveryone` and `agreement` can be limited
+to a set of frames the page names, because every scope worth having (up to
+frame N, inside batch N) is defined by queue order and the Apps Script has never
+seen `queue.json`. The page sends `{stems, keys}` with the stems interned (a
+full queue is 291KB raw, 59KB packed) in a POST body via `doPost`, since no URL
+carries that; the query string still holds action and labeler, and
+`Content-Type: text/plain` keeps it preflight-free. `cs2DecodeScope` reads it.
+For `leadEveryone` the scope is REQUIRED — a missing or malformed one refuses
+rather than falling back to leading everything. For `agreement` it is optional:
+no payload means the whole queue, which is what "All frames" and every older
+page send, so the default request is unchanged.
 
 3.0 has NO data of its own: it reads `../chin_tuck_2.0/queue.json` and
 `../chin_tuck_2.0/frames/`. The frames are 666MB against a 1GB Pages limit, so a

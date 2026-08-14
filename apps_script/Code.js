@@ -33,10 +33,10 @@ function doPost(e) {
   // QUEUE, and the queue order lives in the page — this script has never seen
   // it. So the page sends the frames the lead is allowed to touch, and that
   // list packs to ~59KB for a full queue, which no URL will carry.
-  if (action === 'leadEveryoneChinShoulderV2') {
+  if (action === 'leadEveryoneChinShoulderV2' || action === 'agreementChinShoulderV2') {
     return doGetChinShoulderV2(p, labeler, action, CS2_SPEC);
   }
-  if (action === 'leadEveryoneChinTuck3') {
+  if (action === 'leadEveryoneChinTuck3' || action === 'agreementChinTuck3') {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
   return ContentService
@@ -3648,6 +3648,30 @@ function cs2Stats(spec) {
            .setMimeType(ContentService.MimeType.JSON);
 }
 
+// A {stems, keys} payload from the page, decoded into a lookup set. The stems
+// are interned because they are long and repeat about twenty times each, which
+// is the difference between a 291KB body and a 59KB one. Returns null when
+// there is no payload at all, which callers read as "no restriction".
+//
+// The page has to send frames rather than a range because every scope this
+// supports — everything up to frame N, everything inside batch N — is defined
+// by QUEUE ORDER, and the queue order lives in queue.json, which only the page
+// loads. This script has never seen it.
+function cs2DecodeScope(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  var payload = JSON.parse(raw);
+  var stems = payload && payload.stems, keys = payload && payload.keys;
+  if (!stems || !keys || !keys.length) throw new Error('empty scope');
+  var out = { set: {}, n: 0 };
+  for (var i = 0; i < keys.length; i++) {
+    var stem = stems[keys[i][0]];
+    if (stem === undefined) continue;
+    out.set[[String(stem), String(keys[i][1]), String(keys[i][2])].join(KEY_SEP)] = 1;
+    out.n++;
+  }
+  return out;
+}
+
 // === LEAD EVERYONE: push one labeler's answers onto every other tab ===========
 //
 // For every frame the caller has JUDGED — all questions answered, or skipped —
@@ -3684,27 +3708,17 @@ function cs2LeadEveryone(p, who, spec) {
     return jsonOut({ status: 'error', message: 'you have not labeled anything yet' });
   }
 
-  // { stems: [...], keys: [[stemIndex, round, frame], ...] } — the stems are
-  // interned because they are long and repeat about twenty times each, which is
-  // the difference between a 291KB body and a 59KB one.
-  var allowed = {};
-  var nAllowed = 0;
+  var scope = null;
   try {
-    var payload = JSON.parse(p.payload || 'null');
-    var stems = payload && payload.stems;
-    var keys = payload && payload.keys;
-    if (!stems || !keys || !keys.length) throw new Error('empty');
-    for (var a = 0; a < keys.length; a++) {
-      var stem = stems[keys[a][0]];
-      if (stem === undefined) continue;
-      allowed[[String(stem), String(keys[a][1]), String(keys[a][2])].join(KEY_SEP)] = 1;
-      nAllowed++;
-    }
+    scope = cs2DecodeScope(p.payload);
+    if (!scope) throw new Error('no scope');
   } catch (err) {
     return jsonOut({ status: 'error',
                      message: 'no frame range was sent — nothing was changed. '
                             + 'Reload the page and try again.' });
   }
+  var allowed = scope.set;
+  var nAllowed = scope.n;
 
   // One lock for the whole operation. This rewrites entire sheets, so a save
   // landing halfway through would either be overwritten by the block write or
@@ -4072,13 +4086,27 @@ function cs2Agreement(p, who, spec) {
                          note: (!aSheet ? a_ : b_) + ' has not saved anything yet' });
   }
 
+  // Optional: compare over ONE batch of the queue rather than everything. No
+  // payload means no restriction, which is what the page sends for "all frames"
+  // and what every older page sends — so the default is unchanged.
+  var scope = null;
+  try {
+    scope = cs2DecodeScope(p.payload);
+  } catch (err) {
+    return jsonOut({ status: 'error', message: 'bad frame scope: ' + err.message });
+  }
+  var inScope = function (k) { return !scope || scope.set[k] === 1; };
+
   var A = cs2ReadJudged(aSheet, spec), B = cs2ReadJudged(bSheet, spec);
+  // Counted INSIDE the scope too. A batch comparison headed "John 3,791" while
+  // scoring a hundred frames invites reading the kappa as if it came from all
+  // of them.
   var aN = 0, bN = 0;
-  for (var ka in A) if (A.hasOwnProperty(ka)) aN++;
-  for (var kb in B) if (B.hasOwnProperty(kb)) bN++;
+  for (var ka in A) if (A.hasOwnProperty(ka) && inScope(ka)) aN++;
+  for (var kb in B) if (B.hasOwnProperty(kb) && inScope(kb)) bN++;
 
   var keys = [];
-  for (var k in B) if (B.hasOwnProperty(k) && A[k]) keys.push(k);
+  for (var k in B) if (B.hasOwnProperty(k) && A[k] && inScope(k)) keys.push(k);
 
   var per = {}, bothAll = 0, indepKeys = [];
   for (var f2 = 0; f2 < spec.fields.length; f2++) {
@@ -4132,6 +4160,9 @@ function cs2Agreement(p, who, spec) {
 
   return csOut(spec, {
     a: a_, b: b_, a_total: aN, b_total: bN,
+    // How many frames the scope covered at all, so the page can say "62 of 100"
+    // rather than leaving the reader to guess the denominator.
+    scope_n: scope ? scope.n : null,
     shared: keys.length,
     all_four_match: bothAll,
     questions: questions,

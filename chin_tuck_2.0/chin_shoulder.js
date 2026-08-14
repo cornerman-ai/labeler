@@ -93,6 +93,7 @@ const state = {
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
+  agreeBatch: 'all',       // 'all', or a 0-based batch index
   agreeBusy: false,        // a comparison is being computed right now
   agreeBody: null,         // last agreement snapshot
   agreeAt: null,           // when it was taken
@@ -225,6 +226,7 @@ async function loadLabels() {
   state.agreeAt = null;
   state.pairA = null;          // default the picker to the new name
   state.pairB = null;
+  state.agreeBatch = 'all';
   setAgreeOpen(false);
   if (!name) return;
   const body = await call({ action: 'listChinShoulderV2', labeler: name }, 'load labels');
@@ -527,8 +529,8 @@ function nextDisagreement() {
 // goes out, blank when it lands — so a message put there is wiped a moment
 // later by the very click that produced it. Which it was: the one case where
 // this needs saying is the one where nothing visibly happens.
-function flashNextDis(msg) {
-  const nd = $('next-dis');
+function flashNextDis(msg, id) {
+  const nd = $(id || 'next-dis');
   if (!nd) return;
   clearTimeout(nd._t);
   if (!nd.dataset.was) nd.dataset.was = nd.textContent;
@@ -1176,6 +1178,47 @@ function labelerNames() {
   return names.sort((a, b) => a.localeCompare(b));
 }
 
+// The frames of one batch, in the {stems, keys} shape the backend decodes.
+// Interned like the lead payload, for the same reason and with the same reader.
+function batchScope(b) {
+  const stems = [];
+  const at = new Map();
+  const keys = [];
+  const hi = Math.min((b + 1) * BATCH, state.frames.length);
+  for (let i = b * BATCH; i < hi; i++) {
+    const f = state.frames[i];
+    let si = at.get(f.stem);
+    if (si === undefined) { si = stems.length; stems.push(f.stem); at.set(f.stem, si); }
+    keys.push([si, f.round, f.frame]);
+  }
+  return { stems, keys };
+}
+
+// call() with a body. Same retry and same generation check — this one is a READ,
+// so unlike the lead there is nothing a second attempt can do twice.
+async function callWithScope(params, scope, what) {
+  let last;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let body;
+    try {
+      const res = await fetch(api(params), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(scope),
+        redirect: 'follow',
+      });
+      body = await res.json();
+    } catch (e) { last = e; continue; }
+    if (body.status !== 'ok') { last = new Error(body.message || 'unknown error'); continue; }
+    if (body.v2 !== true) {
+      throw new Error('Apps Script is out of date — redeploy it '
+                      + `(${params.action} fell through to the default handler)`);
+    }
+    return body;
+  }
+  throw new Error(`${what}: ${last && last.message}`);
+}
+
 // The picker persists across opens (state.pairA / pairB) so re-checking the same
 // pair after more labeling is one click, not three.
 function renderAgreePanel() {
@@ -1229,12 +1272,50 @@ function renderAgreePanel() {
   pick.append(mk('pairA'), vs, mk('pairB'), go_);
   out.appendChild(pick);
 
+  // Which frames to score. Kappa over the whole queue hides the thing you
+  // actually want to know while calibrating — whether the last hundred went
+  // better than the hundred before them — because 3,900 old frames drown any
+  // hundred new ones.
+  const scope = document.createElement('div');
+  scope.id = 'ag-scope';
+  const lab = document.createElement('label');
+  lab.setAttribute('for', 'ag-batch');
+  lab.textContent = 'Frames';
+  const bsel = document.createElement('select');
+  bsel.id = 'ag-batch';
+  bsel.className = 'ag-sel';
+  const nB = Math.ceil(state.frames.length / BATCH);
+  const opts = [['all', 'All frames']];
+  for (let b = 0; b < nB; b++) {
+    const lo = b * BATCH + 1;
+    const hi = Math.min((b + 1) * BATCH, state.frames.length);
+    opts.push([String(b), `Batch ${b + 1} (#${lo}\u2013#${hi})`]);
+  }
+  for (const [v, t] of opts) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = t;
+    o.selected = String(state.agreeBatch) === v;
+    bsel.appendChild(o);
+  }
+  bsel.onchange = () => {
+    state.agreeBatch = bsel.value === 'all' ? 'all' : Number(bsel.value);
+    // The numbers on screen describe the OLD scope. Drop them rather than leave
+    // them sitting under a heading that now says something else.
+    state.agreeBody = null;
+    state.agreeAt = null;
+    renderAgreePanel();
+  };
+  scope.append(lab, bsel);
+  out.appendChild(scope);
+
   const body = document.createElement('div');
   body.id = 'ag-body';
   out.appendChild(body);
 
   if (state.agreeBody && state.agreeBody._a === state.pairA
-      && state.agreeBody._b === state.pairB) {
+      && state.agreeBody._b === state.pairB
+      && state.agreeBody._batch === state.agreeBatch) {
     renderAgreement(state.agreeBody);
   } else {
     body.appendChild(note('Press Compare.'));
@@ -1249,13 +1330,20 @@ async function computeAgreement() {
   $('ag-go').disabled = true;
   body.replaceChildren(note(`Reading ${state.pairA} and ${state.pairB}\u2026`));
   try {
-    const res = await call({ action: 'agreementChinShoulderV2',
-                             labeler: who(), a: state.pairA, b: state.pairB },
-                           'comparison');
+    const params = { action: 'agreementChinShoulderV2', labeler: who(),
+                     a: state.pairA, b: state.pairB };
+    // "All frames" stays a plain GET with no payload, which is byte for byte
+    // the request this panel has always sent. A batch names its hundred frames
+    // in a POST body — the backend cannot derive them, since the batch is a
+    // slice of the queue and the queue order only exists in the page.
+    const res = state.agreeBatch === 'all'
+      ? await call(params, 'comparison')
+      : await callWithScope(params, batchScope(state.agreeBatch), 'comparison');
     // Stamped with the pair it describes, so switching the picker cannot leave
     // last pair's numbers on screen under two new names.
     res._a = state.pairA;
     res._b = state.pairB;
+    res._batch = state.agreeBatch;
     state.agreeBody = res;
     state.agreeAt = new Date();
     renderAgreement(res);
@@ -1290,9 +1378,11 @@ function renderAgreement(r) {
   if (!body) return;
   body.replaceChildren();
 
+  const where = r._batch === 'all' || r._batch === undefined ? ''
+    : ` in batch ${r._batch + 1}`;
   if (!r.shared) {
     body.appendChild(note(r.note
-      || `${r.a} and ${r.b} have not both finished any frame yet.`));
+      || `${r.a} and ${r.b} have not both finished any frame${where} yet.`));
     return;
   }
 
@@ -1300,10 +1390,14 @@ function renderAgreement(r) {
   head.className = 'ag-head';
   const who_ = document.createElement('span');
   who_.className = 'ag-who';
-  who_.textContent = `${r.a} vs ${r.b}`;
+  who_.textContent = `${r.a} vs ${r.b}${where}`;
   const n = document.createElement('span');
   n.className = 'ag-n';
-  n.textContent = `${r.shared} frames`;
+  // "62 of 100" inside a batch: the scored count alone reads as the whole batch
+  // when it is only the part both of them have finished.
+  n.textContent = r.scope_n
+    ? `${r.shared} of ${r.scope_n} frames`
+    : `${r.shared} frames`;
   head.append(who_, n);
   // Everything that used to be a line of prose lives here instead.
   const ind = r.independent || { shared: 0, all_four_match: 0 };
@@ -1679,19 +1773,39 @@ function bind() {
   // to be spelled out identically here: a frame left on screen and clicked past
   // is no judgement, and recording it as a partial would promise a return trip
   // to a frame with nothing to return to. Only the destination differs.
-  $('next-dis').onclick = () => {
-    const blank = !FIELDS.some((fld) => state.answers[fld]);
-    if (blank) { state.answers = {}; state.skipped = true; }
+  // The same pair as Save & next / Skip above, both aimed at the next
+  // disagreement instead of at i+1. Written as one function taking the flag,
+  // because the ONLY difference between them is what gets committed — letting
+  // the two drift apart is how the destination or the miss handling ends up
+  // meaning one thing on one button and something else on the other.
+  // `btn` is which button was CLICKED, and it is passed in rather than derived
+  // from `skip`. Those two come apart on the one case that matters: Save & jump
+  // on a frame with no answer commits a SKIP, and deriving the target from the
+  // flag flashed the message on the skip button while the one you actually
+  // pressed sat there saying nothing had happened.
+  const jumpAfter = (skip, btn) => {
     // A refused save has already said why in the status line, and the frame
-    // stays put — repaint it and stop, without also claiming there is nowhere
-    // to go. Only a save that went through gets to look for the next one.
-    if (!save({ skip: blank })) { render(); return; }
+    // stays put. Repaint it and stop, without also claiming there is nowhere
+    // to go: that would be a second, wrong explanation for the same click.
+    if (!save({ skip })) { render(); return; }
     if (!nextDisagreement()) {
       flashNextDis(state.overlap.size
         ? 'No disagreements left'
-        : 'Nobody else has answered yet');
+        : 'Nobody else has answered yet', btn);
       render();
     }
+  };
+  $('skip-dis').onclick = () => {
+    // Discard any answers first, exactly as Skip does. A skip means "this frame
+    // cannot be judged", so it must not carry a judgement.
+    state.answers = {};
+    state.skipped = true;
+    jumpAfter(true, 'skip-dis');
+  };
+  $('next-dis').onclick = () => {
+    const blank = !FIELDS.some((fld) => state.answers[fld]);
+    if (blank) { state.answers = {}; state.skipped = true; }
+    jumpAfter(blank, 'next-dis');
   };
   $('lead-cancel').onclick = closeLead;
   $('lead-go').onclick = doLead;
