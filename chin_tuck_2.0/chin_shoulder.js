@@ -91,6 +91,9 @@ const state = {
   rangesWarmed: false,     // the one unprompted warm has been scheduled
   leading: false,          // a lead-everyone request is in flight
   excluding: false,        // an exclude-video request is in flight
+  videos: [],              // [{stem, n, rounds}], every distinct video, built once
+  vidxOpen: false,
+  vidxSearch: '',          // persists the search box across opens
   confirmRun: null,        // what the red button in the dialog will do
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
@@ -414,8 +417,6 @@ function render() {
   const resolved = myRowsInQueue().filter(isResolved).length;
   $('done').textContent = `${resolved} done`;
 
-  const ex = $('excl-btn');
-  if (ex) ex.disabled = !state.ready || state.excluding;
   $('id-video').textContent = f.stem;
   $('id-round').textContent = f.round;
   $('id-frame').textContent = f.frame;
@@ -433,6 +434,7 @@ function render() {
 
   placeMarks();
   renderOverview();
+  syncVidxCurrent();
 }
 
 // Points are positioned in percentages of the rendered image, so they track
@@ -989,7 +991,125 @@ async function doLead() {
   }
 }
 
+function buildVideoIndex() {
+  const by = new Map();
+  for (const f of state.frames) {
+    let v = by.get(f.stem);
+    if (!v) { v = { stem: f.stem, n: 0, rounds: new Set() }; by.set(f.stem, v); }
+    v.n++;
+    v.rounds.add(f.round);
+  }
+  state.videos = [...by.values()]
+    .map((v) => ({ stem: v.stem, n: v.n, rounds: v.rounds.size }))
+    // Locale, numeric: video titles run "10 Combos" next to "2 Rounds" next to
+    // full-width punctuation, and a plain string sort would put "10" before "2".
+    .sort((a, b) => a.stem.localeCompare(b.stem, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
 // ── exclude a video ────────────────────────────────────────────────────────
+function setVidxOpen(open) {
+  state.vidxOpen = open;
+  $('vidx-out').classList.toggle('on', open);
+  $('vidx-btn').setAttribute('aria-expanded', String(open));
+  $('vidx-label').textContent = open ? 'Hide videos' : 'Exclude a video';
+  if (open) renderVidxPanel();
+}
+
+function toggleVidx() {
+  if (!state.ready) return;
+  setVidxOpen(!state.vidxOpen);
+}
+
+function renderVidxPanel() {
+  const out = $('vidx-out');
+  out.replaceChildren();
+
+  const search = document.createElement('input');
+  search.id = 'vidx-search';
+  search.type = 'text';
+  search.placeholder = 'Search videos';
+  search.autocomplete = 'off';
+  search.spellcheck = false;
+  search.value = state.vidxSearch;
+  // Rebuilds only the LIST on each keystroke, not this field — recreating a
+  // text input on its own input event loses focus and the cursor position.
+  search.oninput = () => { state.vidxSearch = search.value; renderVidxList(); };
+  out.appendChild(search);
+
+  const list = document.createElement('div');
+  list.id = 'vidx-list';
+  list.setAttribute('role', 'listbox');
+  out.appendChild(list);
+
+  renderVidxList();
+  const stem = state.frames[state.i] && state.frames[state.i].stem;
+  const row = stem && list.querySelector(`[data-stem="${CSS.escape(stem)}"]`);
+  if (row) row.scrollIntoView({ block: 'center' });
+  else search.focus();
+}
+
+function renderVidxList() {
+  const list = $('vidx-list');
+  if (!list) return;
+  list.replaceChildren();
+  const q = state.vidxSearch.trim().toLowerCase();
+  const stem = state.frames[state.i] && state.frames[state.i].stem;
+  const rows = q ? state.videos.filter((v) => v.stem.toLowerCase().includes(q)) : state.videos;
+
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'vidx-empty';
+    empty.textContent = q ? `No videos match "${state.vidxSearch.trim()}"` : 'No videos in the queue.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const v of rows) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'vidx-row';
+    row.dataset.stem = v.stem;
+    const isCurrent = v.stem === stem;
+    row.classList.toggle('current', isCurrent);
+
+    const name = document.createElement('span');
+    name.className = 'vidx-name';
+    name.textContent = v.stem + (isCurrent ? ' (current)' : '');
+
+    const meta = document.createElement('span');
+    meta.className = 'vidx-meta';
+    meta.textContent = `${v.n} \u00b7 ${v.rounds}r`;
+
+    const chev = document.createElement('span');
+    chev.className = 'vidx-chevron';
+    chev.innerHTML = ROW_CHEV_SVG;
+
+    row.append(name, meta, chev);
+    row.onclick = () => askExclude(v.stem);
+    list.appendChild(row);
+  }
+}
+
+// Kept in step with the frame you are on WITHOUT rebuilding the list on every
+// answer click — render() runs on those too, and two hundred rows is real DOM
+// work to redo for a highlight that has usually not moved at all.
+function syncVidxCurrent() {
+  if (!state.vidxOpen) return;
+  const list = $('vidx-list');
+  if (!list) return;
+  const stem = state.frames[state.i] && state.frames[state.i].stem;
+  const prev = list.querySelector('.vidx-row.current');
+  if (prev && prev.dataset.stem === stem) return;
+  if (prev) {
+    prev.classList.remove('current');
+    prev.querySelector('.vidx-name').textContent = prev.dataset.stem;
+  }
+  const next = stem && list.querySelector(`[data-stem="${CSS.escape(stem)}"]`);
+  if (next) {
+    next.classList.add('current');
+    next.querySelector('.vidx-name').textContent = stem + ' (current)';
+  }
+}
+
 // The footage itself is the problem: the wrong fighter, an angle nothing can be
 // read from, a clip that should not have entered the queue. Every frame of it,
 // across every round, becomes a skip on every labeler's tab — including the
@@ -1016,25 +1136,25 @@ function videoScope(stem) {
 // video" even means; the second is a plain yes/no restating the concrete
 // numbers for THIS video, so someone who has skimmed past the first step still
 // has to answer a direct question before anything happens.
-function askExclude() {
+function askExclude(stem) {
   if (!state.ready || state.excluding) return;
-  const f = state.frames[state.i];
-  if (!f) return;
-  const scope = videoScope(f.stem);
+  if (!stem) return;
+  const scope = videoScope(stem);
+  if (!scope.keys.length) return;    // not in the current queue \u2014 nothing to do
   const rounds = new Set(scope.keys.map((k) => k[1])).size;
   const others = (state.teamRows || []).length;
   const n = scope.keys.length;
   openConfirm({
     title: 'Exclude this video?',
     what: `All <b>${n}</b> frame${n === 1 ? '' : 's'} of `
-        + `<b>${f.stem}</b>, across <b>${rounds}</b> round${rounds === 1 ? '' : 's'}, `
+        + `<b>${stem}</b>, across <b>${rounds}</b> round${rounds === 1 ? '' : 's'}, `
         + `become skipped for <b>${others || 'every'}</b> labeler`
         + `${others === 1 ? '' : 's'} \u2014 you included.`,
     keep: 'Any answers on those frames are cleared. Every other video is left '
         + 'alone, and so are flags and time spent.',
     verb: 'Continue',
     danger: false,
-    run: () => askExcludeConfirm(f.stem, n, others),
+    run: () => askExcludeConfirm(stem, n, others),
   });
 }
 
@@ -1050,24 +1170,23 @@ function askExcludeConfirm(stem, n, others) {
     keep: 'This cannot be undone from the page \u2014 there is no backup and no '
         + 'way to bring the answers back.',
     verb: 'Exclude Video',
-    run: doExclude,
+    run: () => doExclude(stem),
   });
 }
 
-async function doExclude() {
+async function doExclude(stem) {
   if (state.excluding) return;
-  const f = state.frames[state.i];
-  if (!f) return;
+  if (!stem) return;
   state.excluding = true;
   setConfirmBusy(true,
-    `Excluding ${videoScope(f.stem).keys.length} frames\u2026`);
+    `Excluding ${videoScope(stem).keys.length} frames\u2026`);
   try {
     // No retry, for the same reason the lead has none: this writes to everybody
     // else's tab, and one request is one request.
     const res = await fetch(api({ action: 'excludeVideoChinShoulderV2', labeler: who() }), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(videoScope(f.stem)),
+      body: JSON.stringify(videoScope(stem)),
       redirect: 'follow',
     });
     const body = await res.json();
@@ -1752,6 +1871,7 @@ function syncPanelButtons() {
   // agreeBusy is its own reason to stay disabled — a comparison already in
   // flight must not be fired twice — and must survive a readiness repaint.
   $('agree-btn').disabled = locked || state.agreeBusy;
+  $('vidx-btn').disabled = locked;
 }
 
 // Green only while the box holds the name we actually loaded and the page is
@@ -1922,6 +2042,7 @@ function renderClue(peers) {
 // places: the stem into a file browser or a search, the round and frame into a
 // script or a message about one specific frame.
 const COPY_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const ROW_CHEV_SVG = '<svg viewBox="0 0 8 12" fill="none" aria-hidden="true"><path d="M1.5 1.5 6 6l-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const TICK_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2.6 7.4 5.6 10.4 11.4 3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 async function copyText(s) {
@@ -2148,7 +2269,6 @@ function bind() {
   };
   $('lead-cancel').onclick = closeLead;
   $('lead-go').onclick = () => { if (state.confirmRun) state.confirmRun(); };
-  $('excl-btn').onclick = askExclude;
   // Clicking the backdrop cancels; clicking the card must not.
   // Not while something is running: closing would not cancel the request, it
   // would only hide the only sign that it has not finished.
@@ -2156,6 +2276,7 @@ function bind() {
     if (e.target === $('lead-mask') && !confirmBusy()) closeLead();
   };
   $('agree-btn').onclick = toggleAgreement;
+  $('vidx-btn').onclick = toggleVidx;
 
   $('flag-btn').onclick = toggleFlag;
 
@@ -2333,6 +2454,7 @@ async function start() {
   }
   setReady(false, 'Loading…');
   state.frames.forEach((f, i) => state.index.set(key(f), i));
+  buildVideoIndex();
   // Read it here rather than trusting labeler_name.js's DOMContentLoaded to
   // have landed first — that fires during the queue.json await, and depending on
   // it would make the restore a race.
