@@ -90,6 +90,8 @@ const state = {
   rangePending: new Map(), // labeler -> in-flight promise, so two asks are one read
   rangesWarmed: false,     // the one unprompted warm has been scheduled
   leading: false,          // a lead-everyone request is in flight
+  excluding: false,        // an exclude-video request is in flight
+  confirmRun: null,        // what the red button in the dialog will do
   teamOpen: false,         // the everyone's-progress list is expanded
   pairA: null,             // the two labelers the comparison panel is set to
   pairB: null,
@@ -411,6 +413,12 @@ function render() {
   $('count').innerHTML = `${state.i + 1}<small> / ${n}</small>`;
   const resolved = myRowsInQueue().filter(isResolved).length;
   $('done').textContent = `${resolved} done`;
+
+  const ex = $('excl-btn');
+  if (ex) ex.disabled = !state.ready || state.excluding;
+  $('id-video').textContent = f.stem;
+  $('id-round').textContent = f.round;
+  $('id-frame').textContent = f.frame;
 
   const img = $('frame');
   if (img.dataset.k !== key(f)) { img.dataset.k = key(f); img.src = imgSrc(f); }
@@ -862,6 +870,21 @@ function leadCount() {
   return n;
 }
 
+// The lead dialog generalised. Two destructive actions now need the same
+// shape — a title, what it will do, what it will not touch, and a red verb —
+// and a second copy of the markup would be a second place for the Escape
+// handling, the focus and the busy state to drift out of step.
+function openConfirm({ title, what, keep, verb, run }) {
+  $('lead-h').textContent = title;
+  $('lead-what').innerHTML = what;
+  $('lead-keep').textContent = keep;
+  $('lead-go').textContent = verb;
+  $('lead-go').dataset.verb = verb;
+  state.confirmRun = run;
+  $('lead-mask').hidden = false;
+  $('lead-cancel').focus();
+}
+
 function askLead() {
   if (!who() || state.leading) return;
   const others = (state.teamRows || [])
@@ -880,21 +903,43 @@ function askLead() {
     + 'have answered it. Neither are frames they have answered and you have not, '
     + 'nor their flags and their time spent. Everything else is overwritten, and '
     + 'their old answers are not kept anywhere.';
+  $('lead-h').textContent = 'Overwrite everyone\u2019s answers?';
+  $('lead-go').textContent = 'Overwrite';
+  $('lead-go').dataset.verb = 'Overwrite';
+  state.confirmRun = doLead;
   $('lead-mask').hidden = false;
   $('lead-cancel').focus();
 }
 
+// One place decides what "in flight" looks like, so the two long actions cannot
+// end up with different rules about what stays clickable.
+const confirmBusy = () => state.leading || state.excluding;
+
+function setConfirmBusy(on, label) {
+  const go = $('lead-go');
+  const mask = $('lead-mask');
+  mask.classList.toggle('busy', !!on);
+  go.disabled = !!on;
+  $('lead-cancel').disabled = !!on;
+  if (on) {
+    go.replaceChildren();
+    const ring = document.createElement('i');
+    ring.className = 'spin';
+    go.append(ring, document.createTextNode(label));
+  } else {
+    go.textContent = go.dataset.verb || 'Overwrite';
+  }
+}
+
 function closeLead() {
   $('lead-mask').hidden = true;
-  $('lead-go').disabled = false;
-  $('lead-go').textContent = 'Overwrite';
+  setConfirmBusy(false);
 }
 
 async function doLead() {
   if (state.leading) return;
   state.leading = true;
-  $('lead-go').disabled = true;
-  $('lead-go').textContent = 'Overwriting\u2026';
+  setConfirmBusy(true, 'Overwriting\u2026');
   try {
     // NOT call(): that retries once on a failed response, and this is the only
     // request in the page that changes somebody else's data. Re-running it is
@@ -932,6 +977,87 @@ async function doLead() {
   } finally {
     state.leading = false;
     renderTeam(state.teamRows || []);
+  }
+}
+
+// ── exclude a video ────────────────────────────────────────────────────────
+// The footage itself is the problem: the wrong fighter, an angle nothing can be
+// read from, a clip that should not have entered the queue. Every frame of it,
+// across every round, becomes a skip on every labeler's tab — including the
+// caller's, because they are excluding the footage rather than overruling
+// anyone, and their own answers on a video they have just called unusable would
+// be the one thing contradicting the act.
+//
+// Which frames belong to the video is a fact about the queue, so the page names
+// them. Same interned payload as the lead, plus the per-frame facts a row that
+// has to be CREATED needs.
+function videoScope(stem) {
+  const keys = [];
+  const facts = [];
+  for (const f of state.frames) {
+    if (f.stem !== stem) continue;
+    keys.push([0, f.round, f.frame]);
+    facts.push([f.pts, f.stance, f.shoulder]);
+  }
+  return { stems: [stem], keys, facts };
+}
+
+function askExclude() {
+  if (!state.ready || state.excluding) return;
+  const f = state.frames[state.i];
+  if (!f) return;
+  const scope = videoScope(f.stem);
+  const rounds = new Set(scope.keys.map((k) => k[1])).size;
+  const others = (state.teamRows || []).length;
+  openConfirm({
+    title: 'Exclude this video?',
+    what: `All <b>${scope.keys.length}</b> frame${scope.keys.length === 1 ? '' : 's'} of `
+        + `<b>${f.stem}</b>, across <b>${rounds}</b> round${rounds === 1 ? '' : 's'}, `
+        + `become skipped for <b>${others || 'every'}</b> labeler`
+        + `${others === 1 ? '' : 's'} \u2014 you included.`,
+    keep: 'Any answers on those frames are cleared. Every other video is left '
+        + 'alone, and so are flags and time spent. This cannot be undone from '
+        + 'the page.',
+    verb: 'Exclude video',
+    run: doExclude,
+  });
+}
+
+async function doExclude() {
+  if (state.excluding) return;
+  const f = state.frames[state.i];
+  if (!f) return;
+  state.excluding = true;
+  setConfirmBusy(true,
+    `Excluding ${videoScope(f.stem).keys.length} frames\u2026`);
+  try {
+    // No retry, for the same reason the lead has none: this writes to everybody
+    // else's tab, and one request is one request.
+    const res = await fetch(api({ action: 'excludeVideoChinShoulderV2', labeler: who() }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(videoScope(f.stem)),
+      redirect: 'follow',
+    });
+    const body = await res.json();
+    if (body.status !== 'ok') throw new Error(body.message || 'unknown error');
+    if (body.v2 !== true) throw new Error('Apps Script is out of date — redeploy it');
+    const n = (body.excluded || []).length;
+    status(`Excluded ${body.frames} frame${body.frames === 1 ? '' : 's'} for `
+         + `${n} labeler${n === 1 ? '' : 's'}`);
+    closeLead();
+    // Every one of those frames just changed under us, on our own tab too.
+    state.rangeCache = new Map();
+    saveRangeCache();
+    await loadLabels();
+    render();
+    await loadTeam();
+    loadOverlap();
+  } catch (e) {
+    status('Exclude failed: ' + e.message, 'err');
+    closeLead();
+  } finally {
+    state.excluding = false;
   }
 }
 
@@ -1741,6 +1867,61 @@ function renderClue(peers) {
   }
 }
 
+// Copy one part of the frame's key. Separately, because they go to different
+// places: the stem into a file browser or a search, the round and frame into a
+// script or a message about one specific frame.
+const COPY_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const TICK_SVG = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2.6 7.4 5.6 10.4 11.4 3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+async function copyText(s) {
+  try {
+    // Needs a secure context — https or localhost, which covers Pages and the
+    // dev server. Everything else falls through to the old selection trick
+    // rather than failing silently.
+    await navigator.clipboard.writeText(s);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = s;
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e2) { return false; }
+  }
+}
+
+function wireCopyButtons() {
+  for (const btn of document.querySelectorAll('.idc')) {
+    btn.onclick = async () => {
+      const src = $(btn.dataset.copy);
+      const ok = await copyText(src ? src.textContent : '');
+      const line = $('status');
+      if (!ok) {
+        status('Could not copy — select the text instead', 'err');
+        line.dataset.copyErr = '1';
+        return;
+      }
+      // Clear a PREVIOUS copy failure, and only that: a save error in the same
+      // line is about the labeler's data and must not be swept away by a
+      // successful click on something unrelated.
+      if (line.dataset.copyErr) { delete line.dataset.copyErr; status(''); }
+      // A tick in place of the icon, and nothing in the status line: this is a
+      // trivial action and it should not push a save error off screen.
+      clearTimeout(btn._t);
+      btn.innerHTML = TICK_SVG;
+      btn.classList.add('ok');
+      btn._t = setTimeout(() => {
+        btn.innerHTML = COPY_SVG;
+        btn.classList.remove('ok');
+      }, 1100);
+    };
+  }
+}
+
 function status(msg, cls) {
   const el = $('status');
   el.textContent = msg || '';
@@ -1875,6 +2056,7 @@ function bind() {
   $('name-go').onclick = commitName;
   $('clue-btn').onclick = toggleClue;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+  wireCopyButtons();
   // Same commit as Save & next — including the blank-is-a-skip rule, which has
   // to be spelled out identically here: a frame left on screen and clicked past
   // is no judgement, and recording it as a partial would promise a return trip
@@ -1914,9 +2096,14 @@ function bind() {
     jumpAfter(blank, 'next-dis');
   };
   $('lead-cancel').onclick = closeLead;
-  $('lead-go').onclick = doLead;
+  $('lead-go').onclick = () => { if (state.confirmRun) state.confirmRun(); };
+  $('excl-btn').onclick = askExclude;
   // Clicking the backdrop cancels; clicking the card must not.
-  $('lead-mask').onclick = (e) => { if (e.target === $('lead-mask')) closeLead(); };
+  // Not while something is running: closing would not cancel the request, it
+  // would only hide the only sign that it has not finished.
+  $('lead-mask').onclick = (e) => {
+    if (e.target === $('lead-mask') && !confirmBusy()) closeLead();
+  };
   $('agree-btn').onclick = toggleAgreement;
 
   $('flag-btn').onclick = toggleFlag;
@@ -1976,7 +2163,7 @@ function bind() {
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!$('lead-mask').hidden) {
-      if (e.key === 'Escape' && !state.leading) { closeLead(); e.preventDefault(); }
+      if (e.key === 'Escape' && !confirmBusy()) { closeLead(); e.preventDefault(); }
       return;
     }
     if (!state.ready) return;      // CSS greys the buttons; it cannot stop a key

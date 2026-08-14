@@ -976,10 +976,29 @@ function askLead() {
   $('lead-cancel').focus();
 }
 
+// One place decides what "in flight" looks like, so the two long actions cannot
+// end up with different rules about what stays clickable.
+const confirmBusy = () => state.leading || state.excluding;
+
+function setConfirmBusy(on, label) {
+  const go = $('lead-go');
+  const mask = $('lead-mask');
+  mask.classList.toggle('busy', !!on);
+  go.disabled = !!on;
+  $('lead-cancel').disabled = !!on;
+  if (on) {
+    go.replaceChildren();
+    const ring = document.createElement('i');
+    ring.className = 'spin';
+    go.append(ring, document.createTextNode(label));
+  } else {
+    go.textContent = go.dataset.verb || 'Overwrite';
+  }
+}
+
 function closeLead() {
   $('lead-mask').hidden = true;
-  $('lead-go').disabled = false;
-  $('lead-go').textContent = $('lead-go').dataset.verb || 'Overwrite';
+  setConfirmBusy(false);
 }
 
 // ── exclude a video ────────────────────────────────────────────────────────
@@ -1030,8 +1049,8 @@ async function doExclude() {
   const f = state.frames[state.i];
   if (!f) return;
   state.excluding = true;
-  $('lead-go').disabled = true;
-  $('lead-go').textContent = 'Excluding\u2026';
+  setConfirmBusy(true,
+    `Excluding ${videoScope(f.stem).keys.length} frames\u2026`);
   try {
     // No retry, for the same reason the lead has none: this writes to everybody
     // else's tab, and one request is one request.
@@ -1066,8 +1085,7 @@ async function doExclude() {
 async function doLead() {
   if (state.leading) return;
   state.leading = true;
-  $('lead-go').disabled = true;
-  $('lead-go').textContent = 'Overwriting\u2026';
+  setConfirmBusy(true, 'Overwriting\u2026');
   try {
     // NOT call(): that retries once on a failed response, and this is the only
     // request in the page that changes somebody else's data. Re-running it is
@@ -2143,7 +2161,11 @@ function bind() {
   $('lead-go').onclick = () => { if (state.confirmRun) state.confirmRun(); };
   $('excl-btn').onclick = askExclude;
   // Clicking the backdrop cancels; clicking the card must not.
-  $('lead-mask').onclick = (e) => { if (e.target === $('lead-mask')) closeLead(); };
+  // Not while something is running: closing would not cancel the request, it
+  // would only hide the only sign that it has not finished.
+  $('lead-mask').onclick = (e) => {
+    if (e.target === $('lead-mask') && !confirmBusy()) closeLead();
+  };
   $('agree-btn').onclick = toggleAgreement;
 
   $('flag-btn').onclick = toggleFlag;
@@ -2203,7 +2225,7 @@ function bind() {
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!$('lead-mask').hidden) {
-      if (e.key === 'Escape' && !state.leading) { closeLead(); e.preventDefault(); }
+      if (e.key === 'Escape' && !confirmBusy()) { closeLead(); e.preventDefault(); }
       return;
     }
     if (!state.ready) return;      // CSS greys the buttons; it cannot stop a key

@@ -764,6 +764,63 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .who-me .who-c { color: var(--accent); }
 .who-me .who-bar i { background: var(--accent); }
 #team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
+
+/* Which frame you are actually looking at. The queue position answers "where am
+   I", but (video, round, frame) is the KEY — it is what the sheet stores, what a
+   bug report has to name and what anyone goes back to the source video with, and
+   until now the page never showed it anywhere. One row per part, each separately
+   copyable, because they are pasted into different places. */
+#id-card { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px;
+           align-items: baseline; }
+.idl { font-size: 11px; color: var(--ink-dim); }
+.idv {
+  min-width: 0; font: 500 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  /* Wrapped, not truncated. These stems run to a hundred characters and the
+     point of putting them on screen is to be read; an ellipsis would mean
+     hovering for a tooltip to learn which video you are looking at. */
+  word-break: break-word;
+}
+.idc {
+  flex: none; padding: 2px; border: 0; border-radius: 5px; background: none;
+  color: var(--ink-dim); line-height: 0; opacity: .5;
+  transition: opacity .12s ease, color .12s ease;
+}
+.idc:hover, .idc:focus-visible { opacity: 1; color: var(--ink);
+                                 background: rgba(120,120,128,.14); }
+.idc.ok { opacity: 1; color: var(--yes); }
+.idc svg { width: 13px; height: 13px; display: block; }
+/* Excluding the footage sits under the three things that identify it, because
+   that is what it acts on: not this frame, this VIDEO.
+   Written as a ROW of the card rather than a button laid on top of one. An
+   outlined full-width button was the loudest thing in a card that is otherwise
+   a label, a value and a copy icon three times over, and it drew the eye every
+   time the frame changed — which is the opposite of what a rarely-used
+   destructive action should do.
+   So: an icon and a phrase, left-aligned on the same 11px label scale as
+   "Video" above it, with no border at all. The hover state is the whole
+   affordance, and it bleeds the card's 14px padding on both sides so the
+   highlight reaches the edges the way a menu row does rather than floating
+   inset. Red appears only on hover — permanently red under every frame reads
+   as an alarm about the frame. */
+#excl-row { grid-column: 1 / -1; margin-top: 11px; padding-top: 10px;
+            border-top: 1px solid var(--line); }
+#excl-btn {
+  display: flex; align-items: center; gap: 7px;
+  width: calc(100% + 28px); margin: 0 -14px; padding: 6px 14px;
+  border: 0; border-radius: 7px; background: none; color: var(--ink-dim);
+  font-size: 11.5px; font-weight: 500; text-align: left;
+  transition: background .13s ease, color .13s ease;
+}
+#excl-btn svg { flex: none; width: 13px; height: 13px; opacity: .75; }
+#excl-btn:hover:not(:disabled), #excl-btn:focus-visible:not(:disabled) {
+  color: var(--no);
+  background: color-mix(in srgb, var(--no) 9%, transparent);
+}
+#excl-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--no) 15%, transparent);
+}
+#excl-btn:disabled { opacity: .35; cursor: default; }
+@media (prefers-reduced-motion: reduce) { #excl-btn { transition: none; } }
 /* The one destructive control on the page, so it is styled as one: it sits
    apart at the foot of the team list, it is not a primary action, and it says
    what it does rather than being an icon. Red only on hover — a permanently red
@@ -806,6 +863,26 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #lead-cancel { background: rgba(120,120,128,.14); color: var(--ink); }
 #lead-go { background: var(--no); color: #fff; }
 #lead-go:disabled { opacity: .5; cursor: default; }
+/* Both of these rewrite entire sheets for the whole team, so the click is
+   followed by a wait measured in seconds, not milliseconds. The dialog stays up
+   and becomes unclosable for the duration: dismissing it would not stop the
+   request, it would only take away the one thing on screen saying it is still
+   running.
+   The label is what carries that message. The ring is decoration on top, and
+   deliberately so — CSS animation does not advance in a tab that is not
+   compositing, and this has already bitten the comparison bars once. */
+#lead-go .spin {
+  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
+  vertical-align: -1px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  animation: lead-spin .7s linear infinite;
+}
+@keyframes lead-spin { to { transform: rotate(360deg); } }
+#lead-mask.busy #lead-cancel { opacity: .4; cursor: default; }
+#lead-mask.busy #lead-box { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  #lead-go .spin { animation: none; }
+}
 
 
 /* One per grid, directly under the grid it explains. A single legend at the
@@ -869,6 +946,27 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="agree-label">Compare two labelers</span><svg id="agree-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div id="agree-out"></div>
+    </div>
+
+    <!-- Above the question rather than below the grids: it names the thing the
+         question is about, so it reads with the frame. -->
+    <div class="card" id="id-card">
+      <span class="idl">Video</span>
+      <span class="idv" id="id-video">&mdash;</span>
+      <button class="idc" data-copy="id-video" type="button"
+              title="Copy video name" aria-label="Copy video name"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Round</span>
+      <span class="idv" id="id-round">&mdash;</span>
+      <button class="idc" data-copy="id-round" type="button"
+              title="Copy round" aria-label="Copy round"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Frame</span>
+      <span class="idv" id="id-frame">&mdash;</span>
+      <button class="idc" data-copy="id-frame" type="button"
+              title="Copy frame" aria-label="Copy frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <div id="excl-row">
+        <button id="excl-btn" type="button"
+                title="Skips every frame of this video, in every round, for every labeler"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.1" stroke="currentColor" stroke-width="1.35"/><path d="M3.4 10.6 10.6 3.4" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg><span>Exclude this video</span></button>
+      </div>
     </div>
 
     <div class="card" id="q-card">
@@ -1004,6 +1102,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_shoulder.js. -->
-<script src="chin_shoulder.js?v=76"></script>
+<script src="chin_shoulder.js?v=79"></script>
 </body>
 </html>
