@@ -878,12 +878,17 @@ function leadCount() {
 // shape — a title, what it will do, what it will not touch, and a red verb —
 // and a second copy of the markup would be a second place for the Escape
 // handling, the focus and the busy state to drift out of step.
-function openConfirm({ title, what, keep, verb, run }) {
+function openConfirm({ title, what, keep, verb, run, danger = true }) {
   $('lead-h').textContent = title;
   $('lead-what').innerHTML = what;
   $('lead-keep').textContent = keep;
   $('lead-go').textContent = verb;
   $('lead-go').dataset.verb = verb;
+  // Red is the one thing on this dialog that says "no way back". A middle step
+  // that only moves to another question is not that yet, so it stays plain —
+  // saving red for the actual point of no return is what keeps it meaning
+  // something when it does appear.
+  $('lead-go').classList.toggle('danger', danger !== false);
   state.confirmRun = run;
   $('lead-mask').hidden = false;
   $('lead-cancel').focus();
@@ -1006,6 +1011,11 @@ function videoScope(stem) {
   return { stems: [stem], keys, facts };
 }
 
+// Two steps, not one: this is the one control on the page that writes to every
+// labeler's tab and cannot be undone. The first step explains what "excluding a
+// video" even means; the second is a plain yes/no restating the concrete
+// numbers for THIS video, so someone who has skimmed past the first step still
+// has to answer a direct question before anything happens.
 function askExclude() {
   if (!state.ready || state.excluding) return;
   const f = state.frames[state.i];
@@ -1013,16 +1023,33 @@ function askExclude() {
   const scope = videoScope(f.stem);
   const rounds = new Set(scope.keys.map((k) => k[1])).size;
   const others = (state.teamRows || []).length;
+  const n = scope.keys.length;
   openConfirm({
     title: 'Exclude this video?',
-    what: `All <b>${scope.keys.length}</b> frame${scope.keys.length === 1 ? '' : 's'} of `
+    what: `All <b>${n}</b> frame${n === 1 ? '' : 's'} of `
         + `<b>${f.stem}</b>, across <b>${rounds}</b> round${rounds === 1 ? '' : 's'}, `
         + `become skipped for <b>${others || 'every'}</b> labeler`
         + `${others === 1 ? '' : 's'} \u2014 you included.`,
     keep: 'Any answers on those frames are cleared. Every other video is left '
-        + 'alone, and so are flags and time spent. This cannot be undone from '
-        + 'the page.',
-    verb: 'Exclude video',
+        + 'alone, and so are flags and time spent.',
+    verb: 'Continue',
+    danger: false,
+    run: () => askExcludeConfirm(f.stem, n, others),
+  });
+}
+
+// The platform's own "are you sure" — no new facts, just the same decision
+// stated as plainly as it can be, with the button that makes it happen coloured
+// like what it does.
+function askExcludeConfirm(stem, n, others) {
+  openConfirm({
+    title: 'Are you sure?',
+    what: `<b>${n.toLocaleString()}</b> frame${n === 1 ? '' : 's'} will be marked `
+        + `skipped for <b>${others || 'every'}</b> labeler`
+        + `${others === 1 ? '' : 's'}, replacing any answers already on them.`,
+    keep: 'This cannot be undone from the page \u2014 there is no backup and no '
+        + 'way to bring the answers back.',
+    verb: 'Exclude Video',
     run: doExclude,
   });
 }
