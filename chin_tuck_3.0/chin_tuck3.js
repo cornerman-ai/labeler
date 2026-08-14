@@ -567,11 +567,15 @@ function nextDisagreement() {
 function flashNextDis(msg, id) {
   const nd = $(id || 'next-dis');
   if (!nd) return;
+  // The LABEL, not the button: the button also holds an icon, and writing
+  // textContent on it would take the icon with the message and never bring it
+  // back.
+  const t = nd.querySelector('.rv-t') || nd;
   clearTimeout(nd._t);
-  if (!nd.dataset.was) nd.dataset.was = nd.textContent;
-  nd.textContent = msg;
+  if (!nd.dataset.was) nd.dataset.was = t.textContent;
+  t.textContent = msg;
   nd._t = setTimeout(() => {
-    nd.textContent = nd.dataset.was;
+    t.textContent = nd.dataset.was;
     delete nd.dataset.was;
   }, 1800);
 }
@@ -1224,12 +1228,30 @@ function renderTeam(rows) {
     add('who-c' + m, `${r.n.toLocaleString()}<s> / ${n.toLocaleString()}</s>`);
 
     const bar = add('who-bar' + m, '');
-    const fill = document.createElement('i');
-    fill.style.width = `${pct}%`;
-    // The 2px min-width keeps 0.1% visible, but it also renders a sliver for
-    // someone who has labeled nothing. Zero must look like zero.
-    if (!r.n) fill.style.minWidth = '0';
-    bar.appendChild(fill);
+    // The runs the ranges panel already fetches, drawn in place. Same cache, so
+    // the bar and the "[1, 100] · [401, 1,100]" under an unfolded row cannot
+    // disagree about what somebody has done.
+    const runs = state.rangeCache.get(r.labeler);
+    if (runs && !runs.error && runs.ranges.length && n) {
+      // A run of one frame in 3,942 is 0.08px wide, so min-width in the CSS is
+      // what keeps a single scattered frame from vanishing. The cap is there
+      // because past a few hundred segments the bar is a smear and the DOM is
+      // the only thing still paying.
+      for (const [from, to] of runs.ranges.slice(0, 400)) {
+        const seg = document.createElement('i');
+        seg.style.left = `${(from / n) * 100}%`;
+        seg.style.width = `${((to - from + 1) / n) * 100}%`;
+        bar.appendChild(seg);
+      }
+    } else if (r.n) {
+      // No runs yet. Fall back to the old proportional fill rather than an
+      // empty track: an empty bar beside "802 / 3,791" reads as nothing done.
+      bar.classList.add('approx');
+      const fill = document.createElement('i');
+      fill.style.left = '0';
+      fill.style.width = `${pct}%`;
+      bar.appendChild(fill);
+    }
 
     // Everything that used to sit on the row now lives here, one hover away.
     // Position IS still worth knowing — it just is not worth a column.
@@ -1241,7 +1263,9 @@ function renderTeam(rows) {
     if (at !== undefined) detail.push(`at #${at + 1}`);
     if (r.last_ts) detail.push(ago(r.last_ts));
     const tip = detail.join(' · ');
-    bar.title = tip;
+    bar.title = tip + (bar.classList.contains('approx')
+      ? ' · bar shows the amount; the positions are still loading'
+      : ' · the bar shows where in the queue');
     cells[cells.length - 2].title = tip;            // the count cell
 
     if (open) {

@@ -570,51 +570,48 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
 #skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
-/* Save & next, aimed somewhere else: it commits this frame exactly as the blue
-   button above does, then jumps to the next frame somebody answered differently
-   instead of to i+1. Outlined rather than filled because it is the third way
-   out of a frame and must not compete with the two above it.
-   It carried a running count of what was left to settle, and that count was a
-   lie in the only situation it mattered: the verdicts come from the server and
-   only move when it recomputes them, so the number sat still through exactly
-   the stretch of work that was changing it. Nothing shows a number it cannot
-   keep honest. The button is never disabled either, for the same reason —
-   deciding there is nothing left from data that may be a minute old is worse
-   than letting the click say so. */
-#next-dis, #skip-dis {
-  width: 100%; padding: 9px; margin-top: 8px; border-radius: 10px;
-  font-size: 13px; font-weight: 500;
+/* ── review ────────────────────────────────────────────────────────────────
+   Two tinted full-width pills under Save and Skip made four competing bars in
+   one card, and the loudest pair was the one used least. Working through
+   disagreements is a different job from labeling the queue in order, so it is
+   its own section: a caption, then a grouped list of two rows sharing one
+   recessed fill with a hairline between them.
+   The colour lives in the ICON, not the whole control. That is the difference
+   between a row that says what it does and a button shouting at the same
+   volume as the primary action above it. */
+#review-card { padding: 12px 14px 13px; }
+.rv-h {
+  font-size: 11px; font-weight: 590; letter-spacing: .01em;
+  color: var(--ink-dim); margin-bottom: 8px;
 }
-/* Tinted, not filled. Each one borrows the colour of the button it behaves
-   like — accent for the one that commits an answer, amber for the one that
-   records a skip, the same amber Skip turns when it is pressed. At this
-   strength they read as a related pair below the two solid buttons rather
-   than as two more primary actions, and you can tell them apart without
-   reading the label, which is the whole point of tinting them. */
-#next-dis {
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  color: color-mix(in srgb, var(--accent) 80%, var(--ink));
+.rv-list {
+  border-radius: 10px; overflow: hidden;
+  background: rgba(120,120,128,.10);
 }
-#next-dis:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+@media (prefers-color-scheme: dark) { .rv-list { background: rgba(120,120,128,.18); } }
+.rv-list button {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 11px; border: 0; background: none; color: var(--ink);
+  font-size: 12.5px; font-weight: 500; text-align: left;
+  transition: background .13s ease;
 }
-#skip-dis {
-  border: 1px solid color-mix(in srgb, var(--maybe) 32%, transparent);
-  background: color-mix(in srgb, var(--maybe) 10%, transparent);
-  color: color-mix(in srgb, var(--maybe) 65%, var(--ink));
+/* Inset to the label, past the icon column, the way a grouped list separates
+   its rows. 11px of padding + a 15px icon + a 9px gap = 35px. */
+.rv-list button + button { position: relative; }
+.rv-list button + button::before {
+  content: ''; position: absolute; left: 35px; right: 0; top: 0; height: 1px;
+  background: var(--line);
 }
-#skip-dis:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--maybe) 60%, transparent);
-  background: color-mix(in srgb, var(--maybe) 18%, transparent);
+.rv-list button svg { flex: none; width: 15px; height: 15px; }
+#next-dis svg { color: var(--accent); }
+#skip-dis svg { color: var(--maybe); }
+.rv-list button:hover:not(:disabled), .rv-list button:focus-visible:not(:disabled) {
+  background: rgba(120,120,128,.12);
 }
-#next-dis:disabled, #skip-dis:disabled { opacity: .4; cursor: default; }
-@media (prefers-color-scheme: dark) {
-  /* Mixing an 80%-accent ink toward a near-white --ink lands almost on the
-     background at these fill strengths, so in dark the label keeps more of
-     its own colour and lets the fill do less of the work. */
-  #next-dis { color: color-mix(in srgb, var(--accent) 55%, white); }
+.rv-list button:active:not(:disabled) { background: rgba(120,120,128,.20); }
+.rv-list button:disabled { opacity: .4; cursor: default; }
+.rv-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .rv-list button { transition: none; } }
   #skip-dis { color: color-mix(in srgb, var(--maybe) 55%, white); }
 }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
@@ -803,12 +800,23 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .who-show-all:hover { text-decoration: underline; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
 .who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
-.who-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px;
-           background: rgba(120,120,128,.16); margin: 6px 0 12px;
-           overflow: hidden; }
+/* Not a progress bar — a MAP of the queue. A left-aligned fill proportional to
+   the count said "802 of 3,791" twice, once as a number and once as a length,
+   and hid the thing the number cannot carry: whether those 802 are the first
+   802, the last 802, or two blocks with a thousand untouched frames between
+   them. Each run of consecutive queue positions is drawn where it actually
+   falls, so two labelers who have covered the same ground look alike and two
+   who have not, do not. */
+.who-bar { grid-column: 1 / -1; position: relative; height: 3px;
+           border-radius: 2px; background: rgba(120,120,128,.16);
+           margin: 6px 0 12px; overflow: hidden; }
 .who-bar:last-child { margin-bottom: 0; }
-.who-bar i { display: block; height: 100%; border-radius: 2px;
-             background: var(--ink-dim); min-width: 2px; }
+.who-bar i { position: absolute; top: 0; bottom: 0; border-radius: 1.5px;
+             background: var(--ink-dim); min-width: 1.5px; }
+/* Until the frame list arrives the bar can only say how MUCH, so it says that
+   at a third of the ink and gives itself away on hover. It is replaced the
+   moment the real runs land, which on a warm cache is immediately. */
+.who-bar.approx i { opacity: .3; }
 .who-me .who-n { color: var(--accent); font-weight: 600; }
 .who-me .who-c { color: var(--accent); }
 .who-me .who-bar i { background: var(--accent); }
@@ -1044,8 +1052,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="act-card">
       <button id="save">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <button id="skip">Skip this frame <kbd style="opacity:.6">K</kbd></button>
-      <button id="next-dis" type="button">Save and go to next disagreement</button>
-      <button id="skip-dis" type="button">Skip and go to next disagreement</button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -1055,6 +1061,20 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
                 title="Mark this frame to come back to (F)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.4 1.6v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.4 2.4h6.9l-1.5 2.4 1.5 2.4H3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="flag-label">Flag</span></button>
       </div>
       <div id="status"></div>
+    </div>
+
+
+    <!-- Working through disagreements is a different job from labeling the
+         queue in order, so it gets its own section rather than two more
+         full-width buttons under Save. -->
+    <div class="card" id="review-card">
+      <div class="rv-h">Review disagreements</div>
+      <div class="rv-list">
+        <button id="next-dis" type="button"
+                title="Save this frame, then jump to the next frame somebody answered differently"><svg viewBox="0 0 15 15" fill="none" aria-hidden="true"><circle cx="7.5" cy="7.5" r="5.6" stroke="currentColor" stroke-width="1.35"/><path d="M5.1 7.7 6.9 9.5 10 5.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="rv-t">Save and go to next</span></button>
+        <button id="skip-dis" type="button"
+                title="Skip this frame, then jump to the next frame somebody answered differently"><svg viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M3.4 4.3 8 7.5l-4.6 3.2V4.3Z" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><path d="M11.3 4.2v6.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="rv-t">Skip and go to next</span></button>
+      </div>
     </div>
 
     <div class="card">
@@ -1125,6 +1145,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=36"></script>
+<script src="chin_tuck3.js?v=38"></script>
 </body>
 </html>
