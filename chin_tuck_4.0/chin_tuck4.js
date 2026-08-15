@@ -86,6 +86,7 @@ const state = {
   pts: { chin: null, sh: null },   // in-progress points, [x,y] normalized
   arm: 'chin',             // which point the next stage click places
   skipped: false,
+  skipReason: null,        // 'not_visible' | 'no_stance' when skipped
   zoom: 1, panX: 0, panY: 0,
   drag: null,              // pan drag: {x, y, px, py}
   ptDrag: null,            // point drag: 'chin' | 'sh'
@@ -208,7 +209,11 @@ function dwellFor(k) {
 // Optimistic, chained per frame — same machinery as 3.0: the local row is
 // recorded and the labeler moves on; a failure rolls the row back, paints
 // the dot red and names the frame in the status line.
-function save({ skip = false } = {}) {
+// `skip` is null for a point pair, or the REASON ('not_visible' /
+// 'no_stance') — a skip is a statement about why the frame cannot be
+// measured, and the reason is the data: it is what says whether the
+// sampling window is still letting non-stance frames through.
+function save({ skip = null } = {}) {
   if (!state.ready) return false;
   const name = who();
   if (!name) { status('Enter your name first', 'err'); $('labeler-input').focus(); return false; }
@@ -227,6 +232,7 @@ function save({ skip = false } = {}) {
     frame_sec: String(f.pts), stance: f.stance,
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
+    skip_reason: skip || '',
     consulted: state.consulted.has(k) ? '1' : '0',
     flag: state.flag ? '1' : '0',
     dwell_sec: String(dwell),
@@ -241,6 +247,7 @@ function save({ skip = false } = {}) {
   const row = {
     video: f.stem, round: f.round, frame: f.frame, rep: f.rep || 0,
     skipped: skip ? 1 : 0,
+    skip_reason: skip || null,
     consulted: state.consulted.has(k) ? 1 : 0,
     flag: state.flag ? 1 : 0,
     dwell_sec: dwell,
@@ -312,6 +319,7 @@ function go(i) {
   const f = state.frames[state.i];
   const saved = state.labels.get(key(f));
   state.skipped = !!(saved && saved.skipped);
+  state.skipReason = (saved && saved.skip_reason) || null;
   state.flag = !!(saved && saved.flag);
   // A saved pair comes back editable: drag a dot, save again — the backend
   // appends, the history keeps the first placement.
@@ -372,7 +380,10 @@ function render() {
     row.querySelector('.st').textContent = state.pts[p]
       ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not set');
   }
-  $('skip').setAttribute('aria-pressed', String(state.skipped));
+  for (const b of document.querySelectorAll('.skipb')) {
+    b.setAttribute('aria-pressed',
+      String(state.skipped && state.skipReason === b.dataset.reason));
+  }
   $('save').disabled = !(state.pts.chin && state.pts.sh);
   renderFlag();
 
@@ -729,6 +740,7 @@ function placeAt(name, clientX, clientY) {
   if (!p) return;
   state.pts[name] = p;
   state.skipped = false;
+  state.skipReason = null;
   // Placing the chin arms the shoulder; placing the shoulder disarms. A
   // labeler doing frame after frame never touches the tool rows: click
   // chin, click shoulder, Enter.
@@ -741,6 +753,7 @@ function clearPoints() {
   state.pts = { chin: null, sh: null };
   state.arm = 'chin';
   state.skipped = false;
+  state.skipReason = null;
   render();
 }
 
@@ -754,17 +767,20 @@ function bind() {
   }
   $('clear-pts').onclick = clearPoints;
 
+  // Save on a blank frame is refused, not converted to a skip: a skip now
+  // carries a REASON, and "you pressed Enter without placing points" is not
+  // one — save() puts the why in the status line.
   $('save').onclick = () => {
-    // Nothing placed = no judgement — recorded as a skip, same rule as 3.0.
-    const blank = !(state.pts.chin && state.pts.sh);
-    if (blank) { state.pts = { chin: null, sh: null }; state.skipped = true; }
-    if (save({ skip: blank })) advance(); else render();
+    if (save({})) advance(); else render();
   };
-  $('skip').onclick = () => {
-    state.pts = { chin: null, sh: null };
-    state.skipped = true;
-    if (save({ skip: true })) advance(); else render();
-  };
+  for (const b of document.querySelectorAll('.skipb')) {
+    b.onclick = () => {
+      state.pts = { chin: null, sh: null };
+      state.skipped = true;
+      state.skipReason = b.dataset.reason;
+      if (save({ skip: b.dataset.reason })) advance(); else render();
+    };
+  }
 
   const gotoFrame = () => {
     const el = $('goto-n');
@@ -804,7 +820,7 @@ function bind() {
     // same behavior as 3.0, which re-saves to persist the flag.
     const saved = state.labels.get(key(state.frames[state.i]));
     if (saved && isResolved(saved)) {
-      if (saved.skipped) save({ skip: true });
+      if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
       else if (state.pts.chin && state.pts.sh) save({});
     }
   };
@@ -887,7 +903,8 @@ function bind() {
     if (k === 'c') { state.arm = 'chin'; render(); }
     else if (k === 's') { state.arm = 'sh'; render(); }
     else if (e.key === 'Enter') $('save').click();
-    else if (k === 'k') $('skip').click();
+    else if (k === 'k') $('skip-nv').click();
+    else if (k === 'n') $('skip-ns').click();
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
     else if (k === 'h') toggleClue();
@@ -942,7 +959,7 @@ async function start() {
 (async function init() {
   bind();
   try {
-    const res = await fetch('queue.json?v=1');
+    const res = await fetch('queue.json?v=2');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const q = await res.json();
     state.frames = q.frames || [];

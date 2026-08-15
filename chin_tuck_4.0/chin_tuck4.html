@@ -575,7 +575,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    with a real cost — the frame leaves the queue judged unjudgeable — so it needs
    to be visible, but it must never compete with the blue Save above it. Grey
    fill, dimmed label, full-strength ink on hover. */
-#skip {
+.skipb {
   width: 100%; padding: 11px; margin-top: 8px; border-radius: 10px;
   border: 1px solid transparent; font-weight: 510;
   background: rgba(120,120,128,.14);
@@ -584,14 +584,14 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
      schemes and still looks demoted next to Save. */
   color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
 }
-#skip:hover:not([aria-pressed="true"]) {
+.skipb:hover:not([aria-pressed="true"]) {
   background: rgba(120,120,128,.20); color: var(--ink);
 }
 @media (prefers-color-scheme: dark) {
-  #skip { background: rgba(120,120,128,.26); }
-  #skip:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
+  .skipb { background: rgba(120,120,128,.26); }
+  .skipb:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
 }
-#skip[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
+.skipb[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
 /* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
    it out only made three buttons compete for the same glance. Next-unlabeled
    keeps its words because it is the one action you cannot infer from a glyph. */
@@ -982,7 +982,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #keys dt { color: var(--ink-dim); }
 #keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
 #keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
-#keys kbd, #save kbd, #skip kbd {
+#keys kbd, #save kbd, .skipb kbd {
   font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
   border: 1px solid var(--line); border-radius: 4px;
   padding: 3px 5px; min-width: 18px; text-align: center;
@@ -1181,7 +1181,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
     <div class="card" id="act-card">
       <button id="save"><span class="rv-t">Save &amp; next</span> <kbd style="opacity:.6">↵</kbd></button>
-      <button id="skip"><span class="rv-t">Skip this frame</span> <kbd style="opacity:.6">K</kbd></button>
+      <button id="skip-nv" class="skipb" data-reason="not_visible"><span class="rv-t">Skip — can&rsquo;t see the points</span> <kbd style="opacity:.6">K</kbd></button>
+      <button id="skip-ns" class="skipb" data-reason="no_stance"><span class="rv-t">Skip — not in boxing stance</span> <kbd style="opacity:.6">N</kbd></button>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -1219,7 +1220,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
         <dt>Save &amp; next</dt>     <dd><kbd>↵</kbd></dd>
-        <dt>Skip this frame</dt>     <dd><kbd>K</kbd></dd>
+        <dt>Skip — can&rsquo;t see</dt> <dd><kbd>K</kbd></dd>
+        <dt>Skip — no stance</dt>    <dd><kbd>N</kbd></dd>
         <div class="sep"></div>
         <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
@@ -1233,6 +1235,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=1"></script>
+<script src="chin_tuck4.js?v=2"></script>
 </body>
 </html>

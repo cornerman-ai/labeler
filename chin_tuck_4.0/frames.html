@@ -88,7 +88,7 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
   const out = document.getElementById('out');
   let frames;
   try {
-    const res = await fetch('queue.json?v=1');
+    const res = await fetch('queue.json?v=2');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     frames = (await res.json()).frames || [];
   } catch (e) {

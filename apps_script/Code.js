@@ -3329,11 +3329,18 @@ var CS3_SPEC = {
 var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
                    'frame_sec', 'stance', 'shoulder_used',
                    'chin_x', 'chin_y', 'sh_x', 'sh_y',
-                   'skipped', 'consulted', 'flag', 'dwell_sec'];
+                   'skipped', 'skip_reason', 'consulted', 'flag', 'dwell_sec'];
 
 // Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
 // stays empty so nothing enum-shaped ever matches these fields.
 var CS4_FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
+
+// A 4.0 skip carries WHY: the points can't be seen, or the boxer isn't in a
+// boxing stance at all. The reasons are data — no_stance is what measures
+// whether the sampler's punch-proximity window is still letting non-stance
+// frames through. Rows from before the column existed have a blank; only
+// new saves are held to the list.
+var CS4_SKIP_REASONS = ['not_visible', 'no_stance'];
 
 var CS4_SPEC = {
   tag: 'v4',
@@ -4771,6 +4778,9 @@ function cs4RowOut(row, idx) {
     frame: Number(row[idx.frame]),
     rep: Number(row[idx.rep]) || 0,
     skipped: skipped ? 1 : 0,
+    skip_reason: skipped && idx.skip_reason !== undefined
+      && String(row[idx.skip_reason] || '') !== ''
+      ? String(row[idx.skip_reason]) : null,
     consulted: String(row[idx.consulted]) === '1' ? 1 : 0,
     flag: String(row[idx.flag]) === '1' ? 1 : 0,
     dwell_sec: (function (v) {
@@ -4901,6 +4911,15 @@ function doGetChinPoint(p, labeler, action) {
       return jsonOut({ status: 'error', message: 'invalid rep: ' + p.rep });
     }
     var skipped = String(p.skipped || '') === '1';
+    var skipReason = String(p.skip_reason || '');
+    if (skipped && CS4_SKIP_REASONS.indexOf(skipReason) === -1) {
+      return jsonOut({ status: 'error',
+                       message: 'a skip needs a reason: ' + CS4_SKIP_REASONS.join(' / ') });
+    }
+    if (!skipped && skipReason !== '') {
+      return jsonOut({ status: 'error',
+                       message: 'skip_reason on a non-skipped row: ' + skipReason });
+    }
     var consulted = String(p.consulted || '') === '1';
     var flagged = String(p.flag || '') === '1';
     var dwell = Number(p.dwell_sec);
@@ -4944,6 +4963,7 @@ function doGetChinPoint(p, labeler, action) {
       else if (col === 'stance') out.push(String(p.stance || ''));
       else if (col === 'shoulder_used') out.push(String(p.shoulder_used || ''));
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
+      else if (col === 'skip_reason') out.push(skipped ? skipReason : '');
       // Saw the peer overlay for this frame before this save — same meaning
       // as 2.0/3.0's clue: allowed, encouraged, but not independent evidence.
       else if (col === 'consulted') out.push(consulted ? 1 : 0);

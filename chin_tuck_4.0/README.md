@@ -12,21 +12,26 @@ Built after the 2026-08 inter-rater runs: 2.0's four questions came in
 below trainable on three of four, and 3.0's single yes/no traded resolution
 for agreement. 4.0 goes the other way — maximum resolution, with
 disagreement diagnosable instead of categorical. 3.0's yes/no labels remain
-valuable: on the 1,040 shared frames they validate the derived distance.
+valuable: on the 932 shared frames they validate the derived distance.
 
 ## The data
 
-**Non-punch frames only.** Placing "the top of the deltoid" only means one
-thing in guard — mid-punch the shoulder roll moves it. Every frame here
-sits **> 0.5s from every labeled punch**, in a **round that has punch
-labels** (a round with zero punch rows was never labeled, so "no punch
-near" would mean nothing there — exactly 1 such round exists in the whole
-corpus). Both hips must also be tracked (visibility ≥ 0.6): the derived
-distance is normalized by torso height.
+**Non-punch, punch-adjacent frames only.** Placing "the top of the
+deltoid" only means one thing in guard — mid-punch the shoulder roll moves
+it, and between rounds the boxer isn't in stance at all. Every frame here
+sits in the **0.5–5s band around a labeled punch**: more than 0.5s from
+every punch (out of the shoulder roll), within 5s of some punch (out of
+the talking/stretching stretches), in a **round that has punch labels** (a
+round with zero punch rows was never labeled, so "no punch near" would
+mean nothing there — exactly 1 such round exists in the whole corpus).
+Both hips must also be tracked (visibility ≥ 0.6): the derived distance is
+normalized by torso height. The residual non-stance rate is measured by
+the `no_stance` skip reason — that number decides whether 5s needs
+tightening.
 
-- 1,867 frames across 192 videos: **1,040 kept from 2.0** (already
-  exported, already 3.0-labeled) **+ 827 new picks**
-- queue: **2,054 slots** = 1,867 + **187 planted repeats** (rep=1, ~10%,
+- 1,810 frames across 192 videos: **932 kept from 2.0** (already exported,
+  already 3.0-labeled) **+ 878 sampled fresh**
+- queue: **1,996 slots** = 1,810 + **186 planted repeats** (rep=1, ~10%,
   ≥200 slots downstream, blind) for intra-rater click scatter — the noise
   floor every inter-rater number is read against
 - sampler: `cornerman-backend/ml/research/chin_tuck/v3/chin_sampler_v3.py`
@@ -51,7 +56,8 @@ out of the training-critical sheet.
 new row; readers resolve latest-per-identity. Re-labels are pre/post-
 coaching measurements, and `rep` in the identity is what keeps a planted
 repeat from collapsing into the original's row. A row is a complete pair or
-a skip — the backend refuses a lone chin.
+a skip — the backend refuses a lone chin, and a skip must carry its reason
+(`not_visible` / `no_stance`).
 
 ## The page
 
@@ -67,7 +73,9 @@ Two deliberate rules:
   a labeler who can see the pipeline's guess anchors on it, and
   independence is the whole value of the clicks. Opening Peers marks the
   frame `consulted`, same meaning as 2.0/3.0's clue.
-- **One skip.** No reason taxonomy yet; the flag is there for "come back".
+- **Two skips, by reason.** `K` = can't see the points, `N` = not in
+  boxing stance. The reasons are data: `no_stance` measures what the
+  punch-proximity sampling window still lets through.
 
 Not ported from 3.0 (deliberately, keep the pilot small): reviewer mode /
 disagreement jump, the kappa panel (kappa is meaningless here — agreement
@@ -84,10 +92,13 @@ python chin_tuck/v3/fetch_combined_xlsx.py \
     --service-account <backend>/firebase_service_account.json \
     --out combined_snapshot.xlsx
 
-# 2. sample (additive: raise --target, gates unchanged → old picks keep)
+# 2. sample — SELF-SEEDED from the current manifest, so existing frames,
+#    their queue positions and their labels survive (additive: raise
+#    --target with gates unchanged and old picks keep; changing a gate
+#    drops only the frames the new gate excludes)
 python chin_tuck/v3/chin_sampler_v3.py \
     --combined combined_snapshot.xlsx \
-    --seed-manifest <labeler>/chin_tuck_2.0/chin_frames.json \
+    --seed-manifest <labeler>/chin_tuck_4.0/chin_frames.json \
     --out <labeler>/chin_tuck_4.0/chin_frames.json
 
 # 3. export new JPEGs (skips existing), then upload (skips existing)
