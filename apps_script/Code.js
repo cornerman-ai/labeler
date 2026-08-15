@@ -325,6 +325,19 @@ function doGet(e) {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
 
+  // Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html). GEOMETRY, not a
+  // verdict: the labeler clicks the chin tip and the top of the lead
+  // shoulder, and the row stores the two points. Its own machinery
+  // (doGetChinPoint): rows are APPEND-ONLY with latest-(video,round,frame,
+  // rep)-wins, because planted repeat frames (rep>0) and re-label history
+  // are the data — an overwrite would erase exactly what 4.0 measures. Its
+  // tabs live in their OWN spreadsheet (CS4_SPEC.spreadsheetId), not this
+  // one — see csSpreadsheet().
+  if (action === 'saveChinPoint' || action === 'listChinPoint' ||
+      action === 'statsChinPoint' || action === 'peersChinPoint') {
+    return doGetChinPoint(p, labeler, action);
+  }
+
   // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
   // answered, keyed by (labeler, pair_id). The pair list itself is fixed and
   // seeded in bladed_pairs.json — every labeler answers the SAME comparisons,
@@ -3293,6 +3306,58 @@ var CS3_SPEC = {
   action: 'ChinTuck3'
 };
 
+// THE definition of a chin_point_labels_* sheet — labeler 4.0, the geometric
+// generation. No verdict columns: the labeler CLICKS the chin tip and the top
+// of the lead shoulder, and the row stores the two points, image-normalized
+// [0,1] against the frame's native resolution. Over/level/under is DERIVED
+// from the geometry downstream, never labeled.
+//
+//  * `rep` joins the identity. The queue plants ~10% of frames a second time
+//    (rep=1) far downstream, blind, to measure INTRA-rater click scatter —
+//    the noise floor every inter-rater number is read against. Keyed without
+//    rep, a repeat would look like a re-label and collapse into one row.
+//  * APPEND-ONLY, latest-(video,round,frame,rep) wins. 2.0 traded 1.0's
+//    history away for overwrite-in-place; 4.0 deliberately trades back:
+//    re-labels after coaching are pre/post measurements of the coaching, and
+//    the sheet growth that motivated 2.0's choice is contained in 4.0's own
+//    spreadsheet. Readers (list/stats/peers) resolve latest-per-identity;
+//    every row stays.
+//  * OWN SPREADSHEET ('Chin Point Labels', Drive: data/labels/labeling_team),
+//    not the Box Labeled Data workbook — append-only rows and repeat frames
+//    stay out of the training-critical sheet, and the prefix scans here walk
+//    only their own tabs.
+var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
+                   'frame_sec', 'stance', 'shoulder_used',
+                   'chin_x', 'chin_y', 'sh_x', 'sh_y',
+                   'skipped', 'consulted', 'flag', 'dwell_sec'];
+
+// Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
+// stays empty so nothing enum-shaped ever matches these fields.
+var CS4_FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
+
+var CS4_SPEC = {
+  tag: 'v4',
+  prefix: 'chin_point_labels_',
+  headers: CS4_HEADERS,
+  values: {},
+  fields: CS4_FIELDS,
+  statsKey: 'cs_stats_chin_point_labels_',
+  overlapKey: 'cs_overlap_',
+  action: 'ChinPoint',
+  spreadsheetId: '1eOz25mCxSyJjRwxaW38Vp2xpDlbuAluu8cetheZCb1w'
+};
+
+// The spreadsheet a spec's tabs live in. CS2/CS3 predate this and live where
+// the script is bound (Box Labeled Data); a spec carrying spreadsheetId gets
+// its own workbook. openById costs ~100ms — paid only by the generations
+// that opted in.
+function csSpreadsheet(spec) {
+  if (spec && spec.spreadsheetId) {
+    return SpreadsheetApp.openById(spec.spreadsheetId);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
 // Every response carries its GENERATION's marker. doGet answers an action it
 // does not recognise with {status:'ok', message:'Label receiver is running'}, so
 // a page talking to a deployment older than its own generation would read a save
@@ -3324,7 +3389,7 @@ function csPayload(spec, o) {
 // so those entries moved on their own when the tabs were renamed. Appending the
 // prefix as well would just spell it twice.
 (function deriveStatsKeys() {
-  var specs = [CS2_SPEC, CS3_SPEC];
+  var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC];
   for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
 })();
 
@@ -3341,7 +3406,7 @@ function getOrCreateCs2Sheet(labeler, spec) {
   var HEADERS = spec.headers;
   var name = cs2SheetName(labeler, spec);
   if (!name) return null;
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = csSpreadsheet(spec);
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
@@ -4648,4 +4713,278 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
 
   return jsonOut({ status: 'error',
                    message: 'unknown chin-shoulder action: ' + action });
+}
+
+// ============================================================
+// Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html)
+//
+// Its own handler rather than another spec through doGetChinShoulderV2:
+// that machinery's save is overwrite-in-place keyed (video, round, frame),
+// and both halves of that are wrong here — 4.0 is append-only, and `rep`
+// joins the key. Weaving "unless the spec says append" through the shared
+// branch would put 2.0/3.0's correctness at the mercy of 4.0's flags; a
+// hundred lines of purpose-built handler cannot break them. The sheet
+// naming, header reconciliation, response markers and cache plumbing are
+// still the shared ones (cs2SheetName / getOrCreateCs2Sheet / csOut /
+// cs2InvalidateStats, all spec-driven).
+//
+// Readers resolve LATEST-per-(video, round, frame, rep) by ts — plain
+// ISO-8601 string compare, same convention as cs2Stats. Every older row
+// stays in the sheet: re-label history is pre/post-coaching data, and the
+// rep pairs are the intra-rater probe.
+// ============================================================
+
+// Image-normalized coordinate, or null: clicks land on the frame, so a
+// value outside [0,1] is a page bug, not a labeler opinion.
+function cs4Norm01(v) {
+  if (v === undefined || v === null || v === '') return null;
+  var n = Number(v);
+  return (isFinite(n) && n >= 0 && n <= 1) ? n : null;
+}
+
+function cs4Key(video, round, frame, rep) {
+  return [String(video), String(round), String(frame),
+          String(rep || 0)].join(KEY_SEP);
+}
+
+// data rows (with header idx) -> { key: rowArray } keeping only the newest
+// ts per identity. Shared by list, stats and peers so "latest wins" cannot
+// fork into three slightly different rules.
+function cs4Latest(data, idx, startRow) {
+  var best = {};
+  for (var r = startRow; r < data.length; r++) {
+    var row = data[r];
+    if (row[idx.video] === '' || row[idx.video] === null) continue;
+    var k = cs4Key(row[idx.video], row[idx.round], row[idx.frame], row[idx.rep]);
+    var ts = String(row[idx.ts] || '');
+    if (!best[k] || ts > String(best[k][idx.ts] || '')) best[k] = row;
+  }
+  return best;
+}
+
+function cs4RowOut(row, idx) {
+  var skipped = String(row[idx.skipped]) === '1';
+  var out = {
+    ts: String(row[idx.ts] || ''),
+    video: String(row[idx.video]),
+    round: Number(row[idx.round]),
+    frame: Number(row[idx.frame]),
+    rep: Number(row[idx.rep]) || 0,
+    skipped: skipped ? 1 : 0,
+    consulted: String(row[idx.consulted]) === '1' ? 1 : 0,
+    flag: String(row[idx.flag]) === '1' ? 1 : 0,
+    dwell_sec: (function (v) {
+      v = Number(v);
+      return isFinite(v) && v > 0 ? v : 0;
+    })(row[idx.dwell_sec])
+  };
+  for (var f = 0; f < CS4_FIELDS.length; f++) {
+    var v = row[idx[CS4_FIELDS[f]]];
+    out[CS4_FIELDS[f]] = skipped || v === '' || v === null ? null : Number(v);
+  }
+  return out;
+}
+
+function doGetChinPoint(p, labeler, action) {
+  var spec = CS4_SPEC;
+
+  // === STATS — team panel: distinct resolved identities per labeler ===
+  if (action === 'statsChinPoint') {
+    var cache = null;
+    try { cache = CacheService.getScriptCache(); } catch (e) {}
+    if (cache) {
+      var hit = cache.get(spec.statsKey);
+      if (hit) return ContentService.createTextOutput(hit)
+                       .setMimeType(ContentService.MimeType.JSON);
+    }
+    var sheets = csSpreadsheet(spec).getSheets();
+    var team = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var nm = sheets[s].getName();
+      if (nm.indexOf(spec.prefix) !== 0) continue;
+      var sh0 = sheets[s];
+      var entry = { labeler: nm.substring(spec.prefix.length), n: 0,
+                    skipped: 0, last_ts: '', last: null };
+      if (sh0.getLastRow() > 1) {
+        var d0 = sh0.getDataRange().getValues();
+        var ix = punchDirHeaderIndex(d0[0]);
+        var latest = cs4Latest(d0, ix, 1);
+        for (var k in latest) {
+          var row = latest[k];
+          var isSkip = String(row[ix.skipped]) === '1';
+          var full = true;
+          for (var f = 0; f < spec.fields.length; f++) {
+            var v = row[ix[spec.fields[f]]];
+            if (v === '' || v === null) { full = false; break; }
+          }
+          if (isSkip || full) entry.n++;
+          if (isSkip) entry.skipped++;
+          var ts = String(row[ix.ts] || '');
+          if (ts > entry.last_ts) {
+            entry.last_ts = ts;
+            entry.last = { video: String(row[ix.video]),
+                           round: Number(row[ix.round]),
+                           frame: Number(row[ix.frame]) };
+          }
+        }
+      }
+      team.push(entry);
+    }
+    team.sort(function (a, b) { return b.n - a.n; });
+    var payload = csPayload(spec, { labelers: team });
+    if (cache) { try { cache.put(spec.statsKey, payload, CS2_STATS_TTL); } catch (e) {} }
+    return ContentService.createTextOutput(payload)
+             .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === PEERS — every labeler's latest placements for ONE frame ===
+  // Serves the reviewer overlay. All reps come back: two placements by the
+  // same labeler on a planted repeat are exactly the scatter the reviewer
+  // is looking at.
+  if (action === 'peersChinPoint') {
+    if (p.video === undefined || p.round === undefined || p.frame === undefined) {
+      return jsonOut({ status: 'error', message: 'missing video/round/frame' });
+    }
+    var psheets = csSpreadsheet(spec).getSheets();
+    var peers = [];
+    for (var ps = 0; ps < psheets.length; ps++) {
+      var pnm = psheets[ps].getName();
+      if (pnm.indexOf(spec.prefix) !== 0) continue;
+      var psh = psheets[ps];
+      if (psh.getLastRow() < 2) continue;
+      var pd = psh.getDataRange().getValues();
+      var pix = punchDirHeaderIndex(pd[0]);
+      var pl = cs4Latest(pd, pix, 1);
+      for (var pk in pl) {
+        var prow = pl[pk];
+        if (!cs2SameVideo(prow[pix.video], p.video)) continue;
+        if (String(prow[pix.round]) !== String(p.round)) continue;
+        if (String(prow[pix.frame]) !== String(p.frame)) continue;
+        var po = cs4RowOut(prow, pix);
+        po.labeler = pnm.substring(spec.prefix.length);
+        peers.push(po);
+      }
+    }
+    return csOut(spec, { video: String(p.video), round: Number(p.round),
+                         frame: Number(p.frame), peers: peers });
+  }
+
+  var who = p.labeler || labeler;
+  var name = cs2SheetName(who, spec);
+  if (!name) return jsonOut({ status: 'error', message: 'missing labeler' });
+
+  // === LIST — this labeler's latest row per identity ===
+  // Same rule as 2.0/3.0: only a save creates a tab.
+  if (action === 'listChinPoint') {
+    var lsh = csSpreadsheet(spec).getSheetByName(name);
+    if (!lsh || lsh.getLastRow() < 2) {
+      return csOut(spec, { labeler: who, sheet: name, rows: [] });
+    }
+    var ld = lsh.getDataRange().getValues();
+    var lix = punchDirHeaderIndex(ld[0]);
+    var llatest = cs4Latest(ld, lix, 1);
+    var rows = [];
+    for (var lk in llatest) rows.push(cs4RowOut(llatest[lk], lix));
+    return csOut(spec, { labeler: who, sheet: name, rows: rows });
+  }
+
+  // === SAVE — always append; never touches an existing row ===
+  if (action === 'saveChinPoint') {
+    var required = ['video', 'round', 'frame'];
+    for (var rq = 0; rq < required.length; rq++) {
+      if (p[required[rq]] === undefined || p[required[rq]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[rq] });
+      }
+    }
+    var rep = p.rep === undefined || p.rep === '' ? 0 : Number(p.rep);
+    if (!isFinite(rep) || rep < 0 || rep !== Math.floor(rep)) {
+      return jsonOut({ status: 'error', message: 'invalid rep: ' + p.rep });
+    }
+    var skipped = String(p.skipped || '') === '1';
+    var consulted = String(p.consulted || '') === '1';
+    var flagged = String(p.flag || '') === '1';
+    var dwell = Number(p.dwell_sec);
+    if (!isFinite(dwell) || dwell < 0) dwell = 0;
+
+    var coords = {};
+    var have = 0;
+    for (var cf = 0; cf < spec.fields.length; cf++) {
+      var cv = cs4Norm01(p[spec.fields[cf]]);
+      if (cv !== null) have++;
+      else if (p[spec.fields[cf]] !== undefined && p[spec.fields[cf]] !== '') {
+        return jsonOut({ status: 'error',
+                         message: 'invalid ' + spec.fields[cf] + ': ' + p[spec.fields[cf]] });
+      }
+      coords[spec.fields[cf]] = cv;
+    }
+    // The row is a measurement or it is a skip — never half of one. A lone
+    // chin with no shoulder cannot produce the derived distance, so storing
+    // it would create rows that look labeled and score as nothing.
+    if (skipped && have > 0) {
+      return jsonOut({ status: 'error',
+                       message: 'a skipped frame cannot also carry points' });
+    }
+    if (!skipped && have !== spec.fields.length) {
+      return jsonOut({ status: 'error',
+                       message: 'both points required (chin + shoulder), or skip' });
+    }
+
+    var sh = getOrCreateCs2Sheet(who, spec);
+    var headerRow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+    var out = [];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') out.push(new Date().toISOString());
+      else if (col === 'labeler') out.push(who);
+      else if (col === 'video') out.push(String(p.video));
+      else if (col === 'round') out.push(Number(p.round));
+      else if (col === 'frame') out.push(Number(p.frame));
+      else if (col === 'rep') out.push(rep);
+      else if (col === 'frame_sec') out.push(p.frame_sec === undefined || p.frame_sec === '' ? '' : Number(p.frame_sec));
+      else if (col === 'stance') out.push(String(p.stance || ''));
+      else if (col === 'shoulder_used') out.push(String(p.shoulder_used || ''));
+      else if (col === 'skipped') out.push(skipped ? 1 : 0);
+      // Saw the peer overlay for this frame before this save — same meaning
+      // as 2.0/3.0's clue: allowed, encouraged, but not independent evidence.
+      else if (col === 'consulted') out.push(consulted ? 1 : 0);
+      else if (col === 'flag') out.push(flagged ? 1 : 0);
+      else if (col === 'dwell_sec') out.push(dwell);
+      // '' for a skip, not 0: 0 is a real coordinate (the frame's left/top
+      // edge), so the "written-down no answer" convention the enum
+      // generations use would collide with a legitimate value here.
+      else if (coords[col] !== undefined) out.push(skipped || coords[col] === null ? '' : coords[col]);
+      else out.push('');
+    }
+
+    var lock = null;
+    try {
+      lock = LockService.getScriptLock();
+      lock.waitLock(25000);
+    } catch (e) {
+      return jsonOut({ status: 'error',
+                       message: 'the sheet was busy — nothing saved, try again' });
+    }
+    try {
+      var at = sh.getLastRow() + 1;      // inside the lock — see the V2 note
+      if (idxOfHeader(headerRow, 'video') >= 0) {
+        try { sh.getRange(at, idxOfHeader(headerRow, 'video') + 1).setNumberFormat('@'); } catch (e) {}
+      }
+      sh.getRange(at, 1, 1, out.length).setValues([out]);
+      cs2InvalidateStats(spec, who);
+      return csOut(spec, { appended: 1 });
+    } finally {
+      try { SpreadsheetApp.flush(); } catch (e) {}
+      lock.releaseLock();
+    }
+  }
+
+  return jsonOut({ status: 'error',
+                   message: 'unknown chin-point action: ' + action });
+}
+
+function idxOfHeader(headerRow, name) {
+  for (var i = 0; i < headerRow.length; i++) {
+    if (String(headerRow[i]) === name) return i;
+  }
+  return -1;
 }
