@@ -75,7 +75,10 @@ Two deliberate rules:
   frame `consulted`, same meaning as 2.0/3.0's clue.
 - **Two skips, by reason.** `K` = can't see the points, `N` = not in
   boxing stance. The reasons are data: `no_stance` measures what the
-  punch-proximity sampling window still lets through.
+  punch-proximity sampling window still lets through. `no_stance` means
+  the boxer is clearly doing another exercise, or has clearly stopped
+  boxing to explain something — explaining WHILE boxing (still in stance,
+  still working) is normal footage and gets labeled, not skipped.
 
 Not ported from 3.0 (deliberately, keep the pilot small): reviewer mode /
 disagreement jump, the kappa panel (kappa is meaningless here — agreement
