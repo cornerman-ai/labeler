@@ -136,6 +136,52 @@ button { font: inherit; color: inherit; cursor: pointer; }
   letter-spacing: -.02em; white-space: nowrap;
 }
 #count small { color: var(--ink-dim); font-weight: 400; font-size: 13px; }
+
+/* ── dwell timer ────────────────────────────────────────────────────────
+   Copied from 2.0's #dwell — see that file's comment for the reasoning.
+   A live readout of dwellFor(), the exact number save() is about to write
+   to dwell_sec: the digits are the accumulated total across every look at
+   this frame, the fill/colour track THIS look's progress toward its own
+   120s cap. */
+#dwell {
+  position: relative; overflow: hidden; align-self: center;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px 5px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font: 600 12px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+  transition: color .25s ease, border-color .25s ease;
+}
+#dwell-fill {
+  position: absolute; inset: 0; width: 0%; z-index: 0;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition: width .2s linear, background-color .3s ease;
+}
+#dwell-dot, #dwell-time { position: relative; z-index: 1; }
+#dwell-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--accent);
+  animation: dwell-pulse 2.2s ease-in-out infinite;
+}
+@keyframes dwell-pulse {
+  0%, 100% { opacity: .4; transform: scale(.8); }
+  50%      { opacity: 1;  transform: scale(1); }
+}
+#dwell.warn {
+  color: color-mix(in srgb, var(--maybe) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--maybe) 45%, var(--line));
+}
+#dwell.warn #dwell-dot { background: var(--maybe); animation-duration: .9s; }
+#dwell.warn #dwell-fill { background: color-mix(in srgb, var(--maybe) 22%, transparent); }
+#dwell.capped {
+  color: color-mix(in srgb, var(--no) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--no) 45%, var(--line));
+}
+#dwell.capped #dwell-dot { background: var(--no); animation: none; opacity: 1; transform: scale(1); }
+#dwell.capped #dwell-fill { background: color-mix(in srgb, var(--no) 20%, transparent); }
+@media (prefers-reduced-motion: reduce) { #dwell-dot { animation: none; } }
+
 #done { font-size: 12px; color: var(--ink-dim); white-space: nowrap; margin-left: auto; }
 
 /* ── layout ─────────────────────────────────────────────────────────────── */
@@ -1101,6 +1147,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card">
       <div id="head">
         <div id="count">—<small> / —</small></div>
+        <div id="dwell" aria-hidden="true" title="Time on this frame">
+          <span id="dwell-fill"></span>
+          <span id="dwell-dot"></span>
+          <span id="dwell-time">0:00.0</span>
+        </div>
         <span id="done">—</span>
       </div>
       <div id="goto">
@@ -1166,6 +1217,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck3.js. -->
-<script src="chin_tuck3.js?v=44"></script>
+<script src="chin_tuck3.js?v=45"></script>
 </body>
 </html>

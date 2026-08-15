@@ -270,6 +270,33 @@ function dwellFor(k) {
   return Math.round((before + Math.min(Math.max(seg, 0), DWELL_CAP_SEC)) * 10) / 10;
 }
 
+// m:ss.t — tenths, matching dwellFor's own rounding. Built from integer
+// tenths rather than string-formatting the float directly: toFixed on a
+// modulo can print "60.0" instead of rolling into the next minute.
+function fmtDwell(totalSec) {
+  const cs = Math.max(0, Math.round(totalSec * 10));
+  const m = Math.floor(cs / 600);
+  const rem = cs - m * 600;
+  return `${m}:${String(Math.floor(rem / 10)).padStart(2, '0')}.${rem % 10}`;
+}
+
+// Ticks the dwell pill. Ticking dwellFor() itself, rather than a separate
+// stopwatch, means the number on screen is never anything other than exactly
+// what save() would write right now — no second implementation to drift out
+// of sync with the real one.
+function updateDwell() {
+  const el = $('dwell');
+  if (!el || !state.frames.length) return;
+  const k = key(state.frames[state.i]);
+  const seg = state.shownAt
+    ? Math.min(Math.max((Date.now() - state.shownAt) / 1000, 0), DWELL_CAP_SEC)
+    : 0;
+  $('dwell-time').textContent = fmtDwell(dwellFor(k));
+  $('dwell-fill').style.width = `${(seg / DWELL_CAP_SEC) * 100}%`;
+  el.classList.toggle('warn', seg >= DWELL_CAP_SEC * 0.8 && seg < DWELL_CAP_SEC);
+  el.classList.toggle('capped', seg >= DWELL_CAP_SEC);
+}
+
 function save({ skip = false } = {}) {
   if (!state.ready) return false;
   const name = who();
@@ -418,6 +445,7 @@ function render() {
   $('count').innerHTML = `${state.i + 1}<small> / ${n}</small>`;
   const resolved = myRowsInQueue().filter(isResolved).length;
   $('done').textContent = `${resolved} done`;
+  updateDwell();
 
   $('id-video').textContent = f.stem;
   $('id-round').textContent = f.round;
@@ -2482,4 +2510,7 @@ async function start() {
   // never reached it — the third panel sat on whatever it read when the page
   // opened, which is what made it look permanently behind the other two.
   setInterval(() => { loadTeam(); loadOverlap(); }, TEAM_POLL_MS);
+  // 100ms: fast enough for a tenths readout to feel live, cheap enough that
+  // 3,942 possible frames never matters — this only ever touches the current one.
+  setInterval(updateDwell, 100);
 })();
