@@ -66,6 +66,13 @@ chained saves, overview grid, team panel) with the question card replaced
 by point placement: click places the armed point (chin → shoulder →
 disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for precision.
 
+The shoulder instruction is stance-as-a-prior, not a hard rule: the hint
+shows the frame's stance and which shoulder is USUALLY the lead, and asks
+for the one actually held forward in this frame — boxers switch stances
+mid-movement. `shoulder_used` therefore records the stance-derived
+expectation; which shoulder was actually clicked is derivable downstream
+by matching the click against BlazePose's two shoulder points.
+
 Two deliberate rules:
 
 - **The machine's points are never drawn while placing.** BlazePose

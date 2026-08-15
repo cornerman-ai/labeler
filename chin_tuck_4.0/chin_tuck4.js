@@ -362,14 +362,18 @@ function render() {
   $('id-round').textContent = f.round;
   $('id-frame').textContent = f.frame;
 
-  // "their LEFT" is the boxer's anatomical left — which sits on the RIGHT of
-  // the image when they face the camera. Spelled out because every labeler
-  // trips on it exactly once.
+  // Stance first, side second, and "usually" on purpose: stance says which
+  // shoulder is normally the lead, but boxers switch mid-movement, so the
+  // instruction is the shoulder actually held forward in THIS frame — the
+  // stance line is the prior, not a hard rule. "their LEFT" is the boxer's
+  // anatomical left — on the RIGHT of the image when they face the camera;
+  // spelled out because every labeler trips on it exactly once.
   const side = String(f.shoulder || '').toUpperCase();
   $('side-hint').innerHTML =
-    `Mark the boxer's <b>${side}</b> shoulder — their lead. `
-    + `<span style="color:var(--ink-dim);font-weight:400">(their ${side.toLowerCase()}, `
-    + `not the image's ${side.toLowerCase()})</span>`;
+    `${f.stance} — the lead is usually their <b>${side}</b> shoulder. `
+    + `Mark the one actually held forward in this frame. `
+    + `<span style="color:var(--ink-dim);font-weight:400">(their ${side.toLowerCase()} `
+    + `= the boxer's own ${side.toLowerCase()}, not the image's)</span>`;
 
   const img = $('frame');
   if (img.dataset.k !== key(f)) { img.dataset.k = key(f); img.src = imgSrc(f); }
@@ -377,8 +381,10 @@ function render() {
   for (const row of document.querySelectorAll('.tool-row')) {
     const p = row.dataset.p === 'chin' ? 'chin' : 'sh';
     row.setAttribute('aria-pressed', String(state.arm === row.dataset.p));
+    // "not placed yet", never "not set" — the latter read as a fault
+    // rather than as "waiting its turn behind the chin".
     row.querySelector('.st').textContent = state.pts[p]
-      ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not set');
+      ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not placed yet');
   }
   for (const b of document.querySelectorAll('.skipb')) {
     b.setAttribute('aria-pressed',
