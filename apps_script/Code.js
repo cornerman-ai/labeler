@@ -3329,6 +3329,7 @@ var CS3_SPEC = {
 var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
                    'frame_sec', 'stance', 'shoulder_used',
                    'chin_x', 'chin_y', 'sh_x', 'sh_y',
+                   'chin_vis', 'sh_vis',
                    'skipped', 'skip_reason', 'consulted', 'flag', 'dwell_sec'];
 
 // Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
@@ -3341,6 +3342,15 @@ var CS4_FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
 // frames through. Rows from before the column existed have a blank; only
 // new saves are held to the list.
 var CS4_SKIP_REASONS = ['not_visible', 'no_stance'];
+
+// Per-point visibility — COCO's v-flags in words. 'visible' = the landmark
+// was seen and clicked (v=2); 'inferred' = occluded (a glove over the
+// chin), placed where the anatomy must be (v=1); the v=0 case is the
+// not_visible SKIP, not a point. Kept per point because the chin can be
+// gloved while the shoulder is plain to see — and the chin-proxy
+// calibration must be able to exclude the guesses. Blank on a non-skip
+// row means 'visible' (rows written before the column existed).
+var CS4_VIS = ['visible', 'inferred'];
 
 var CS4_SPEC = {
   tag: 'v4',
@@ -4792,6 +4802,11 @@ function cs4RowOut(row, idx) {
     var v = row[idx[CS4_FIELDS[f]]];
     out[CS4_FIELDS[f]] = skipped || v === '' || v === null ? null : Number(v);
   }
+  var VIS = ['chin_vis', 'sh_vis'];
+  for (var vi = 0; vi < VIS.length; vi++) {
+    var vv = idx[VIS[vi]] === undefined ? '' : String(row[idx[VIS[vi]]] || '');
+    out[VIS[vi]] = skipped ? null : (vv === '' ? 'visible' : vv);
+  }
   return out;
 }
 
@@ -4948,6 +4963,25 @@ function doGetChinPoint(p, labeler, action) {
                        message: 'both points required (chin + shoulder), or skip' });
     }
 
+    // Per-point visibility. Absent means 'visible' — the common case pays
+    // no keystroke — but a value sent must be one of the list, and a skip
+    // must not carry any (a skip has no points to be visible).
+    var vis = {};
+    var VIS_COLS = ['chin_vis', 'sh_vis'];
+    for (var vc = 0; vc < VIS_COLS.length; vc++) {
+      var vraw = String(p[VIS_COLS[vc]] || '');
+      if (vraw === '') { vis[VIS_COLS[vc]] = skipped ? '' : 'visible'; continue; }
+      if (skipped) {
+        return jsonOut({ status: 'error',
+                         message: 'a skipped frame cannot carry ' + VIS_COLS[vc] });
+      }
+      if (CS4_VIS.indexOf(vraw) === -1) {
+        return jsonOut({ status: 'error',
+                         message: 'invalid ' + VIS_COLS[vc] + ': ' + vraw });
+      }
+      vis[VIS_COLS[vc]] = vraw;
+    }
+
     var sh = getOrCreateCs2Sheet(who, spec);
     var headerRow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
     var out = [];
@@ -4962,6 +4996,7 @@ function doGetChinPoint(p, labeler, action) {
       else if (col === 'frame_sec') out.push(p.frame_sec === undefined || p.frame_sec === '' ? '' : Number(p.frame_sec));
       else if (col === 'stance') out.push(String(p.stance || ''));
       else if (col === 'shoulder_used') out.push(String(p.shoulder_used || ''));
+      else if (col === 'chin_vis' || col === 'sh_vis') out.push(vis[col]);
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
       else if (col === 'skip_reason') out.push(skipped ? skipReason : '');
       // Saw the peer overlay for this frame before this save — same meaning

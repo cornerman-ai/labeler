@@ -84,6 +84,11 @@ const state = {
   labels: new Map(),       // key -> latest saved row (mine)
   i: 0,
   pts: { chin: null, sh: null },   // in-progress points, [x,y] normalized
+  // COCO's v-flags in words, per point: 'visible' = seen and clicked,
+  // 'inferred' = occluded (gloved chin), placed where the anatomy must be.
+  // The v=0 case is the not_visible SKIP. Chin-proxy calibration must be
+  // able to exclude the guesses, so the flag rides every save.
+  vis: { chin: 'visible', sh: 'visible' },
   arm: 'chin',             // which point the next stage click places
   skipped: false,
   skipReason: null,        // 'not_visible' | 'no_stance' when skipped
@@ -242,6 +247,8 @@ function save({ skip = null } = {}) {
     params.chin_y = state.pts.chin[1].toFixed(5);
     params.sh_x = state.pts.sh[0].toFixed(5);
     params.sh_y = state.pts.sh[1].toFixed(5);
+    params.chin_vis = state.vis.chin;
+    params.sh_vis = state.vis.sh;
   }
 
   const row = {
@@ -255,6 +262,8 @@ function save({ skip = null } = {}) {
     chin_y: skip ? null : Number(params.chin_y),
     sh_x: skip ? null : Number(params.sh_x),
     sh_y: skip ? null : Number(params.sh_y),
+    chin_vis: skip ? null : state.vis.chin,
+    sh_vis: skip ? null : state.vis.sh,
   };
   const prev = state.labels.get(k);
   state.labels.set(k, row);
@@ -325,9 +334,11 @@ function go(i) {
   // appends, the history keeps the first placement.
   if (saved && hasPoints(saved)) {
     state.pts = { chin: [saved.chin_x, saved.chin_y], sh: [saved.sh_x, saved.sh_y] };
+    state.vis = { chin: saved.chin_vis || 'visible', sh: saved.sh_vis || 'visible' };
     state.arm = null;
   } else {
     state.pts = { chin: null, sh: null };
+    state.vis = { chin: 'visible', sh: 'visible' };
     state.arm = 'chin';
   }
   resetClue();
@@ -385,6 +396,9 @@ function render() {
     // rather than as "waiting its turn behind the chin".
     row.querySelector('.st').textContent = state.pts[p]
       ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not placed yet');
+    const chip = row.querySelector('.vis-chip');
+    chip.hidden = !state.pts[p];
+    chip.setAttribute('aria-pressed', String(state.vis[p] === 'inferred'));
   }
   for (const b of document.querySelectorAll('.skipb')) {
     b.setAttribute('aria-pressed',
@@ -402,6 +416,7 @@ function placeMarks() {
   for (const [name, el] of [['chin', $('hp-chin')], ['sh', $('hp-sh')]]) {
     const p = state.pts[name];
     el.classList.toggle('set', !!p);
+    el.classList.toggle('inferred', state.vis[name] === 'inferred');
     if (p) Object.assign(el.style, pct(p));
   }
   const img = $('frame');
@@ -632,9 +647,14 @@ function renderPeers(peers) {
     const repTag = p.rep ? ` (rep ${p.rep})` : '';
     if (p.skipped) { addRow(color, p.labeler + repTag, 'skipped'); continue; }
     const chin = [p.chin_x, p.chin_y], sh = [p.sh_x, p.sh_y];
-    addDot(chin, color, 'chin', `${p.labeler}${repTag} — chin`);
-    addDot(sh, color, 'sh', `${p.labeler}${repTag} — shoulder`);
-    addRow(color, p.labeler + repTag, fmtDist(derivedDist(chin, sh, f.torso_h)));
+    // An inferred point is a placed guess about occluded anatomy — worth
+    // seeing, but a reviewer must know which dots are guesses.
+    const inf = ['chin_vis', 'sh_vis'].filter((v) => p[v] === 'inferred');
+    addDot(chin, color, 'chin', `${p.labeler}${repTag} — chin${p.chin_vis === 'inferred' ? ' (inferred)' : ''}`);
+    addDot(sh, color, 'sh', `${p.labeler}${repTag} — shoulder${p.sh_vis === 'inferred' ? ' (inferred)' : ''}`);
+    addRow(color, p.labeler + repTag,
+           fmtDist(derivedDist(chin, sh, f.torso_h))
+           + (inf.length ? ` · ${inf.length === 2 ? 'both' : inf[0] === 'chin_vis' ? 'chin' : 'shoulder'} inferred` : ''));
   }
 
   // Mine, from the placement UI colors.
@@ -741,10 +761,11 @@ function grabbablePoint(clientX, clientY) {
   return best;
 }
 
-function placeAt(name, clientX, clientY) {
+function placeAt(name, clientX, clientY, inferred) {
   const p = stageNorm(clientX, clientY);
   if (!p) return;
   state.pts[name] = p;
+  state.vis[name] = inferred ? 'inferred' : 'visible';
   state.skipped = false;
   state.skipReason = null;
   // Placing the chin arms the shoulder; placing the shoulder disarms. A
@@ -755,8 +776,15 @@ function placeAt(name, clientX, clientY) {
   render();
 }
 
+function toggleVis(name) {
+  if (!state.pts[name]) return;      // nothing placed, nothing to qualify
+  state.vis[name] = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+  render();
+}
+
 function clearPoints() {
   state.pts = { chin: null, sh: null };
+  state.vis = { chin: 'visible', sh: 'visible' };
   state.arm = 'chin';
   state.skipped = false;
   state.skipReason = null;
@@ -770,6 +798,11 @@ function bind() {
       state.arm = row.dataset.p;
       render();
     };
+  }
+  // The chip sits inside a row whose click re-arms — stop the bubble so
+  // toggling "inferred" doesn't also re-arm the point under it.
+  for (const chip of document.querySelectorAll('.vis-chip')) {
+    chip.onclick = (e) => { e.stopPropagation(); toggleVis(chip.dataset.p); };
   }
   $('clear-pts').onclick = clearPoints;
 
@@ -885,8 +918,11 @@ function bind() {
     if (!startedOnStage || wasPtDrag || moved) return;   // a drag, or not ours
     // A plain click on the stage places the armed point. With nothing
     // armed it does nothing — points move by drag, not by surprise.
+    // Shift+click places the point as INFERRED — the labeler knows the
+    // landmark is occluded at the moment they place it, so the flag rides
+    // the same gesture.
     if (!state.ready || !state.arm) return;
-    placeAt(state.arm, e.clientX, e.clientY);
+    placeAt(state.arm, e.clientX, e.clientY, e.shiftKey);
   });
   stage.ondblclick = resetZoom;
   const DELTA_PX = { 0: 1, 1: 16, 2: 400 };
@@ -906,7 +942,11 @@ function bind() {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!state.ready) return;
     const k = e.key.toLowerCase();
-    if (k === 'c') { state.arm = 'chin'; render(); }
+    // Shift+C / Shift+S toggle the inferred flag on a placed point —
+    // checked before the plain arms, which the shifted keys must not fire.
+    if (e.shiftKey && k === 'c') toggleVis('chin');
+    else if (e.shiftKey && k === 's') toggleVis('sh');
+    else if (k === 'c') { state.arm = 'chin'; render(); }
     else if (k === 's') { state.arm = 'sh'; render(); }
     else if (e.key === 'Enter') $('save').click();
     else if (k === 'k') $('skip-nv').click();

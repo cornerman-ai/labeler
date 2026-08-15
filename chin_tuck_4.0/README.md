@@ -86,6 +86,15 @@ Two deliberate rules:
   the boxer is clearly doing another exercise, or has clearly stopped
   boxing to explain something — explaining WHILE boxing (still in stance,
   still working) is normal footage and gets labeled, not skipped.
+- **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
+  inferred — Shift+click places an inferred point (best estimate of
+  occluded anatomy, drawn as a ring), Shift+`C`/`S` toggles after. COCO's
+  v=2/v=1 in words; v=0 is the `not_visible` skip. Chosen over a
+  confidence slider deliberately: visibility is a fact about the frame a
+  second rater can verify, sliders elicit poorly-calibrated, per-rater-
+  incomparable numbers, and the real uncertainty measures here are the
+  planted repeats and inter-labeler scatter. The flag exists so the
+  chin-proxy calibration can exclude gloved-chin guesses.
 
 Not ported from 3.0 (deliberately, keep the pilot small): reviewer mode /
 disagreement jump, the kappa panel (kappa is meaningless here — agreement
