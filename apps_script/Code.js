@@ -298,8 +298,9 @@ function doGet(e) {
   }
 
   // Chin-shoulder labeler — the 3-question chin-vs-lead-shoulder version of
-  // the chin page (chin_tuck.html). The original single-verdict page lives
-  // on as chin_tuck_john.html against the Chin Labels sheet above.
+  // the chin page (chin_tuck_1.0/chin_tuck.html). The original single-verdict
+  // page lives on as chin_tuck_0.0/chin_tuck_john.html against the Chin
+  // Labels sheet above.
   if (action === 'listChinShoulderLabels' || action === 'saveChinShoulderLabel' ||
       action === 'deleteChinShoulderLabel') {
     return doGetChinShoulderLabels(p, labeler, action);
@@ -2323,7 +2324,7 @@ function doGetChinLabels(p, labeler, action) {
 }
 
 // ============================================================
-// Chin-shoulder labeler (chin_tuck.html) — THREE answers per SAMPLED FRAME,
+// Chin-shoulder labeler (chin_tuck_1.0/chin_tuck.html) — THREE answers per SAMPLED FRAME,
 // all judged against the LEAD shoulder (same candidate source + keying as
 // Chin Labels; the single-verdict original is chin_tuck_john.html):
 //

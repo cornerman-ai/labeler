@@ -4,7 +4,7 @@ Web-based video labeling tool for boxing punch annotation.
 
 ## Stack
 
-- One folder per labeler (`punch/`, `chin_tuck/`, `bladedness/`, ...) — each holds
+- One folder per labeler (`punch/`, `chin_tuck_0.0/` through `chin_tuck_4.0/`, `bladedness/`, ...) — each holds
   its page, JS, data, and media; `shared/` holds `player.js`, `style.css`,
   `videos.json`; `apps_script/` holds the backend (`Code.js`, deployed as a
   Web App — auto-deploys from master via clasp CI, see `apps_script/README.md`,
@@ -42,13 +42,17 @@ never up", which are different faults needing different drills. Keyed by
 `guard_hand` (LEFT/RIGHT) is recorded as-shown so a stance mistake in Combined
 Data is auditable after the fact.
 
-**Chin Labels sheet** (`chin_tuck_john.html` — the ORIGINAL single-verdict
-chin labeler, preserved under that name when `chin_tuck.html` became the
-3-question chin-shoulder labeler below. NOT actively used — the page carries
-an archive banner; it exists only so John's tucked/level/air answers can be
-reviewed now and then. One verdict per randomly sampled frame; candidates
-baked into `chin_frames.json` by cornerman-backend's `chin_tuck/chin_sampler.py`,
-which also defines the chin crop box the page draws):
+**Chin Labels sheet** (`chin_tuck_0.0/chin_tuck_john.html` — the ORIGINAL
+single-verdict chin labeler, preserved under that name when
+`chin_tuck_1.0/chin_tuck.html` became the 3-question chin-shoulder labeler
+below (0.0 and 1.0 used to share one `chin_tuck/` folder; split so each
+version number gets its own, matching 2.0/3.0/4.0 — 0.0 has no data of its
+own and reads 1.0's by relative path, same as 3.0 reads 2.0's). NOT actively
+used — the page carries an archive banner; it exists only so John's
+tucked/level/air answers can be reviewed now and then. One verdict per
+randomly sampled frame; candidates baked into `chin_frames.json` by
+cornerman-backend's `chin_tuck/chin_sampler.py`, which also defines the chin
+crop box the page draws):
 ts | labeler | video | round | frame | pts_sec | verdict | skip_reason | comment | deleted
 
 `verdict` is `tucked` / `level` / `air` (provisional 3-way split pending
@@ -78,7 +82,7 @@ convert it to a native Google Sheet once (File > Save as Google Sheets)
 so the inline images render. Import = read the sheet and push each
 verdict through the deployed saveChinLabel endpoint as labeler `John`.
 
-**Chin Shoulder Labels sheet** (`chin_tuck.html` — THREE answers per sampled
+**Chin Shoulder Labels sheet** (`chin_tuck_1.0/chin_tuck.html` — THREE answers per sampled
 frame, all judged against the LEAD shoulder; same candidate source and
 exclusion file as Chin Labels, but the queue is EVERY hosted video, not the
 10-video playlist: the 10 professionally shot ones come first, then every

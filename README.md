@@ -17,7 +17,8 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 | `bodyshot/` | Head vs body, one short clip per punch | Refines punch-type labels where head/body was ambiguous |
 | `callout/` | Called-out combos in guided rounds vs what was actually thrown | Measures how well users follow the app's callouts |
 | `rules/` | Form-rule spot checks on rounds | Ground truth for rules-engine tuning |
-| `chin_tuck/` | Three chin-vs-shoulder questions per sampled frame | **Current chin labeling.** Repeated samples measure each labeler's self-agreement ceiling. `chin_tuck_john.html` is the earlier chin labeler, frozen for reference |
+| `chin_tuck_1.0/` | Three chin-vs-shoulder questions per sampled frame | **Current chin labeling.** Repeated samples measure each labeler's self-agreement ceiling |
+| `chin_tuck_0.0/` | One verdict (tucked/level/air) per sampled frame | The original chin labeler, frozen for reference. Has no data of its own — reads 1.0's `chin_frames.json`/`frames/` by relative path |
 | `guard_drop/` | Hands-down moments in a round | Ground truth for the guard-drop rule |
 | `hip_rotation/` | Rotation-quality rubric per punch | Ground truth behind the hip-rotation rule |
 | `bladedness/` | Pairwise "which stance is more squared?" (shoulder pairs + hip pairs), plus the **coach review** where the coach scores curated frontal frames | The too-squared/too-bladed research — pair judgements calibrate the candidate metrics; the coach review is the expert reference |

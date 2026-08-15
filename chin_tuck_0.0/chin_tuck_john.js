@@ -1,8 +1,14 @@
 // ============================================================
 // chin_tuck_john.js — PRESERVED copy of the original single-verdict
 // chin labeler (tucked / level / air), frozen for John's pass. Saves to
-// the "Chin Labels" sheet. The live chin_tuck.html/.js is now the
-// 3-question chin-vs-lead-shoulder labeler ("Chin Shoulder Labels").
+// the "Chin Labels" sheet. The live chin_tuck.html/.js (now chin_tuck_1.0)
+// is the 3-question chin-vs-lead-shoulder labeler ("Chin Shoulder Labels").
+//
+// chin tuck 0.0 has no data of its own — it reads chin_tuck_1.0's
+// chin_frames.json / chin_hosted.json / chin_excluded.json / frames/ by
+// relative path (same pattern 3.0 uses against 2.0's queue.json), rather
+// than duplicating a 472MB frames directory that would otherwise drift out
+// of sync with 1.0's copy. Moving or deleting chin_tuck_1.0/ breaks 0.0.
 //
 // Chin-position labeler, one verdict per sampled frame.
 //
@@ -102,7 +108,7 @@ function frameDir(stem) {
 }
 
 function frameUrl(stem, s) {
-  return './frames/' + encodeURIComponent(frameDir(stem)) + '/r' + s.round + '_f' + s.frame + '.jpg';
+  return '../chin_tuck_1.0/frames/' + encodeURIComponent(frameDir(stem)) + '/r' + s.round + '_f' + s.frame + '.jpg';
 }
 
 // Show the JPEG or the video element, never both.
@@ -875,7 +881,7 @@ function updateOverviewHighlight() {
 // ─── config / starting position ─────────────────────────────────────────────
 async function loadChinConfig() {
   try {
-    const res = await fetch('./chin_frames.json', { cache: 'no-cache' });
+    const res = await fetch('../chin_tuck_1.0/chin_frames.json', { cache: 'no-cache' });
     if (!res.ok) return { params: {}, videos: [] };
     return await res.json();
   } catch {
@@ -929,11 +935,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.knownVideos = cfg.videos || [];
   if (cfg.params && cfg.params.box_scale) state.boxScale = cfg.params.box_scale;
   try {
-    const res = await fetch('./chin_hosted.json', { cache: 'no-cache' });
+    const res = await fetch('../chin_tuck_1.0/chin_hosted.json', { cache: 'no-cache' });
     if (res.ok) state.hostedStems = new Set((await res.json()).stems || []);
   } catch {}
   try {
-    const res = await fetch('./chin_excluded.json', { cache: 'no-cache' });
+    const res = await fetch('../chin_tuck_1.0/chin_excluded.json', { cache: 'no-cache' });
     if (res.ok) {
       for (const [stem, lst] of Object.entries((await res.json()).videos || {})) {
         state.excludedByStem.set(stem, new Set(lst.map(e => e.round + ':' + e.frame)));
