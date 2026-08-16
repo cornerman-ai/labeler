@@ -5,14 +5,17 @@
 // pick a set of labelers, walk the frames they share, see every placement on
 // the picture at once.
 //
-// It writes NOTHING. That is not just tidiness: the labeler's own Peers panel
-// is a review surface too, but opening it marks the frame `consulted`, which
-// is the sheet's record that a save made afterwards was calibrated rather than
-// independent. Reviewing a few hundred frames through that panel would stamp
-// `consulted` across the corpus and quietly devalue the very rows being
-// reviewed. So this page reads `listChinPoint` (per labeler, one call, every
-// row) instead of `peersChinPoint` (per frame, and the panel that sets the
-// flag). No new Apps Script action, no deploy.
+// It writes NOTHING, and it is a SEPARATE PAGE on purpose. The labeling page
+// used to carry its own peers panel; it was removed in 2026-08 so that a
+// labeler cannot see anyone else's points, or the pipeline's, or how far the
+// others have got — comparison while placing turns a second opinion into a
+// copy of the first. All of that lives here instead, where the work is
+// already done and looking is the whole point. Reads `listChinPoint` (per
+// labeler, one call, every row); `peersChinPoint` is now unused by any page.
+//
+// `consulted` in the sheet is a fossil: it marked rows saved after opening
+// that old panel. Rows written since the removal are all independent and
+// carry 0.
 //
 // THE METRIC. Disagreement is reported as the thing the pipeline actually
 // consumes: the signed chin-above-shoulder distance in torso units,
@@ -63,10 +66,16 @@ const state = {
   unmatched: 0,            // sheet rows whose frame is not in this queue
   view: [],                // images passing the filters, in sort order
   i: 0,
+  mode: 'frames',          // 'frames' walks the pictures, 'stats' aggregates them
   sort: 'spread',
   scope: 'overlap',
   onlySkip: false,
   showMachine: true,
+  // Which landmark is on the picture. Disagreement is per POINT — the summary
+  // says whether the chin or the shoulder causes it, and this is how you go
+  // look at just that one instead of reading it out of a pile of both.
+  showChin: true,
+  showSh: true,
   hover: null,             // labeler whose marks stay lit
   skipConflicts: 0,
   zoom: 1, panX: 0, panY: 0,
@@ -97,7 +106,7 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips. The v4 marker refuses a deployment that
+// One retry for cold-start blips. The v4cg marker refuses a deployment that
 // predates these endpoints: doGet answers an unknown action with a success
 // shape, so without the marker an empty read would look like an empty sheet.
 async function call(params, what) {
@@ -109,7 +118,7 @@ async function call(params, what) {
       body = await res.json();
     } catch (e) { last = e; continue; }
     if (body.status !== 'ok') { last = new Error(body.message || 'unknown error'); continue; }
-    if (body.v4 !== true) {
+    if (body.v4cg !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -281,6 +290,9 @@ function recompute() {
   $('skip-n').textContent = String(state.skipConflicts);
   renderPairs();
   render();
+  // Stats read the whole corpus rather than the filtered view, but the
+  // SELECTION moves them, and selection changes come through here.
+  if (state.mode === 'stats') renderStats();
 }
 
 // ── pairwise summary ───────────────────────────────────────────────────────
@@ -388,6 +400,513 @@ function renderPairs() {
     : 'Median gap in the derived chin-above-shoulder distance, torso units. chin / shoulder split the gap by which point moved.';
 }
 
+// ── stats mode ─────────────────────────────────────────────────────────────
+// The frame view answers "where did everyone put their points on THIS frame".
+// Stats answers it over the corpus: how far apart are two labelers on average,
+// and — the part a median of absolute values throws away — in which DIRECTION.
+//
+// SIGN CONVENTION, stated once and used everywhere. y grows downward in image
+// coordinates, so "higher on screen" is a SMALLER y. Every bias below is
+// reported as `higher`-positive in torso units:
+//
+//   chinHigher(A vs B)  = (B.chin_y - A.chin_y) / torso
+//   shHigher (A vs B)   = (B.sh_y   - A.sh_y)   / torso
+//   derivedBias(A vs B) = A.dist - B.dist = chinHigher - shHigher
+//
+// That identity is exact, not an approximation, and it is the whole reason to
+// report all three: a pair can disagree by 10% torso because one of them reads
+// the chin higher, or because one reads the shoulder lower, and those are two
+// different corrections to make. A bias near zero with a wide spread is noise —
+// coaching won't move it; a bias that IS the spread is a definitional gap, and
+// one conversation fixes it. The histogram is there so that distinction is
+// visible rather than inferred.
+//
+// Everything is vertical, in torso units, for the reason given at the top of
+// this file: no frame aspect ratio exists here, and the derived label is
+// vertical anyway. Horizontal scatter is left to the picture.
+
+function mean(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; }
+
+function stdev(xs) {
+  if (xs.length < 2) return null;
+  const m = mean(xs);
+  return Math.sqrt(xs.reduce((a, x) => a + (x - m) * (x - m), 0) / (xs.length - 1));
+}
+
+// Every selected labeler's rep-0-preferred placement on one image, plus the
+// pipeline's. One pass feeds every table below.
+function primariesFor(img, names) {
+  const out = new Map();
+  for (const nm of names) {
+    const p = primary(nm, img);
+    if (p) out.set(nm, p);
+  }
+  return out;
+}
+
+function pairFull(a, b) {
+  const diffs = [], means = [], chin = [], sh = [], keys = [];
+  for (const img of state.images) {
+    const pa = primary(a, img), pb = primary(b, img);
+    if (!pa || !pb) continue;
+    diffs.push(pa.dist - pb.dist);
+    means.push((pa.dist + pb.dist) / 2);
+    chin.push((pb.chin[1] - pa.chin[1]) / img.torso_h);
+    sh.push((pb.sh[1] - pa.sh[1]) / img.torso_h);
+    keys.push(img.key);
+  }
+  const abs = diffs.map(Math.abs);
+  const sd = stdev(diffs);
+  const bias = mean(diffs);
+  // Bland–Altman limits of agreement: the interval that should contain ~95% of
+  // the differences between these two on a NEW frame. Bias is the systematic
+  // half (who reads higher), the limits are the random half — and the limits
+  // are what a labeling decision actually runs into, since frames are judged
+  // one at a time, never on average.
+  //
+  // 1.96·SD assumes the differences are roughly normal, and the limits
+  // themselves are estimates with their own error: below ~30 pairs they are
+  // too wobbly to quote, which is why the page says so rather than printing a
+  // confident-looking interval over six frames.
+  const loa = sd === null ? null : { lo: bias - 1.96 * sd, hi: bias + 1.96 * sd };
+  return {
+    a, b, n: diffs.length, diffs, means, keys,
+    meanAbs: mean(abs), med: median(abs), p90: quantile(abs, 0.9),
+    sd, bias, loa, chinBias: mean(chin), shBias: mean(sh),
+  };
+}
+
+// One labeler against the mean of everyone else on the same frame, and against
+// the pipeline. The first says whether they are the outlier; the second is the
+// calibration number the whole generation exists to produce.
+function labelerFull(name, names) {
+  const rowsByImage = state.rows.get(name) || new Map();
+  let placed = 0, skipped = 0, consulted = 0, inferred = 0, reps = 0;
+  const reasons = new Map();
+  const dwell = [];
+  for (const rows of rowsByImage.values()) {
+    for (const r of rows) {
+      if (r.rep) reps++;
+      if (r.skipped === 1) {
+        skipped++;
+        const why = r.skip_reason || 'unspecified';
+        reasons.set(why, (reasons.get(why) || 0) + 1);
+      } else if (r.chin_x !== null && r.chin_x !== undefined) {
+        placed++;
+        if (r.chin_vis === 'inferred' || r.sh_vis === 'inferred') inferred++;
+      }
+      if (r.consulted === 1) consulted++;
+      if (r.dwell_sec) dwell.push(r.dwell_sec);
+    }
+  }
+
+  const vsO = { d: [], chin: [], sh: [] };
+  const vsM = { d: [], chin: [], sh: [] };
+  for (const img of state.images) {
+    const me = primary(name, img);
+    if (!me) continue;
+    const others = names.filter((nm) => nm !== name)
+      .map((nm) => primary(nm, img)).filter(Boolean);
+    if (others.length) {
+      vsO.d.push(me.dist - mean(others.map((o) => o.dist)));
+      vsO.chin.push((mean(others.map((o) => o.chin[1])) - me.chin[1]) / img.torso_h);
+      vsO.sh.push((mean(others.map((o) => o.sh[1])) - me.sh[1]) / img.torso_h);
+    }
+    const mm = machineMark(img);
+    if (mm.chin && mm.sh && mm.dist !== null) {
+      vsM.d.push(me.dist - mm.dist);
+      vsM.chin.push((mm.chin[1] - me.chin[1]) / img.torso_h);
+      vsM.sh.push((mm.sh[1] - me.sh[1]) / img.torso_h);
+    }
+  }
+
+  const self = selfStats(name);
+  return {
+    name, placed, skipped, consulted, inferred, reps,
+    reasons: [...reasons].sort((x, y) => y[1] - x[1]),
+    dwellMed: median(dwell), self,
+    vsOthers: { n: vsO.d.length, d: mean(vsO.d), chin: mean(vsO.chin), sh: mean(vsO.sh) },
+    vsMachine: { n: vsM.d.length, d: mean(vsM.d), chin: mean(vsM.chin), sh: mean(vsM.sh) },
+  };
+}
+
+// Signed difference, ± a percentage of torso, with the sign spelled out. A bare
+// "-0.04" invites exactly the misreading the sign convention above exists to
+// prevent.
+function signed(v) {
+  if (v === null || v === undefined) return '—';
+  const p = Math.round(v * 100);
+  return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
+}
+
+function biasCell(v, posWord, negWord, minWord) {
+  const td = document.createElement('td');
+  if (v === null || v === undefined) { td.textContent = '—'; return td; }
+  const wrap = document.createElement('span');
+  wrap.className = 'bias';
+  const num = document.createElement('span');
+  num.className = 'n';
+  num.textContent = signed(v);
+  const w = document.createElement('span');
+  w.className = 'w';
+  // Under half a percent of torso height is a couple of pixels — calling that
+  // a direction would dress up rounding noise as a finding.
+  w.textContent = Math.abs(v) < 0.005 ? minWord : v > 0 ? posWord : negWord;
+  wrap.append(num, w);
+  td.appendChild(wrap);
+  return td;
+}
+
+// ── Bland–Altman ───────────────────────────────────────────────────────────
+// Difference (A − B) against the mean of the two, with bias and the 95% limits
+// of agreement drawn. Bland & Altman's point in 1986 was that CORRELATION is
+// the wrong tool for agreement — two labelers can correlate almost perfectly
+// while one sits consistently higher than the other — so you look at the
+// differences directly and split them into a systematic part (bias) and a
+// random part (the limits).
+//
+// Plotting against the MEAN, rather than as a bare histogram, is what exposes
+// PROPORTIONAL bias: if these two agree on tucked chins and diverge on exposed
+// ones, the cloud fans out to one side instead of sitting in a band. That is a
+// live possibility here and no summary number would show it.
+//
+// What the plot cannot tell you is whether the agreement is GOOD ENOUGH — that
+// threshold comes from the use case (how much difference flips the coaching
+// call), which is exactly the judgement 4.0 deferred by storing raw points.
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+  return n;
+}
+
+function blandAltman(p, w = 420, h = 210) {
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, width: w, height: h, class: 'ba' });
+  if (!p.n) return svg;
+
+  const padL = 46, padR = 62, padT = 14, padB = 30;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+
+  const xs = p.means, ys = p.diffs;
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const xPad = (xMax - xMin) * 0.08 || 0.02;
+  const x0 = xMin - xPad, x1 = xMax + xPad;
+  // The y range must always contain the limits, or the lines that give the
+  // plot its meaning fall off the top of it.
+  const yCands = [...ys, 0];
+  if (p.loa) yCands.push(p.loa.lo, p.loa.hi);
+  const yLim = Math.max(0.02, ...yCands.map(Math.abs)) * 1.15;
+
+  const X = (v) => padL + ((v - x0) / (x1 - x0 || 1)) * plotW;
+  const Y = (v) => padT + (1 - (v + yLim) / (2 * yLim)) * plotH;
+
+  svg.appendChild(svgEl('rect', {
+    x: padL, y: padT, width: plotW, height: plotH,
+    fill: 'none', stroke: 'currentColor', 'stroke-opacity': '.15',
+  }));
+
+  // The band between the limits: where ~95% of future differences should land.
+  if (p.loa) {
+    svg.appendChild(svgEl('rect', {
+      x: padL, y: Y(p.loa.hi), width: plotW, height: Math.max(1, Y(p.loa.lo) - Y(p.loa.hi)),
+      fill: 'currentColor', 'stroke-opacity': '0', opacity: '.06',
+    }));
+  }
+
+  const rule = (v, cls, dash) => {
+    const ln = svgEl('line', {
+      x1: padL, x2: padL + plotW, y1: Y(v), y2: Y(v),
+      stroke: 'currentColor', 'stroke-width': cls === 'zero' ? 1 : 1.4,
+      'stroke-opacity': cls === 'zero' ? '.3' : cls === 'bias' ? '.85' : '.5',
+    });
+    if (dash) ln.setAttribute('stroke-dasharray', dash);
+    svg.appendChild(ln);
+    const t = svgEl('text', {
+      x: padL + plotW + 6, y: Y(v) + 3.5, fill: 'currentColor',
+      'font-size': '10', 'fill-opacity': cls === 'zero' ? '.45' : '.75',
+    });
+    t.textContent = cls === 'zero' ? '0' : signed(v);
+    svg.appendChild(t);
+  };
+  rule(0, 'zero');
+  if (p.loa) { rule(p.loa.hi, 'loa', '4 3'); rule(p.loa.lo, 'loa', '4 3'); }
+  rule(p.bias, 'bias');
+
+  for (let i = 0; i < xs.length; i++) {
+    const c = svgEl('circle', {
+      cx: X(xs[i]).toFixed(1), cy: Y(ys[i]).toFixed(1), r: 3,
+      fill: 'currentColor', opacity: '.5',
+    });
+    const ttl = svgEl('title');
+    ttl.textContent = `mean ${signed(xs[i])} · difference ${signed(ys[i])}`;
+    c.appendChild(ttl);
+    svg.appendChild(c);
+  }
+
+  const axis = (x, y, text, anchor, rotate) => {
+    const t = svgEl('text', {
+      x, y, fill: 'currentColor', 'font-size': '10', 'fill-opacity': '.5',
+      'text-anchor': anchor || 'start',
+    });
+    if (rotate) t.setAttribute('transform', `rotate(-90 ${x} ${y})`);
+    t.textContent = text;
+    svg.appendChild(t);
+  };
+  axis(padL + plotW / 2, h - 8, `mean of the two — ${signed(x0)} to ${signed(x1)} torso`, 'middle');
+  axis(12, padT + plotH / 2, `difference (${p.a} − ${p.b})`, 'middle', true);
+  return svg;
+}
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+function whoCell(name) {
+  const td = el('td');
+  const d = el('div', 'who2');
+  const sw = el('span', 'sw');
+  sw.style.background = state.colorOf.get(name) || MACHINE_COLOR;
+  d.append(sw, el('span', null, name));
+  td.appendChild(d);
+  return td;
+}
+
+// A table wide enough to overflow scrolls inside its own box; the prose and
+// headings around it stay put.
+function tableWrap(t) {
+  const w = el('div', 'tw');
+  w.appendChild(t);
+  return w;
+}
+
+function section(parent, title, lede) {
+  const s = el('div', 'sec');
+  s.appendChild(el('h3', null, title));
+  if (lede) s.appendChild(el('p', 'lede', lede));
+  parent.appendChild(s);
+  return s;
+}
+
+function renderStats() {
+  const box = $('stats-card');
+  box.textContent = '';
+  const names = selectedNames();
+
+  if (names.length < 1) {
+    box.appendChild(el('p', 'empty', 'Pick labelers in the panel on the right.'));
+    return;
+  }
+
+  // ── headline ────────────────────────────────────────────────────────────
+  const pairs = [];
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) pairs.push(pairFull(names[i], names[j]));
+  }
+  const scored = pairs.filter((p) => p.n);
+  const allDiffs = scored.flatMap((p) => p.diffs);
+  const overlapFrames = state.images.filter((img) =>
+    names.filter((nm) => primary(nm, img)).length >= 2).length;
+  const floors = names.map((nm) => selfStats(nm)).filter((s) => s.n);
+  const floorMed = median(floors.flatMap((s) => [s.med]));
+
+  const head = section(box, 'Overview',
+    'Every number is the derived chin-above-shoulder distance in torso units — '
+    + 'the quantity the pipeline consumes. Positive means the chin sits above the shoulder top.');
+  const tiles = el('div');
+  tiles.id = 'tiles';
+  const tile = (v, k, warn) => {
+    const t = el('div', 'tile' + (warn ? ' warn' : ''));
+    t.append(el('div', 'v', v), el('div', 'k', k));
+    tiles.appendChild(t);
+  };
+  tile(allDiffs.length ? pct(mean(allDiffs.map(Math.abs))) : '—', 'mean disagreement');
+  tile(allDiffs.length ? pct(median(allDiffs.map(Math.abs))) : '—', 'median disagreement');
+  tile(allDiffs.length ? pct(quantile(allDiffs.map(Math.abs), 0.9)) : '—', 'p90 — the tail');
+  tile(floorMed === null ? '—' : pct(floorMed),
+       floors.length ? 'noise floor (own repeats)' : 'no repeats labeled yet', floorMed === null);
+  // n is the caveat that governs every other tile: the 4.0 README puts ~30
+  // pairs as the point where these stop being directional.
+  tile(String(overlapFrames), 'frames 2+ labeled', overlapFrames > 0 && overlapFrames < 30);
+  head.appendChild(tiles);
+  if (overlapFrames && overlapFrames < 30) {
+    head.appendChild(el('p', 'lede',
+      `Only ${overlapFrames} frame${overlapFrames === 1 ? '' : 's'} have two or more of these labelers on them. `
+      + 'Treat everything below as directional at best — roughly 30 is where these numbers start to mean something.'));
+  }
+
+  // ── pairwise ────────────────────────────────────────────────────────────
+  const ps = section(box, 'Between labelers',
+    'Disagreement is |A − B|; bias is the signed average, so it says who reads what higher. '
+    + 'Bias splits exactly: derived bias = chin bias − shoulder bias.');
+  if (!scored.length) {
+    ps.appendChild(el('p', 'empty', names.length < 2
+      ? 'Pick a second labeler to compare.'
+      : 'These labelers have no frames in common yet.'));
+  } else {
+    const t = el('table', 'st');
+    const thead = el('thead');
+    const hr = el('tr');
+    for (const h of ['Pair', 'n', 'Mean', 'Median', 'p90', 'SD', 'Derived bias',
+                     '95% limits', 'Chin', 'Shoulder']) hr.appendChild(el('th', null, h));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = el('tbody');
+    for (const p of scored.sort((x, y) => y.meanAbs - x.meanAbs)) {
+      const tr = el('tr');
+      const td0 = el('td');
+      const d = el('div', 'who2');
+      const s1 = el('span', 'sw'); s1.style.background = state.colorOf.get(p.a);
+      const s2 = el('span', 'sw'); s2.style.background = state.colorOf.get(p.b);
+      d.append(s1, el('span', null, p.a), el('span', 'dim', 'vs'), s2, el('span', null, p.b));
+      td0.appendChild(d);
+      tr.appendChild(td0);
+      tr.appendChild(el('td', 'n', String(p.n)));
+      tr.appendChild(el('td', 'n', pct(p.meanAbs)));
+      tr.appendChild(el('td', 'n', pct(p.med)));
+      tr.appendChild(el('td', 'n', pct(p.p90)));
+      tr.appendChild(el('td', 'n', pct(p.sd)));
+      // "higher" here means the first-named labeler reads the chin as further
+      // above the shoulder — a more exposed chin.
+      tr.appendChild(biasCell(p.bias, `${p.a} reads higher`, `${p.b} reads higher`, 'no bias'));
+      // The limits, not the bias, are what a single frame runs into.
+      const tdl = el('td');
+      if (p.loa) {
+        const wrap = el('span', 'bias');
+        wrap.append(el('span', 'n', `${signed(p.loa.lo)} … ${signed(p.loa.hi)}`),
+                    el('span', 'w', p.n < 30 ? `only ${p.n} — indicative` : 'on a new frame'));
+        tdl.appendChild(wrap);
+      } else {
+        tdl.textContent = '—';
+      }
+      tr.appendChild(tdl);
+      tr.appendChild(biasCell(p.chinBias, `${p.a} chin higher`, `${p.b} chin higher`, 'matched'));
+      tr.appendChild(biasCell(p.shBias, `${p.a} shoulder higher`, `${p.b} shoulder higher`, 'matched'));
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    ps.appendChild(tableWrap(t));
+    ps.appendChild(el('p', 'lede',
+      'Bias is the systematic half — a definitional gap one conversation usually fixes. The 95% limits '
+      + 'are the random half, and they are what a single frame actually runs into: judgement happens one '
+      + 'frame at a time, never on average.'));
+
+    // ── Bland–Altman, one per pair ────────────────────────────────────────
+    const bs = section(box, 'Bland–Altman',
+      'Each frame is one dot: the difference between the two labelers against what they averaged. '
+      + 'Solid line is the bias, dashed are the 95% limits of agreement, shaded between. A flat band '
+      + 'means they disagree the same amount everywhere; a cloud that fans out means they agree about '
+      + 'one end of the range and not the other.');
+    const CAP = 6;
+    for (const p of scored.slice(0, CAP)) {
+      const holder = el('div', 'bawrap');
+      const cap = el('div', 'bacap');
+      const sw1 = el('span', 'sw'); sw1.style.background = state.colorOf.get(p.a);
+      const sw2 = el('span', 'sw'); sw2.style.background = state.colorOf.get(p.b);
+      cap.append(sw1, el('span', null, p.a), el('span', 'dim', 'minus'),
+                 sw2, el('span', null, p.b), el('span', 'dim', `${p.n} frames`));
+      holder.append(cap, blandAltman(p));
+      bs.appendChild(holder);
+    }
+    if (scored.length > CAP) {
+      bs.appendChild(el('p', 'lede', `Showing ${CAP} of ${scored.length} pairs — narrow the selection for the rest.`));
+    }
+    bs.appendChild(el('p', 'lede',
+      'The plot cannot say whether the agreement is good enough — that threshold comes from the use '
+      + 'case, i.e. how much difference changes the coaching call. Storing raw points is what keeps '
+      + 'that decision open.'));
+  }
+
+  // ── per labeler ─────────────────────────────────────────────────────────
+  const ls = section(box, 'Each labeler',
+    'Against the average of everyone else selected on the same frames, and against the pipeline — '
+    + 'BlazePose\'s shoulder and the nose→mouth chin proxy. The pipeline column is the calibration '
+    + 'the clicks exist to produce; it is not an error, since the proxy is what is being measured.');
+  const lt = el('table', 'st');
+  const lh = el('tr');
+  for (const h of ['Labeler', 'Placed', 'Skipped', 'Inferred', 'Consulted', 'Own repeats',
+                   'vs others', 'chin', 'shoulder', 'vs pipeline', 'chin', 'shoulder'])
+    lh.appendChild(el('th', null, h));
+  const lthead = el('thead'); lthead.appendChild(lh); lt.appendChild(lthead);
+  const ltb = el('tbody');
+  for (const nm of names) {
+    const s = labelerFull(nm, names);
+    const tr = el('tr');
+    tr.appendChild(whoCell(nm));
+    tr.appendChild(el('td', 'n', String(s.placed)));
+    const sk = el('td', 'n', s.skipped
+      ? `${s.skipped} (${s.reasons.map(([w, c]) => `${w.replace('_', ' ')} ${c}`).join(', ')})`
+      : '0');
+    tr.appendChild(sk);
+    tr.appendChild(el('td', 'n', s.placed ? `${Math.round((s.inferred / s.placed) * 100)}%` : '—'));
+    tr.appendChild(el('td', 'n', String(s.consulted)));
+    tr.appendChild(el('td', 'n', s.self.n ? `${pct(s.self.med)} · ${s.self.n}` : '—'));
+    tr.appendChild(biasCell(s.vsOthers.d, 'reads higher', 'reads lower', 'in line'));
+    tr.appendChild(biasCell(s.vsOthers.chin, 'chin higher', 'chin lower', 'matched'));
+    tr.appendChild(biasCell(s.vsOthers.sh, 'shoulder higher', 'shoulder lower', 'matched'));
+    tr.appendChild(biasCell(s.vsMachine.d, 'reads higher', 'reads lower', 'in line'));
+    tr.appendChild(biasCell(s.vsMachine.chin, 'above proxy', 'below proxy', 'matched'));
+    tr.appendChild(biasCell(s.vsMachine.sh, 'above BlazePose', 'below BlazePose', 'matched'));
+    ltb.appendChild(tr);
+  }
+  lt.appendChild(ltb);
+  ls.appendChild(tableWrap(lt));
+  ls.appendChild(el('p', 'lede',
+    'Own repeats is the median gap between a labeler\'s two blind passes at the same frame, and its '
+    + 'frame count. It is the floor: no pair above can agree more closely than this, and no model '
+    + 'trained on these labels can beat it. Consulted rows were saved after opening the Peers panel, '
+    + 'so they measure convergence rather than independent judgement.'));
+
+  // ── worst footage ───────────────────────────────────────────────────────
+  const perVideo = new Map();
+  for (const img of state.images) {
+    const ps2 = names.map((nm) => primary(nm, img)).filter(Boolean);
+    if (ps2.length < 2) continue;
+    const ds = ps2.map((p) => p.dist);
+    const spread = Math.max(...ds) - Math.min(...ds);
+    if (!perVideo.has(img.stem)) perVideo.set(img.stem, []);
+    perVideo.get(img.stem).push(spread);
+  }
+  const vs = section(box, 'Hardest footage',
+    'Videos ranked by the average spread across their shared frames — where the footage itself, '
+    + 'not the labeler, is the problem.');
+  if (!perVideo.size) {
+    vs.appendChild(el('p', 'empty', 'Nothing shared yet.'));
+  } else {
+    const rows = [...perVideo].map(([stem, xs]) => ({ stem, n: xs.length, m: mean(xs) }))
+      .sort((a, b) => b.m - a.m);
+    const CAP = 8;
+    const vt = el('table', 'st');
+    const vh = el('tr');
+    for (const h of ['Video', 'Frames', 'Mean spread']) vh.appendChild(el('th', null, h));
+    const vthead = el('thead'); vthead.appendChild(vh); vt.appendChild(vthead);
+    const vtb = el('tbody');
+    for (const r of rows.slice(0, CAP)) {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, r.stem));
+      tr.appendChild(el('td', 'n', String(r.n)));
+      tr.appendChild(el('td', 'n', pct(r.m)));
+      vtb.appendChild(tr);
+    }
+    vt.appendChild(vtb);
+    vs.appendChild(tableWrap(vt));
+    if (rows.length > CAP) {
+      vs.appendChild(el('p', 'lede', `Showing the worst ${CAP} of ${rows.length} videos with shared frames.`));
+    }
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.body.classList.toggle('stats', mode === 'stats');
+  $('mode-frames').setAttribute('aria-pressed', String(mode === 'frames'));
+  $('mode-stats').setAttribute('aria-pressed', String(mode === 'stats'));
+  if (mode === 'stats') renderStats();
+}
+
 // ── stage ──────────────────────────────────────────────────────────────────
 function applyTransform() {
   const stage = $('stage');
@@ -445,21 +964,23 @@ function render() {
 
   // The image, and the stage box that every mark is positioned inside.
   const token = ++state.imgToken;
-  const el = $('frame');
-  el.classList.remove('broken');
-  el.onload = () => {
+  // Named imgEl, not el: `el` is the element-builder helper used by the stats
+  // tables, and shadowing it inside the busiest function here is a trap.
+  const imgEl = $('frame');
+  imgEl.classList.remove('broken');
+  imgEl.onload = () => {
     if (token !== state.imgToken) return;
-    if (el.naturalWidth && el.naturalHeight) {
-      $('stage').style.aspectRatio = `${el.naturalWidth} / ${el.naturalHeight}`;
+    if (imgEl.naturalWidth && imgEl.naturalHeight) {
+      $('stage').style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
     }
   };
-  el.onerror = () => {
+  imgEl.onerror = () => {
     if (token !== state.imgToken) return;
-    el.classList.add('broken');
+    imgEl.classList.add('broken');
     status(`Frame image missing — ${frameDir(img.stem)}/r${img.round}_f${img.frame}.jpg`, 'err');
   };
-  el.src = imgSrc(img);
-  el.alt = `${img.stem} round ${img.round} frame ${img.frame}`;
+  imgEl.src = imgSrc(img);
+  imgEl.alt = `${img.stem} round ${img.round} frame ${img.frame}`;
 
   $('id-video').textContent = img.stem;
   $('id-round').textContent = String(img.round);
@@ -471,9 +992,11 @@ function render() {
   const drawn = state.showMachine ? [...marks, machineMark(img)] : marks;
 
   for (const m of drawn) {
-    addDot(marksBox, m, 'chin');
-    addDot(marksBox, m, 'sh');
-    addLink(links, m);
+    if (state.showChin) addDot(marksBox, m, 'chin');
+    if (state.showSh) addDot(marksBox, m, 'sh');
+    // The link is the derived distance drawn as a length, so it only means
+    // anything while both of its ends are on the picture.
+    if (state.showChin && state.showSh) addLink(links, m);
     addMarkRow(m, img);
   }
 
@@ -497,8 +1020,10 @@ function addDot(box, m, which) {
   d.dataset.who = m.labeler;
   d.style.left = `${xy[0] * 100}%`;
   d.style.top = `${xy[1] * 100}%`;
-  if (which === 'sh' || inferred) d.style.borderColor = m.color;
-  if (which === 'chin' && !inferred) d.style.background = m.color;
+  // Shape carries the landmark, fill carries the visibility: a placed
+  // sighting is solid, a guess is a dashed outline of the same shape.
+  if (inferred) d.style.borderColor = m.color;
+  else d.style.background = m.color;
   box.appendChild(d);
 }
 
@@ -638,13 +1163,28 @@ function go(delta) {
   render();
 }
 
+// Turning both points off leaves a picture with nothing on it and no way to
+// tell that from a frame nobody labeled, so the last one on stays on: asking
+// for chin-only is a click on "shoulder", not a click on each in turn.
+function setPointFilter(chin, sh) {
+  state.showChin = chin || !sh;
+  state.showSh = sh || !chin;
+  $('show-chin').checked = state.showChin;
+  $('show-sh').checked = state.showSh;
+  render();
+}
+
 function wire() {
+  $('mode-frames').onclick = () => setMode('frames');
+  $('mode-stats').onclick = () => setMode('stats');
   $('prev').onclick = () => go(-1);
   $('next').onclick = () => go(1);
   $('sort').onchange = (e) => { state.sort = e.target.value; state.i = 0; recompute(); };
   $('scope').onchange = (e) => { state.scope = e.target.value; state.i = 0; recompute(); };
   $('only-skip').onchange = (e) => { state.onlySkip = e.target.checked; state.i = 0; recompute(); };
   $('show-machine').onchange = (e) => { state.showMachine = e.target.checked; render(); };
+  $('show-chin').onchange = (e) => { setPointFilter(e.target.checked, state.showSh); };
+  $('show-sh').onchange = (e) => { setPointFilter(state.showChin, e.target.checked); };
 
   const card = $('stage-card');
   card.addEventListener('wheel', (e) => {
@@ -672,7 +1212,9 @@ function wire() {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    if (e.key === 't' || e.key === 'T') setMode(state.mode === 'stats' ? 'frames' : 'stats');
+    else if (state.mode === 'stats') return;   // the rest act on the frame view
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
     else if (e.key === 'r' || e.key === 'R') resetZoom();
     else if (e.key === 'm' || e.key === 'M') {
@@ -680,6 +1222,8 @@ function wire() {
       $('show-machine').checked = state.showMachine;
       render();
     }
+    else if (e.key === 'c' || e.key === 'C') setPointFilter(!state.showChin, state.showSh);
+    else if (e.key === 's' || e.key === 'S') setPointFilter(state.showChin, !state.showSh);
   });
 
   for (const b of document.querySelectorAll('.idc')) {

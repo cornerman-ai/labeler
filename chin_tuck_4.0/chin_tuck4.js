@@ -20,11 +20,12 @@
 // project bucket behind a shared download token and git carries only code
 // and queue.json. See cornerman-backend ml/research/chin_tuck/v3/.
 //
-// The machine's points (BlazePose shoulders, extrapolated chin) are NEVER
-// drawn while placing — a labeler who can see the pipeline's guess anchors
-// on it, and the whole value of the clicks is independence. They appear
-// only inside the Peers panel, which also sets `consulted` on any save that
-// follows, same meaning as 2.0/3.0's clue.
+// NOTHING on this page shows a labeler anyone else's work. Not the
+// pipeline's points (BlazePose shoulders, extrapolated chin), not the other
+// labelers' placements, not how far along anybody is. Whoever can see
+// another answer anchors on it, and an anchored click is not a second
+// opinion — it is the first one, copied. Comparison happens on review.html,
+// which writes nothing.
 //
 // REPEATS: ~10% of queue slots are the same frame planted again (rep=1),
 // blind, ≥200 slots downstream. rep is part of the row identity end to end
@@ -37,10 +38,10 @@
 //
 // Position resumes from your own saved rows, never from this browser.
 //
-// Not ported from 3.0 (yet, deliberately — keep the first cut small):
-// reviewer mode + disagreement jump, pairwise agreement panel, comparison
-// grid, lead-everyone, exclude-video, per-labeler frame ranges. The peers
-// panel is the review surface for the pilot.
+// Not ported from 3.0: reviewer mode + disagreement jump, pairwise
+// agreement panel, comparison grid, lead-everyone, exclude-video,
+// per-labeler frame ranges. review.html is the review surface, and it is a
+// separate page on purpose — see the independence note above.
 
 'use strict';
 
@@ -60,12 +61,20 @@ const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;
 const MAX_ZOOM = 12;
-// Past this the frame is drawn pixel-for-pixel instead of smoothed — see
-// #stage.sharp. 3x is where this footage's interpolation stops looking like a
-// photograph and starts looking like a smear.
-const SHARP_ZOOM = 3;
+// Past this many DEVICE pixels per SOURCE pixel the frame is drawn
+// pixel-for-pixel instead of smoothed — see #stage.sharp. Measured in device
+// pixels so a retina laptop and a 1080p monitor agree, and against the frame's
+// own resolution so a 360x640 clip and a 1080p clip are judged by how far each
+// is really being stretched, not by the zoom number on top of it.
+const SHARP_MAG = 1.5;
+// ...and only for sources with this many pixels on the short side. Below HD
+// the grid is as coarse as the anatomy being clicked (a 360x640 clip is a
+// fifth of the queue's frames), and the smooth gradient says more about where
+// the jaw edge lies than a field of flat squares does. A property of the
+// FRAME, not of the screen: every labeler must see the same frame the same
+// way, whatever monitor they are on.
+const SHARP_MIN_SOURCE = 720;
 const ZOOM_SPEED = 0.0018;
-const TEAM_POLL_MS = 45000;
 // A click is a click if the mouse moved less than this many screen px
 // between down and up; anything longer is a pan (or a point drag).
 const CLICK_SLOP_PX = 4;
@@ -78,12 +87,6 @@ const DWELL_CAP_SEC = 120;
 
 // Short forms of the two skip reasons, for the button once a frame is skipped.
 const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in stance' };
-
-// Peer overlay colors, assigned by sorted labeler name so a color follows a
-// person across frames within a session. Your own saved points keep the
-// chin/shoulder colors of the placement UI and are not in this list.
-const PEER_COLORS = ['#ff9f0a', '#bf5af2', '#64d2ff', '#ff6482', '#30d158',
-                     '#ffd60a', '#ac8e68'];
 
 const state = {
   frames: [],              // queue.json order (originals + planted repeats)
@@ -114,15 +117,9 @@ const state = {
   inflight: new Set(),
   chains: new Map(),
   failed: new Map(),
-  teamRows: null,
-  teamTimer: null,
   ready: false,
-  clueOpen: false,
-  clueCache: new Map(),    // key -> peers payload
-  consulted: new Set(),
-  flag: false,
+  camGround: false,        // camera lying on the floor for THIS frame
   shownAt: 0,
-  teamOpen: false,
   ovDots: null,            // the 2k overview divs, built once
 };
 
@@ -160,7 +157,7 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips; the v4 marker refuses a deployment that
+// One retry for cold-start blips; the v4cg marker refuses a deployment that
 // predates these endpoints (doGet answers unknown actions with a success
 // shape, so without the marker a save could "succeed" writing nothing).
 async function call(params, what) {
@@ -175,7 +172,7 @@ async function call(params, what) {
       last = new Error(body.message || 'unknown error');
       continue;
     }
-    if (body.v4 !== true) {
+    if (body.v4cg !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -204,16 +201,11 @@ function myRowsInQueue() {
 async function loadLabels() {
   const name = who();
   state.labels = new Map();
-  state.consulted = new Set();
-  state.clueCache = new Map();
   state.failed = new Map();
-  state.flag = false;
+  state.camGround = false;
   if (!name) return;
   const body = await call({ action: 'listChinPoint', labeler: name }, 'load labels');
-  for (const r of (body.rows || [])) {
-    state.labels.set(rowKey(r), r);
-    if (r.consulted) state.consulted.add(rowKey(r));
-  }
+  for (const r of (body.rows || [])) state.labels.set(rowKey(r), r);
 }
 
 function dwellFor(k) {
@@ -254,8 +246,11 @@ function save({ skip = null } = {}) {
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
     skip_reason: skip || '',
-    consulted: state.consulted.has(k) ? '1' : '0',
-    flag: state.flag ? '1' : '0',
+    // Always 0 now: the panel that let a labeler see other people's points
+    // before saving is gone, so no row can be a calibrated one. The column
+    // stays for the rows written while it existed.
+    consulted: '0',
+    camera_ground: state.camGround ? '1' : '0',
     dwell_sec: String(dwell),
   };
   if (!skip) {
@@ -271,8 +266,8 @@ function save({ skip = null } = {}) {
     video: f.stem, round: f.round, frame: f.frame, rep: f.rep || 0,
     skipped: skip ? 1 : 0,
     skip_reason: skip || null,
-    consulted: state.consulted.has(k) ? 1 : 0,
-    flag: state.flag ? 1 : 0,
+    consulted: 0,
+    camera_ground: state.camGround ? 1 : 0,
     dwell_sec: dwell,
     chin_x: skip ? null : Number(params.chin_x),
     chin_y: skip ? null : Number(params.chin_y),
@@ -286,21 +281,17 @@ function save({ skip = null } = {}) {
   state.failed.delete(k);
   state.inflight.add(k);
   showQueueState();
-  bumpMyTeamRow();
 
   const chain = (state.chains.get(k) || Promise.resolve())
     .then(() => call(params, 'save'))
     .then(() => {
       state.inflight.delete(k);
-      state.clueCache.delete(k);
       showQueueState();
-      scheduleTeamRefresh();
     })
     .catch((e) => {
       state.inflight.delete(k);
       if (prev) state.labels.set(k, prev); else state.labels.delete(k);
       state.failed.set(k, e.message);
-      bumpMyTeamRow();
       const at = state.index.get(k);
       status(`Frame #${at === undefined ? '?' : at + 1} did not save — ${e.message}`, 'err');
       render();
@@ -308,6 +299,45 @@ function save({ skip = null } = {}) {
     .finally(() => { if (state.chains.get(k) === chain) state.chains.delete(k); });
   state.chains.set(k, chain);
   return true;
+}
+
+// Has anything changed since the row this frame already has? Saves are
+// append-only, so re-writing an identical row is not destructive — it is just
+// noise in a sheet whose whole point is "latest per identity", and with
+// commit-on-leave a labeler walking back through their work with the arrow
+// keys would write one every step.
+function isDirty(k) {
+  const saved = state.labels.get(k);
+  if (!saved || !hasPoints(saved)) return true;
+  const at = (p, i) => Number(p[i].toFixed(5));
+  return at(state.pts.chin, 0) !== Number(saved.chin_x)
+      || at(state.pts.chin, 1) !== Number(saved.chin_y)
+      || at(state.pts.sh, 0) !== Number(saved.sh_x)
+      || at(state.pts.sh, 1) !== Number(saved.sh_y)
+      || state.vis.chin !== saved.chin_vis
+      || state.vis.sh !== saved.sh_vis
+      || (state.camGround ? 1 : 0) !== (saved.camera_ground ? 1 : 0);
+}
+
+// The save. There is no save button: a finished pair is written by moving on,
+// because "I'm done with this frame" and "next frame" are the same decision,
+// and making them two gestures means the second one gets forgotten and the
+// first one's work is lost.
+//
+// Returns false only when the frame is holding the labeler there — a pair
+// placed but not yet qualified as seen/inferred. Everything else (nothing
+// placed, already skipped, nothing changed) is a legitimate way to leave a
+// frame and writes nothing.
+function commitCurrent() {
+  if (!state.ready || !state.frames.length) return true;
+  if (state.skipped) return true;
+  if (!(state.pts.chin && state.pts.sh)) return true;
+  if (!(state.vis.chin && state.vis.sh)) {
+    status('Answer seen or inferred for both points', 'err');
+    return false;
+  }
+  if (!isDirty(key(state.frames[state.i]))) return true;
+  return save({});
 }
 
 function setReady(on, note, isError) {
@@ -339,6 +369,9 @@ function firstUnlabeled(from = 0) {
 }
 
 function go(i) {
+  // Leaving a finished frame is what saves it — see commitCurrent(). A frame
+  // that cannot be committed keeps the labeler where they are.
+  if (!commitCurrent()) { render(); return; }
   state.i = Math.max(0, Math.min(state.frames.length - 1, i));
   closePop();
   resetZoom();
@@ -346,7 +379,7 @@ function go(i) {
   const saved = state.labels.get(key(f));
   state.skipped = !!(saved && saved.skipped);
   state.skipReason = (saved && saved.skip_reason) || null;
-  state.flag = !!(saved && saved.flag);
+  state.camGround = !!(saved && saved.camera_ground);
   // A saved pair comes back editable: drag a dot, save again — the backend
   // appends, the history keeps the first placement.
   if (saved && hasPoints(saved)) {
@@ -358,15 +391,17 @@ function go(i) {
     state.vis = { chin: null, sh: null };
     state.arm = 'chin';
   }
-  resetClue();
   state.shownAt = Date.now();
   render();
   prefetch();
 }
 
 function advance() {
-  if (state.i < state.frames.length - 1) go(state.i + 1);
-  else { status('End of queue'); render(); }
+  if (state.i < state.frames.length - 1) { go(state.i + 1); return; }
+  // Nowhere to move, but the work still has to land: the last frame in the
+  // queue is saved by pressing Next on it, not lost for being last.
+  if (commitCurrent()) status('End of queue');
+  render();
 }
 
 function prefetch() {
@@ -428,8 +463,7 @@ function render() {
   skipb.firstChild.nodeValue = state.skipped
     ? `Skipped — ${SKIP_LABELS[state.skipReason] || state.skipReason} `
     : 'Skip frame ';
-  $('save').disabled = !(state.pts.chin && state.pts.sh && state.vis.chin && state.vis.sh);
-  renderFlag();
+  renderCam();
 
   placeMarks();
   renderOverview();
@@ -449,9 +483,10 @@ function placeMarks() {
   }
 }
 
-function renderFlag() {
-  $('flag-btn').setAttribute('aria-pressed', String(!!state.flag));
-  $('flag-label').textContent = state.flag ? 'Flagged' : 'Flag';
+// The label is the same either way — the fact it reports does not change with
+// the answer, only whether it is true, which the pressed state says.
+function renderCam() {
+  $('cam-btn').setAttribute('aria-pressed', String(!!state.camGround));
 }
 
 function renderNameState() {
@@ -487,225 +522,11 @@ function renderOverview() {
     if (state.failed.has(k)) cls += ' fail';
     else if (row && row.skipped) cls += ' sk';
     else if (hasPoints(row)) cls += ' dn';
-    if (row && row.flag) cls += ' fl';
+    if (row && row.camera_ground) cls += ' cg';
     if (i === state.i) cls += ' cur';
     const d = state.ovDots[i];
     if (d.className !== cls) d.className = cls;
   }
-}
-
-// ── team panel ─────────────────────────────────────────────────────────────
-function ago(iso) {
-  if (!iso) return '';
-  const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (!isFinite(s) || s < 0) return '';
-  if (s < 90) return 'just now';
-  if (s < 5400) return `${Math.round(s / 60)}m ago`;
-  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
-}
-
-function setTeamOpen(open) {
-  state.teamOpen = open;
-  $('team-btn').setAttribute('aria-expanded', String(open));
-  // 4.0's team list is a simple stack — the copied #team rule declares a
-  // grid for 3.0's widget, so display is set inline to block, not grid.
-  $('team').style.display = open ? 'block' : 'none';
-}
-
-async function loadTeam() {
-  try {
-    const body = await call({ action: 'statsChinPoint', labeler: who() || '1' }, 'team');
-    state.teamRows = body.labelers || [];
-    renderTeam();
-  } catch (e) { /* background info — retried on the next poll */ }
-}
-
-function bumpMyTeamRow() {
-  if (!state.teamRows) return;
-  const name = who();
-  if (!name) return;
-  const mine = myRowsInQueue().filter(isResolved).length;
-  const norm = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-  let row = state.teamRows.find((r) => r.labeler.toLowerCase() === name.toLowerCase());
-  if (!row) { row = { labeler: norm, n: 0, skipped: 0, last_ts: '' }; state.teamRows.push(row); }
-  row.n = mine;
-  renderTeam();
-}
-
-function renderTeam() {
-  const el = $('team');
-  if (!state.teamRows || !state.teamRows.length) {
-    el.innerHTML = '<div id="team-empty">No labels saved yet</div>';
-    return;
-  }
-  const total = state.frames.length || 1;
-  const rows = [...state.teamRows].sort((a, b) => b.n - a.n);
-  el.innerHTML = rows.map((r) => {
-    const pctW = Math.min(100, 100 * r.n / total).toFixed(1);
-    return `<div class="trow"><span class="tname"></span>`
-      + `<span class="tcount">${r.n}<small> / ${total}</small>`
-      + `${r.last_ts ? ` · ${ago(r.last_ts)}` : ''}</span>`
-      + `<span class="tbar"><i style="width:${pctW}%"></i></span></div>`;
-  }).join('');
-  // Names are data, not markup.
-  const names = el.querySelectorAll('.tname');
-  rows.forEach((r, i) => { names[i].textContent = r.labeler; });
-}
-
-let teamTimerId = null;
-function scheduleTeamRefresh() {
-  clearTimeout(teamTimerId);
-  teamTimerId = setTimeout(loadTeam, 4000);
-}
-
-// ── peers panel — everyone's points + the machine's ───────────────────────
-// The review surface. Opening it draws every labeler's latest placements on
-// the frame in their color, plus the pipeline's shoulder pair and chin
-// proxy as diamonds — and marks the frame consulted, because any save made
-// after seeing this is calibration, not independent evidence.
-function setClueOpen(open) {
-  state.clueOpen = open;
-  $('clue-btn').setAttribute('aria-expanded', String(open));
-  $('clue-wrap').classList.toggle('open', open);
-  if (!open) { $('peer-marks').textContent = ''; return; }
-  loadPeers();
-}
-
-function toggleClue() {
-  if (!state.frames.length) return;
-  setClueOpen(!state.clueOpen);
-}
-
-function resetClue() {
-  state.clueOpen = false;
-  $('clue-btn').setAttribute('aria-expanded', 'false');
-  $('clue-wrap').classList.remove('open');
-  $('peer-marks').textContent = '';
-}
-
-// Signed chin-to-shoulder distance in torso units, from two normalized
-// points. Positive = the chin sits ABOVE the shoulder top (bigger = more
-// exposed); negative = below it. Vertical only — the frames are upright
-// phone/YouTube footage, and the raw points allow any better definition
-// later without relabeling (that is the whole design).
-function derivedDist(chin, sh, torsoH) {
-  if (!chin || !sh || !torsoH) return null;
-  return (sh[1] - chin[1]) / torsoH;
-}
-
-function fmtDist(d) {
-  if (d === null) return '—';
-  return `${d >= 0 ? '+' : ''}${Math.round(d * 100)}% torso`;
-}
-
-async function loadPeers() {
-  const f = state.frames[state.i];
-  const k = key(f);
-  // Seeing peers before this frame is resolved makes the next save
-  // calibrated rather than independent — allowed, recorded.
-  if (!state.consulted.has(k)) {
-    state.consulted.add(k);
-  }
-  const cached = state.clueCache.get(k);
-  if (cached) { renderPeers(cached); return; }
-  $('clue-note').textContent = 'Loading…';
-  $('clue-body').innerHTML = '<div id="clue-note">Loading…</div>';
-  try {
-    const body = await call({ action: 'peersChinPoint', labeler: who() || '1',
-                              video: f.stem, round: String(f.round),
-                              frame: String(f.frame) }, 'peers');
-    state.clueCache.set(k, body.peers || []);
-    if (state.clueOpen && key(state.frames[state.i]) === k) renderPeers(body.peers || []);
-  } catch (e) {
-    $('clue-body').innerHTML = '<div id="clue-note"></div>';
-    $('clue-body').firstChild.textContent = 'Could not load peers — ' + e.message;
-  }
-}
-
-function renderPeers(peers) {
-  const f = state.frames[state.i];
-  const marks = $('peer-marks');
-  marks.textContent = '';
-  const body = $('clue-body');
-  body.textContent = '';
-
-  const myName = who().toLowerCase();
-  const others = peers.filter((p) => p.labeler.toLowerCase() !== myName);
-  const colorOf = new Map();
-  [...new Set(others.map((p) => p.labeler))].sort()
-    .forEach((nm, i) => colorOf.set(nm, PEER_COLORS[i % PEER_COLORS.length]));
-
-  const addDot = (xy, color, cls, title) => {
-    if (!xy) return;
-    const d = document.createElement('div');
-    d.className = 'peer-pt ' + cls;
-    d.style.left = `${xy[0] * 100}%`;
-    d.style.top = `${xy[1] * 100}%`;
-    if (cls.includes('sh')) d.style.borderColor = color;
-    else d.style.background = color;
-    d.title = title;
-    marks.appendChild(d);
-  };
-
-  const addRow = (color, name, detail) => {
-    const row = document.createElement('div');
-    row.className = 'pr';
-    const sw = document.createElement('span');
-    sw.className = 'sw';
-    sw.style.background = color;
-    const nm = document.createElement('span');
-    nm.className = 'nm';
-    nm.textContent = name;
-    const dv = document.createElement('span');
-    dv.className = 'dv';
-    dv.textContent = detail;
-    row.append(sw, nm, dv);
-    body.appendChild(row);
-  };
-
-  // Everyone else's latest placements (every rep — two dots from the same
-  // person on a planted repeat are their own scatter, worth seeing).
-  for (const p of others) {
-    const color = colorOf.get(p.labeler);
-    const repTag = p.rep ? ` (rep ${p.rep})` : '';
-    if (p.skipped) { addRow(color, p.labeler + repTag, 'skipped'); continue; }
-    const chin = [p.chin_x, p.chin_y], sh = [p.sh_x, p.sh_y];
-    // An inferred point is a placed guess about occluded anatomy — worth
-    // seeing, but a reviewer must know which dots are guesses.
-    const inf = ['chin_vis', 'sh_vis'].filter((v) => p[v] === 'inferred');
-    addDot(chin, color, 'chin', `${p.labeler}${repTag} — chin${p.chin_vis === 'inferred' ? ' (inferred)' : ''}`);
-    addDot(sh, color, 'sh', `${p.labeler}${repTag} — shoulder${p.sh_vis === 'inferred' ? ' (inferred)' : ''}`);
-    addRow(color, p.labeler + repTag,
-           fmtDist(derivedDist(chin, sh, f.torso_h))
-           + (inf.length ? ` · ${inf.length === 2 ? 'both' : inf[0] === 'chin_vis' ? 'chin' : 'shoulder'} inferred` : ''));
-  }
-
-  // Mine, from the placement UI colors.
-  if (state.pts.chin && state.pts.sh) {
-    addRow('color-mix(in srgb, var(--accent) 82%, transparent)', 'you',
-           fmtDist(derivedDist(state.pts.chin, state.pts.sh, f.torso_h)));
-  }
-
-  // The pipeline's own idea — BlazePose shoulders and the extrapolated chin
-  // — drawn as diamonds. This is the ONLY place the page shows them.
-  const machineColor = 'var(--ink-dim)';
-  addDot(f.chin, machineColor, 'chin machine', 'pipeline — chin proxy');
-  const shKey = String(f.shoulder || '').toLowerCase() === 'left' ? 'l_sh' : 'r_sh';
-  addDot(f.joints[shKey], machineColor, 'chin machine', 'pipeline — lead shoulder (BlazePose)');
-  addRow(machineColor, 'pipeline',
-         fmtDist(derivedDist(f.chin, f.joints[shKey], f.torso_h)));
-
-  if (!others.length) {
-    const note = document.createElement('div');
-    note.id = 'peer-note';
-    note.textContent = 'Nobody else has labeled this frame yet — the diamonds are the pipeline’s guess.';
-    body.appendChild(note);
-  }
-  const note2 = document.createElement('div');
-  note2.id = 'peer-note';
-  note2.textContent = 'Saves made after opening this panel are recorded as consulted.';
-  body.appendChild(note2);
 }
 
 // ── copy buttons / status ──────────────────────────────────────────────────
@@ -733,9 +554,27 @@ function applyTransform() {
     `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
   stage.style.setProperty('--inv', String(1 / state.zoom));
   stage.classList.toggle('zoomed', !isFitted());
-  stage.classList.toggle('sharp', state.zoom >= SHARP_ZOOM);
+  const mag = magnification();
+  stage.classList.toggle('sharp',
+    !!mag && mag.hd && mag.now >= SHARP_MAG);
   // Zooming in to check a placement is exactly when the question is open.
   if (state.pop && state.pop.kind === 'point') positionPointPop(state.pop.name);
+}
+// Device pixels per source pixel: `fit` is what displaying the frame at all
+// costs (stage width vs the JPEG's own width), `now` folds in the zoom on top,
+// and `hd` is whether the source has the resolution to be worth drawing
+// pixel-exactly. null until the image reports its size — the frame's own
+// resolution is half the input, so there is nothing to decide before it loads.
+function magnification() {
+  const w = $('stage').offsetWidth;          // layout width, pre-transform
+  const img = $('frame');
+  if (!w || !img.naturalWidth) return null;
+  const fit = (w * (window.devicePixelRatio || 1)) / img.naturalWidth;
+  return {
+    fit,
+    now: fit * state.zoom,
+    hd: Math.min(img.naturalWidth, img.naturalHeight) >= SHARP_MIN_SOURCE,
+  };
 }
 function isFitted() {
   return state.zoom === 1 && state.panX === 0 && state.panY === 0;
@@ -800,6 +639,19 @@ function placeAt(name, clientX, clientY) {
   openPointPop(name);
 }
 
+// A correction, not a new placement: the visibility answer already given
+// stands and is not asked again, and a popover still open on this point
+// follows the dot instead.
+function movePoint(name, clientX, clientY) {
+  const p = stageNorm(clientX, clientY);
+  if (!p) return;
+  state.pts[name] = p;
+  render();
+  if (state.pop && state.pop.kind === 'point' && state.pop.name === name) {
+    positionPointPop(name);
+  }
+}
+
 // ── popovers ───────────────────────────────────────────────────────────────
 // One at a time: both are a question about the click that just happened, and
 // two open at once would mean two different things Enter could answer.
@@ -845,6 +697,30 @@ function choosePointVis(name, v) {
   // answer, click shoulder, answer, Enter.
   state.arm = (name === 'chin' && !state.pts.sh) ? 'sh' : null;
   render();
+}
+
+// Changing your mind about an answer already given. One click on the chip
+// flips it, rather than re-opening the question: the chip already SAYS which
+// answer this point carries, so the thing to do with it is contradict it —
+// re-asking a yes/no you can already see is a dialog for a decision that has
+// no third option. The popover is for the moment a point lands with no answer
+// at all; this is for every moment after.
+function toggleVis(name) {
+  if (!state.pts[name] || !state.vis[name]) return;   // unplaced, or still being asked
+  state.vis[name] = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+  render();
+  resaveIfWritten();
+}
+
+// A change made on a frame whose row already exists goes NOW. Commit-on-leave
+// would catch it too, but a labeler correcting an old frame is often doing
+// exactly that and then closing the tab — the correction should not depend on
+// a departure that may never happen.
+function resaveIfWritten() {
+  const saved = state.labels.get(key(state.frames[state.i]));
+  if (!saved || !isResolved(saved)) return;
+  if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
+  else if (state.pts.chin && state.pts.sh && state.vis.chin && state.vis.sh) save({});
 }
 
 // Esc on the point popover undoes the placement rather than leaving a point
@@ -894,18 +770,16 @@ function bind() {
     };
   }
   // The chip sits inside a row whose click re-arms — stop the bubble so
-  // re-asking the question doesn't also re-arm the point under it.
+  // flipping the answer doesn't also re-arm the point under it.
   for (const chip of document.querySelectorAll('.vis-chip')) {
-    chip.onclick = (e) => { e.stopPropagation(); openPointPop(chip.dataset.p); };
+    chip.onclick = (e) => { e.stopPropagation(); toggleVis(chip.dataset.p); };
   }
   $('clear-pts').onclick = clearPoints;
 
   // Save on a blank frame is refused, not converted to a skip: a skip now
   // carries a REASON, and "you pressed Enter without placing points" is not
   // one — save() puts the why in the status line.
-  $('save').onclick = () => {
-    if (save({})) advance(); else render();
-  };
+  $('save-next').onclick = advance;
   // Skip asks WHY before it writes anything: the reason is the data, and a
   // frame is never skipped without one.
   $('skip-btn').onclick = () => {
@@ -949,18 +823,11 @@ function bind() {
     if (e.key === 'Enter') commitName();
   };
   $('name-go').onclick = commitName;
-  $('clue-btn').onclick = toggleClue;
-  $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
-  $('flag-btn').onclick = () => {
-    state.flag = !state.flag;
-    renderFlag();
-    // A flag toggle on an already-saved frame is worth a row of its own —
-    // same behavior as 3.0, which re-saves to persist the flag.
-    const saved = state.labels.get(key(state.frames[state.i]));
-    if (saved && isResolved(saved)) {
-      if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
-      else if (state.pts.chin && state.pts.sh) save({});
-    }
+  $('cam-btn').onclick = () => {
+    state.camGround = !state.camGround;
+    renderCam();
+    renderOverview();
+    resaveIfWritten();
   };
   wireCopyButtons();
 
@@ -1022,7 +889,17 @@ function bind() {
     state.drag = null;
     state.down = null;
     stage.classList.remove('panning');
-    if (!startedOnStage || wasPtDrag || moved) return;   // a drag, or not ours
+    if (!startedOnStage || moved) return;      // a real drag, or not ours
+    if (!state.ready) return;
+    // A stationary click that landed on an existing dot. It used to be
+    // swallowed as a zero-length drag, so a 3px correction moved nothing and
+    // the dots read as snapping to a grid. An armed point still wins: chin and
+    // shoulder can sit within a grab radius of each other on a small stage.
+    if (wasPtDrag) {
+      if (state.arm) placeAt(state.arm, e.clientX, e.clientY);
+      else movePoint(wasPtDrag, e.clientX, e.clientY);
+      return;
+    }
     // A plain click on the stage places the armed point. With nothing
     // armed it does nothing — points move by drag, not by surprise. Nothing
     // is armed while a popover is open, so a stray click cannot move the
@@ -1038,7 +915,13 @@ function bind() {
     zoomAt(Math.max(-200, Math.min(200, px)), e.clientX, e.clientY);
   }, { passive: false });
 
-  $('frame').onload = () => { $('frame').classList.remove('broken'); placeMarks(); };
+  // applyTransform, not just placeMarks: the new frame's own resolution is
+  // half of the sharp/smooth decision, and it is only known once it loads.
+  $('frame').onload = () => {
+    $('frame').classList.remove('broken');
+    placeMarks();
+    applyTransform();
+  };
   $('frame').onerror = () => {
     $('frame').classList.add('broken');
     status('Frame image did not load — check your connection', 'err');
@@ -1064,14 +947,17 @@ function bind() {
       e.preventDefault();
       return;
     }
-    if (k === 'c') { state.arm = 'chin'; render(); }
+    // Shift+C / Shift+S flip an answer already given — checked before the
+    // plain keys, which the shifted ones must not also fire.
+    if (e.shiftKey && k === 'c') toggleVis('chin');
+    else if (e.shiftKey && k === 's') toggleVis('sh');
+    else if (k === 'c') { state.arm = 'chin'; render(); }
     else if (k === 's') { state.arm = 'sh'; render(); }
-    else if (e.key === 'Enter') $('save').click();
+    else if (e.key === 'Enter') advance();
     else if (k === 'k') openSkipPop();
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
-    else if (k === 'h') toggleClue();
-    else if (k === 'f') $('flag-btn').click();
+    else if (k === 'g') $('cam-btn').click();
     else if (e.key === 'Escape') clearPoints();
     else return;
     e.preventDefault();
@@ -1094,7 +980,6 @@ async function start() {
   state.loadingFor = name;
   setReady(false, 'Loading your saved progress…  this can take up to 30 seconds.');
   status('Loading your labels…');
-  loadTeam();
 
   try {
     await loadLabels();
@@ -1116,7 +1001,6 @@ async function start() {
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n);
   status(n < 0 ? 'All frames labeled' : '');
-  if (state.teamRows) bumpMyTeamRow();
 }
 
 (async function init() {
@@ -1146,5 +1030,4 @@ async function start() {
   restoreName();
   render();
   await start();
-  setInterval(loadTeam, TEAM_POLL_MS);
 })();

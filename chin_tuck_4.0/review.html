@@ -82,11 +82,28 @@ button { cursor: pointer; }
       transform: scale(var(--inv, 1));
       box-shadow: 0 0 0 1px rgba(0,0,0,.6);
       transition: opacity .12s ease; }
-.pt.sh { background: transparent !important; border: 2.5px solid; }
+/* Chin is a DOT, shoulder is a BAR. They used to be a filled circle and a
+   hollow circle of the same size, which is a distinction you lose the moment
+   four labelers and their repeats are on one jaw: the shape has to say WHICH
+   landmark before the colour says who placed it. The bar also reads as the
+   top EDGE of the shoulder, which is the thing the derived number measures. */
+.pt.sh { width: 18px; height: 5px; margin: -2.5px 0 0 -9px; border-radius: 1.5px; }
 .pt.machine { border-radius: 2px; rotate: 45deg; opacity: .85; }
+/* The machine's shoulder is a bar like everyone else's — rotating it 45° (the
+   diamond that marks its chin) would turn it into a shape of its own. Dashes
+   and the dim colour already say "pipeline". */
+.pt.sh.machine { rotate: none; border-radius: 1.5px; }
 /* An inferred point is a placed GUESS about occluded anatomy. It has to be
    visibly a guess, or the calibration reader treats it as a sighting. */
 .pt.inferred { background: transparent !important; border: 2px dashed; }
+.pt.sh.inferred { border-width: 1.5px; }
+/* The filter doubles as the legend — the swatch beside each name says WHO,
+   and these two say which shape is which landmark. */
+#pt-filter { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+#pt-filter .lg-chin, #pt-filter .lg-sh {
+  display: inline-block; background: var(--ink-dim); flex: none; margin-right: 1px; }
+#pt-filter .lg-chin { width: 9px; height: 9px; border-radius: 50%; }
+#pt-filter .lg-sh { width: 15px; height: 4px; border-radius: 1.5px; }
 /* Hover a name in the sidebar and everyone else recedes — with four labelers
    and two reps each, twelve marks on one jaw is soup otherwise. */
 .dim { opacity: .16; }
@@ -100,6 +117,82 @@ button { cursor: pointer; }
 #hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
         color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
         padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+
+/* ── mode switch + stats sheet ──────────────────────────────────────────── */
+/* Two modes over one selection: Frames walks the pictures, Stats aggregates
+   the same rows. The picker sits above both so switching never loses who is
+   selected. */
+#main { flex: 1; min-width: 0; height: 100%; display: flex;
+        flex-direction: column; gap: 10px; }
+#modes { display: flex; gap: 4px; flex: none; background: var(--card);
+         border-radius: 10px; box-shadow: var(--shadow); padding: 4px; }
+#modes button { border: 0; background: transparent; border-radius: 7px;
+                padding: 7px 16px; font-size: 13px; font-weight: 560;
+                color: var(--ink-dim); }
+#modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+body.stats #stage-card { display: none; }
+body:not(.stats) #stats-card { display: none; }
+/* overflow-x is pinned to hidden on purpose: with only overflow-y set, CSS
+   computes the other axis to auto and the whole sheet — prose, headings and
+   all — slides sideways when one table is wide. The tables scroll inside
+   their own .tw wrapper instead. */
+#stats-card { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+              background: var(--card); border-radius: var(--radius);
+              box-shadow: var(--shadow); padding: 18px 20px 26px; }
+.tw { overflow-x: auto; scrollbar-width: thin; }
+body.stats #frame-card, body.stats #id-card,
+body.stats #nav-card, body.stats #legend-card,
+body.stats #pairs-card { display: none; }
+
+.sec { margin-top: 22px; }
+.sec:first-child { margin-top: 0; }
+.sec h3 { font-size: 12px; font-weight: 590; letter-spacing: .01em;
+          text-transform: uppercase; color: var(--ink-dim); margin: 0 0 4px; }
+.sec p.lede { font-size: 12px; color: var(--ink-dim); margin: 0 0 10px;
+              max-width: 78ch; }
+
+/* Headline numbers. */
+#tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.tile { flex: 1; min-width: 132px; border: 1px solid var(--line);
+        border-radius: 10px; padding: 10px 12px; }
+.tile .v { font: 600 21px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+           letter-spacing: -.03em; }
+.tile .k { font-size: 11px; color: var(--ink-dim); margin-top: 3px; }
+.tile.warn { border-color: color-mix(in srgb, var(--maybe) 50%, transparent); }
+
+table.st { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.st th { text-align: right; font-weight: 510; color: var(--ink-dim);
+              font-size: 11px; text-transform: uppercase; letter-spacing: .02em;
+              padding: 0 0 6px; border-bottom: 1px solid var(--line);
+              white-space: nowrap; }
+table.st th:first-child, table.st td:first-child { text-align: left; }
+table.st td { padding: 7px 0; border-bottom: 1px solid var(--line);
+              text-align: right; white-space: nowrap; }
+table.st td:first-child { white-space: normal; }
+table.st th + th, table.st td + td { padding-left: 14px; }
+table.st tr:last-child td { border-bottom: 0; }
+table.st .n { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+table.st .who2 { display: flex; align-items: center; gap: 5px; font-weight: 510; }
+table.st .who2 .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+table.st .dim { color: var(--ink-dim); font-weight: 400; }
+/* A bias reads as a direction, not just a number — the sign convention is the
+   easiest thing in the world to get backwards. */
+/* Number over word, not side by side: twelve columns of "−7% reads lower" is
+   twice the table width for the same information. */
+.bias { display: inline-flex; flex-direction: column; align-items: flex-end;
+        line-height: 1.2; }
+.bias .w { font-size: 10px; color: var(--ink-dim); }
+.empty { font-size: 12.5px; color: var(--ink-dim); padding: 14px 0; }
+
+/* Bland–Altman. currentColor throughout the SVG, so the plot inherits the
+   page's ink and needs no separate dark-scheme palette. */
+.bawrap { margin: 14px 0 4px; }
+.bacap { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+         font-weight: 510; margin-bottom: 2px; }
+.bacap .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.bacap .dim { color: var(--ink-dim); font-weight: 400; }
+.bacap .dim:last-child { margin-left: auto; font-size: 11.5px; }
+svg.ba { display: block; max-width: 100%; height: auto; color: var(--ink); }
 #stage-note { position: absolute; inset: 0; display: flex; align-items: center;
               justify-content: center; text-align: center; padding: 40px;
               font-size: 13px; color: var(--ink-dim); }
@@ -225,15 +318,24 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
 <body>
 
 <div id="wrap">
-  <div id="stage-card">
-    <div id="stage">
-      <img id="frame" alt="">
-      <div id="marks">
-        <svg id="links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
-      </div>
+  <div id="main">
+    <div id="modes">
+      <button id="mode-frames" aria-pressed="true">Frames</button>
+      <button id="mode-stats" aria-pressed="false">Stats</button>
     </div>
-    <div id="stage-note">Loading…</div>
-    <div id="hint">scroll = zoom · drag = pan · double-click = reset</div>
+
+    <div id="stage-card">
+      <div id="stage">
+        <img id="frame" alt="">
+        <div id="marks">
+          <svg id="links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+      </div>
+      <div id="stage-note">Loading…</div>
+      <div id="hint">scroll = zoom · drag = pan · double-click = reset</div>
+    </div>
+
+    <div id="stats-card"></div>
   </div>
 
   <div id="side">
@@ -243,7 +345,7 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
       <p class="note" id="who-note">Loading the team…</p>
     </div>
 
-    <div class="card">
+    <div class="card" id="pairs-card">
       <h2>Agreement <span class="n">chin above shoulder</span></h2>
       <div id="pairs"></div>
       <p class="note" id="pairs-note"></p>
@@ -266,16 +368,26 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
       <span class="idv" id="id-stance">&mdash;</span><span></span>
     </div>
 
-    <div class="card">
+    <div class="card" id="frame-card">
       <h2>This frame <span class="n" id="mk-n"></span></h2>
       <div id="mk-list"></div>
+      <div id="pt-filter">
+        <label class="chk">
+          <input type="checkbox" id="show-chin" checked>
+          <span class="lg-chin" aria-hidden="true"></span>Chin <kbd>C</kbd>
+        </label>
+        <label class="chk">
+          <input type="checkbox" id="show-sh" checked>
+          <span class="lg-sh" aria-hidden="true"></span>Shoulder <kbd>S</kbd>
+        </label>
+      </div>
       <label class="chk" style="margin-top:6px">
         <input type="checkbox" id="show-machine" checked>
-        Show the pipeline's points
+        Show the pipeline's points <kbd>M</kbd>
       </label>
     </div>
 
-    <div class="card">
+    <div class="card" id="nav-card">
       <div class="ctl">
         <label for="sort">Order</label>
         <select id="sort">
@@ -307,7 +419,7 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
       <div id="status"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="legend-card">
       <h2>Legend</h2>
       <div class="legend">
         <span><i></i>chin</span>
@@ -319,6 +431,7 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
         <dt>Prev / next frame</dt> <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <dt>Reset zoom</dt>        <dd><kbd>R</kbd></dd>
         <dt>Pipeline points</dt>   <dd><kbd>M</kbd></dd>
+        <dt>Frames / stats</dt>    <dd><kbd>T</kbd></dd>
       </dl>
       <p class="note">Read-only. Nothing on this page writes to the sheet, and
       unlike the labeler's Peers panel it never marks a frame consulted.</p>
@@ -328,6 +441,6 @@ kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
 
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy. -->
-<script src="review.js?v=1"></script>
+<script src="review.js?v=4"></script>
 </body>
 </html>

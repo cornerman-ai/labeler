@@ -62,7 +62,7 @@ a skip — the backend refuses a lone chin, and a skip must carry its reason
 ## The page
 
 `chin_tuck4.html` — 3.0's shell (same stylesheet base, name bar, optimistic
-chained saves, overview grid, team panel) with the question card replaced
+chained saves, overview grid) with the question card replaced
 by point placement: click places the armed point (chin → shoulder →
 disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for precision. Each
 click opens the seen/inferred popover beside the point it just placed, and
@@ -80,13 +80,24 @@ mid-movement. `shoulder_used` therefore records the stance-derived
 expectation; which shoulder was actually clicked is derivable downstream
 by matching the click against BlazePose's two shoulder points.
 
-Two deliberate rules:
+Four deliberate rules:
 
-- **The machine's points are never drawn while placing.** BlazePose
-  shoulders + the chin proxy appear only inside the **Peers** panel —
-  a labeler who can see the pipeline's guess anchors on it, and
-  independence is the whole value of the clicks. Opening Peers marks the
-  frame `consulted`, same meaning as 2.0/3.0's clue.
+- **Nobody else's work is on this page.** Not the pipeline's points
+  (BlazePose shoulders + the chin proxy), not the other labelers'
+  placements, not how far along anyone is. The peers panel and the team
+  progress list were both removed in 2026-08: whoever can see another
+  answer anchors on it, and an anchored click is not a second opinion, it
+  is the first one copied. Comparison lives on `review.html`, which writes
+  nothing. (`consulted` in the sheet is now a fossil — it marked rows saved
+  after opening that panel; new rows all carry 0.)
+- **Saving is leaving.** There is no save button: a finished pair is
+  written when the labeler moves on — `↵`, the arrows, Next, the overview,
+  anything that changes frame — because "done with this frame" and "next
+  frame" are one decision, and asking for the second gesture is how the
+  first one's work gets lost. Writes are skipped when nothing changed, so
+  walking back through finished frames costs no rows; the one thing that
+  holds a labeler still is a point placed but not yet answered
+  seen/inferred, which says so in the status line.
 - **One skip, then its reason.** `K` (or the button) opens a popover:
   1 = can't see the points, 2 = not in boxing stance, `Esc` backs out.
   Asked afterwards rather than as two buttons, so the decision to skip and
@@ -96,10 +107,22 @@ Two deliberate rules:
   clearly stopped boxing to explain something — explaining WHILE boxing
   (still in stance, still working) is normal footage and gets labeled,
   not skipped.
+- **Camera on the ground** (`G`, off unless ticked) — a fact about the
+  SHOT, not the labeling: a phone on the floor looks up at the boxer, which
+  moves the chin over the shoulder in the image without the boxer's head
+  moving at all. Per frame, because one video can be filmed from the floor
+  for a round and from a shelf for the next. Column `camera_ground`, which
+  replaced the never-used `flag` ("come back to this").
 - **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
   inferred — asked outright by a popover the moment the point lands
-  (1 = seen, 2 = inferred, `Esc` undoes the placement), re-openable from
-  the chip in the tool row; an inferred point is drawn as a ring. There is
+  (1 = seen, 2 = inferred, `Esc` undoes the placement); an inferred point
+  is drawn as a ring. Changing an answer afterwards is ONE click on the
+  chip that shows it (or Shift+`C` / Shift+`S`), not a re-ask: the chip
+  already says which answer the point carries, so the thing to do with it
+  is contradict it, and a yes/no you can already see does not need a dialog
+  to change. On a frame whose row already exists the flip is written
+  immediately, since correcting an old frame and then closing the tab is
+  exactly the case commit-on-leave would miss. There is
   no default and a save is refused while either answer is missing: a
   modifier-key flag (Shift+click, as this shipped first) is a thing a
   labeler forgets, and an unanswered point silently saved as `visible` is
@@ -118,22 +141,26 @@ exclude-video, frame ranges.
 
 ## The review page
 
-`review.html` — **read-only**. Tick any set of labelers, walk the frames
-they share, see every placement on the picture at once: filled dot = chin,
-ring = shoulder, dashed = inferred, diamond = the pipeline. Hovering a name
-dims everyone else. Order by most disagreement, queue position or video;
-scope to frames 2+/all/any of the selection touched; or isolate the **skip
-conflicts** — one labeler placed points where another said the frame can't
-be judged, which measures the sampler rather than the labeler.
+`review.html` — **read-only**, and the ONLY place any comparison happens.
+Tick any set of labelers, walk the frames they share, see every placement on
+the picture at once: **dot = chin, bar = shoulder**, dashed = inferred,
+diamond = the pipeline's chin. Shape carries the landmark and colour carries
+the person — two circles differing only by fill stopped being readable at
+four labelers with repeats. **`C` / `S`** (or the two checkboxes) put one
+landmark on the picture at a time, which is how you look at the half of the
+disagreement the summary says is causing it; the last one on stays on, and
+the chin→shoulder link only draws while both ends are shown.
 
-It writes nothing, and that is load-bearing rather than tidy: the labeling
-page's own Peers panel is a review surface too, but opening it marks the
-frame `consulted` — the sheet's record that a save afterwards was
-calibrated, not independent. Reviewing a few hundred frames through that
-panel would stamp `consulted` across the corpus and devalue the rows being
-reviewed. So this page reads `listChinPoint` (one call per labeler, every
-row) instead of `peersChinPoint` (one call per frame, and the flag). No new
-Apps Script action, nothing to deploy.
+Hovering a name dims everyone else. Order by most disagreement, queue
+position or video; scope to frames 2+/all/any of the selection touched; or
+isolate the **skip conflicts** — one labeler placed points where another
+said the frame can't be judged, which measures the sampler rather than the
+labeler.
+
+It writes nothing, and it is a separate page from the labeler for the reason
+in "The page" above: comparison while placing turns a second opinion into a
+copy of the first. It reads `listChinPoint` (one call per labeler, every
+row); `peersChinPoint` is now unused by any page.
 
 **The number it reports** is the one the pipeline consumes: the signed
 chin-above-shoulder distance in torso units, `(sh_y - chin_y) / torso_h`,
@@ -146,13 +173,66 @@ picture, where an eye reads it better than a median would.
 
 Every pair of selected labelers gets median / p90 / n; every labeler with
 planted repeats gets a **self row** — rep 0 against rep 1, blind, which is
-the noise floor a pair number is meaningless without. Rows a labeler saved
-after opening Peers are tagged `consulted` in the frame list, since they
-measure convergence rather than independent judgement.
+the noise floor a pair number is meaningless without. Rows carrying the
+fossil `consulted` flag (saved while the old peers panel existed) are tagged
+in the frame list, since those measure convergence rather than independent
+judgement.
 
 Rows whose (video, round, frame) is not in the current `queue.json` are
 counted and reported rather than silently dropped — that is what a resample
 that moved the frames looks like from here.
+
+### Stats mode
+
+The **Stats** tab (or `T`) aggregates the same rows over the whole corpus
+rather than one frame, for whoever is ticked:
+
+- **Overview** — mean / median / p90 disagreement, the noise floor (median
+  of the labelers' own repeat scatter), and how many frames two or more of
+  them share. That last one governs the rest: under ~30 the page says so.
+- **Between labelers** — per pair: n, mean, median, p90, SD, and the three
+  **signed biases**. Magnitudes say how far apart they are; the signs say
+  who reads what higher, which is the part `|A − B|` throws away.
+- **Each labeler** — placements, skips by reason, inferred and consulted
+  counts, own-repeat scatter, bias against the average of everyone else,
+  and bias against the pipeline. That last group is the calibration the
+  clicks exist to produce: the chin proxy and BlazePose's shoulder are what
+  is being measured, so a gap there is a finding, not an error.
+- **Hardest footage** — videos by mean spread, worst first, capped at 8
+  (it says so when it truncates). Where the footage, not the labeler, is
+  the problem.
+
+**Sign convention**, stated once and used everywhere: y grows downward, so
+every bias is reported *higher-positive* in torso units —
+`chinHigher(A vs B) = (B.chin_y − A.chin_y) / torso`, likewise for the
+shoulder, and `derivedBias = A.dist − B.dist = chinHigher − shHigher`. That
+identity is exact, which is why all three are shown: a 10% gap because one
+labeler reads the chin higher and a 10% gap because one reads the shoulder
+lower are two different corrections.
+
+### Bland–Altman, and why not correlation
+
+Each pair also gets **bias ± 95% limits of agreement** (`bias ± 1.96·SD`) and
+a **Bland–Altman plot**: one dot per frame, the difference between the two
+labelers against what they averaged, with the bias solid and the limits
+dashed.
+
+Correlation is the wrong tool for agreement — two labelers can correlate
+almost perfectly while one sits consistently higher, which is precisely the
+failure this generation exists to catch. Bland & Altman's split is the right
+one: **bias** is the systematic half (a definitional gap; one conversation
+usually fixes it), the **limits** are the random half — and the limits are
+what a decision actually runs into, because frames are judged one at a time,
+never on average. Plotting against the mean also exposes *proportional*
+bias: agreement on tucked chins but divergence on exposed ones shows as a
+cloud that fans out, which no summary number reveals.
+
+Two honest limits on it. `1.96·SD` assumes roughly normal differences, and
+the limits are themselves estimates — under ~30 pairs the page labels them
+*indicative* rather than printing a confident interval over a handful of
+frames. And no plot can say whether the agreement is *good enough*: that
+threshold comes from the use case (how much difference flips the coaching
+call), which is exactly the judgement 4.0 deferred by storing raw points. That shape is the finding — no single number carries it.
 
 ## Growing / rebuilding
 
