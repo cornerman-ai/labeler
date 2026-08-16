@@ -120,7 +120,7 @@ const state = {
   chains: new Map(),
   failed: new Map(),
   ready: false,
-  camGround: false,        // camera lying on the floor for THIS frame
+  camBad: false,           // camera shot too low/high for THIS frame
   shownAt: 0,
   ovDots: null,            // the 2k overview divs, built once
 };
@@ -159,7 +159,7 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips; the v4cg marker refuses a deployment that
+// One retry for cold-start blips; the v4cb marker refuses a deployment that
 // predates these endpoints (doGet answers unknown actions with a success
 // shape, so without the marker a save could "succeed" writing nothing).
 async function call(params, what) {
@@ -174,7 +174,7 @@ async function call(params, what) {
       last = new Error(body.message || 'unknown error');
       continue;
     }
-    if (body.v4cg !== true) {
+    if (body.v4cb !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -204,7 +204,7 @@ async function loadLabels() {
   const name = who();
   state.labels = new Map();
   state.failed = new Map();
-  state.camGround = false;
+  state.camBad = false;
   if (!name) return;
   const body = await call({ action: 'listChinPoint', labeler: name }, 'load labels');
   for (const r of (body.rows || [])) state.labels.set(rowKey(r), r);
@@ -248,7 +248,7 @@ function save({ skip = null } = {}) {
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
     skip_reason: skip || '',
-    camera_ground: state.camGround ? '1' : '0',
+    camera_bad: state.camBad ? '1' : '0',
     dwell_sec: String(dwell),
   };
   if (!skip) {
@@ -264,7 +264,7 @@ function save({ skip = null } = {}) {
     video: f.stem, round: f.round, frame: f.frame, rep: f.rep || 0,
     skipped: skip ? 1 : 0,
     skip_reason: skip || null,
-    camera_ground: state.camGround ? 1 : 0,
+    camera_bad: state.camBad ? 1 : 0,
     dwell_sec: dwell,
     chin_x: skip ? null : Number(params.chin_x),
     chin_y: skip ? null : Number(params.chin_y),
@@ -298,11 +298,11 @@ function save({ skip = null } = {}) {
   return true;
 }
 
-// Has anything changed since the row this frame already has? Saves are
-// append-only, so re-writing an identical row is not destructive — it is just
-// noise in a sheet whose whole point is "latest per identity", and with
-// commit-on-leave a labeler walking back through their work with the arrow
-// keys would write one every step.
+// Has anything changed since the row this frame already has? Skips the
+// write when nothing did — a save now overwrites the row in place, so an
+// identical re-write would just cost a lock/write round trip for no new
+// information, and with commit-on-leave a labeler walking back through
+// their work with the arrow keys would otherwise trigger one every step.
 function isDirty(k) {
   const saved = state.labels.get(k);
   if (!saved || !hasPoints(saved)) return true;
@@ -313,7 +313,7 @@ function isDirty(k) {
       || at(state.pts.sh, 1) !== Number(saved.sh_y)
       || state.vis.chin !== saved.chin_vis
       || state.vis.sh !== saved.sh_vis
-      || (state.camGround ? 1 : 0) !== (saved.camera_ground ? 1 : 0);
+      || (state.camBad ? 1 : 0) !== (saved.camera_bad ? 1 : 0);
 }
 
 // The save. There is no save button: a finished pair is written by moving on,
@@ -378,9 +378,9 @@ function go(i) {
   const saved = state.labels.get(key(f));
   state.skipped = !!(saved && saved.skipped);
   state.skipReason = (saved && saved.skip_reason) || null;
-  state.camGround = !!(saved && saved.camera_ground);
+  state.camBad = !!(saved && saved.camera_bad);
   // A saved pair comes back editable: drag a dot, save again — the backend
-  // appends, the history keeps the first placement.
+  // overwrites the row in place, no history kept.
   if (saved && hasPoints(saved)) {
     state.pts = { chin: [saved.chin_x, saved.chin_y], sh: [saved.sh_x, saved.sh_y] };
     state.vis = { chin: saved.chin_vis || 'visible', sh: saved.sh_vis || 'visible' };
@@ -470,7 +470,7 @@ function placeMarks() {
 // The label is the same either way — the fact it reports does not change with
 // the answer, only whether it is true, which the pressed state says.
 function renderCam() {
-  $('cam-btn').setAttribute('aria-pressed', String(!!state.camGround));
+  $('cam-btn').setAttribute('aria-pressed', String(!!state.camBad));
 }
 
 function renderNameState() {
@@ -506,7 +506,7 @@ function renderOverview() {
     if (state.failed.has(k)) cls += ' fail';
     else if (row && row.skipped) cls += ' sk';
     else if (hasPoints(row)) cls += ' dn';
-    if (row && row.camera_ground) cls += ' cg';
+    if (row && row.camera_bad) cls += ' cb';
     if (i === state.i) cls += ' cur';
     const d = state.ovDots[i];
     if (d.className !== cls) d.className = cls;
@@ -864,7 +864,7 @@ function bind() {
   };
   $('name-go').onclick = commitName;
   $('cam-btn').onclick = () => {
-    state.camGround = !state.camGround;
+    state.camBad = !state.camBad;
     renderCam();
     renderOverview();
     resaveIfWritten();

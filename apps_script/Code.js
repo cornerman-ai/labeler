@@ -3339,20 +3339,25 @@ var CS3_SPEC = {
 //    not the Box Labeled Data workbook — repeat-frame rows stay out of the
 //    training-critical sheet, and the prefix scans here walk only their own
 //    tabs.
-// `camera_ground` replaced `flag` ("come back to this") in 2026-08: the flag
-// column had never been written by anyone, and a camera lying on the floor is
-// a fact about the SHOT that the geometry needs — it tilts the chin over the
-// shoulder in the image without the boxer moving. `consulted` (marked rows
-// saved after opening the old peers panel, removed the same cycle) outlived
-// that panel as a fossil, carrying 0 on every row since — dropped here as
-// dead weight. Existing rows with consulted=1 lose that flag: see
+// `camera_bad` (named `camera_ground` until 2026-08, renamed for what the
+// button actually asks — "too low/high", not literally on the ground)
+// replaced `flag` ("come back to this") in 2026-08: the flag column had
+// never been written by anyone, and a camera shot from the wrong height is
+// a fact about the SHOT that the geometry needs — it tilts the chin over
+// the shoulder in the image without the boxer moving. `consulted` (marked
+// rows saved after opening the old peers panel, removed the same cycle)
+// outlived that panel as a fossil, carrying 0 on every row since — dropped
+// as dead weight. Existing rows with consulted=1 lose that flag: see
 // getOrCreateCs2Sheet for how a dropped header column is removed from every
-// tab on its next save.
-var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
-                   'frame_sec', 'stance', 'shoulder_used',
+// tab on its next save. Column order does not affect anything downstream —
+// idx is built by NAME — so `frame_sec` moving before `rep` and
+// `camera_bad` moving before `skipped` are purely for a reader scanning the
+// sheet.
+var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec', 'rep',
+                   'stance', 'shoulder_used',
                    'chin_x', 'chin_y', 'sh_x', 'sh_y',
                    'chin_vis', 'sh_vis',
-                   'skipped', 'skip_reason', 'camera_ground',
+                   'camera_bad', 'skipped', 'skip_reason',
                    'dwell_sec'];
 
 // Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
@@ -3376,12 +3381,15 @@ var CS4_SKIP_REASONS = ['not_visible', 'no_stance'];
 var CS4_VIS = ['visible', 'inferred'];
 
 var CS4_SPEC = {
-  // Bumped with the camera_ground rename. The page requires this marker, so a
-  // deployment that still has the `flag` column fails the save outright
-  // instead of accepting rows and dropping the tick on the floor — a loud
-  // stop the moment it is wrong beats a column of silently missing data.
-  tag: 'v4cg',
-  alsoTag: 'v4',
+  // Bumped with the camera_ground -> camera_bad rename. The page requires
+  // this marker, so a deployment still running the old column name fails
+  // the save outright instead of silently writing the field to nowhere — a
+  // loud stop the moment it is wrong beats a column of silently missing
+  // data. alsoTag keeps a page from the previous deploy (still sending
+  // camera_ground) from hard-erroring during the few seconds between the
+  // script and Pages deploys landing — see the alsoTag note on csMark.
+  tag: 'v4cb',
+  alsoTag: 'v4cg',
   prefix: 'chin_point_labels_',
   headers: CS4_HEADERS,
   values: {},
@@ -4882,7 +4890,7 @@ function cs4RowOut(row, idx) {
       && String(row[idx.skip_reason] || '') !== ''
       ? String(row[idx.skip_reason]) : null,
     flag: String(row[idx.flag]) === '1' ? 1 : 0,
-    camera_ground: String(row[idx.camera_ground]) === '1' ? 1 : 0,
+    camera_bad: String(row[idx.camera_bad]) === '1' ? 1 : 0,
     dwell_sec: (function (v) {
       v = Number(v);
       return isFinite(v) && v > 0 ? v : 0;
@@ -5110,7 +5118,7 @@ function doGetChinPoint(p, labeler, action) {
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
       else if (col === 'skip_reason') out.push(skipped ? skipReason : '');
       else if (col === 'flag') out.push(flagged ? 1 : 0);
-      else if (col === 'camera_ground') out.push(String(p.camera_ground || '') === '1' ? 1 : 0);
+      else if (col === 'camera_bad') out.push(String(p.camera_bad || '') === '1' ? 1 : 0);
       else if (col === 'dwell_sec') out.push(dwell);
       // '' for a skip, not 0: 0 is a real coordinate (the frame's left/top
       // edge), so the "written-down no answer" convention the enum

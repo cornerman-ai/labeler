@@ -112,8 +112,9 @@ Four deliberate rules:
   SHOT, not the labeling: a phone on the floor looks up at the boxer, which
   moves the chin over the shoulder in the image without the boxer's head
   moving at all. Per frame, because one video can be filmed from the floor
-  for a round and from a shelf for the next. Column `camera_ground`, which
-  replaced the never-used `flag` ("come back to this").
+  for a round and from a shelf for the next. Column `camera_bad` (named
+  `camera_ground` until 2026-08), which replaced the never-used `flag`
+  ("come back to this").
 - **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
   inferred — asked outright by a popover the moment the point lands
   (1 = seen, 2 = inferred, `Esc` undoes the placement); an inferred point

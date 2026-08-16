@@ -102,7 +102,7 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips. The v4cg marker refuses a deployment that
+// One retry for cold-start blips. The v4cb marker refuses a deployment that
 // predates these endpoints: doGet answers an unknown action with a success
 // shape, so without the marker an empty read would look like an empty sheet.
 async function call(params, what) {
@@ -114,7 +114,7 @@ async function call(params, what) {
       body = await res.json();
     } catch (e) { last = e; continue; }
     if (body.status !== 'ok') { last = new Error(body.message || 'unknown error'); continue; }
-    if (body.v4cg !== true) {
+    if (body.v4cb !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -185,9 +185,9 @@ async function loadTeam() {
 }
 
 // One call per labeler, every row they have, resolved latest-per-identity by
-// the backend. Cached for the session — the sheet is append-only and a review
-// pass is minutes long, so refetching per frame would only buy staleness at
-// the price of a round trip each time.
+// the backend. Cached for the session — this page writes nothing, and a
+// review pass is minutes long, so refetching per frame would only buy a
+// chance at someone else's newer save at the price of a round trip each time.
 async function loadRows(name) {
   if (state.rows.has(name)) return;
   const body = await call({ action: 'listChinPoint', labeler: name }, `load ${name}`);
