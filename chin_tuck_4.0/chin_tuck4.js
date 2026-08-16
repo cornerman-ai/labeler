@@ -32,9 +32,9 @@
 // — key(), the sheet, the backend — so the pair measures the labeler's own
 // click scatter instead of collapsing into one row.
 //
-// The backend is APPEND-ONLY (saveChinPoint): every save is a new row,
-// readers resolve latest-per-(video,round,frame,rep). Re-labels are
-// pre/post-coaching data, not waste.
+// The backend OVERWRITES IN PLACE (saveChinPoint), same as 2.0/3.0: a save
+// for a (video,round,frame,rep) that already has a row replaces it, and only
+// a new identity appends. A re-label is not kept as separate history.
 //
 // Position resumes from your own saved rows, never from this browser.
 //

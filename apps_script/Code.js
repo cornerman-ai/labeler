@@ -916,6 +916,7 @@ function onOpen() {
     .addItem('Replace YouTube URLs with Drive URLs', 'replaceVideoUrls') // ONE-TIME: remove this line after running
     .addItem('Fill blank 0/1 cells (chin-shoulder)', 'cs2BackfillBinaryColumns') // ONE-TIME: remove this line after running
     .addItem('Remove duplicate chin rows', 'cs2DedupeRows') // ONE-TIME: remove this line after running
+    .addItem('Remove duplicate chin-point rows (4.0)', 'cs4DedupeRows') // ONE-TIME: remove this line after running
     .addToUi();
 }
 
@@ -3330,16 +3331,14 @@ var CS3_SPEC = {
 //    (rep=1) far downstream, blind, to measure INTRA-rater click scatter —
 //    the noise floor every inter-rater number is read against. Keyed without
 //    rep, a repeat would look like a re-label and collapse into one row.
-//  * APPEND-ONLY, latest-(video,round,frame,rep) wins. 2.0 traded 1.0's
-//    history away for overwrite-in-place; 4.0 deliberately trades back:
-//    re-labels after coaching are pre/post measurements of the coaching, and
-//    the sheet growth that motivated 2.0's choice is contained in 4.0's own
-//    spreadsheet. Readers (list/stats/peers) resolve latest-per-identity;
-//    every row stays.
+//  * OVERWRITE IN PLACE, keyed (video,round,frame,rep) — same rule as
+//    2.0/3.0: a re-label replaces the row rather than piling up history.
+//    `rep` is what keeps the planted repeat from being read as a re-label of
+//    the original and overwriting it.
 //  * OWN SPREADSHEET ('Chin Point Labels', Drive: data/labels/labeling_team),
-//    not the Box Labeled Data workbook — append-only rows and repeat frames
-//    stay out of the training-critical sheet, and the prefix scans here walk
-//    only their own tabs.
+//    not the Box Labeled Data workbook — repeat-frame rows stay out of the
+//    training-critical sheet, and the prefix scans here walk only their own
+//    tabs.
 // `camera_ground` replaced `flag` ("come back to this") in 2026-08: the flag
 // column had never been written by anyone, and a camera lying on the floor is
 // a fact about the SHOT that the geometry needs — it tilts the chin over the
@@ -3674,6 +3673,52 @@ function cs2BackfillBinaryColumns() {
   cs2InvalidateStats(CS2_SPEC);
   cs2InvalidateStats(CS3_SPEC);
   SpreadsheetApp.getUi().alert('Filled blank 0/1 cells\n\n' + report.join('\n'));
+}
+
+// === ONE-TIME: collapse chin-point 4.0 duplicates now that saves overwrite ===
+// Every row saveChinPoint ever appended before it switched to overwrite-in-
+// place (see doGetChinPoint) is still sitting in these sheets — the same
+// (video, round, frame, rep) can have several copies from a labeler re-doing
+// a frame across sessions. Same rule as cs2DedupeRows: group by identity,
+// keep the row with the newest ts, drop the rest. `rep` joins the key here
+// (cs2DedupeRows' does not) so a planted repeat is never mistaken for a
+// re-label of the original and merged into it.
+// ONE-TIME: remove this function and its menu line once it has been run.
+function cs4DedupeRows() {
+  var spec = CS4_SPEC;
+  var report = [];
+  var sheets = csSpreadsheet(spec).getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s], nm = sh.getName();
+    if (nm.indexOf(spec.prefix) !== 0) continue;
+    var lastRow = sh.getLastRow();
+    if (lastRow < 3) continue;
+    var idx = punchDirHeaderIndex(
+      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+    var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+
+    var best = {};      // key -> {row, ts}
+    var drop = [];
+    for (var r = 0; r < data.length; r++) {
+      var v = data[r][idx.video];
+      if (v === '' || v === null) continue;
+      var k = [String(v), String(data[r][idx.round]), String(data[r][idx.frame]),
+               String(data[r][idx.rep] || 0)].join(KEY_SEP);
+      var ts = String(data[r][idx.ts] || '');
+      var rowNum = r + 2;
+      if (!best[k]) { best[k] = { row: rowNum, ts: ts }; continue; }
+      // Keep the newer; the loser is dropped whichever side it is on.
+      if (ts > best[k].ts) { drop.push(best[k].row); best[k] = { row: rowNum, ts: ts }; }
+      else { drop.push(rowNum); }
+    }
+    // Bottom-up: deleting a row renumbers everything below it.
+    drop.sort(function (a, b) { return b - a; });
+    for (var d = 0; d < drop.length; d++) sh.deleteRow(drop[d]);
+    if (drop.length) report.push(nm + ': removed ' + drop.length);
+  }
+  cs2InvalidateStats(spec);
+  SpreadsheetApp.getUi().alert(
+    'Duplicate chin-point rows removed\n\n' + (report.length ? report.join('\n') : '(none)'));
 }
 
 // === STATS across every labeler ===
@@ -4776,19 +4821,21 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
 // Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html)
 //
 // Its own handler rather than another spec through doGetChinShoulderV2:
-// that machinery's save is overwrite-in-place keyed (video, round, frame),
-// and both halves of that are wrong here — 4.0 is append-only, and `rep`
-// joins the key. Weaving "unless the spec says append" through the shared
-// branch would put 2.0/3.0's correctness at the mercy of 4.0's flags; a
-// hundred lines of purpose-built handler cannot break them. The sheet
+// `rep` joins the key here — the planted repeat (rep=1) of a frame is a
+// different identity from the original (rep=0) — and that shared machinery's
+// find/overwrite only knows (video, round, frame). Weaving a variable-length
+// key through the shared branch would put 2.0/3.0's correctness at the mercy
+// of 4.0's flags; a purpose-built handler cannot break them. The sheet
 // naming, header reconciliation, response markers and cache plumbing are
 // still the shared ones (cs2SheetName / getOrCreateCs2Sheet / csOut /
 // cs2InvalidateStats, all spec-driven).
 //
-// Readers resolve LATEST-per-(video, round, frame, rep) by ts — plain
-// ISO-8601 string compare, same convention as cs2Stats. Every older row
-// stays in the sheet: re-label history is pre/post-coaching data, and the
-// rep pairs are the intra-rater probe.
+// SAVE overwrites the row for (video, round, frame, rep) in place, same as
+// 2.0/3.0 — a re-label replaces the prior answer rather than accumulating
+// history. DELETE removes it entirely, same as 2.0/3.0's hard delete. Readers
+// resolve latest-per-identity by ts (cs4Latest) mainly as a defence for rows
+// written by the old append-only handler, before this generation's rows are
+// guaranteed unique per key.
 // ============================================================
 
 // Image-normalized coordinate, or null: clicks land on the frame, so a
@@ -4954,7 +5001,7 @@ function doGetChinPoint(p, labeler, action) {
     return csOut(spec, { labeler: who, sheet: name, rows: rows });
   }
 
-  // === SAVE — always append; never touches an existing row ===
+  // === SAVE — overwrite the row for (video, round, frame, rep), else append ===
   if (action === 'saveChinPoint') {
     var required = ['video', 'round', 'frame'];
     for (var rq = 0; rq < required.length; rq++) {
@@ -5025,6 +5072,27 @@ function doGetChinPoint(p, labeler, action) {
 
     var sh = getOrCreateCs2Sheet(who, spec);
     var headerRow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+    var idx = punchDirHeaderIndex(headerRow);
+    var lastRow = sh.getLastRow();
+
+    // Row number for (video, round, frame, rep), or 0 if absent. Same shape
+    // as doGetChinShoulderV2's findRow — reads only the key columns, and
+    // `lastRow` is a closed-over var so re-assigning it inside the lock (see
+    // below) changes what this sees without redefining the function.
+    function findRow() {
+      if (lastRow < 2) return 0;
+      var lo = Math.min(idx.video, idx.round, idx.frame, idx.rep);
+      var hi = Math.max(idx.video, idx.round, idx.frame, idx.rep);
+      var keys = sh.getRange(2, lo + 1, lastRow - 1, hi - lo + 1).getValues();
+      for (var i = 0; i < keys.length; i++) {
+        if (cs2SameVideo(keys[i][idx.video - lo], p.video) &&
+            String(keys[i][idx.round - lo]) === String(p.round) &&
+            String(keys[i][idx.frame - lo]) === String(p.frame) &&
+            String(keys[i][idx.rep - lo]) === String(rep)) return i + 2;
+      }
+      return 0;
+    }
+
     var out = [];
     for (var c = 0; c < headerRow.length; c++) {
       var col = String(headerRow[c]);
@@ -5062,16 +5130,83 @@ function doGetChinPoint(p, labeler, action) {
                        message: 'the sheet was busy — nothing saved, try again' });
     }
     try {
-      var at = sh.getLastRow() + 1;      // inside the lock — see the V2 note
+      lastRow = sh.getLastRow();         // whatever the previous holder left
+      var at = findRow();
       if (idxOfHeader(headerRow, 'video') >= 0) {
-        try { sh.getRange(at, idxOfHeader(headerRow, 'video') + 1).setNumberFormat('@'); } catch (e) {}
+        try {
+          sh.getRange(at || (lastRow + 1), idxOfHeader(headerRow, 'video') + 1)
+            .setNumberFormat('@');
+        } catch (e) {}
       }
-      sh.getRange(at, 1, 1, out.length).setValues([out]);
+      if (at) {
+        sh.getRange(at, 1, 1, out.length).setValues([out]);
+        cs2InvalidateStats(spec, who);
+        return csOut(spec, { updated: 1 });
+      }
+      sh.getRange(lastRow + 1, 1, 1, out.length).setValues([out]);
       cs2InvalidateStats(spec, who);
       return csOut(spec, { appended: 1 });
     } finally {
       try { SpreadsheetApp.flush(); } catch (e) {}
       lock.releaseLock();
+    }
+  }
+
+  // === DELETE — remove the row entirely (no soft-delete, matching 2.0/3.0) ===
+  if (action === 'deleteChinPoint') {
+    var dRequired = ['video', 'round', 'frame'];
+    for (var drq = 0; drq < dRequired.length; drq++) {
+      if (p[dRequired[drq]] === undefined || p[dRequired[drq]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + dRequired[drq] });
+      }
+    }
+    var dRep = p.rep === undefined || p.rep === '' ? 0 : Number(p.rep);
+    if (!isFinite(dRep) || dRep < 0 || dRep !== Math.floor(dRep)) {
+      return jsonOut({ status: 'error', message: 'invalid rep: ' + p.rep });
+    }
+    var dsh = csSpreadsheet(spec).getSheetByName(name);
+    if (!dsh || dsh.getLastRow() < 2) return csOut(spec, { deleted: 0 });
+    var dHeaderRow = dsh.getRange(1, 1, 1, Math.max(dsh.getLastColumn(), 1)).getValues()[0];
+    var dIdx = punchDirHeaderIndex(dHeaderRow);
+    var dLastRow = dsh.getLastRow();
+
+    function findDeleteRow() {
+      if (dLastRow < 2) return 0;
+      var lo = Math.min(dIdx.video, dIdx.round, dIdx.frame, dIdx.rep);
+      var hi = Math.max(dIdx.video, dIdx.round, dIdx.frame, dIdx.rep);
+      var keys = dsh.getRange(2, lo + 1, dLastRow - 1, hi - lo + 1).getValues();
+      for (var di = 0; di < keys.length; di++) {
+        if (cs2SameVideo(keys[di][dIdx.video - lo], p.video) &&
+            String(keys[di][dIdx.round - lo]) === String(p.round) &&
+            String(keys[di][dIdx.frame - lo]) === String(p.frame) &&
+            String(keys[di][dIdx.rep - lo]) === String(dRep)) return di + 2;
+      }
+      return 0;
+    }
+
+    // Deleting renumbers every row beneath it, so a concurrent save holding a
+    // row number from before would write to the wrong one — same reasoning
+    // as 2.0/3.0's delete.
+    var dlock = null;
+    try {
+      dlock = LockService.getScriptLock();
+      dlock.waitLock(25000);
+    } catch (e) {
+      return jsonOut({ status: 'error',
+                       message: 'the sheet was busy — nothing deleted, try again' });
+    }
+    try {
+      dLastRow = dsh.getLastRow();
+      var gone = findDeleteRow();
+      if (gone) {
+        dsh.deleteRow(gone);
+        cs2InvalidateStats(spec, who);
+        return csOut(spec, { deleted: 1 });
+      }
+      return csOut(spec, { deleted: 0 });
+    } finally {
+      try { SpreadsheetApp.flush(); } catch (e) {}
+      dlock.releaseLock();
     }
   }
 

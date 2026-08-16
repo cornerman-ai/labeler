@@ -49,15 +49,16 @@ never loosened — see `chin_upload_frames.py`). Git carries only code,
 Apps Script `doGetChinPoint` (own handler, `CS4_SPEC`), tabs
 `chin_point_labels_<Name>` in the **`Chin Point Labels` spreadsheet**
 (Drive: `Cornerman/data/labels/labeling_team/`, ID in `CS4_SPEC`) — its own
-workbook, not Box Labeled Data, so append-only rows and repeat frames stay
-out of the training-critical sheet.
+workbook, not Box Labeled Data, so repeat frames stay out of the
+training-critical sheet.
 
-**Append-only, latest-(video, round, frame, rep) wins.** Every save is a
-new row; readers resolve latest-per-identity. Re-labels are pre/post-
-coaching measurements, and `rep` in the identity is what keeps a planted
-repeat from collapsing into the original's row. A row is a complete pair or
-a skip — the backend refuses a lone chin, and a skip must carry its reason
-(`not_visible` / `no_stance`).
+**Overwrite in place, keyed (video, round, frame, rep)** — same rule as
+2.0/3.0: a re-label replaces the row rather than piling up history. `rep`
+in the identity is what keeps a planted repeat from being read as a
+re-label of the original and overwriting it. A row is a complete pair or a
+skip — the backend refuses a lone chin, and a skip must carry its reason
+(`not_visible` / `no_stance`). `deleteChinPoint` removes a row entirely, no
+soft-delete, same as 2.0/3.0.
 
 ## The page
 
