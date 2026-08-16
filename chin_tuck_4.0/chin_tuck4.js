@@ -827,6 +827,19 @@ function placeAt(name, clientX, clientY) {
   openPointPop(name);
 }
 
+// A correction, not a new placement: the visibility answer already given
+// stands and is not asked again, and a popover still open on this point
+// follows the dot instead.
+function movePoint(name, clientX, clientY) {
+  const p = stageNorm(clientX, clientY);
+  if (!p) return;
+  state.pts[name] = p;
+  render();
+  if (state.pop && state.pop.kind === 'point' && state.pop.name === name) {
+    positionPointPop(name);
+  }
+}
+
 // ── popovers ───────────────────────────────────────────────────────────────
 // One at a time: both are a question about the click that just happened, and
 // two open at once would mean two different things Enter could answer.
@@ -1049,7 +1062,17 @@ function bind() {
     state.drag = null;
     state.down = null;
     stage.classList.remove('panning');
-    if (!startedOnStage || wasPtDrag || moved) return;   // a drag, or not ours
+    if (!startedOnStage || moved) return;      // a real drag, or not ours
+    if (!state.ready) return;
+    // A stationary click that landed on an existing dot. It used to be
+    // swallowed as a zero-length drag, so a 3px correction moved nothing and
+    // the dots read as snapping to a grid. An armed point still wins: chin and
+    // shoulder can sit within a grab radius of each other on a small stage.
+    if (wasPtDrag) {
+      if (state.arm) placeAt(state.arm, e.clientX, e.clientY);
+      else movePoint(wasPtDrag, e.clientX, e.clientY);
+      return;
+    }
     // A plain click on the stage places the armed point. With nothing
     // armed it does nothing — points move by drag, not by surprise. Nothing
     // is armed while a popover is open, so a stray click cannot move the
