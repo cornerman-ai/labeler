@@ -101,6 +101,44 @@ disagreement jump, the kappa panel (kappa is meaningless here — agreement
 is point distance, computed offline), comparison grid, lead-everyone,
 exclude-video, frame ranges.
 
+## The review page
+
+`review.html` — **read-only**. Tick any set of labelers, walk the frames
+they share, see every placement on the picture at once: filled dot = chin,
+ring = shoulder, dashed = inferred, diamond = the pipeline. Hovering a name
+dims everyone else. Order by most disagreement, queue position or video;
+scope to frames 2+/all/any of the selection touched; or isolate the **skip
+conflicts** — one labeler placed points where another said the frame can't
+be judged, which measures the sampler rather than the labeler.
+
+It writes nothing, and that is load-bearing rather than tidy: the labeling
+page's own Peers panel is a review surface too, but opening it marks the
+frame `consulted` — the sheet's record that a save afterwards was
+calibrated, not independent. Reviewing a few hundred frames through that
+panel would stamp `consulted` across the corpus and devalue the rows being
+reviewed. So this page reads `listChinPoint` (one call per labeler, every
+row) instead of `peersChinPoint` (one call per frame, and the flag). No new
+Apps Script action, nothing to deploy.
+
+**The number it reports** is the one the pipeline consumes: the signed
+chin-above-shoulder distance in torso units, `(sh_y - chin_y) / torso_h`,
+identical to `chin_tuck4.js`'s `derivedDist()`. It is vertical, so it needs
+no frame aspect ratio — `queue.json` carries no width/height — and the
+decomposition is therefore exact: a pair's gap in the derived number is the
+difference of their chin-y gap and their shoulder-y gap, so the summary says
+**which point** causes the disagreement. Horizontal spread is left to the
+picture, where an eye reads it better than a median would.
+
+Every pair of selected labelers gets median / p90 / n; every labeler with
+planted repeats gets a **self row** — rep 0 against rep 1, blind, which is
+the noise floor a pair number is meaningless without. Rows a labeler saved
+after opening Peers are tagged `consulted` in the frame list, since they
+measure convergence rather than independent judgement.
+
+Rows whose (video, round, frame) is not in the current `queue.json` are
+counted and reported rather than silently dropped — that is what a resample
+that moved the frames looks like from here.
+
 ## Growing / rebuilding
 
 All from `cornerman-backend/ml/research/`, in order:
