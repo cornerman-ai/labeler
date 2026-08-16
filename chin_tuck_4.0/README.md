@@ -115,8 +115,14 @@ Four deliberate rules:
   replaced the never-used `flag` ("come back to this").
 - **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
   inferred — asked outright by a popover the moment the point lands
-  (1 = seen, 2 = inferred, `Esc` undoes the placement), re-openable from
-  the chip in the tool row; an inferred point is drawn as a ring. There is
+  (1 = seen, 2 = inferred, `Esc` undoes the placement); an inferred point
+  is drawn as a ring. Changing an answer afterwards is ONE click on the
+  chip that shows it (or Shift+`C` / Shift+`S`), not a re-ask: the chip
+  already says which answer the point carries, so the thing to do with it
+  is contradict it, and a yes/no you can already see does not need a dialog
+  to change. On a frame whose row already exists the flip is written
+  immediately, since correcting an old frame and then closing the tab is
+  exactly the case commit-on-leave would miss. There is
   no default and a save is refused while either answer is missing: a
   modifier-key flag (Shift+click, as this shipped first) is a thing a
   labeler forgets, and an unanswered point silently saved as `visible` is

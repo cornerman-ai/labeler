@@ -699,6 +699,30 @@ function choosePointVis(name, v) {
   render();
 }
 
+// Changing your mind about an answer already given. One click on the chip
+// flips it, rather than re-opening the question: the chip already SAYS which
+// answer this point carries, so the thing to do with it is contradict it —
+// re-asking a yes/no you can already see is a dialog for a decision that has
+// no third option. The popover is for the moment a point lands with no answer
+// at all; this is for every moment after.
+function toggleVis(name) {
+  if (!state.pts[name] || !state.vis[name]) return;   // unplaced, or still being asked
+  state.vis[name] = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+  render();
+  resaveIfWritten();
+}
+
+// A change made on a frame whose row already exists goes NOW. Commit-on-leave
+// would catch it too, but a labeler correcting an old frame is often doing
+// exactly that and then closing the tab — the correction should not depend on
+// a departure that may never happen.
+function resaveIfWritten() {
+  const saved = state.labels.get(key(state.frames[state.i]));
+  if (!saved || !isResolved(saved)) return;
+  if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
+  else if (state.pts.chin && state.pts.sh && state.vis.chin && state.vis.sh) save({});
+}
+
 // Esc on the point popover undoes the placement rather than leaving a point
 // with no answer behind: the click and its qualification are one act.
 function cancelPoint(name) {
@@ -746,9 +770,9 @@ function bind() {
     };
   }
   // The chip sits inside a row whose click re-arms — stop the bubble so
-  // re-asking the question doesn't also re-arm the point under it.
+  // flipping the answer doesn't also re-arm the point under it.
   for (const chip of document.querySelectorAll('.vis-chip')) {
-    chip.onclick = (e) => { e.stopPropagation(); openPointPop(chip.dataset.p); };
+    chip.onclick = (e) => { e.stopPropagation(); toggleVis(chip.dataset.p); };
   }
   $('clear-pts').onclick = clearPoints;
 
@@ -803,14 +827,7 @@ function bind() {
     state.camGround = !state.camGround;
     renderCam();
     renderOverview();
-    // On a frame that is already written, the tick is a correction to a row
-    // that exists — it goes now rather than waiting for a departure that may
-    // never come (the labeler can just as well close the tab).
-    const saved = state.labels.get(key(state.frames[state.i]));
-    if (saved && isResolved(saved)) {
-      if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
-      else if (state.pts.chin && state.pts.sh) save({});
-    }
+    resaveIfWritten();
   };
   wireCopyButtons();
 
@@ -930,7 +947,11 @@ function bind() {
       e.preventDefault();
       return;
     }
-    if (k === 'c') { state.arm = 'chin'; render(); }
+    // Shift+C / Shift+S flip an answer already given — checked before the
+    // plain keys, which the shifted ones must not also fire.
+    if (e.shiftKey && k === 'c') toggleVis('chin');
+    else if (e.shiftKey && k === 's') toggleVis('sh');
+    else if (k === 'c') { state.arm = 'chin'; render(); }
     else if (k === 's') { state.arm = 'sh'; render(); }
     else if (e.key === 'Enter') advance();
     else if (k === 'k') openSkipPop();

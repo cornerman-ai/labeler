@@ -870,13 +870,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <div class="tool-row" data-p="chin" aria-pressed="false">
         <span class="dot"></span>Chin tip<kbd>C</kbd>
         <button class="vis-chip" data-p="chin" type="button" hidden
-                title="Seen, or a best estimate of occluded anatomy — click to change">seen</button>
+                title="Click to switch this point between seen and inferred (Shift+C / Shift+S)">seen</button>
         <span class="st">not set</span>
       </div>
       <div class="tool-row" data-p="sh" aria-pressed="false">
         <span class="dot"></span>Shoulder top<kbd>S</kbd>
         <button class="vis-chip" data-p="sh" type="button" hidden
-                title="Seen, or a best estimate of occluded anatomy — click to change">seen</button>
+                title="Click to switch this point between seen and inferred (Shift+C / Shift+S)">seen</button>
         <span class="st">not set</span>
       </div>
       <button id="clear-pts" type="button">Clear both points <kbd>Esc</kbd></button>
@@ -946,6 +946,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <dt>Place / re-place chin</dt> <dd><kbd>C</kbd></dd>
         <dt>Place / re-place shoulder</dt> <dd><kbd>S</kbd></dd>
         <dt>Seen / inferred</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <dt>Switch one after</dt>    <dd><kbd>⇧</kbd><kbd>C</kbd>/<kbd>S</kbd></dd>
         <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
         <dt>Next frame (saves)</dt>  <dd><kbd>↵</kbd></dd>
@@ -962,6 +963,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=10"></script>
+<script src="chin_tuck4.js?v=11"></script>
 </body>
 </html>
