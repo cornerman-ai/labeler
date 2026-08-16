@@ -111,6 +111,8 @@ const state = {
   drag: null,              // pan drag: {x, y, px, py}
   ptDrag: null,            // point drag: 'chin' | 'sh'
   down: null,              // mousedown screen pos, for click-vs-drag
+  active: null,            // 'chin' | 'sh' — last-pressed point; what Del acts on
+  ctxFor: null,            // point the right-click menu is currently open for
   loadingFor: null,
   loadedFor: null,
   loadToken: 0,
@@ -373,7 +375,9 @@ function go(i) {
   // that cannot be committed keeps the labeler where they are.
   if (!commitCurrent()) { render(); return; }
   state.i = Math.max(0, Math.min(state.frames.length - 1, i));
+  state.active = null;
   closePop();
+  closeCtx();
   resetZoom();
   const f = state.frames[state.i];
   const saved = state.labels.get(key(f));
@@ -425,36 +429,20 @@ function render() {
   $('id-round').textContent = f.round;
   $('id-frame').textContent = f.frame;
 
-  // Stance first, side second, and "usually" on purpose: stance says which
-  // shoulder is normally the lead, but boxers switch mid-movement, so the
-  // instruction is the shoulder actually held forward in THIS frame — the
-  // stance line is the prior, not a hard rule. "their LEFT" is the boxer's
-  // anatomical left — on the RIGHT of the image when they face the camera;
-  // spelled out because every labeler trips on it exactly once.
-  const side = String(f.shoulder || '').toUpperCase();
-  $('side-hint').innerHTML =
-    `${f.stance} — the lead is usually their <b>${side}</b> shoulder. `
-    + `Mark the one actually held forward in this frame. `
-    + `<span style="color:var(--ink-dim);font-weight:400">(their ${side.toLowerCase()} `
-    + `= the boxer's own ${side.toLowerCase()}, not the image's)</span>`;
-
   const img = $('frame');
   if (img.dataset.k !== key(f)) { img.dataset.k = key(f); img.src = imgSrc(f); }
 
   for (const row of document.querySelectorAll('.tool-row')) {
     const p = row.dataset.p === 'chin' ? 'chin' : 'sh';
     row.setAttribute('aria-pressed', String(state.arm === row.dataset.p));
-    // "not placed yet", never "not set" — the latter read as a fault
-    // rather than as "waiting its turn behind the chin".
-    row.querySelector('.st').textContent = state.pts[p]
-      ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not placed yet');
-    // The chip now NAMES the answer rather than being a toggle that is only
-    // on when inferred: with the question asked outright, "seen" is a
-    // decision the labeler made and should be able to see they made.
-    const chip = row.querySelector('.vis-chip');
-    chip.hidden = !state.pts[p] || !state.vis[p];
-    chip.textContent = state.vis[p] === 'inferred' ? 'inferred' : 'seen';
-    chip.setAttribute('aria-pressed', String(state.vis[p] === 'inferred'));
+    // The switch only appears once the point has an answer — before that,
+    // the popover is the only way to give one, so a control that does
+    // nothing has no reason to be on screen.
+    const sw = document.querySelector(`.vis-switch[data-p="${p}"]`);
+    sw.hidden = !state.pts[p] || !state.vis[p];
+    for (const seg of sw.querySelectorAll('.vis-seg')) {
+      seg.setAttribute('aria-pressed', String(seg.dataset.v === state.vis[p]));
+    }
   }
   // The guide cross wears the armed point's colour — see #stage-card.arm-sh.
   $('stage-card').classList.toggle('arm-sh', state.arm === 'sh');
@@ -475,6 +463,7 @@ function placeMarks() {
     const p = state.pts[name];
     el.classList.toggle('set', !!p);
     el.classList.toggle('inferred', state.vis[name] === 'inferred');
+    el.classList.toggle('active', state.active === name);
     if (p) Object.assign(el.style, pct(p));
   }
   const img = $('frame');
@@ -661,6 +650,28 @@ function closePop() {
   $('skip-pop').hidden = true;
 }
 
+// The right-click menu is not a popover: it doesn't own the keyboard, and
+// asks nothing — it's one shortcut for the labeler with no Del key (a
+// touchpad-only laptop) or who just prefers a click. Opening it selects the
+// point the same way pressing it does, so the highlight matches what a
+// following Del would also act on.
+function closeCtx() {
+  $('pt-ctx').hidden = true;
+  state.ctxFor = null;
+}
+
+function openCtx(name, clientX, clientY) {
+  state.ctxFor = name;
+  state.active = name;
+  placeMarks();
+  const menu = $('pt-ctx');
+  const card = $('stage-card').getBoundingClientRect();
+  menu.hidden = false;
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = `${Math.max(8, Math.min(card.width - w - 8, clientX - card.left))}px`;
+  menu.style.top = `${Math.max(8, Math.min(card.height - h - 8, clientY - card.top))}px`;
+}
+
 function openPointPop(name) {
   if (!state.pts[name]) return;      // nothing placed, nothing to qualify
   state.pop = { kind: 'point', name };
@@ -699,17 +710,23 @@ function choosePointVis(name, v) {
   render();
 }
 
-// Changing your mind about an answer already given. One click on the chip
-// flips it, rather than re-opening the question: the chip already SAYS which
-// answer this point carries, so the thing to do with it is contradict it —
-// re-asking a yes/no you can already see is a dialog for a decision that has
-// no third option. The popover is for the moment a point lands with no answer
-// at all; this is for every moment after.
-function toggleVis(name) {
+// Changing your mind about an answer already given, rather than re-opening
+// the question: the switch already SHOWS which answer this point carries, so
+// the thing to do with it is pick the other one — re-asking a yes/no you can
+// already see is a dialog for a decision that has no third option. The
+// popover is for the moment a point lands with no answer at all; these are
+// for every moment after.
+function setVis(name, v) {
   if (!state.pts[name] || !state.vis[name]) return;   // unplaced, or still being asked
-  state.vis[name] = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+  state.vis[name] = v;
   render();
   resaveIfWritten();
+}
+
+// Shift+C / Shift+S flip whichever answer is showing, without naming one.
+function toggleVis(name) {
+  if (!state.pts[name] || !state.vis[name]) return;   // unplaced, or still being asked
+  setVis(name, state.vis[name] === 'inferred' ? 'visible' : 'inferred');
 }
 
 // A change made on a frame whose row already exists goes NOW. Commit-on-leave
@@ -728,8 +745,22 @@ function resaveIfWritten() {
 function cancelPoint(name) {
   state.pts[name] = null;
   state.vis[name] = null;
+  if (state.active === name) state.active = null;
   state.arm = name;
   closePop();
+  render();
+}
+
+// Del on the active point, or the right-click menu's own option: remove one
+// point outright. Unlike cancelPoint (Esc mid-popover), this can also strip
+// an answer already given — the point is being redone, not un-placed.
+function deletePoint(name) {
+  if (!state.pts[name]) return;
+  state.pts[name] = null;
+  state.vis[name] = null;
+  if (state.active === name) state.active = null;
+  if (state.pop && state.pop.kind === 'point' && state.pop.name === name) closePop();
+  state.arm = name;
   render();
 }
 
@@ -741,8 +772,10 @@ function openSkipPop() {
 
 function doSkip(reason) {
   closePop();
+  closeCtx();
   state.pts = { chin: null, sh: null };
   state.vis = { chin: null, sh: null };
+  state.active = null;
   state.skipped = true;
   state.skipReason = reason;
   if (save({ skip: reason })) advance(); else render();
@@ -750,8 +783,10 @@ function doSkip(reason) {
 
 function clearPoints() {
   closePop();
+  closeCtx();
   state.pts = { chin: null, sh: null };
   state.vis = { chin: null, sh: null };
+  state.active = null;
   state.arm = 'chin';
   state.skipped = false;
   state.skipReason = null;
@@ -769,12 +804,11 @@ function bind() {
       render();
     };
   }
-  // The chip sits inside a row whose click re-arms — stop the bubble so
-  // flipping the answer doesn't also re-arm the point under it.
-  for (const chip of document.querySelectorAll('.vis-chip')) {
-    chip.onclick = (e) => { e.stopPropagation(); toggleVis(chip.dataset.p); };
+  // The switch sits right under a row whose click re-arms — stop the bubble
+  // so picking an answer doesn't also re-arm the point above it.
+  for (const seg of document.querySelectorAll('.vis-seg')) {
+    seg.onclick = (e) => { e.stopPropagation(); setVis(seg.dataset.p, seg.dataset.v); };
   }
-  $('clear-pts').onclick = clearPoints;
 
   // Save on a blank frame is refused, not converted to a skip: a skip now
   // carries a REASON, and "you pressed Enter without placing points" is not
@@ -793,6 +827,17 @@ function bind() {
       if (state.pop && state.pop.kind === 'point') choosePointVis(state.pop.name, b.dataset.v);
     };
   }
+  $('pt-ctx-del').onclick = () => {
+    const name = state.ctxFor;
+    closeCtx();
+    if (name) deletePoint(name);
+  };
+  // Any click outside the menu dismisses it, same as any other transient
+  // popup — the delete option is the only thing on it worth a dedicated
+  // Esc handler for.
+  window.addEventListener('mousedown', (e) => {
+    if (!$('pt-ctx').hidden && !$('pt-ctx').contains(e.target)) closeCtx();
+  });
 
   const gotoFrame = () => {
     const el = $('goto-n');
@@ -859,20 +904,36 @@ function bind() {
     }
   };
   stage.onmousedown = (e) => {
-    if (!state.ready) return;
+    // Right button is the context menu's, not the drag's — without this a
+    // right-click also grabbed the point under it before oncontextmenu ever
+    // saw the click.
+    if (!state.ready || e.button !== 0) return;
     state.down = { x: e.clientX, y: e.clientY };
     const grab = grabbablePoint(e.clientX, e.clientY);
     if (grab) {
       state.ptDrag = grab;
+      state.active = grab;
       $(grab === 'chin' ? 'hp-chin' : 'hp-sh').classList.add('dragging');
+      placeMarks();
       e.preventDefault();
       return;
     }
+    if (state.active) { state.active = null; placeMarks(); }
     if (!isFitted()) {
       state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
       stage.classList.add('panning');
     }
     e.preventDefault();
+  };
+  // Right-click a placed point for the same delete Del gives it — for a
+  // touchpad with no Del key, or a labeler who'd rather click than reach for
+  // one. Anywhere else on the stage keeps the browser's own menu.
+  stage.oncontextmenu = (e) => {
+    if (!state.ready) return;
+    const grab = grabbablePoint(e.clientX, e.clientY);
+    if (!grab) return;
+    e.preventDefault();
+    openCtx(grab, e.clientX, e.clientY);
   };
   window.addEventListener('mouseup', (e) => {
     const wasPtDrag = state.ptDrag;
@@ -930,6 +991,12 @@ function bind() {
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!state.ready) return;
+    // The right-click menu isn't a popover — it doesn't own the rest of the
+    // keyboard — but Esc dismissing it is expected regardless.
+    if (!$('pt-ctx').hidden) {
+      if (e.key === 'Escape') { closeCtx(); e.preventDefault(); }
+      return;
+    }
     const k = e.key.toLowerCase();
     // An open popover owns the keyboard: 1/2 answer it, Esc backs out, and
     // everything else is swallowed so a reflex C or Enter cannot skip past
@@ -958,6 +1025,7 @@ function bind() {
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
     else if (k === 'g') $('cam-btn').click();
+    else if (e.key === 'Delete' && state.active) deletePoint(state.active);
     else if (e.key === 'Escape') clearPoints();
     else return;
     e.preventDefault();

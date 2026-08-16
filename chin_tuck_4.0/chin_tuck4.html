@@ -64,6 +64,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
+/* One tactile press for every button on the page, rather than each button's
+   own :active rule reinventing it slightly differently — the platform's
+   controls all give this same small, quick "I felt that" on press. Outline
+   over box-shadow for focus because several buttons already carry their own
+   shadow (the popovers) or none at all (nav, kbd-styled), and outline is the
+   one ring that layers cleanly on either. :focus-visible only, so a mouse
+   click still gets the plain press with no ring left behind. */
+button {
+  transition: transform .1s ease;
+}
+button:active:not(:disabled) { transform: scale(.96); }
+button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
 
 /* labeler_name.js prepends a shared identity strip to every page. Here it is a
    full-width line spent on one short word, above a tool whose whole point is
@@ -231,10 +249,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 #cam-btn svg { width: 13px; height: 13px; flex: none; }
 
-
-  #ag-scope button { transition: none; }
-}
-
 #q-lock {
   display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
   background: rgba(120,120,128,.14); color: var(--ink-dim);
@@ -243,6 +257,14 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #q-lock.err { background: rgba(255,59,48,.14); color: var(--no); }
 @media (prefers-color-scheme: dark) {
   #q-lock { background: rgba(120,120,128,.24); }
+}
+/* A breathing label, not a static one, for the one state on the page with
+   no other sign anything is happening — the frame is already visible and
+   idle-looking while the labeler's own rows are still loading behind it. */
+#q-lock:not(.err) { animation: q-lock-breathe 1.6s ease-in-out infinite; }
+@keyframes q-lock-breathe { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) {
+  #q-lock:not(.err) { animation: none; }
 }
 
 #hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
@@ -267,7 +289,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 #side::-webkit-scrollbar-thumb:hover { background: rgba(120,120,128,.7); }
 .card { background: var(--card); border-radius: var(--radius);
-        box-shadow: var(--shadow); padding: 14px; }
+        box-shadow: var(--shadow); padding: 16px; }
+/* Settings.app's own grouped-list pattern: a small caps label names the
+   section instead of the card having to be read to find out what it is —
+   the id-card in particular was three unlabeled facts until this. */
+.card-eyebrow {
+  font-size: 11px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim); margin: 0 0 9px;
+  grid-column: 1 / -1;   /* harmless outside a grid; keeps #id-card's intact */
+}
 .q + .q { margin-top: 14px; }
 .q-t { font-size: 13px; font-weight: 590; margin: 0 0 7px; letter-spacing: -.01em; }
 .q-t b { color: var(--ink-dim); font-weight: 400; margin-right: 5px; }
@@ -497,7 +527,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 .idc:hover, .idc:focus-visible { opacity: 1; color: var(--ink);
                                  background: rgba(120,120,128,.14); }
-.idc.ok { opacity: 1; color: var(--yes); }
+.idc.copied { opacity: 1; color: var(--yes); }
 .idc svg { width: 13px; height: 13px; display: block; }
 /* The destructive row of the group that identifies the video, so it sits last
    and its separator runs the full width — that is the boundary between "what
@@ -694,8 +724,24 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 .hp.set { display: block; }
 .hp.dragging { cursor: grabbing; }
+/* Picked up: pressing an existing point marks it ACTIVE — a halo on top of
+   the fill colour, since the fill already says WHICH landmark and this has
+   to say WHICH ONE, right now, of a possible two. Stays lit after release
+   so Del or the right-click menu have something to act on without a second
+   press to re-select it. */
+.hp.active {
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 4px #fff, 0 0 0 5.5px rgba(0,0,0,.4);
+  transform: scale(calc(var(--inv, 1) * 1.15));
+  z-index: 2;
+}
 #hp-chin { background: color-mix(in srgb, var(--accent) 82%, transparent); }
-#hp-sh   { background: color-mix(in srgb, var(--yes) 82%, transparent); }
+/* Round for chin, square for shoulder — the same "shape says WHICH landmark,
+   colour says who placed it" split review.html uses for its dot/bar pair, so
+   a labeler who later reviews reads both pages without relearning. */
+#hp-sh {
+  background: color-mix(in srgb, var(--yes) 82%, transparent);
+  border-radius: 3px;
+}
 
 
 /* The tool card: which point the next click places. The armed row glows the
@@ -705,14 +751,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   padding: 8px 10px; border-radius: 8px; margin-bottom: 6px;
   border: 1px solid var(--line); cursor: pointer;
   font-size: 13px; font-weight: 590;
+  transition: border-color .12s ease, background .12s ease;
 }
+.tool-row:hover:not([aria-pressed="true"]) { border-color: var(--ink-dim); }
 .tool-row .dot {
   width: 10px; height: 10px; border-radius: 50%; flex: none;
   box-shadow: 0 0 0 1px rgba(0,0,0,.4);
 }
 .tool-row[data-p="chin"] .dot { background: var(--accent); }
 .tool-row[data-p="sh"] .dot { background: var(--yes); }
-.tool-row .st { margin-left: auto; color: var(--ink-dim); font-weight: 400; }
 .tool-row[aria-pressed="true"][data-p="chin"] {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -728,13 +775,26 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #hp-chin.inferred { border-color: color-mix(in srgb, var(--accent) 82%, transparent); }
 #hp-sh.inferred { border-color: color-mix(in srgb, var(--yes) 82%, transparent); }
 .hp.inferred::after { display: none; }
-.vis-chip {
-  font: inherit; font-size: 10px; font-weight: 590; letter-spacing: .02em;
-  padding: 2px 7px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line); background: transparent; color: var(--ink-dim);
+/* Apple-style segmented control: seen/occluded as two picks in one track,
+   so correcting an answer is choosing the right state, not fighting a
+   toggle to work out what it's about to flip to. */
+.vis-switch {
+  display: flex; gap: 2px; margin: 0 0 6px; padding: 2px;
+  border-radius: 8px; background: rgba(120,120,128,.12);
 }
-.vis-chip[aria-pressed="true"] {
-  background: var(--maybe); border-color: transparent; color: #fff;
+.vis-switch[hidden] { display: none; }
+@media (prefers-color-scheme: dark) { .vis-switch { background: rgba(120,120,128,.24); } }
+.vis-seg {
+  flex: 1; padding: 4px 0; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 11.5px; font-weight: 590; color: var(--ink-dim);
+  cursor: pointer; transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.vis-seg[aria-pressed="true"] {
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  .vis-seg[aria-pressed="true"] { background: rgba(120,120,128,.42); box-shadow: none; }
 }
 /* The definitions themselves live in the Notion guide, not here: two copies of
    "what counts as the top of the shoulder" drift apart, and the one the team
@@ -758,10 +818,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   padding: 11px;
   background: var(--card); border-radius: 11px; border: 1px solid var(--line);
   box-shadow: 0 6px 24px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.10);
-  text-align: left; animation: pop-in .12s ease both;
+  text-align: left; animation: pop-in .16s cubic-bezier(.2,.8,.4,1.4) both;
 }
 .pop[hidden] { display: none; }
-@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
 .pop-t { font-size: 12.5px; font-weight: 590; margin: 0 0 8px; letter-spacing: -.01em; }
 .pop-opt {
@@ -783,13 +843,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    script, next to the click that opened it. */
 #skip-wrap { position: relative; }
 #skip-pop { left: 0; right: 0; width: auto; bottom: calc(100% + 6px); }
-#side-hint { font-size: 12px; font-weight: 590; margin: 0 0 8px; }
-#clear-pts {
-  width: 100%; margin-top: 6px; padding: 7px 0; border-radius: 8px;
-  border: 1px solid var(--line); background: transparent; color: var(--ink-dim);
-  font: inherit; font-size: 12px; cursor: pointer;
-}
-#clear-pts:hover { color: var(--ink); }
+/* One item, so none of the title's top margin or the popover's full width —
+   just the button, in the colour every other destructive action on this
+   page (Occluded aside) doesn't otherwise use. */
+#pt-ctx { width: auto; min-width: 132px; padding: 5px; }
+#pt-ctx .pop-opt { margin-top: 0; color: var(--no); border-color: transparent; }
+#pt-ctx .pop-opt:hover { background: color-mix(in srgb, var(--no) 10%, transparent); }
 
 
 /* 4.0's overview — one dot per queue slot, no batch gutters. */
@@ -797,7 +856,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #ov4 .d4 {
   aspect-ratio: 1; border-radius: 50%; cursor: pointer;
   background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
+  transition: transform .1s ease;
 }
+#ov4 .d4:hover { transform: scale(1.6); }
+@media (prefers-reduced-motion: reduce) { #ov4 .d4 { transition: none; } }
 #ov4 .d4.dn { background: var(--ov-yes); }
 #ov4 .d4.sk { background: var(--ink-dim); }
 #ov4 .d4.fail { background: var(--no); }
@@ -833,10 +895,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <s>the landmark itself is visible in this frame</s>
       </button>
       <button class="pop-opt" type="button" data-v="inferred">
-        Inferred <kbd>2</kbd>
+        Occluded <kbd>2</kbd>
         <s>hidden by a glove, blur or clothing — this is your best estimate of where it must be</s>
       </button>
       <p class="pop-esc"><kbd>Esc</kbd> — undo this point</p>
+    </div>
+    <!-- Right-click a placed point for the one thing there's no dedicated
+         key for on a laptop missing a Del key: delete it outright. -->
+    <div id="pt-ctx" class="pop" role="menu" hidden>
+      <button class="pop-opt" id="pt-ctx-del" type="button" role="menuitem">Delete point</button>
     </div>
   </div>
 
@@ -850,6 +917,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     </div>
 
     <div class="card" id="id-card">
+      <p class="card-eyebrow">Frame</p>
       <span class="idl">Video</span>
       <span class="idv" id="id-video">&mdash;</span>
       <button class="idc" data-copy="id-video" type="button"
@@ -865,21 +933,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     </div>
 
     <div class="card" id="q-card">
+      <p class="card-eyebrow">Points</p>
       <div id="q-lock">Loading…</div>
-      <p id="side-hint">&mdash;</p>
       <div class="tool-row" data-p="chin" aria-pressed="false">
         <span class="dot"></span>Chin tip<kbd>C</kbd>
-        <button class="vis-chip" data-p="chin" type="button" hidden
-                title="Click to switch this point between seen and inferred (Shift+C / Shift+S)">seen</button>
-        <span class="st">not set</span>
+      </div>
+      <div class="vis-switch" data-p="chin" hidden>
+        <button class="vis-seg" data-p="chin" data-v="visible" type="button">Seen</button>
+        <button class="vis-seg" data-p="chin" data-v="inferred" type="button">Occluded</button>
       </div>
       <div class="tool-row" data-p="sh" aria-pressed="false">
         <span class="dot"></span>Shoulder top<kbd>S</kbd>
-        <button class="vis-chip" data-p="sh" type="button" hidden
-                title="Click to switch this point between seen and inferred (Shift+C / Shift+S)">seen</button>
-        <span class="st">not set</span>
       </div>
-      <button id="clear-pts" type="button">Clear both points <kbd>Esc</kbd></button>
+      <div class="vis-switch" data-p="sh" hidden>
+        <button class="vis-seg" data-p="sh" data-v="visible" type="button">Seen</button>
+        <button class="vis-seg" data-p="sh" data-v="inferred" type="button">Occluded</button>
+      </div>
       <p id="pt-def">What counts as the chin tip and the top of the shoulder:
       <a href="https://www.notion.so/How-to-use-the-chin-tuck-labeler-4-0-3be7226febd2811b97b1dd8153330ca7"
          target="_blank" rel="noopener">the labeling guide ↗</a></p>
@@ -917,12 +986,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
              the whole dataset is measuring. Recorded per frame because one
              video can be filmed from the floor for part of a round. -->
         <button id="cam-btn" aria-pressed="false"
-                title="Camera is lying on the ground for this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Camera on ground</span></button>
+                title="Camera is too low or too high for this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Camera too low/high</span></button>
       </div>
       <div id="status"></div>
     </div>
 
     <div class="card">
+      <p class="card-eyebrow">Progress</p>
       <div id="head">
         <div id="count">—<small> / —</small></div>
         <span id="done">—</span>
@@ -942,11 +1012,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     </div>
 
     <div class="card">
+      <p class="card-eyebrow">Shortcuts</p>
       <dl id="keys">
         <dt>Place / re-place chin</dt> <dd><kbd>C</kbd></dd>
         <dt>Place / re-place shoulder</dt> <dd><kbd>S</kbd></dd>
-        <dt>Seen / inferred</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <dt>Seen / occluded</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
         <dt>Switch one after</dt>    <dd><kbd>⇧</kbd><kbd>C</kbd>/<kbd>S</kbd></dd>
+        <dt>Delete active point</dt> <dd><kbd>Del</kbd></dd>
         <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
         <dt>Next frame (saves)</dt>  <dd><kbd>↵</kbd></dd>
@@ -954,7 +1026,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <div class="sep"></div>
         <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
-        <dt>Camera on ground</dt>    <dd><kbd>G</kbd></dd>
+        <dt>Camera too low/high</dt> <dd><kbd>G</kbd></dd>
       </dl>
     </div>
   </div>

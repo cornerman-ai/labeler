@@ -107,7 +107,7 @@ Four deliberate rules:
   clearly stopped boxing to explain something — explaining WHILE boxing
   (still in stance, still working) is normal footage and gets labeled,
   not skipped.
-- **Camera on the ground** (`G`, off unless ticked) — a fact about the
+- **Camera too low/high** (`G`, off unless ticked) — a fact about the
   SHOT, not the labeling: a phone on the floor looks up at the boxer, which
   moves the chin over the shoulder in the image without the boxer's head
   moving at all. Per frame, because one video can be filmed from the floor
