@@ -2352,9 +2352,15 @@ var CHIN_SHOULDER_VALUES = {
 };
 var CHIN_SHOULDER_FIELDS = ['chin_height', 'chin_front', 'kissing'];
 var CHIN_SHOULDER_SKIP_REASONS = ['occluded', 'unclear'];
+// 1.0's tab moved out of Box Labeled Data (the script's bound spreadsheet)
+// into its own workbook, 2026-08 — same reorg as 2.0/3.0/4.0. openById, not
+// getActiveSpreadsheet(): the latter would silently create a fresh, empty
+// 'Chin Shoulder Labels' tab back in Box Labeled Data on the next save,
+// orphaned from every row that actually lives here now.
+var CHIN_SHOULDER_SPREADSHEET_ID = '12fKGtPUU1QEeUsQSU6q-2xNnAv4-IXJhJyw9GwwgkCs';
 
 function getOrCreateChinShoulderSheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = SpreadsheetApp.openById(CHIN_SHOULDER_SPREADSHEET_ID);
   var sh = ss.getSheetByName(CHIN_SHOULDER_SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(CHIN_SHOULDER_SHEET_NAME);
@@ -3286,6 +3292,11 @@ var CS3_FIELDS = ['bad_tuck'];
 // so the machinery is shared but neither generation can see the other's tabs:
 // the prefix is what separates them, and `fields` is what makes one question or
 // four the same code path.
+// Both moved out of Box Labeled Data into their own workbooks, 2026-08 —
+// same reorg as 1.0/4.0. csSpreadsheet() reads this; every CS2/CS3 function
+// that resolves a sheet has to go through it (or getOrCreateCs2Sheet, which
+// already does) rather than getActiveSpreadsheet() directly, or it will
+// silently look in Box Labeled Data and create empty tabs there instead.
 var CS2_SPEC = {
   tag: 'v2',
   prefix: 'chin_shoulder_labels_',
@@ -3294,7 +3305,8 @@ var CS2_SPEC = {
   fields: CS2_FIELDS,
   statsKey: 'cs_stats_chin_shoulder_labels_',
   overlapKey: 'cs_overlap_',
-  action: 'ChinShoulderV2'
+  action: 'ChinShoulderV2',
+  spreadsheetId: '11KT8E5xjIFDRsL8oVz7ePiRG4ozhsmZ5r_YeePfBNEg'
 };
 var CS3_SPEC = {
   tag: 'v3',
@@ -3304,7 +3316,8 @@ var CS3_SPEC = {
   fields: CS3_FIELDS,
   statsKey: 'cs_stats_chin_shoulder_v3_labels_',
   overlapKey: 'cs_overlap_',
-  action: 'ChinTuck3'
+  action: 'ChinTuck3',
+  spreadsheetId: '1jGBfLAW63rEnvOHd7OYv4_wc0Yef8NTWyuoirUvtiHM'
 };
 
 // THE definition of a chin_point_labels_* sheet — labeler 4.0, the geometric
@@ -3377,10 +3390,11 @@ var CS4_SPEC = {
   spreadsheetId: '1eOz25mCxSyJjRwxaW38Vp2xpDlbuAluu8cetheZCb1w'
 };
 
-// The spreadsheet a spec's tabs live in. CS2/CS3 predate this and live where
-// the script is bound (Box Labeled Data); a spec carrying spreadsheetId gets
-// its own workbook. openById costs ~100ms — paid only by the generations
-// that opted in.
+// The spreadsheet a spec's tabs live in. Every chin generation now carries
+// spreadsheetId and gets its own workbook, since all four moved out of
+// Box Labeled Data (the script's bound spreadsheet) in 2026-08 — this
+// fallback only matters for a spec with none, which no chin spec still is.
+// openById costs ~100ms — paid only by the generations that opted in.
 function csSpreadsheet(spec) {
   if (spec && spec.spreadsheetId) {
     return SpreadsheetApp.openById(spec.spreadsheetId);
@@ -3551,37 +3565,40 @@ function getOrCreateCs2Sheet(labeler, spec) {
 // ONE-TIME: remove this function and its menu line once it has been run.
 function cs2DedupeRows() {
   var SPECS = [CS2_SPEC, CS3_SPEC];
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var report = [];
-  for (var s = 0; s < sheets.length; s++) {
-    var sh = sheets[s], nm = sh.getName(), spec = null;
-    for (var sp = 0; sp < SPECS.length; sp++) {
-      if (nm.indexOf(SPECS[sp].prefix) === 0) { spec = SPECS[sp]; break; }
-    }
-    if (!spec) continue;
-    var lastRow = sh.getLastRow();
-    if (lastRow < 3) continue;
-    var idx = punchDirHeaderIndex(
-      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
-    var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+  // Per-spec, not one shared spreadsheet: 2.0 and 3.0 each have their own
+  // workbook now, so a single getActiveSpreadsheet().getSheets() could only
+  // ever see one of them (and it isn't this script's — see csSpreadsheet).
+  for (var sp = 0; sp < SPECS.length; sp++) {
+    var spec = SPECS[sp];
+    var sheets = csSpreadsheet(spec).getSheets();
+    for (var s = 0; s < sheets.length; s++) {
+      var sh = sheets[s], nm = sh.getName();
+      if (nm.indexOf(spec.prefix) !== 0) continue;
+      var lastRow = sh.getLastRow();
+      if (lastRow < 3) continue;
+      var idx = punchDirHeaderIndex(
+        sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+      var data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
 
-    var best = {};      // key -> {row, ts}
-    var drop = [];
-    for (var r = 0; r < data.length; r++) {
-      var v = data[r][idx.video];
-      if (v === '' || v === null) continue;
-      var k = [String(v), String(data[r][idx.round]), String(data[r][idx.frame])].join(KEY_SEP);
-      var ts = String(data[r][idx.ts] || '');
-      var rowNum = r + 2;
-      if (!best[k]) { best[k] = { row: rowNum, ts: ts }; continue; }
-      // Keep the newer; the loser is dropped whichever side it is on.
-      if (ts > best[k].ts) { drop.push(best[k].row); best[k] = { row: rowNum, ts: ts }; }
-      else { drop.push(rowNum); }
+      var best = {};      // key -> {row, ts}
+      var drop = [];
+      for (var r = 0; r < data.length; r++) {
+        var v = data[r][idx.video];
+        if (v === '' || v === null) continue;
+        var k = [String(v), String(data[r][idx.round]), String(data[r][idx.frame])].join(KEY_SEP);
+        var ts = String(data[r][idx.ts] || '');
+        var rowNum = r + 2;
+        if (!best[k]) { best[k] = { row: rowNum, ts: ts }; continue; }
+        // Keep the newer; the loser is dropped whichever side it is on.
+        if (ts > best[k].ts) { drop.push(best[k].row); best[k] = { row: rowNum, ts: ts }; }
+        else { drop.push(rowNum); }
+      }
+      // Bottom-up: deleting a row renumbers everything below it.
+      drop.sort(function (a, b) { return b - a; });
+      for (var d = 0; d < drop.length; d++) sh.deleteRow(drop[d]);
+      if (drop.length) report.push(nm + ': removed ' + drop.length);
     }
-    // Bottom-up: deleting a row renumbers everything below it.
-    drop.sort(function (a, b) { return b - a; });
-    for (var d = 0; d < drop.length; d++) sh.deleteRow(drop[d]);
-    if (drop.length) report.push(nm + ': removed ' + drop.length);
   }
   cs2InvalidateStats(CS2_SPEC);
   cs2InvalidateStats(CS3_SPEC);
@@ -3605,58 +3622,54 @@ function cs2DedupeRows() {
 // ONE-TIME: remove this function and its menu line once it has been run.
 function cs2BackfillBinaryColumns() {
   var SPECS = [CS2_SPEC, CS3_SPEC];
-  var PREFIXES = [CS2_SPEC.prefix, CS3_SPEC.prefix];
   var COLS = ['skipped', 'consulted', 'flag', 'reviewed'];
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var report = [];
-  for (var s = 0; s < sheets.length; s++) {
-    var nm = sheets[s].getName(), owned = false;
-    for (var px = 0; px < PREFIXES.length; px++) {
-      if (nm.indexOf(PREFIXES[px]) === 0) { owned = true; break; }
-    }
-    if (!owned) continue;
-    var sh = sheets[s];
-    var lastRow = sh.getLastRow();
-    if (lastRow < 2) continue;
-    var idx = punchDirHeaderIndex(
-      sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
-    var filled = 0;
-    for (var c = 0; c < COLS.length; c++) {
-      if (idx[COLS[c]] === undefined) continue;
-      // One read and at most one write per column, not per row.
-      var rng = sh.getRange(2, idx[COLS[c]] + 1, lastRow - 1, 1);
-      var vals = rng.getValues();
-      var touched = false;
-      for (var r = 0; r < vals.length; r++) {
-        if (String(vals[r][0]).trim() === '') { vals[r][0] = 0; touched = true; filled++; }
-      }
-      if (touched) rng.setValues(vals);
-    }
-
-    // Skipped rows written before answers-are-0: fill THEIR answer columns with
-    // 0 too. Guarded on skipped === 1, so a partially answered row keeps its
-    // blanks — those are genuinely "not answered yet", which is a different
-    // thing from "answered nothing, deliberately".
-    var spec = null;
-    for (var sp = 0; sp < SPECS.length; sp++) {
-      if (sh.getName().indexOf(SPECS[sp].prefix) === 0) { spec = SPECS[sp]; break; }
-    }
-    if (spec && idx.skipped !== undefined) {
-      var skipCol = sh.getRange(2, idx.skipped + 1, lastRow - 1, 1).getValues();
-      for (var fi = 0; fi < spec.fields.length; fi++) {
-        var ci = idx[spec.fields[fi]];
-        if (ci === undefined) continue;
-        var arng = sh.getRange(2, ci + 1, lastRow - 1, 1);
-        var avals = arng.getValues();
-        var atouched = false;
-        for (var ar = 0; ar < avals.length; ar++) {
-          if (String(skipCol[ar][0]) !== '1') continue;
-          if (String(avals[ar][0]).trim() === '') { avals[ar][0] = 0; atouched = true; filled++; }
+  // Per-spec, not one shared spreadsheet — see cs2DedupeRows.
+  for (var sp = 0; sp < SPECS.length; sp++) {
+    var spec = SPECS[sp];
+    var sheets = csSpreadsheet(spec).getSheets();
+    for (var s = 0; s < sheets.length; s++) {
+      var nm = sheets[s].getName();
+      if (nm.indexOf(spec.prefix) !== 0) continue;
+      var sh = sheets[s];
+      var lastRow = sh.getLastRow();
+      if (lastRow < 2) continue;
+      var idx = punchDirHeaderIndex(
+        sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]);
+      var filled = 0;
+      for (var c = 0; c < COLS.length; c++) {
+        if (idx[COLS[c]] === undefined) continue;
+        // One read and at most one write per column, not per row.
+        var rng = sh.getRange(2, idx[COLS[c]] + 1, lastRow - 1, 1);
+        var vals = rng.getValues();
+        var touched = false;
+        for (var r = 0; r < vals.length; r++) {
+          if (String(vals[r][0]).trim() === '') { vals[r][0] = 0; touched = true; filled++; }
         }
-        if (atouched) arng.setValues(avals);
+        if (touched) rng.setValues(vals);
       }
+
+      // Skipped rows written before answers-are-0: fill THEIR answer columns with
+      // 0 too. Guarded on skipped === 1, so a partially answered row keeps its
+      // blanks — those are genuinely "not answered yet", which is a different
+      // thing from "answered nothing, deliberately".
+      if (idx.skipped !== undefined) {
+        var skipCol = sh.getRange(2, idx.skipped + 1, lastRow - 1, 1).getValues();
+        for (var fi = 0; fi < spec.fields.length; fi++) {
+          var ci = idx[spec.fields[fi]];
+          if (ci === undefined) continue;
+          var arng = sh.getRange(2, ci + 1, lastRow - 1, 1);
+          var avals = arng.getValues();
+          var atouched = false;
+          for (var ar = 0; ar < avals.length; ar++) {
+            if (String(skipCol[ar][0]) !== '1') continue;
+            if (String(avals[ar][0]).trim() === '') { avals[ar][0] = 0; atouched = true; filled++; }
+          }
+          if (atouched) arng.setValues(avals);
+        }
+      }
+      report.push(sh.getName() + ': ' + filled);
     }
-    report.push(sh.getName() + ': ' + filled);
   }
   cs2InvalidateStats(CS2_SPEC);
   cs2InvalidateStats(CS3_SPEC);
@@ -3707,7 +3720,7 @@ function cs2Stats(spec) {
                      .setMimeType(ContentService.MimeType.JSON);
   }
   var PREFIX = spec.prefix;
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var sheets = csSpreadsheet(spec).getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
     var name = sheets[s].getName();
@@ -3821,7 +3834,7 @@ function cs2ExcludeVideo(p, who, spec) {
                             + 'Reload the page and try again.' });
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = csSpreadsheet(spec);
   var lock = null;
   try {
     lock = LockService.getScriptLock();
@@ -3962,7 +3975,7 @@ function cs2LeadEveryone(p, who, spec) {
   var HEADERS = spec.headers;
   var mineName = cs2SheetName(who, spec);
   if (!mineName) return jsonOut({ status: 'error', message: 'missing labeler' });
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = csSpreadsheet(spec);
   if (!ss.getSheetByName(mineName)) {
     return jsonOut({ status: 'error', message: 'you have not labeled anything yet' });
   }
@@ -4253,7 +4266,7 @@ function cs2Overlap(p, who, spec) {
                      .setMimeType(ContentService.MimeType.JSON);
   }
 
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var sheets = csSpreadsheet(spec).getSheets();
   var mineSheet = null, others = [];
   for (var s = 0; s < sheets.length; s++) {
     var nm = sheets[s].getName();
@@ -4335,7 +4348,7 @@ function cs2Agreement(p, who, spec) {
     return jsonOut({ status: 'error', message: 'pick two DIFFERENT labelers' });
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = csSpreadsheet(spec);
   var aSheet = ss.getSheetByName(aName), bSheet = ss.getSheetByName(bName);
   var a_ = aName.substring(PREFIX.length), b_ = bName.substring(PREFIX.length);
   if (!aSheet || !bSheet) {
@@ -4450,7 +4463,7 @@ function cs2Peers(p, who, spec) {
   }
   var PREFIX = spec.prefix;
   var mine = (cs2SheetName(who, spec) || '').toLowerCase();
-  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var sheets = csSpreadsheet(spec).getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
     var name = sheets[s].getName();
@@ -4512,7 +4525,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
   // Same rule as the chin tab above: only a SAVE creates a sheet. The page
   // lists as soon as a name is typed, so creating on read meant every typo'd
   // or half-typed name left an empty chin_shoulder_labels_* tab behind.
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  var sh = csSpreadsheet(spec).getSheetByName(name);
   if (!sh && op !== 'save') {
     return op === 'delete'
       ? csOut(spec, { deleted: 0 })
