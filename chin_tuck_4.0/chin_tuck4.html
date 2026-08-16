@@ -210,290 +210,28 @@ body:not(.ready) #ov,
 body:not(.ready) #ov-flags,
 body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
-/* Clue — how the rest of the team answered THIS frame.
-   Expands in place rather than opening a dialog: a modal would cover the frame,
-   and the whole point is to compare their answer against what you are looking
-   at. Collapsed by default and never auto-opened, because seeing someone else's
-   answer first is what turns two independent raters into one — the agreement
-   numbers stop meaning anything. `state.consulted` records which frames were
-   opened so a run can be audited later. */
-#clue-bar { margin-bottom: 12px; }
-#clue-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 11px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent;
-  font-size: 12px; font-weight: 500; color: var(--ink-dim);
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-#clue-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
-#clue-btn:disabled { opacity: .35; cursor: default; }
-#clue-btn[aria-expanded="true"] {
-  background: var(--open-bg); border-color: var(--open-line);
-  color: var(--open-ink);
-}
-#clue-btn svg { width: 13px; height: 13px; flex: none; }
-#clue-chev { transition: transform .2s ease; }
-#clue-btn[aria-expanded="true"] #clue-chev { transform: rotate(180deg); }
 
-/* Visibility is a plain display toggle and the motion is a one-shot animation
-   on top. An earlier version animated grid-template-rows 0fr->1fr, which is
-   prettier but makes the OPEN STATE ITSELF depend on a transition finishing —
-   if it is interrupted or never runs, the panel stays 0px tall while reporting
-   itself open, and the labeler sees nothing. Correctness first, polish second. */
-#clue-wrap { display: none; margin-bottom: 0; }
-#clue-wrap.open { display: block; margin-bottom: 14px; animation: clue-in .2s ease both; }
-@keyframes clue-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) { #clue-wrap.open { animation: none; } }
-#clue-inner { min-height: 0; }
-#clue-body {
-  border-radius: 10px; padding: 10px 12px;
-  background: rgba(120,120,128,.10); font-size: 12px;
-}
-@media (prefers-color-scheme: dark) { #clue-body { background: rgba(120,120,128,.18); } }
-#clue-note { color: var(--ink-dim); font-size: 11px; }
-
-/* Nobody else has answered this frame — the common case early in a run, so it
-   reads as an invitation rather than a failure. */
-.clue-empty { text-align: center; padding: 6px 4px 4px; color: var(--ink-dim); }
-.clue-empty svg { width: 30px; height: 30px; opacity: .5; margin-bottom: 6px; }
-.clue-empty-h { font-size: 12.5px; font-weight: 590; color: var(--ink); }
-.clue-empty-s { font-size: 11.5px; margin-top: 3px; line-height: 1.4; }
-
-.clue-row + .clue-row { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
-.clue-who { font-weight: 590; margin-bottom: 5px; }
-.clue-who s { font-weight: 400; color: var(--ink-dim); text-decoration: none; margin-left: 5px; }
-.clue-ans { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; }
-.clue-ans dt { color: var(--ink-dim); }
-.clue-ans dd { margin: 0; justify-self: end; font-weight: 590; }
-/* Same colour language as the answer buttons, so a glance reads the same way. */
-/* Same convention as the option buttons above: the colour is the answer, not a
-   verdict on the boxing. No hard_to_say rule — 3.0 has no such value. */
-.clue-ans dd.yes { color: var(--yes); }
-.clue-ans dd.no { color: var(--no); }
-.clue-ans dd.none { color: var(--ink-dim); font-weight: 400; }
-.clue-skip { color: var(--ink-dim); font-style: italic; }
-
-/* Flag — "I answered, but come back to this". Distinct from skip, which means
-   the frame cannot be judged at all. Binary: a reason field was tried and the
-   presets went unused while the free text produced variants nobody could
-   filter on, so the signal is the frame, not the wording.
-   Sits in the nav row, in the slot "next unlabeled" used to hold — the queue is
-   walked in order, so jumping to the next gap was a control nobody reached for,
-   while marking the frame in front of you is. */
-#flag-btn {
+/* Camera on the ground — a fact about the SHOT, not about the labeling. A
+   phone lying on the floor looks up at the boxer, and that tilt moves the
+   chin over the shoulder in the image without the boxer's head moving at
+   all: the rows are honest points on a picture that the geometry has to be
+   told about. Off unless ticked, per frame, because a single video can be
+   filmed from the floor for one round and from a shelf for the next. */
+#cam-btn {
   flex: 1; padding: 8px 6px; border-radius: 8px;
   border: 1px solid var(--line); background: transparent;
   font-size: 13px; font-weight: 510; color: var(--ink-dim);
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
-#flag-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
-/* The SAME red the flag grid paints, not amber: the button and the dot report
-   one fact, and two colours for it read as two different states. */
-#flag-btn[aria-pressed="true"] {
-  background: var(--no); border-color: transparent; color: #fff;
+#cam-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+/* Amber, not red: this is a note about the footage, and red on this page is
+   reserved for the states that mean something went wrong. */
+#cam-btn[aria-pressed="true"] {
+  background: var(--maybe); border-color: transparent; color: #fff;
 }
-#flag-btn svg { width: 13px; height: 13px; flex: none; }
+#cam-btn svg { width: 13px; height: 13px; flex: none; }
 
-/* Two pills, one shape. The progress list used to sit open above them, which is
-   fine at two labelers and a wall of name-count-bar at six — and it was the one
-   block on this page that could not be put away. Folded by default: the count
-   rides on the button, so how many people are labeling is answerable without
-   opening anything. */
-#team-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-top: 4px; padding: 6px 11px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent;
-  font-size: 12px; font-weight: 500; color: var(--ink-dim);
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
-#team-btn:disabled { opacity: .4; cursor: default; }
-#team-btn[aria-expanded="true"] {
-  background: var(--open-bg); border-color: var(--open-line);
-  color: var(--open-ink);
-}
-#team-btn svg { width: 13px; height: 13px; flex: none; }
-#team-chev { transition: transform .2s ease; }
-#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
 
-/* Agreement — a snapshot, computed on demand, over frames both people
-   finished. Lives under the team list because that is the question it answers:
-   how close are we, not how far along. Same pill as #clue-btn — both are
-   "show me more, in place", and one shape means the panel below is understood
-   before it is opened. */
-#agree-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent;
-  font-size: 12px; font-weight: 500; color: var(--ink-dim);
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-#agree-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
-#agree-btn:disabled { opacity: .4; cursor: default; }
-#agree-btn[aria-expanded="true"] {
-  background: var(--open-bg); border-color: var(--open-line);
-  color: var(--open-ink);
-}
-#agree-btn svg { width: 13px; height: 13px; flex: none; }
-#agree-chev { transition: transform .2s ease; }
-#agree-btn[aria-expanded="true"] #agree-chev { transform: rotate(180deg); }
-
-/* ── comparison panel ───────────────────────────────────────────────────────
-   Rebuilt around the thing it exists to say. The old version put the raw
-   agreement percentage on a bar and hid kappa in a tooltip, which is backwards:
-   on this data shoulder_ok reads 73% agreement at kappa 0.31, because chance
-   alone accounts for 61% of it. A number that flatters the answer while the
-   number that qualifies it needs a hover is a panel that misleads by default.
-   So kappa is on screen for every question, and each bar carries a marker at
-   the chance level — the gap between the marker and the end of the fill IS the
-   agreement beyond chance, drawn rather than described.
-   ------------------------------------------------------------------------ */
-#agree-out { margin-top: 10px; font-size: 12px; display: none; }
-#agree-out.on { display: block; animation: clue-in .2s ease both; }
-
-/* Two names, stacked. They shared one 302px line with the Compare button and
-   were cut to about five characters each, which on a team holding both "Alex"
-   and "Alex_2.0" is the one truncation that loses the distinction that
-   matters. */
-#ag-pick { display: grid; gap: 6px; }
-.ag-field { position: relative; display: block; }
-.ag-field::after {
-  content: ''; position: absolute; right: 11px; top: 50%;
-  width: 6px; height: 6px; pointer-events: none;
-  border-right: 1.5px solid var(--ink-dim);
-  border-bottom: 1.5px solid var(--ink-dim);
-  transform: translateY(-70%) rotate(45deg);
-}
-.ag-sel {
-  width: 100%; appearance: none; -webkit-appearance: none;
-  font: inherit; font-size: 12.5px; font-weight: 500;
-  padding: 8px 26px 8px 11px; border-radius: 9px;
-  border: 1px solid var(--line); background: var(--card); color: var(--ink);
-}
-.ag-sel:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-#ag-vs {
-  font-size: 10px; font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--ink-dim); text-align: center;
-  margin: -2px 0;
-}
-
-/* iOS segmented control. Two options rather than a 41-item dropdown for the
-   one choice that is made every time — "all frames" is the default and should
-   cost nothing to get back to. */
-#ag-scope { display: flex; gap: 3px; margin-top: 8px; padding: 2px;
-            border-radius: 9px; background: rgba(120,120,128,.12); }
-#ag-scope button {
-  flex: 1; padding: 6px 4px; border: 0; border-radius: 7px; background: none;
-  font-size: 12px; font-weight: 500; color: var(--ink-dim);
-  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
-}
-#ag-scope button[aria-selected="true"] {
-  background: var(--card); color: var(--ink); font-weight: 590;
-  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
-}
-@media (prefers-color-scheme: dark) {
-  #ag-scope { background: rgba(120,120,128,.20); }
-  /* Lighter than its track, not darker. The card colour made the selected
-     segment the darkest thing in the control, which is upside down: the raised
-     one should catch the light. */
-  #ag-scope button[aria-selected="true"] {
-    background: color-mix(in srgb, var(--ink) 22%, var(--card));
-    box-shadow: 0 1px 3px rgba(0,0,0,.5);
-  }
-}
-#ag-batch-row { margin-top: 6px; }
-#ag-batch-row[hidden] { display: none; }
-#ag-go {
-  width: 100%; margin-top: 8px; padding: 9px; border: 0; border-radius: 9px;
-  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
-}
-#ag-go:disabled { opacity: .4; cursor: default; }
-
-/* The headline: how often these two wrote down the same thing. Everything
-   under it explains that number, so it is the only large type here. */
-.ag-hero { display: flex; align-items: flex-end; gap: 10px;
-           margin: 14px 0 4px; }
-.ag-big {
-  font: 600 30px/1 ui-monospace, "SF Mono", Menlo, monospace;
-  letter-spacing: -.03em;
-}
-.ag-big small { font-size: 15px; font-weight: 500; color: var(--ink-dim);
-                margin-left: 1px; }
-.ag-cap { font-size: 11px; color: var(--ink-dim); margin-top: 3px; }
-.ag-meta { margin-left: auto; text-align: right; font-size: 10.5px;
-           line-height: 1.55; color: var(--ink-dim);
-           font-variant-numeric: tabular-nums; }
-/* The weakest question, because that is the one that caps what a model can
-   learn — an average would let three good questions hide a broken one. */
-.ag-chip {
-  display: inline-flex; align-items: baseline; gap: 4px;
-  padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 590;
-  font-variant-numeric: tabular-nums;
-}
-.ag-chip.k-hi  { background: color-mix(in srgb, var(--yes) 14%, transparent);
-                 color: color-mix(in srgb, var(--yes) 72%, var(--ink)); }
-.ag-chip.k-mid { background: color-mix(in srgb, var(--maybe) 16%, transparent);
-                 color: color-mix(in srgb, var(--maybe) 62%, var(--ink)); }
-.ag-chip.k-lo  { background: color-mix(in srgb, var(--no) 13%, transparent);
-                 color: color-mix(in srgb, var(--no) 72%, var(--ink)); }
-.ag-chip.k-na  { background: rgba(120,120,128,.16); color: var(--ink-dim); }
-@media (prefers-color-scheme: dark) {
-  .ag-chip.k-hi  { color: color-mix(in srgb, var(--yes) 60%, white); }
-  .ag-chip.k-mid { color: color-mix(in srgb, var(--maybe) 60%, white); }
-  .ag-chip.k-lo  { color: color-mix(in srgb, var(--no) 55%, white); }
-}
-
-/* One question per row, hairline-separated the way a grouped list is. The bar
-   gets the full width because the chance marker has to be readable on it. */
-.ag-rows { margin-top: 12px; }
-.ag-row { padding: 9px 0; border-top: 1px solid var(--line); }
-.ag-row:first-child { border-top: 0; padding-top: 4px; }
-.ag-row-t { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
-.ag-lbl { flex: 1; min-width: 0; font-size: 12px;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ag-pct { font: 600 12.5px ui-monospace, "SF Mono", Menlo, monospace;
-          font-variant-numeric: tabular-nums; }
-.ag-k { font-size: 10.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.ag-k.k-hi  { color: color-mix(in srgb, var(--yes) 72%, var(--ink)); }
-.ag-k.k-mid { color: color-mix(in srgb, var(--maybe) 62%, var(--ink)); }
-.ag-k.k-lo  { color: color-mix(in srgb, var(--no) 72%, var(--ink)); }
-.ag-k.k-na  { color: var(--ink-dim); }
-@media (prefers-color-scheme: dark) {
-  .ag-k.k-hi  { color: color-mix(in srgb, var(--yes) 60%, white); }
-  .ag-k.k-mid { color: color-mix(in srgb, var(--maybe) 60%, white); }
-  .ag-k.k-lo  { color: color-mix(in srgb, var(--no) 55%, white); }
-}
-/* display:block is load-bearing. The old row was a grid, which blockified this
-   span for free; the row is a plain block now, so an inline span takes no
-   height and the whole bar renders at zero. */
-.ag-bar { display: block; position: relative; height: 5px; border-radius: 3px;
-          background: rgba(120,120,128,.16); }
-/* No entrance animation on the fill. It was a width transition released on the
-   next animation frame, then a scaleX keyframe, and both failed the same way: a
-   tab that is not compositing never advances them, so every bar sat collapsed at
-   zero while the number beside it read 73%. A bar here IS the measurement, not a
-   flourish, and it has to be right on the first paint with no clock involved.
-   The panel already fades in as a whole; the rows do not need their own. */
-.ag-bar i { display: block; height: 100%; border-radius: 3px; }
-.ag-bar i.k-hi  { background: var(--yes); }
-.ag-bar i.k-mid { background: var(--maybe); }
-.ag-bar i.k-lo  { background: var(--no); }
-.ag-bar i.k-na  { background: var(--ink-dim); }
-/* Where the bar would land if the two of them agreed purely by chance. */
-.ag-chance { position: absolute; top: -3px; bottom: -3px; width: 2px;
-             border-radius: 1px; background: var(--ink); opacity: .38; }
-.ag-legend { display: flex; align-items: center; gap: 6px; margin-top: 10px;
-             font-size: 10.5px; color: var(--ink-dim); }
-.ag-legend b { flex: none; width: 2px; height: 11px; border-radius: 1px;
-               background: var(--ink); opacity: .38; }
-.ag-note { font-size: 11.5px; color: var(--ink-dim); line-height: 1.5; }
-#agree-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 10px;
-              padding-top: 9px; border-top: 1px solid var(--line); }
-#agree-when { font-size: 10.5px; color: var(--ink-dim); }
-@media (prefers-reduced-motion: reduce) {
   #ag-scope button { transition: none; }
 }
 
@@ -581,11 +319,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   #mode-switch button { transition: none; }
 }
 
-#save {
+/* Moving on IS the save, so this is still the primary action and keeps the
+   primary look. It is never disabled: leaving a frame you placed nothing on is
+   allowed, and the one state that holds you here (a point placed but not yet
+   answered seen/inferred) says so in the status line rather than by greying
+   out the way forward with no explanation. */
+#save-next {
   width: 100%; padding: 11px; border: none; border-radius: 10px;
   background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
 }
-#save:disabled { opacity: .35; cursor: default; }
 /* Filled grey rather than the transparent outline it had: skip is a real action
    with a real cost — the frame leaves the queue judged unjudgeable — so it needs
    to be visible, but it must never compete with the blue Save above it. Grey
@@ -732,88 +474,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    them, so they belong in the same column of the eye's path. */
 .ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
 #ov-sub-n, #ov-cmp-n { font-size: 12px; color: var(--ink-dim); }
-/* Team panel — name, count, bar. Nothing else.
-   It used to carry the queue position and a relative timestamp on every row
-   too, which is four facts per person in a 330px column. Position was the
-   redundant one: for anyone working forward it just restates the count. The
-   detail moved to the row's tooltip, which is where "when did they last save"
-   lives now. */
-#team { display: none; grid-template-columns: 1fr auto;
-        column-gap: 10px; align-items: baseline; font-size: 13px; }
-/* Air on both sides when open. The list sat flush against the pill above and
-   the pill below, so the three read as one clump; the margins only exist while
-   the list is shown, so the collapsed card keeps its tight two-pill stack. */
-#team.on { display: grid; animation: clue-in .2s ease both;
-           margin: 12px 0 6px; }
-/* The name cell is a flex row now so the hide control can sit beside the text
-   without the ellipsis swallowing it: .who-t takes the truncation, the button
-   is flex:none. A fourth grid cell would NOT work here — #team is the grid, so
-   an extra cell per labeler would break the column alignment between rows. */
-.who-n { display: flex; align-items: baseline; gap: 5px;
-         min-width: 0; font-weight: 500; }
-.who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis;
-         white-space: nowrap;
-         padding: 0; border: 0; background: none; font: inherit; color: inherit;
-         text-align: left; }
-.who-t:hover { text-decoration: underline; }
-.who-chev { flex: none; width: 10px; height: 10px; color: var(--ink-dim);
-            opacity: .55; pointer-events: none; transition: transform .15s ease; }
-.who-chev svg { display: block; width: 10px; height: 10px; }
-.who-n.open .who-chev { transform: rotate(180deg); }
-/* Which frames, not just how many. A labeler's rows are rarely one run — they
-   pick up where they left off, jump, come back — so the counter alone cannot
-   say whether two people have covered the same ground. Ranges are 1-based and
-   inclusive, matching the numbers on the overview and the go-to box. */
-.who-ranges {
-  grid-column: 1 / -1; margin: -6px 0 12px;
-  font: 500 10.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--ink-dim); word-break: break-word;
-}
-/* Last known ranges, with a fresher read running underneath. Dimmed rather than
-   replaced by a spinner: the numbers are still very nearly right, and blanking
-   them every time a teammate saves a frame would make the panel flicker. */
-.who-ranges.stale { opacity: .55; }
-/* Invisible until the pointer is somewhere in the panel. Six permanently-lit
-   icons is exactly the clutter this list was cleaned up to avoid, but a control
-   nobody can find is not a control — revealing the whole column on panel hover
-   costs nothing at rest and needs no hunting. */
-.who-eye { flex: none; padding: 0; border: 0; background: none; line-height: 0;
-           color: var(--ink-dim); opacity: 0; transition: opacity .12s ease; }
-#team:hover .who-eye { opacity: .45; }
-.who-eye:hover, .who-eye:focus-visible { opacity: 1; color: var(--ink); }
-.who-eye svg { width: 13px; height: 13px; display: block; }
-/* Always visible when anything is hidden. A row that vanished with no trace of
-   why reads as lost data, so the count stays on screen and the way back is one
-   click next to it. */
-.who-hidden { grid-column: 1 / -1; display: flex; align-items: baseline;
-              gap: 8px; font-size: 11.5px; color: var(--ink-dim);
-              margin-top: 2px; }
-.who-show-all { padding: 0; border: 0; background: none; font: inherit;
-                color: var(--accent); font-weight: 500; }
-.who-show-all:hover { text-decoration: underline; }
-.who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
-.who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
-/* Not a progress bar — a MAP of the queue. A left-aligned fill proportional to
-   the count said "802 of 3,791" twice, once as a number and once as a length,
-   and hid the thing the number cannot carry: whether those 802 are the first
-   802, the last 802, or two blocks with a thousand untouched frames between
-   them. Each run of consecutive queue positions is drawn where it actually
-   falls, so two labelers who have covered the same ground look alike and two
-   who have not, do not. */
-.who-bar { grid-column: 1 / -1; position: relative; height: 3px;
-           border-radius: 2px; background: rgba(120,120,128,.16);
-           margin: 6px 0 12px; overflow: hidden; }
-.who-bar:last-child { margin-bottom: 0; }
-.who-bar i { position: absolute; top: 0; bottom: 0; border-radius: 1.5px;
-             background: var(--ink-dim); min-width: 1.5px; }
-/* Until the frame list arrives the bar can only say how MUCH, so it says that
-   at a third of the ink and gives itself away on hover. It is replaced the
-   moment the real runs land, which on a warm cache is immediately. */
-.who-bar.approx i { opacity: .3; }
-.who-me .who-n { color: var(--accent); font-weight: 600; }
-.who-me .who-c { color: var(--accent); }
-.who-me .who-bar i { background: var(--accent); }
-#team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
 
 /* Which frame you are actually looking at. The queue position answers "where am
    I", but (video, round, frame) is the KEY — it is what the sheet stores, what a
@@ -871,7 +531,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #vidx-btn[aria-expanded="true"] #vidx-chev { transform: rotate(180deg); }
 
 #vidx-out { margin-top: 10px; font-size: 12px; display: none; }
-#vidx-out.on { display: block; animation: clue-in .2s ease both; }
+#vidx-out.on { display: block; }
 
 #vidx-search {
   display: block; width: 100%; margin-bottom: 8px; font: inherit;
@@ -997,7 +657,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #keys dt { color: var(--ink-dim); }
 #keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
 #keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
-#keys kbd, #save kbd, .skipb kbd {
+#keys kbd, #save-next kbd, .skipb kbd {
   font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
   border: 1px solid var(--line); border-radius: 4px;
   padding: 3px 5px; min-width: 18px; text-align: center;
@@ -1010,9 +670,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 /* ── 4.0 additions — geometric point placement ──────────────────────────────
    Everything above is 3.0's sheet, carried over verbatim so the page keeps
    the family look; the rules below are the only 4.0-specific ones. Unused
-   3.0 selectors (agreement, comparison, video index) are harmless dead
-   weight and staying byte-identical to 3.0's block keeps future diffs of
-   the shared part meaningful.
+   3.0 selectors (video index, batch grids) are harmless dead weight and
+   staying close to 3.0's block keeps future diffs of the shared part
+   meaningful — but the ones that DREW other people's work (peer overlay,
+   team progress, agreement panel) are gone rather than dormant, so nothing
+   can put them back on the page by accident.
    ------------------------------------------------------------------------ */
 
 /* Human points — larger than the 5px machine dots the other pages draw,
@@ -1035,20 +697,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #hp-chin { background: color-mix(in srgb, var(--accent) 82%, transparent); }
 #hp-sh   { background: color-mix(in srgb, var(--yes) 82%, transparent); }
 
-/* Peer + machine overlay dots (reviewer aid, drawn only while the panel is
-   open). Hollow ring = shoulder, filled = chin; the color names the source
-   (inline, per labeler). Machine points are diamonds so they can never be
-   mistaken for a person. #peer-marks fills the stage so the dots' percent
-   positions measure the frame, and it never eats a click. */
-#peer-marks { position: absolute; inset: 0; pointer-events: none; }
-.peer-pt {
-  position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;
-  border-radius: 50%; pointer-events: none;
-  transform: scale(var(--inv, 1));
-  box-shadow: 0 0 0 1px rgba(0,0,0,.6);
-}
-.peer-pt.sh { background: transparent !important; border: 2.5px solid; }
-.peer-pt.machine { border-radius: 2px; rotate: 45deg; opacity: .85; }
 
 /* The tool card: which point the next click places. The armed row glows the
    point's own color so hand and eye agree about what a click will do. */
@@ -1143,24 +791,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 }
 #clear-pts:hover { color: var(--ink); }
 
-/* Peer panel rows: swatch, name, the derived distance. */
-.pr { display: flex; align-items: center; gap: 7px; padding: 5px 0; font-size: 12px; }
-.pr .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.pr .nm { font-weight: 590; }
-.pr .dv { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
-#peer-note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; }
-
-/* 4.0's team list — a simple stack (name, count, bar), not 3.0's grid
-   widget; #team's display is driven inline from setTeamOpen. */
-#team .trow { padding: 6px 0; border-top: 1px solid var(--line); }
-#team .trow:first-child { border-top: 0; }
-#team .tname { font-size: 12px; font-weight: 590; }
-#team .tcount { float: right; font-size: 11px; color: var(--ink-dim);
-                font-variant-numeric: tabular-nums; }
-#team .tbar { display: block; height: 3px; margin-top: 5px; border-radius: 2px;
-              background: color-mix(in srgb, var(--ink-dim) 18%, transparent); }
-#team .tbar i { display: block; height: 100%; border-radius: 2px;
-                background: var(--accent); }
 
 /* 4.0's overview — one dot per queue slot, no batch gutters. */
 #ov4 { display: grid; grid-template-columns: repeat(40, 1fr); gap: 2.5px; margin-top: 10px; }
@@ -1171,7 +801,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #ov4 .d4.dn { background: var(--ov-yes); }
 #ov4 .d4.sk { background: var(--ink-dim); }
 #ov4 .d4.fail { background: var(--no); }
-#ov4 .d4.fl { box-shadow: 0 0 0 1.5px var(--maybe); }
+#ov4 .d4.cg { box-shadow: 0 0 0 1.5px var(--maybe); }
 #ov4 .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
 </style>
 </head>
@@ -1182,13 +812,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div id="stage">
       <img id="frame" alt="">
       <div id="marks">
-        <!-- Machine points (BlazePose shoulders + the extrapolated chin) are
-             NOT here while labeling — the click must be independent of the
-             pipeline it will calibrate. They appear only inside the peers
-             overlay, rendered into #peer-marks with the peers. -->
+        <!-- Only the labeler's own two points are ever drawn here. The
+             pipeline's guess and everyone else's placements are not on this
+             page at all — an independent click is the whole value of the
+             dataset, and it stops being independent the moment it can be
+             compared. Comparison lives on review.html, which is read-only. -->
         <div class="hp" id="hp-chin" title="Chin tip (drag to adjust)"></div>
         <div class="hp" id="hp-sh" title="Shoulder top (drag to adjust)"></div>
-        <div id="peer-marks"></div>
       </div>
     </div>
     <div id="gx"></div><div id="gy"></div>
@@ -1217,8 +847,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
                autocomplete="off" spellcheck="false">
         <button id="name-go" disabled>Start</button>
       </div>
-      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone's progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <div id="team"><div id="team-empty">No labels saved yet</div></div>
     </div>
 
     <div class="card" id="id-card">
@@ -1252,24 +880,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <span class="st">not set</span>
       </div>
       <button id="clear-pts" type="button">Clear both points <kbd>Esc</kbd></button>
-      <div id="clue-bar">
-        <button id="clue-btn" aria-expanded="false" aria-controls="clue-wrap"
-                title="Everyone's points on this frame, plus the pipeline's">
-          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5.3" cy="4.7" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M1.6 12c0-2 1.7-3.3 3.7-3.3S9 10 9 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.9 3.1a2.2 2.2 0 0 1 0 4.2M10.4 8.9c1.3.4 2.2 1.5 2.2 3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span id="clue-label">Peers</span><svg id="clue-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-      <div id="clue-wrap"><div id="clue-inner">
-        <div id="clue-body">
-          <div id="clue-note">Loading…</div>
-        </div>
-      </div></div>
       <p id="pt-def">What counts as the chin tip and the top of the shoulder:
       <a href="https://www.notion.so/How-to-use-the-chin-tuck-labeler-4-0-3be7226febd2811b97b1dd8153330ca7"
          target="_blank" rel="noopener">the labeling guide ↗</a></p>
     </div>
 
     <div class="card" id="act-card">
-      <button id="save"><span class="rv-t">Save &amp; next</span> <kbd style="opacity:.6">↵</kbd></button>
+      <!-- No save button: a finished pair is saved by moving on, which is the
+           gesture a labeler makes anyway. See commitCurrent(). -->
+      <button id="save-next">Next frame <kbd style="opacity:.6">↵</kbd></button>
       <!-- One skip button; the reason is asked afterwards. Two buttons made the
            labeler pick the wording before deciding to skip at all, and the
            reasons are data — `no_stance` is what measures the sampler. -->
@@ -1293,8 +912,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
           <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
         </div>
-        <button id="flag-btn" aria-pressed="false"
-                title="Mark this frame to come back to (F)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.4 1.6v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.4 2.4h6.9l-1.5 2.4 1.5 2.4H3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="flag-label">Flag</span></button>
+        <!-- Off unless the labeler says otherwise: a camera lying on the floor
+             shoots up at the boxer, which tilts the chin-to-shoulder geometry
+             the whole dataset is measuring. Recorded per frame because one
+             video can be filmed from the floor for part of a round. -->
+        <button id="cam-btn" aria-pressed="false"
+                title="Camera is lying on the ground for this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Camera on ground</span></button>
       </div>
       <div id="status"></div>
     </div>
@@ -1325,13 +948,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <dt>Seen / inferred</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
         <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
-        <dt>Save &amp; next</dt>     <dd><kbd>↵</kbd></dd>
+        <dt>Next frame (saves)</dt>  <dd><kbd>↵</kbd></dd>
         <dt>Skip frame</dt>          <dd><kbd>K</kbd></dd>
         <div class="sep"></div>
         <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
-        <dt>Peers</dt>               <dd><kbd>H</kbd></dd>
-        <dt>Flag</dt>                <dd><kbd>F</kbd></dd>
+        <dt>Camera on ground</dt>    <dd><kbd>G</kbd></dd>
       </dl>
     </div>
   </div>
@@ -1340,6 +962,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=9"></script>
+<script src="chin_tuck4.js?v=10"></script>
 </body>
 </html>

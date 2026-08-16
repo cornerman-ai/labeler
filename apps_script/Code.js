@@ -3326,11 +3326,18 @@ var CS3_SPEC = {
 //    not the Box Labeled Data workbook — append-only rows and repeat frames
 //    stay out of the training-critical sheet, and the prefix scans here walk
 //    only their own tabs.
+// `camera_ground` replaced `flag` ("come back to this") in 2026-08: the flag
+// column had never been written by anyone, and a camera lying on the floor is
+// a fact about the SHOT that the geometry needs — it tilts the chin over the
+// shoulder in the image without the boxer moving. `consulted` stays for the
+// rows written while the peers panel existed; the labeler page no longer has
+// one, so every new row is independent and writes 0.
 var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
                    'frame_sec', 'stance', 'shoulder_used',
                    'chin_x', 'chin_y', 'sh_x', 'sh_y',
                    'chin_vis', 'sh_vis',
-                   'skipped', 'skip_reason', 'consulted', 'flag', 'dwell_sec'];
+                   'skipped', 'skip_reason', 'consulted', 'camera_ground',
+                   'dwell_sec'];
 
 // Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
 // stays empty so nothing enum-shaped ever matches these fields.
@@ -3353,7 +3360,12 @@ var CS4_SKIP_REASONS = ['not_visible', 'no_stance'];
 var CS4_VIS = ['visible', 'inferred'];
 
 var CS4_SPEC = {
-  tag: 'v4',
+  // Bumped with the camera_ground rename. The page requires this marker, so a
+  // deployment that still has the `flag` column fails the save outright
+  // instead of accepting rows and dropping the tick on the floor — a loud
+  // stop the moment it is wrong beats a column of silently missing data.
+  tag: 'v4cg',
+  alsoTag: 'v4',
   prefix: 'chin_point_labels_',
   headers: CS4_HEADERS,
   values: {},
@@ -3380,15 +3392,29 @@ function csSpreadsheet(spec) {
 // a page talking to a deployment older than its own generation would read a save
 // as successful while nothing was written. 2.0 looks for v2, 3.0 looks for v3,
 // and a deployment that predates 3.0 sends neither — which is the point.
+//
+// `alsoTag` is the marker a spec USED to send, kept alive so that deploying
+// this script does not break the pages already OPEN in the team's browsers.
+// Script and pages ship in one push (CI deploys apps_script/**, Pages serves
+// the rest), so the two land seconds apart in either order — and every tab
+// someone is mid-batch in is still running the previous page, looking for the
+// previous marker. Without alsoTag, deploying mid-session breaks all of them
+// until each labeler happens to reload. Drop it once everyone is on the new
+// page.
+function csMark(spec, o) {
+  o[spec.tag] = true;
+  if (spec.alsoTag) o[spec.alsoTag] = true;
+}
+
 function csOut(spec, o) {
   o.status = 'ok';
-  o[spec.tag] = true;
+  csMark(spec, o);
   return jsonOut(o);
 }
 
 function csPayload(spec, o) {
   o.status = 'ok';
-  o[spec.tag] = true;
+  csMark(spec, o);
   return JSON.stringify(o);
 }
 
