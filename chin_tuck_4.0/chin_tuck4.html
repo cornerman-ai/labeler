@@ -1073,11 +1073,50 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .vis-chip[aria-pressed="true"] {
   background: var(--maybe); border-color: transparent; color: #fff;
 }
+/* The definitions themselves live in the Notion guide, not here: two copies of
+   "what counts as the top of the shoulder" drift apart, and the one the team
+   reads before a session is the one that has to be right. */
 #pt-def {
   font-size: 11.5px; color: var(--ink-dim); line-height: 1.45;
   margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line);
 }
 #pt-def b { font-weight: 590; color: var(--ink); }
+#pt-def a { color: var(--accent); text-decoration: none; font-weight: 590; }
+#pt-def a:hover { text-decoration: underline; }
+
+/* Popovers — the visibility question after a point, the reason behind a skip.
+   Both are anchored next to the thing they ask about rather than centered: a
+   modal in the middle of the screen would cover the frame the answer depends
+   on. */
+.pop {
+  position: absolute; z-index: 30; width: 236px; padding: 11px;
+  background: var(--card); border-radius: 11px; border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.10);
+  text-align: left; animation: pop-in .12s ease both;
+}
+.pop[hidden] { display: none; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
+.pop-t { font-size: 12.5px; font-weight: 590; margin: 0 0 8px; letter-spacing: -.01em; }
+.pop-opt {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  width: 100%; padding: 8px 9px; margin-top: 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 590; color: var(--ink);
+  cursor: pointer; text-align: left;
+}
+.pop-opt:hover { border-color: var(--ink-dim); background: rgba(120,120,128,.10); }
+.pop-opt kbd { font: inherit; font-size: 11px; opacity: .5; }
+.pop-opt s {
+  grid-column: 1 / -1; text-decoration: none; font-weight: 400;
+  font-size: 11.5px; line-height: 1.4; color: var(--ink-dim);
+}
+.pop-esc { font-size: 11px; color: var(--ink-dim); margin: 9px 0 0; }
+.pop-esc kbd { font: inherit; font-weight: 590; }
+/* The skip popover hangs off its own button; the point popover is placed in
+   script, next to the click that opened it. */
+#skip-wrap { position: relative; }
+#skip-pop { left: 0; right: 0; width: auto; bottom: calc(100% + 6px); }
 #side-hint { font-size: 12px; font-weight: 590; margin: 0 0 8px; }
 #clear-pts {
   width: 100%; margin-top: 6px; padding: 7px 0; border-radius: 8px;
@@ -1136,6 +1175,21 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     </div>
     <div id="gx"></div><div id="gy"></div>
     <div id="hint">click = place point · scroll = zoom · drag = pan · double-click = reset</div>
+    <!-- A point is not finished until the labeler says whether they SAW the
+         landmark or estimated it. The question is asked right where the click
+         landed, while the pixels it is about are still under the eye. -->
+    <div id="pt-pop" class="pop" role="dialog" aria-labelledby="pt-pop-t" hidden>
+      <p class="pop-t" id="pt-pop-t">Could you see it?</p>
+      <button class="pop-opt" type="button" data-v="visible">
+        Seen <kbd>1</kbd>
+        <s>the landmark itself is visible in this frame</s>
+      </button>
+      <button class="pop-opt" type="button" data-v="inferred">
+        Inferred <kbd>2</kbd>
+        <s>hidden by a glove, blur or clothing — this is your best estimate of where it must be</s>
+      </button>
+      <p class="pop-esc"><kbd>Esc</kbd> — undo this point</p>
+    </div>
   </div>
 
   <div id="side">
@@ -1170,13 +1224,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <div class="tool-row" data-p="chin" aria-pressed="false">
         <span class="dot"></span>Chin tip<kbd>C</kbd>
         <button class="vis-chip" data-p="chin" type="button" hidden
-                title="This point is a best estimate of occluded anatomy (Shift+C)">inferred</button>
+                title="Seen, or a best estimate of occluded anatomy — click to change">seen</button>
         <span class="st">not set</span>
       </div>
       <div class="tool-row" data-p="sh" aria-pressed="false">
         <span class="dot"></span>Shoulder top<kbd>S</kbd>
         <button class="vis-chip" data-p="sh" type="button" hidden
-                title="This point is a best estimate of occluded anatomy (Shift+S)">inferred</button>
+                title="Seen, or a best estimate of occluded anatomy — click to change">seen</button>
         <span class="st">not set</span>
       </div>
       <button id="clear-pts" type="button">Clear both points <kbd>Esc</kbd></button>
@@ -1191,28 +1245,31 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
           <div id="clue-note">Loading…</div>
         </div>
       </div></div>
-      <p id="pt-def"><b>Chin tip</b> — the bony point at the bottom-front of
-      the jaw. Not the lips, not the jaw angle; if a glove covers it, place
-      it where the bone must be, or skip if you truly cannot tell.<br>
-      <b>Shoulder top</b> — the highest point of the deltoid (the shoulder
-      cap muscle) as it sits in THIS frame. If you're unsure where along
-      the curve, don't agonize: anywhere on the very top is right — the
-      HEIGHT is what counts. The trapezius — the slope up to the neck —
-      does not count. Clothing bulk does not count either.<br>
-      <b>Inferred</b> — if a glove or blur hides a landmark but you can
-      still tell where it must be, place your best estimate and mark it
-      inferred: Shift+click when placing, or <kbd>Shift</kbd>+<kbd>C</kbd>/
-      <kbd>S</kbd> after. The ring says "estimate", the dot says "seen".<br>
-      <b>Not in stance</b> (<kbd>N</kbd>) — skip only when the boxer is
-      clearly doing another exercise, or has clearly stopped boxing to
-      explain something. Explaining WHILE boxing — still in stance, still
-      working — is normal footage: label it.</p>
+      <p id="pt-def">What counts as the chin tip and the top of the shoulder:
+      <a href="https://www.notion.so/How-to-use-the-chin-tuck-labeler-4-0-3be7226febd2811b97b1dd8153330ca7"
+         target="_blank" rel="noopener">the labeling guide ↗</a></p>
     </div>
 
     <div class="card" id="act-card">
       <button id="save"><span class="rv-t">Save &amp; next</span> <kbd style="opacity:.6">↵</kbd></button>
-      <button id="skip-nv" class="skipb" data-reason="not_visible"><span class="rv-t">Skip — can&rsquo;t see the points</span> <kbd style="opacity:.6">K</kbd></button>
-      <button id="skip-ns" class="skipb" data-reason="no_stance"><span class="rv-t">Skip — not in boxing stance</span> <kbd style="opacity:.6">N</kbd></button>
+      <!-- One skip button; the reason is asked afterwards. Two buttons made the
+           labeler pick the wording before deciding to skip at all, and the
+           reasons are data — `no_stance` is what measures the sampler. -->
+      <div id="skip-wrap">
+        <button id="skip-btn" class="skipb" type="button">Skip frame <kbd style="opacity:.6">K</kbd></button>
+        <div id="skip-pop" class="pop" role="dialog" aria-labelledby="skip-pop-t" hidden>
+          <p class="pop-t" id="skip-pop-t">Why can&rsquo;t this frame be labeled?</p>
+          <button class="pop-opt" type="button" data-reason="not_visible">
+            Can&rsquo;t see the points <kbd>1</kbd>
+            <s>out of frame, fully hidden or too blurred to even estimate</s>
+          </button>
+          <button class="pop-opt" type="button" data-reason="no_stance">
+            Not in boxing stance <kbd>2</kbd>
+            <s>another exercise, or clearly stopped boxing — explaining WHILE boxing still gets labeled</s>
+          </button>
+          <p class="pop-esc"><kbd>Esc</kbd> — cancel</p>
+        </div>
+      </div>
       <div id="nav">
         <div id="seg">
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
@@ -1247,12 +1304,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <dl id="keys">
         <dt>Place / re-place chin</dt> <dd><kbd>C</kbd></dd>
         <dt>Place / re-place shoulder</dt> <dd><kbd>S</kbd></dd>
-        <dt>Mark point inferred</dt> <dd><kbd>⇧</kbd><kbd>C</kbd>/<kbd>S</kbd></dd>
+        <dt>Seen / inferred</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
         <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
         <div class="sep"></div>
         <dt>Save &amp; next</dt>     <dd><kbd>↵</kbd></dd>
-        <dt>Skip — can&rsquo;t see</dt> <dd><kbd>K</kbd></dd>
-        <dt>Skip — no stance</dt>    <dd><kbd>N</kbd></dd>
+        <dt>Skip frame</dt>          <dd><kbd>K</kbd></dd>
         <div class="sep"></div>
         <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
@@ -1266,6 +1322,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=4"></script>
+<script src="chin_tuck4.js?v=5"></script>
 </body>
 </html>

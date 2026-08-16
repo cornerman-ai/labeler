@@ -72,6 +72,9 @@ const GRAB_PX = 10;
 
 const DWELL_CAP_SEC = 120;
 
+// Short forms of the two skip reasons, for the button once a frame is skipped.
+const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in stance' };
+
 // Peer overlay colors, assigned by sorted labeler name so a color follows a
 // person across frames within a session. Your own saved points keep the
 // chin/shoulder colors of the placement UI and are not in this list.
@@ -88,8 +91,13 @@ const state = {
   // 'inferred' = occluded (gloved chin), placed where the anatomy must be.
   // The v=0 case is the not_visible SKIP. Chin-proxy calibration must be
   // able to exclude the guesses, so the flag rides every save.
-  vis: { chin: 'visible', sh: 'visible' },
+  // null = placed but not yet qualified — the popover is open on it, and a
+  // save is refused until it is answered. There is no default: an unanswered
+  // point silently saved as 'visible' is exactly the guess-as-observation
+  // the flag exists to prevent.
+  vis: { chin: null, sh: null },
   arm: 'chin',             // which point the next stage click places
+  pop: null,               // open popover: {kind:'point', name} | {kind:'skip'}
   skipped: false,
   skipReason: null,        // 'not_visible' | 'no_stance' when skipped
   zoom: 1, panX: 0, panY: 0,
@@ -226,6 +234,10 @@ function save({ skip = null } = {}) {
     status('Place both points first (or skip)', 'err');
     return false;
   }
+  if (!skip && !(state.vis.chin && state.vis.sh)) {
+    status('Answer seen or inferred for both points', 'err');
+    return false;
+  }
   const f = state.frames[state.i];
   const k = key(f);
   const dwell = dwellFor(k);
@@ -324,6 +336,7 @@ function firstUnlabeled(from = 0) {
 
 function go(i) {
   state.i = Math.max(0, Math.min(state.frames.length - 1, i));
+  closePop();
   resetZoom();
   const f = state.frames[state.i];
   const saved = state.labels.get(key(f));
@@ -338,7 +351,7 @@ function go(i) {
     state.arm = null;
   } else {
     state.pts = { chin: null, sh: null };
-    state.vis = { chin: 'visible', sh: 'visible' };
+    state.vis = { chin: null, sh: null };
     state.arm = 'chin';
   }
   resetClue();
@@ -396,15 +409,20 @@ function render() {
     // rather than as "waiting its turn behind the chin".
     row.querySelector('.st').textContent = state.pts[p]
       ? 'set — drag to adjust' : (state.arm === row.dataset.p ? 'click the frame' : 'not placed yet');
+    // The chip now NAMES the answer rather than being a toggle that is only
+    // on when inferred: with the question asked outright, "seen" is a
+    // decision the labeler made and should be able to see they made.
     const chip = row.querySelector('.vis-chip');
-    chip.hidden = !state.pts[p];
+    chip.hidden = !state.pts[p] || !state.vis[p];
+    chip.textContent = state.vis[p] === 'inferred' ? 'inferred' : 'seen';
     chip.setAttribute('aria-pressed', String(state.vis[p] === 'inferred'));
   }
-  for (const b of document.querySelectorAll('.skipb')) {
-    b.setAttribute('aria-pressed',
-      String(state.skipped && state.skipReason === b.dataset.reason));
-  }
-  $('save').disabled = !(state.pts.chin && state.pts.sh);
+  const skipb = $('skip-btn');
+  skipb.setAttribute('aria-pressed', String(state.skipped));
+  skipb.firstChild.nodeValue = state.skipped
+    ? `Skipped — ${SKIP_LABELS[state.skipReason] || state.skipReason} `
+    : 'Skip frame ';
+  $('save').disabled = !(state.pts.chin && state.pts.sh && state.vis.chin && state.vis.sh);
   renderFlag();
 
   placeMarks();
@@ -709,6 +727,8 @@ function applyTransform() {
     `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
   stage.style.setProperty('--inv', String(1 / state.zoom));
   stage.classList.toggle('zoomed', !isFitted());
+  // Zooming in to check a placement is exactly when the question is open.
+  if (state.pop && state.pop.kind === 'point') positionPointPop(state.pop.name);
 }
 function isFitted() {
   return state.zoom === 1 && state.panX === 0 && state.panY === 0;
@@ -761,30 +781,94 @@ function grabbablePoint(clientX, clientY) {
   return best;
 }
 
-function placeAt(name, clientX, clientY, inferred) {
+function placeAt(name, clientX, clientY) {
   const p = stageNorm(clientX, clientY);
   if (!p) return;
   state.pts[name] = p;
-  state.vis[name] = inferred ? 'inferred' : 'visible';
+  state.vis[name] = null;            // unanswered until the popover is answered
   state.skipped = false;
   state.skipReason = null;
-  // Placing the chin arms the shoulder; placing the shoulder disarms. A
-  // labeler doing frame after frame never touches the tool rows: click
-  // chin, click shoulder, Enter.
-  if (name === 'chin' && !state.pts.sh) state.arm = 'sh';
-  else state.arm = null;
+  state.arm = null;                  // the popover owns the next click
+  render();
+  openPointPop(name);
+}
+
+// ── popovers ───────────────────────────────────────────────────────────────
+// One at a time: both are a question about the click that just happened, and
+// two open at once would mean two different things Enter could answer.
+function closePop() {
+  state.pop = null;
+  $('pt-pop').hidden = true;
+  $('skip-pop').hidden = true;
+}
+
+function openPointPop(name) {
+  if (!state.pts[name]) return;      // nothing placed, nothing to qualify
+  state.pop = { kind: 'point', name };
+  $('skip-pop').hidden = true;
+  const pop = $('pt-pop');
+  $('pt-pop-t').textContent = name === 'chin'
+    ? 'The chin tip — could you see it?'
+    : 'The shoulder top — could you see it?';
+  pop.hidden = false;
+  positionPointPop(name);
+}
+
+// Beside the point, inside the card: the labeler has to be able to look from
+// the question to the pixels it is about without hunting for either.
+function positionPointPop(name) {
+  const pop = $('pt-pop');
+  const card = $('stage-card').getBoundingClientRect();
+  const [sx, sy] = screenPxOf(state.pts[name]);
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  const GAP = 16;
+  let left = sx - card.left + GAP;
+  if (left + w > card.width - 8) left = sx - card.left - GAP - w;
+  let top = sy - card.top - h / 2;
+  pop.style.left = `${Math.max(8, Math.min(card.width - w - 8, left))}px`;
+  pop.style.top = `${Math.max(8, Math.min(card.height - h - 8, top))}px`;
+}
+
+function choosePointVis(name, v) {
+  if (!state.pts[name]) return;
+  state.vis[name] = v;
+  closePop();
+  // Answering the chin arms the shoulder; answering the shoulder disarms. A
+  // labeler doing frame after frame never touches the tool rows: click chin,
+  // answer, click shoulder, answer, Enter.
+  state.arm = (name === 'chin' && !state.pts.sh) ? 'sh' : null;
   render();
 }
 
-function toggleVis(name) {
-  if (!state.pts[name]) return;      // nothing placed, nothing to qualify
-  state.vis[name] = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+// Esc on the point popover undoes the placement rather than leaving a point
+// with no answer behind: the click and its qualification are one act.
+function cancelPoint(name) {
+  state.pts[name] = null;
+  state.vis[name] = null;
+  state.arm = name;
+  closePop();
   render();
+}
+
+function openSkipPop() {
+  state.pop = { kind: 'skip' };
+  $('pt-pop').hidden = true;
+  $('skip-pop').hidden = false;
+}
+
+function doSkip(reason) {
+  closePop();
+  state.pts = { chin: null, sh: null };
+  state.vis = { chin: null, sh: null };
+  state.skipped = true;
+  state.skipReason = reason;
+  if (save({ skip: reason })) advance(); else render();
 }
 
 function clearPoints() {
+  closePop();
   state.pts = { chin: null, sh: null };
-  state.vis = { chin: 'visible', sh: 'visible' };
+  state.vis = { chin: null, sh: null };
   state.arm = 'chin';
   state.skipped = false;
   state.skipReason = null;
@@ -795,14 +879,17 @@ function clearPoints() {
 function bind() {
   for (const row of document.querySelectorAll('.tool-row')) {
     row.onclick = () => {
+      // Re-arming behind an open question would leave the point it is about
+      // unanswered and the popover pointing at nothing. Answer it first.
+      if (state.pop) return;
       state.arm = row.dataset.p;
       render();
     };
   }
   // The chip sits inside a row whose click re-arms — stop the bubble so
-  // toggling "inferred" doesn't also re-arm the point under it.
+  // re-asking the question doesn't also re-arm the point under it.
   for (const chip of document.querySelectorAll('.vis-chip')) {
-    chip.onclick = (e) => { e.stopPropagation(); toggleVis(chip.dataset.p); };
+    chip.onclick = (e) => { e.stopPropagation(); openPointPop(chip.dataset.p); };
   }
   $('clear-pts').onclick = clearPoints;
 
@@ -812,12 +899,17 @@ function bind() {
   $('save').onclick = () => {
     if (save({})) advance(); else render();
   };
-  for (const b of document.querySelectorAll('.skipb')) {
+  // Skip asks WHY before it writes anything: the reason is the data, and a
+  // frame is never skipped without one.
+  $('skip-btn').onclick = () => {
+    if (state.pop && state.pop.kind === 'skip') closePop(); else openSkipPop();
+  };
+  for (const b of $('skip-pop').querySelectorAll('.pop-opt')) {
+    b.onclick = () => doSkip(b.dataset.reason);
+  }
+  for (const b of $('pt-pop').querySelectorAll('.pop-opt')) {
     b.onclick = () => {
-      state.pts = { chin: null, sh: null };
-      state.skipped = true;
-      state.skipReason = b.dataset.reason;
-      if (save({ skip: b.dataset.reason })) advance(); else render();
+      if (state.pop && state.pop.kind === 'point') choosePointVis(state.pop.name, b.dataset.v);
     };
   }
 
@@ -875,7 +967,15 @@ function bind() {
     $('gy').style.left = `${e.clientX - r.left}px`;
     if (state.ptDrag) {
       const p = stageNorm(e.clientX, e.clientY);
-      if (p) { state.pts[state.ptDrag] = p; placeMarks(); }
+      if (p) {
+        state.pts[state.ptDrag] = p;
+        placeMarks();
+        // Nudging a point before answering its question is normal; the
+        // question has to travel with it.
+        if (state.pop && state.pop.kind === 'point' && state.pop.name === state.ptDrag) {
+          positionPointPop(state.ptDrag);
+        }
+      }
       return;
     }
     if (state.drag) {
@@ -917,12 +1017,11 @@ function bind() {
     stage.classList.remove('panning');
     if (!startedOnStage || wasPtDrag || moved) return;   // a drag, or not ours
     // A plain click on the stage places the armed point. With nothing
-    // armed it does nothing — points move by drag, not by surprise.
-    // Shift+click places the point as INFERRED — the labeler knows the
-    // landmark is occluded at the moment they place it, so the flag rides
-    // the same gesture.
+    // armed it does nothing — points move by drag, not by surprise. Nothing
+    // is armed while a popover is open, so a stray click cannot move the
+    // point the open question is about.
     if (!state.ready || !state.arm) return;
-    placeAt(state.arm, e.clientX, e.clientY, e.shiftKey);
+    placeAt(state.arm, e.clientX, e.clientY);
   });
   stage.ondblclick = resetZoom;
   const DELTA_PX = { 0: 1, 1: 16, 2: 400 };
@@ -942,15 +1041,26 @@ function bind() {
     if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!state.ready) return;
     const k = e.key.toLowerCase();
-    // Shift+C / Shift+S toggle the inferred flag on a placed point —
-    // checked before the plain arms, which the shifted keys must not fire.
-    if (e.shiftKey && k === 'c') toggleVis('chin');
-    else if (e.shiftKey && k === 's') toggleVis('sh');
-    else if (k === 'c') { state.arm = 'chin'; render(); }
+    // An open popover owns the keyboard: 1/2 answer it, Esc backs out, and
+    // everything else is swallowed so a reflex C or Enter cannot skip past
+    // an unanswered question.
+    if (state.pop) {
+      if (state.pop.kind === 'point') {
+        if (k === '1') choosePointVis(state.pop.name, 'visible');
+        else if (k === '2') choosePointVis(state.pop.name, 'inferred');
+        else if (e.key === 'Escape') cancelPoint(state.pop.name);
+      } else {
+        if (k === '1') doSkip('not_visible');
+        else if (k === '2') doSkip('no_stance');
+        else if (e.key === 'Escape') closePop();
+      }
+      e.preventDefault();
+      return;
+    }
+    if (k === 'c') { state.arm = 'chin'; render(); }
     else if (k === 's') { state.arm = 'sh'; render(); }
     else if (e.key === 'Enter') $('save').click();
-    else if (k === 'k') $('skip-nv').click();
-    else if (k === 'n') $('skip-ns').click();
+    else if (k === 'k') openSkipPop();
     else if (e.key === 'ArrowLeft') go(state.i - 1);
     else if (e.key === 'ArrowRight') go(state.i + 1);
     else if (k === 'h') toggleClue();

@@ -64,7 +64,14 @@ a skip — the backend refuses a lone chin, and a skip must carry its reason
 `chin_tuck4.html` — 3.0's shell (same stylesheet base, name bar, optimistic
 chained saves, overview grid, team panel) with the question card replaced
 by point placement: click places the armed point (chin → shoulder →
-disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for precision.
+disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for precision. Each
+click opens the seen/inferred popover beside the point it just placed, and
+the point is not finished — nor the next one armed — until that is answered.
+
+The definitions of the two landmarks are NOT on the page: they live in the
+Notion guide ("How to use the chin tuck labeler 4.0"), which the page links
+to. Two copies of "what counts as the top of the shoulder" drift, and the
+copy the team reads before a session is the one that has to be right.
 
 The shoulder instruction is stance-as-a-prior, not a hard rule: the hint
 shows the frame's stance and which shoulder is USUALLY the lead, and asks
@@ -80,15 +87,23 @@ Two deliberate rules:
   a labeler who can see the pipeline's guess anchors on it, and
   independence is the whole value of the clicks. Opening Peers marks the
   frame `consulted`, same meaning as 2.0/3.0's clue.
-- **Two skips, by reason.** `K` = can't see the points, `N` = not in
-  boxing stance. The reasons are data: `no_stance` measures what the
-  punch-proximity sampling window still lets through. `no_stance` means
-  the boxer is clearly doing another exercise, or has clearly stopped
-  boxing to explain something — explaining WHILE boxing (still in stance,
-  still working) is normal footage and gets labeled, not skipped.
+- **One skip, then its reason.** `K` (or the button) opens a popover:
+  1 = can't see the points, 2 = not in boxing stance, `Esc` backs out.
+  Asked afterwards rather than as two buttons, so the decision to skip and
+  the wording of why are separate acts. The reasons are data: `no_stance`
+  measures what the punch-proximity sampling window still lets through.
+  `no_stance` means the boxer is clearly doing another exercise, or has
+  clearly stopped boxing to explain something — explaining WHILE boxing
+  (still in stance, still working) is normal footage and gets labeled,
+  not skipped.
 - **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
-  inferred — Shift+click places an inferred point (best estimate of
-  occluded anatomy, drawn as a ring), Shift+`C`/`S` toggles after. COCO's
+  inferred — asked outright by a popover the moment the point lands
+  (1 = seen, 2 = inferred, `Esc` undoes the placement), re-openable from
+  the chip in the tool row; an inferred point is drawn as a ring. There is
+  no default and a save is refused while either answer is missing: a
+  modifier-key flag (Shift+click, as this shipped first) is a thing a
+  labeler forgets, and an unanswered point silently saved as `visible` is
+  exactly the guess-as-observation the flag exists to catch. COCO's
   v=2/v=1 in words; v=0 is the `not_visible` skip. Chosen over a
   confidence slider deliberately: visibility is a fact about the frame a
   second rater can verify, sliders elicit poorly-calibrated, per-rater-
