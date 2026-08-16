@@ -5031,6 +5031,7 @@ function doGetChinPoint(p, labeler, action) {
       // as 2.0/3.0's clue: allowed, encouraged, but not independent evidence.
       else if (col === 'consulted') out.push(consulted ? 1 : 0);
       else if (col === 'flag') out.push(flagged ? 1 : 0);
+      else if (col === 'camera_ground') out.push(String(p.camera_ground || '') === '1' ? 1 : 0);
       else if (col === 'dwell_sec') out.push(dwell);
       // '' for a skip, not 0: 0 is a real coordinate (the frame's left/top
       // edge), so the "written-down no answer" convention the enum
