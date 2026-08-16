@@ -711,11 +711,14 @@ function choosePointVis(name, v) {
 // already see is a dialog for a decision that has no third option. The
 // popover is for the moment a point lands with no answer at all; these are
 // for every moment after.
+//
+// Does not force a save — same as dragging a point, it just updates local
+// state and lets commitCurrent()'s isDirty() check pick it up on the normal
+// path (advance, skip, leaving the frame).
 function setVis(name, v) {
   if (!state.pts[name] || !state.vis[name]) return;   // unplaced, or still being asked
   state.vis[name] = v;
   render();
-  resaveIfWritten();
 }
 
 // Shift+C / Shift+S flip whichever answer is showing, without naming one.
