@@ -178,10 +178,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .pt.used { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 3.5px rgba(50,215,75,.45); }
 /* Guide cross follows the cursor — a straight edge for "is the chin past the
    shoulder", which is hard to eyeball on a tilted body. */
-#gx, #gy { position: absolute; background: rgba(0,180,255,.55); pointer-events: none;
-           display: none; }
-#gx { left: 0; right: 0; height: 1px; }
-#gy { top: 0; bottom: 0; width: 1px; }
+/* Hairline, and coloured by whichever point the next click will place — the
+   cross is the aiming reticle for that point, so it should be the same green
+   as the shoulder button when the shoulder is armed. */
+#gx, #gy { position: absolute; background: var(--guide, rgba(0,180,255,.55));
+           pointer-events: none; display: none; }
+#gx { left: 0; right: 0; height: .5px; }
+#gy { top: 0; bottom: 0; width: .5px; }
+#stage-card.arm-sh { --guide: var(--yes); }
 #stage-card.guide #gx, #stage-card.guide #gy { display: block; }
 /* Frozen until this labeler's saved rows have arrived: start() lands them on
    their first unlabeled frame, so anything answered before that is discarded.
@@ -1089,7 +1093,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    modal in the middle of the screen would cover the frame the answer depends
    on. */
 .pop {
-  position: absolute; z-index: 30; width: 236px; padding: 11px;
+  /* max-width because #stage-card clips: on a narrow window the point
+     popover would otherwise run off the card and lose half its options. */
+  position: absolute; z-index: 30; width: 236px; max-width: calc(100% - 16px);
+  padding: 11px;
   background: var(--card); border-radius: 11px; border: 1px solid var(--line);
   box-shadow: 0 6px 24px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.10);
   text-align: left; animation: pop-in .12s ease both;
@@ -1322,6 +1329,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=5"></script>
+<script src="chin_tuck4.js?v=6"></script>
 </body>
 </html>

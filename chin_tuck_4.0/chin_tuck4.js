@@ -417,6 +417,8 @@ function render() {
     chip.textContent = state.vis[p] === 'inferred' ? 'inferred' : 'seen';
     chip.setAttribute('aria-pressed', String(state.vis[p] === 'inferred'));
   }
+  // The guide cross wears the armed point's colour — see #stage-card.arm-sh.
+  $('stage-card').classList.toggle('arm-sh', state.arm === 'sh');
   const skipb = $('skip-btn');
   skipb.setAttribute('aria-pressed', String(state.skipped));
   skipb.firstChild.nodeValue = state.skipped
