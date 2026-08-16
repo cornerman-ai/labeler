@@ -4820,6 +4820,7 @@ function cs4RowOut(row, idx) {
       ? String(row[idx.skip_reason]) : null,
     consulted: String(row[idx.consulted]) === '1' ? 1 : 0,
     flag: String(row[idx.flag]) === '1' ? 1 : 0,
+    camera_ground: String(row[idx.camera_ground]) === '1' ? 1 : 0,
     dwell_sec: (function (v) {
       v = Number(v);
       return isFinite(v) && v > 0 ? v : 0;
