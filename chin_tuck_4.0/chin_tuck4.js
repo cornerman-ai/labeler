@@ -60,6 +60,10 @@ const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;
 const MAX_ZOOM = 12;
+// Past this the frame is drawn pixel-for-pixel instead of smoothed — see
+// #stage.sharp. 3x is where this footage's interpolation stops looking like a
+// photograph and starts looking like a smear.
+const SHARP_ZOOM = 3;
 const ZOOM_SPEED = 0.0018;
 const TEAM_POLL_MS = 45000;
 // A click is a click if the mouse moved less than this many screen px
@@ -729,6 +733,7 @@ function applyTransform() {
     `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
   stage.style.setProperty('--inv', String(1 / state.zoom));
   stage.classList.toggle('zoomed', !isFitted());
+  stage.classList.toggle('sharp', state.zoom >= SHARP_ZOOM);
   // Zooming in to check a placement is exactly when the question is open.
   if (state.pop && state.pop.kind === 'point') positionPointPop(state.pop.name);
 }
