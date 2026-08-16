@@ -60,10 +60,19 @@ const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;
 const MAX_ZOOM = 12;
-// Past this the frame is drawn pixel-for-pixel instead of smoothed — see
-// #stage.sharp. 3x is where this footage's interpolation stops looking like a
-// photograph and starts looking like a smear.
-const SHARP_ZOOM = 3;
+// Past this many DEVICE pixels per SOURCE pixel the frame is drawn
+// pixel-for-pixel instead of smoothed — see #stage.sharp. Measured in device
+// pixels so a retina laptop and a 1080p monitor agree, and against the frame's
+// own resolution so a 360x640 clip and a 1080p clip are judged by how far each
+// is really being stretched, not by the zoom number on top of it.
+const SHARP_MAG = 1.5;
+// ...and only for sources with this many pixels on the short side. Below HD
+// the grid is as coarse as the anatomy being clicked (a 360x640 clip is a
+// fifth of the queue's frames), and the smooth gradient says more about where
+// the jaw edge lies than a field of flat squares does. A property of the
+// FRAME, not of the screen: every labeler must see the same frame the same
+// way, whatever monitor they are on.
+const SHARP_MIN_SOURCE = 720;
 const ZOOM_SPEED = 0.0018;
 const TEAM_POLL_MS = 45000;
 // A click is a click if the mouse moved less than this many screen px
@@ -733,9 +742,27 @@ function applyTransform() {
     `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
   stage.style.setProperty('--inv', String(1 / state.zoom));
   stage.classList.toggle('zoomed', !isFitted());
-  stage.classList.toggle('sharp', state.zoom >= SHARP_ZOOM);
+  const mag = magnification();
+  stage.classList.toggle('sharp',
+    !!mag && mag.hd && mag.now >= SHARP_MAG);
   // Zooming in to check a placement is exactly when the question is open.
   if (state.pop && state.pop.kind === 'point') positionPointPop(state.pop.name);
+}
+// Device pixels per source pixel: `fit` is what displaying the frame at all
+// costs (stage width vs the JPEG's own width), `now` folds in the zoom on top,
+// and `hd` is whether the source has the resolution to be worth drawing
+// pixel-exactly. null until the image reports its size — the frame's own
+// resolution is half the input, so there is nothing to decide before it loads.
+function magnification() {
+  const w = $('stage').offsetWidth;          // layout width, pre-transform
+  const img = $('frame');
+  if (!w || !img.naturalWidth) return null;
+  const fit = (w * (window.devicePixelRatio || 1)) / img.naturalWidth;
+  return {
+    fit,
+    now: fit * state.zoom,
+    hd: Math.min(img.naturalWidth, img.naturalHeight) >= SHARP_MIN_SOURCE,
+  };
 }
 function isFitted() {
   return state.zoom === 1 && state.panX === 0 && state.panY === 0;
@@ -1038,7 +1065,13 @@ function bind() {
     zoomAt(Math.max(-200, Math.min(200, px)), e.clientX, e.clientY);
   }, { passive: false });
 
-  $('frame').onload = () => { $('frame').classList.remove('broken'); placeMarks(); };
+  // applyTransform, not just placeMarks: the new frame's own resolution is
+  // half of the sharp/smooth decision, and it is only known once it loads.
+  $('frame').onload = () => {
+    $('frame').classList.remove('broken');
+    placeMarks();
+    applyTransform();
+  };
   $('frame').onerror = () => {
     $('frame').classList.add('broken');
     status('Frame image did not load — check your connection', 'err');
