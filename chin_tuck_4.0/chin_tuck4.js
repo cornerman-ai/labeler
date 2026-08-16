@@ -248,10 +248,6 @@ function save({ skip = null } = {}) {
     shoulder_used: f.shoulder,
     skipped: skip ? '1' : '0',
     skip_reason: skip || '',
-    // Always 0 now: the panel that let a labeler see other people's points
-    // before saving is gone, so no row can be a calibrated one. The column
-    // stays for the rows written while it existed.
-    consulted: '0',
     camera_ground: state.camGround ? '1' : '0',
     dwell_sec: String(dwell),
   };
@@ -268,7 +264,6 @@ function save({ skip = null } = {}) {
     video: f.stem, round: f.round, frame: f.frame, rep: f.rep || 0,
     skipped: skip ? 1 : 0,
     skip_reason: skip || null,
-    consulted: 0,
     camera_ground: state.camGround ? 1 : 0,
     dwell_sec: dwell,
     chin_x: skip ? null : Number(params.chin_x),

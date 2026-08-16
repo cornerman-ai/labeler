@@ -13,10 +13,6 @@
 // already done and looking is the whole point. Reads `listChinPoint` (per
 // labeler, one call, every row); `peersChinPoint` is now unused by any page.
 //
-// `consulted` in the sheet is a fossil: it marked rows saved after opening
-// that old panel. Rows written since the removal are all independent and
-// carry 0.
-//
 // THE METRIC. Disagreement is reported as the thing the pipeline actually
 // consumes: the signed chin-above-shoulder distance in torso units,
 // (sh_y - chin_y) / torso_h, identical to chin_tuck4.js's derivedDist().
@@ -218,7 +214,7 @@ function marksFor(img) {
         labeler: name, rep: r.rep || 0, chin, sh,
         chin_vis: r.chin_vis, sh_vis: r.sh_vis,
         skipped: r.skipped === 1, skip_reason: r.skip_reason,
-        consulted: r.consulted === 1, flag: r.flag === 1,
+        flag: r.flag === 1,
         dist: derivedDist(chin, sh, img.torso_h),
         color: state.colorOf.get(name) || MACHINE_COLOR,
       });
@@ -481,7 +477,7 @@ function pairFull(a, b) {
 // calibration number the whole generation exists to produce.
 function labelerFull(name, names) {
   const rowsByImage = state.rows.get(name) || new Map();
-  let placed = 0, skipped = 0, consulted = 0, inferred = 0, reps = 0;
+  let placed = 0, skipped = 0, inferred = 0, reps = 0;
   const reasons = new Map();
   const dwell = [];
   for (const rows of rowsByImage.values()) {
@@ -495,7 +491,6 @@ function labelerFull(name, names) {
         placed++;
         if (r.chin_vis === 'inferred' || r.sh_vis === 'inferred') inferred++;
       }
-      if (r.consulted === 1) consulted++;
       if (r.dwell_sec) dwell.push(r.dwell_sec);
     }
   }
@@ -522,7 +517,7 @@ function labelerFull(name, names) {
 
   const self = selfStats(name);
   return {
-    name, placed, skipped, consulted, inferred, reps,
+    name, placed, skipped, inferred, reps,
     reasons: [...reasons].sort((x, y) => y[1] - x[1]),
     dwellMed: median(dwell), self,
     vsOthers: { n: vsO.d.length, d: mean(vsO.d), chin: mean(vsO.chin), sh: mean(vsO.sh) },
@@ -827,7 +822,7 @@ function renderStats() {
     + 'the clicks exist to produce; it is not an error, since the proxy is what is being measured.');
   const lt = el('table', 'st');
   const lh = el('tr');
-  for (const h of ['Labeler', 'Placed', 'Skipped', 'Inferred', 'Consulted', 'Own repeats',
+  for (const h of ['Labeler', 'Placed', 'Skipped', 'Inferred', 'Own repeats',
                    'vs others', 'chin', 'shoulder', 'vs pipeline', 'chin', 'shoulder'])
     lh.appendChild(el('th', null, h));
   const lthead = el('thead'); lthead.appendChild(lh); lt.appendChild(lthead);
@@ -842,7 +837,6 @@ function renderStats() {
       : '0');
     tr.appendChild(sk);
     tr.appendChild(el('td', 'n', s.placed ? `${Math.round((s.inferred / s.placed) * 100)}%` : '—'));
-    tr.appendChild(el('td', 'n', String(s.consulted)));
     tr.appendChild(el('td', 'n', s.self.n ? `${pct(s.self.med)} · ${s.self.n}` : '—'));
     tr.appendChild(biasCell(s.vsOthers.d, 'reads higher', 'reads lower', 'in line'));
     tr.appendChild(biasCell(s.vsOthers.chin, 'chin higher', 'chin lower', 'matched'));
@@ -857,8 +851,7 @@ function renderStats() {
   ls.appendChild(el('p', 'lede',
     'Own repeats is the median gap between a labeler\'s two blind passes at the same frame, and its '
     + 'frame count. It is the floor: no pair above can agree more closely than this, and no model '
-    + 'trained on these labels can beat it. Consulted rows were saved after opening the Peers panel, '
-    + 'so they measure convergence rather than independent judgement.'));
+    + 'trained on these labels can beat it.'));
 
   // ── worst footage ───────────────────────────────────────────────────────
   const perVideo = new Map();
@@ -1074,10 +1067,6 @@ function addMarkRow(m, img) {
     tag('inf', which === 'both' ? 'inferred' : `${which} inf`,
         'Placed as a best estimate of occluded anatomy, not a sighting');
   }
-  // A consulted row was saved after its labeler looked at everyone else's
-  // points. It measures convergence, not independent judgement, and must not
-  // be read as agreement.
-  if (m.consulted) tag('con', 'consulted', 'Saved after opening the peers panel — not independent');
   if (m.flag) tag('flg', 'flagged', 'The labeler flagged this frame');
   row.appendChild(dv);
 

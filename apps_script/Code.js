@@ -3342,14 +3342,17 @@ var CS3_SPEC = {
 // `camera_ground` replaced `flag` ("come back to this") in 2026-08: the flag
 // column had never been written by anyone, and a camera lying on the floor is
 // a fact about the SHOT that the geometry needs — it tilts the chin over the
-// shoulder in the image without the boxer moving. `consulted` stays for the
-// rows written while the peers panel existed; the labeler page no longer has
-// one, so every new row is independent and writes 0.
+// shoulder in the image without the boxer moving. `consulted` (marked rows
+// saved after opening the old peers panel, removed the same cycle) outlived
+// that panel as a fossil, carrying 0 on every row since — dropped here as
+// dead weight. Existing rows with consulted=1 lose that flag: see
+// getOrCreateCs2Sheet for how a dropped header column is removed from every
+// tab on its next save.
 var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'rep',
                    'frame_sec', 'stance', 'shoulder_used',
                    'chin_x', 'chin_y', 'sh_x', 'sh_y',
                    'chin_vis', 'sh_vis',
-                   'skipped', 'skip_reason', 'consulted', 'camera_ground',
+                   'skipped', 'skip_reason', 'camera_ground',
                    'dwell_sec'];
 
 // Numeric, not enum — csNorm01 is the validator (finite, 0..1). spec.values
@@ -4878,7 +4881,6 @@ function cs4RowOut(row, idx) {
     skip_reason: skipped && idx.skip_reason !== undefined
       && String(row[idx.skip_reason] || '') !== ''
       ? String(row[idx.skip_reason]) : null,
-    consulted: String(row[idx.consulted]) === '1' ? 1 : 0,
     flag: String(row[idx.flag]) === '1' ? 1 : 0,
     camera_ground: String(row[idx.camera_ground]) === '1' ? 1 : 0,
     dwell_sec: (function (v) {
@@ -5023,7 +5025,6 @@ function doGetChinPoint(p, labeler, action) {
       return jsonOut({ status: 'error',
                        message: 'skip_reason on a non-skipped row: ' + skipReason });
     }
-    var consulted = String(p.consulted || '') === '1';
     var flagged = String(p.flag || '') === '1';
     var dwell = Number(p.dwell_sec);
     if (!isFinite(dwell) || dwell < 0) dwell = 0;
@@ -5108,9 +5109,6 @@ function doGetChinPoint(p, labeler, action) {
       else if (col === 'chin_vis' || col === 'sh_vis') out.push(vis[col]);
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
       else if (col === 'skip_reason') out.push(skipped ? skipReason : '');
-      // Saw the peer overlay for this frame before this save — same meaning
-      // as 2.0/3.0's clue: allowed, encouraged, but not independent evidence.
-      else if (col === 'consulted') out.push(consulted ? 1 : 0);
       else if (col === 'flag') out.push(flagged ? 1 : 0);
       else if (col === 'camera_ground') out.push(String(p.camera_ground || '') === '1' ? 1 : 0);
       else if (col === 'dwell_sec') out.push(dwell);

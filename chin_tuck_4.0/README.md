@@ -89,8 +89,8 @@ Four deliberate rules:
   progress list were both removed in 2026-08: whoever can see another
   answer anchors on it, and an anchored click is not a second opinion, it
   is the first one copied. Comparison lives on `review.html`, which writes
-  nothing. (`consulted` in the sheet is now a fossil — it marked rows saved
-  after opening that panel; new rows all carry 0.)
+  nothing. (The `consulted` column, which used to mark rows saved after
+  opening that panel, was dropped from the sheet along with it.)
 - **Saving is leaving.** There is no save button: a finished pair is
   written when the labeler moves on — `↵`, the arrows, Next, the overview,
   anything that changes frame — because "done with this frame" and "next
@@ -174,10 +174,7 @@ picture, where an eye reads it better than a median would.
 
 Every pair of selected labelers gets median / p90 / n; every labeler with
 planted repeats gets a **self row** — rep 0 against rep 1, blind, which is
-the noise floor a pair number is meaningless without. Rows carrying the
-fossil `consulted` flag (saved while the old peers panel existed) are tagged
-in the frame list, since those measure convergence rather than independent
-judgement.
+the noise floor a pair number is meaningless without.
 
 Rows whose (video, round, frame) is not in the current `queue.json` are
 counted and reported rather than silently dropped — that is what a resample
@@ -194,8 +191,8 @@ rather than one frame, for whoever is ticked:
 - **Between labelers** — per pair: n, mean, median, p90, SD, and the three
   **signed biases**. Magnitudes say how far apart they are; the signs say
   who reads what higher, which is the part `|A − B|` throws away.
-- **Each labeler** — placements, skips by reason, inferred and consulted
-  counts, own-repeat scatter, bias against the average of everyone else,
+- **Each labeler** — placements, skips by reason, inferred count,
+  own-repeat scatter, bias against the average of everyone else,
   and bias against the pipeline. That last group is the calibration the
   clicks exist to produce: the chin proxy and BlazePose's shoulder are what
   is being measured, so a gap there is a finding, not an error.
