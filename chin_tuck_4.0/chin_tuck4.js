@@ -952,13 +952,16 @@ function bind() {
     stage.classList.remove('panning');
     if (!startedOnStage || moved) return;      // a real drag, or not ours
     if (!state.ready) return;
-    // A stationary click that landed on an existing dot. It used to be
-    // swallowed as a zero-length drag, so a 3px correction moved nothing and
-    // the dots read as snapping to a grid. An armed point still wins: chin and
-    // shoulder can sit within a grab radius of each other on a small stage.
+    // A stationary click that landed on an existing dot always selects and
+    // repositions THAT dot — never places a new one there, arm or no arm.
+    // It used to be swallowed as a zero-length drag, so a 3px correction
+    // moved nothing and the dots read as snapping to a grid; an armed point
+    // used to win outright, so a click within GRAB_PX of an existing point
+    // could still stack a second point on top of it. With one point placed
+    // this fired on nearly every click, since the other slot is armed by
+    // default the moment its neighbour is answered.
     if (wasPtDrag) {
-      if (state.arm) placeAt(state.arm, e.clientX, e.clientY);
-      else movePoint(wasPtDrag, e.clientX, e.clientY);
+      movePoint(wasPtDrag, e.clientX, e.clientY);
       return;
     }
     // A plain click on the stage places the armed point. With nothing
