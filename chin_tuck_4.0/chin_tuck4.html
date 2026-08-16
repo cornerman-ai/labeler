@@ -392,7 +392,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
 #nav button:hover { border-color: var(--ink-dim); z-index: 1; }
 #nav button:active { background: rgba(120,120,128,.14); }
-#status { font-size: 12px; color: var(--ink-dim); margin-top: 9px; min-height: 15px; }
+#status { font-size: 12px; color: var(--ink-dim); }
+#status:not(:empty) { margin-top: 9px; }
 #status.err { color: var(--no); }
 #status.ok { color: var(--yes); }
 
@@ -796,17 +797,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 @media (prefers-color-scheme: dark) {
   .vis-seg[aria-pressed="true"] { background: rgba(120,120,128,.42); box-shadow: none; }
 }
-/* The definitions themselves live in the Notion guide, not here: two copies of
-   "what counts as the top of the shoulder" drift apart, and the one the team
-   reads before a session is the one that has to be right. */
-#pt-def {
-  font-size: 11.5px; color: var(--ink-dim); line-height: 1.45;
-  margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line);
-}
-#pt-def b { font-weight: 590; color: var(--ink); }
-#pt-def a { color: var(--accent); text-decoration: none; font-weight: 590; }
-#pt-def a:hover { text-decoration: underline; }
-
 /* Popovers — the visibility question after a point, the reason behind a skip.
    Both are anchored next to the thing they ask about rather than centered: a
    modal in the middle of the screen would cover the frame the answer depends
@@ -909,6 +899,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
   <div id="side">
     <div class="card">
+      <p class="card-eyebrow">Labeler</p>
       <div id="name-row">
         <input id="labeler-input" placeholder="Your name" title="Your name"
                autocomplete="off" spellcheck="false">
@@ -949,12 +940,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <button class="vis-seg" data-p="sh" data-v="visible" type="button">Seen</button>
         <button class="vis-seg" data-p="sh" data-v="inferred" type="button">Occluded</button>
       </div>
-      <p id="pt-def">What counts as the chin tip and the top of the shoulder:
-      <a href="https://www.notion.so/How-to-use-the-chin-tuck-labeler-4-0-3be7226febd2811b97b1dd8153330ca7"
-         target="_blank" rel="noopener">the labeling guide ↗</a></p>
     </div>
 
     <div class="card" id="act-card">
+      <p class="card-eyebrow">Buttons</p>
       <!-- No save button: a finished pair is saved by moving on, which is the
            gesture a labeler makes anyway. See commitCurrent(). -->
       <button id="save-next">Next frame <kbd style="opacity:.6">↵</kbd></button>
@@ -1007,7 +996,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <span><b style="background:var(--ov-yes)"></b>saved</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
         <span><b style="background:var(--no)"></b>failed</span>
-        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b>flagged</span>
+        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b>camera too low/high</span>
       </div>
     </div>
 
