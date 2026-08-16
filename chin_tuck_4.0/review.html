@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chin Point 4.0 — Review</title>
+<style>
+/* ── review.html — READ-ONLY comparison surface for chin_tuck 4.0 ───────────
+   Same design tokens and layout skeleton as chin_tuck4.html, a much smaller
+   sheet: this page has no placement UI, no buttons that write, and no
+   overview grid. Tokens are copied rather than shared for the same reason
+   4.0 copied 3.0's — the generations are free to drift, and a shared sheet
+   would make a change here a change to the labeling page.
+   ------------------------------------------------------------------------ */
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --line: rgba(0,0,0,.10);
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  --accent: #0071e3;
+  --yes: #34c759;
+  --no: #ff3b30;
+  --maybe: #ff9f0a;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
+    --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    --shadow: 0 1px 2px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* The shared identity strip is the labeling pages' "who am I saving as".
+   Nothing here saves, so it would be answering a question the page never
+   asks. Hidden the same way chin_tuck4.html hides it. */
+#cm-labeler-chip { display: none !important; }
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+#wrap { display: flex; gap: 12px; padding: 16px 0 16px 16px;
+        align-items: flex-start; height: 100vh; }
+#stage-card {
+  flex: 1; min-width: 0; height: 100%;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+/* #stage carries the frame's aspect ratio (set from naturalWidth/Height on
+   load) and the image fills it exactly, so every marker positioned in % of
+   #stage lands on the same pixels the labeler clicked. transform-origin 0 0
+   is what makes zoom-at-cursor solvable. */
+#stage { position: relative; display: block; max-width: 100%; max-height: 100%;
+         aspect-ratio: 9 / 16; user-select: none; transform-origin: 0 0; }
+#stage img { display: block; width: 100%; height: 100%; }
+#stage img.broken { background: repeating-linear-gradient(45deg,
+  rgba(255,59,48,.10) 0 10px, rgba(255,59,48,.20) 10px 20px); }
+#stage.zoomed { cursor: grab; }
+#stage.panning { cursor: grabbing; }
+#marks { position: absolute; inset: 0; pointer-events: none; }
+#links { position: absolute; inset: 0; width: 100%; height: 100%;
+         pointer-events: none; overflow: visible; }
+
+/* Marks. Filled dot = chin, hollow ring = shoulder, diamond = the pipeline —
+   the same vocabulary the labeling page's peers panel uses, so a reviewer who
+   has seen one reads the other without relearning it. --inv is 1/zoom (set by
+   applyTransform): the marks live inside the scaled stage so their POSITION
+   tracks the frame while their SIZE stays constant on screen. Without it a
+   10px dot is 120px at 12x and buries the chin it points at. */
+.pt { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+      border-radius: 50%; pointer-events: none;
+      transform: scale(var(--inv, 1));
+      box-shadow: 0 0 0 1px rgba(0,0,0,.6);
+      transition: opacity .12s ease; }
+.pt.sh { background: transparent !important; border: 2.5px solid; }
+.pt.machine { border-radius: 2px; rotate: 45deg; opacity: .85; }
+/* An inferred point is a placed GUESS about occluded anatomy. It has to be
+   visibly a guess, or the calibration reader treats it as a sighting. */
+.pt.inferred { background: transparent !important; border: 2px dashed; }
+/* Hover a name in the sidebar and everyone else recedes — with four labelers
+   and two reps each, twelve marks on one jaw is soup otherwise. */
+.dim { opacity: .16; }
+/* non-scaling-stroke frees the width from the 0..1 viewBox; --inv frees it
+   from the zoom transform on the ancestor stage, which non-scaling-stroke
+   does not see. Without both, a hairline is a 15px band at 12x. */
+#links line { stroke-width: calc(1.25px * var(--inv, 1));
+              vector-effect: non-scaling-stroke;
+              transition: opacity .12s ease; }
+#links line.dim { opacity: .12; }
+#hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+        color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
+        padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+#stage-note { position: absolute; inset: 0; display: flex; align-items: center;
+              justify-content: center; text-align: center; padding: 40px;
+              font-size: 13px; color: var(--ink-dim); }
+
+/* ── right column ───────────────────────────────────────────────────────── */
+#side { width: 342px; padding-right: 2px; flex: none; height: 100%;
+        overflow-y: auto; scrollbar-gutter: stable;
+        display: flex; flex-direction: column; gap: 12px;
+        scrollbar-width: thin; scrollbar-color: rgba(120,120,128,.45) transparent; }
+#side::-webkit-scrollbar { width: 8px; }
+#side::-webkit-scrollbar-track { background: transparent; }
+#side::-webkit-scrollbar-thumb { background: rgba(120,120,128,.45); border-radius: 4px; }
+.card { background: var(--card); border-radius: var(--radius);
+        box-shadow: var(--shadow); padding: 14px; }
+.card h2 { font-size: 12px; font-weight: 590; letter-spacing: .01em;
+           text-transform: uppercase; color: var(--ink-dim);
+           margin: 0 0 9px; display: flex; align-items: baseline; gap: 6px; }
+.card h2 .n { margin-left: auto; font-weight: 400; text-transform: none;
+              letter-spacing: 0; font-size: 11.5px; }
+.note { font-size: 11.5px; color: var(--ink-dim); margin: 8px 0 0; }
+.note.warn { color: var(--maybe); }
+.num { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace;
+       letter-spacing: -.02em; }
+
+/* Who to compare. A checkbox per labeler tab that exists in the workbook. */
+.who { display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+       border-radius: 8px; cursor: pointer; font-size: 13px; }
+.who:hover { background: rgba(120,120,128,.10); }
+.who input { accent-color: var(--accent); margin: 0; flex: none; }
+.who .sw { width: 10px; height: 10px; border-radius: 50%; flex: none;
+           box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.who .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+           white-space: nowrap; font-weight: 510; }
+.who .ct { color: var(--ink-dim); font-size: 11.5px; flex: none; }
+.who.off .sw { background: transparent !important;
+               box-shadow: inset 0 0 0 1.5px var(--ink-dim); }
+
+/* Pairwise agreement. One row per pair of selected labelers, plus one per
+   labeler who has planted repeats — the repeats are the noise floor, and a
+   pair number read without it means nothing. */
+.pair { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+        padding: 7px 0; border-top: 1px solid var(--line); }
+.pair:first-of-type { border-top: 0; padding-top: 0; }
+.pair .who2 { font-size: 12.5px; font-weight: 510; display: flex;
+              align-items: center; gap: 5px; min-width: 0; }
+.pair .who2 .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.pair .who2 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pair .med { text-align: right; }
+.pair .sub { grid-column: 1 / -1; font-size: 11px; color: var(--ink-dim); }
+.pair.self .who2 { color: var(--ink-dim); font-weight: 400; }
+
+/* Identity strip — copied from the labeling page so a reviewer can paste a
+   video/round/frame straight into a sampler or a message. */
+#id-card { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px;
+           align-items: center; }
+.idl { font-size: 11px; color: var(--ink-dim); }
+.idv { font: 500 12px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idc { border: 0; background: transparent; color: var(--ink-dim);
+       padding: 2px; line-height: 0; border-radius: 5px; }
+.idc:hover { background: rgba(120,120,128,.14); color: var(--ink); }
+.idc.copied { color: var(--yes); }
+.idc svg { width: 13px; height: 13px; }
+
+/* One row per placement on this frame. */
+.mk { display: flex; align-items: center; gap: 7px; padding: 5px 4px;
+      border-radius: 7px; font-size: 12.5px; cursor: default; }
+.mk:hover { background: rgba(120,120,128,.10); }
+.mk .sw { width: 10px; height: 10px; border-radius: 50%; flex: none;
+          box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.mk .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+          white-space: nowrap; }
+.mk .dv { color: var(--ink-dim); flex: none;
+          font: 500 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+.mk.machine .nm, .mk.skip .nm { color: var(--ink-dim); }
+.tag { font-size: 9.5px; font-weight: 590; text-transform: uppercase;
+       letter-spacing: .03em; padding: 1px 4px; border-radius: 4px;
+       border: 1px solid var(--line); color: var(--ink-dim); flex: none; }
+.tag.inf { color: var(--maybe); border-color: color-mix(in srgb, var(--maybe) 45%, transparent); }
+.tag.con { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.tag.flg { color: var(--no); border-color: color-mix(in srgb, var(--no) 45%, transparent); }
+
+/* Controls. */
+.ctl { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ctl label { font-size: 11.5px; color: var(--ink-dim); flex: none; }
+.ctl select { flex: 1; min-width: 0; font-size: 12.5px; padding: 5px 8px;
+              border-radius: 8px; border: 1px solid var(--line);
+              background: var(--card); color: var(--ink); }
+.chk { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+       padding: 4px 0; cursor: pointer; }
+.chk input { accent-color: var(--accent); margin: 0; }
+#nav { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+#seg { display: flex; border: 1px solid var(--line); border-radius: 8px;
+       overflow: hidden; flex: none; }
+#seg button { border: 0; background: transparent; padding: 5px 13px; font-size: 15px; }
+#seg button:hover { background: rgba(120,120,128,.14); }
+#seg button + button { border-left: 1px solid var(--line); }
+#pos { font: 600 15px/1 ui-monospace, "SF Mono", Menlo, monospace;
+       letter-spacing: -.02em; white-space: nowrap; }
+#pos small { color: var(--ink-dim); font-weight: 400; font-size: 12px; }
+#spread { margin-left: auto; font-size: 11.5px; color: var(--ink-dim);
+          text-align: right; line-height: 1.25; }
+#status { font-size: 12px; color: var(--ink-dim); margin-top: 9px; min-height: 15px; }
+#status.err { color: var(--no); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px;
+          color: var(--ink-dim); }
+.legend i { width: 9px; height: 9px; display: inline-block; margin-right: 4px;
+            vertical-align: -1px; border-radius: 50%;
+            background: var(--ink-dim); font-style: normal; }
+.legend i.ring { background: transparent; border: 2px solid var(--ink-dim); }
+.legend i.dash { background: transparent; border: 1.5px dashed var(--ink-dim); }
+.legend i.dia { border-radius: 1px; rotate: 45deg; }
+#keys { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+        margin: 0; font-size: 11.5px; align-items: center; }
+#keys dt { color: var(--ink-dim); }
+#keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
+kbd { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+      border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px;
+      padding: 2px 5px; color: var(--ink-dim); }
+</style>
+</head>
+
+<body>
+
+<div id="wrap">
+  <div id="stage-card">
+    <div id="stage">
+      <img id="frame" alt="">
+      <div id="marks">
+        <svg id="links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </div>
+    </div>
+    <div id="stage-note">Loading…</div>
+    <div id="hint">scroll = zoom · drag = pan · double-click = reset</div>
+  </div>
+
+  <div id="side">
+    <div class="card">
+      <h2>Compare <span class="n" id="who-n"></span></h2>
+      <div id="who-list"></div>
+      <p class="note" id="who-note">Loading the team…</p>
+    </div>
+
+    <div class="card">
+      <h2>Agreement <span class="n">chin above shoulder</span></h2>
+      <div id="pairs"></div>
+      <p class="note" id="pairs-note"></p>
+    </div>
+
+    <div class="card" id="id-card">
+      <span class="idl">Video</span>
+      <span class="idv" id="id-video">&mdash;</span>
+      <button class="idc" data-copy="id-video" type="button" title="Copy video name"
+              aria-label="Copy video name"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Round</span>
+      <span class="idv" id="id-round">&mdash;</span>
+      <button class="idc" data-copy="id-round" type="button" title="Copy round"
+              aria-label="Copy round"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Frame</span>
+      <span class="idv" id="id-frame">&mdash;</span>
+      <button class="idc" data-copy="id-frame" type="button" title="Copy frame"
+              aria-label="Copy frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Stance</span>
+      <span class="idv" id="id-stance">&mdash;</span><span></span>
+    </div>
+
+    <div class="card">
+      <h2>This frame <span class="n" id="mk-n"></span></h2>
+      <div id="mk-list"></div>
+      <label class="chk" style="margin-top:6px">
+        <input type="checkbox" id="show-machine" checked>
+        Show the pipeline's points
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="ctl">
+        <label for="sort">Order</label>
+        <select id="sort">
+          <option value="spread">Most disagreement first</option>
+          <option value="queue">Queue order</option>
+          <option value="video">Video, round, frame</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label for="scope">Show</label>
+        <select id="scope">
+          <option value="overlap">Frames 2+ selected labeled</option>
+          <option value="all">Frames all selected labeled</option>
+          <option value="any">Frames any selected touched</option>
+        </select>
+      </div>
+      <label class="chk">
+        <input type="checkbox" id="only-skip">
+        Only skip conflicts <span class="tag" id="skip-n">0</span>
+      </label>
+      <div id="nav">
+        <div id="seg">
+          <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
+          <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
+        </div>
+        <div id="pos">—<small> / —</small></div>
+        <div id="spread"></div>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Legend</h2>
+      <div class="legend">
+        <span><i></i>chin</span>
+        <span><i class="ring"></i>shoulder</span>
+        <span><i class="dash"></i>inferred</span>
+        <span><i class="dia"></i>pipeline</span>
+      </div>
+      <dl id="keys" style="margin-top:10px">
+        <dt>Prev / next frame</dt> <dd><kbd>←</kbd><kbd>→</kbd></dd>
+        <dt>Reset zoom</dt>        <dd><kbd>R</kbd></dd>
+        <dt>Pipeline points</dt>   <dd><kbd>M</kbd></dd>
+      </dl>
+      <p class="note">Read-only. Nothing on this page writes to the sheet, and
+      unlike the labeler's Peers panel it never marks a frame consulted.</p>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/labeler_name.js"></script>
+<!-- ?v= busts stale browser caches — bump on every deploy. -->
+<script src="review.js?v=1"></script>
+</body>
+</html>
