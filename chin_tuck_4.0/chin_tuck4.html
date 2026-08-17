@@ -1216,6 +1216,14 @@ body.admin #agree-card { display: block; }
   display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
   row-gap: 2px; font-size: 12.5px;
 }
+#agree-global-eyebrow {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+#agree-global {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 10px;
+  row-gap: 4px; font-size: 12.5px;
+}
+#agree-global .team-c { white-space: normal; line-height: 1.4; }
 .team-n {
   display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 510;
 }
@@ -1507,6 +1515,13 @@ body.admin #agree-card { display: block; }
     <div class="card" id="agree-card">
       <p class="card-eyebrow">Agreement — Arianne × John</p>
       <div id="agree-list"></div>
+      <!-- Whole-queue descriptive stats — raw distances, not thresholded,
+           so this section doesn't move when the threshold above does; it's
+           the distribution the threshold is a cutoff INTO. Only recomputed
+           when the underlying data changes (login, a save landing), not on
+           every frame navigation like #agree-list above. -->
+      <p class="card-eyebrow" id="agree-global-eyebrow">All frames</p>
+      <div id="agree-global"></div>
     </div>
 
     <div class="card">
@@ -1575,6 +1590,6 @@ body.admin #agree-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=29"></script>
+<script src="chin_tuck4.js?v=30"></script>
 </body>
 </html>

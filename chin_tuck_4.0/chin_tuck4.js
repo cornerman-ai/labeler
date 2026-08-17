@@ -819,6 +819,7 @@ function patchDisagree(f) {
   state.disagree.set(key(f), disagreeForSlot(f));
   renderOverview();
   renderAgreementCard();
+  renderGlobalAgreement();
 }
 
 // PCK-style agreement between AGREE_PAIR on ONE point, on ONE frame — not
@@ -869,6 +870,73 @@ function renderAgreementCard() {
       ct.textContent = `${pct}% apart · ${r.state}`;
       ct.style.color = r.state === 'agree' ? 'var(--yes)' : 'var(--no)';
     }
+
+    box.append(nm, ct);
+  }
+}
+
+// Raw distances across the WHOLE queue, per point — not thresholded, since
+// these are descriptive stats about the distribution, independent of
+// wherever state.agreeThresh currently sits. Same gate as frameAgreement():
+// a frame counts only where BOTH named labelers placed that specific
+// point.
+function computeGlobalAgreement() {
+  const [a, b] = AGREE_PAIR;
+  const rowsA = state.teamRows.get(a);
+  const rowsB = state.teamRows.get(b);
+  const out = { chin: [], sh: [] };
+  if (!rowsA || !rowsB) return out;
+  for (const f of state.frames) {
+    if (!f.torso_h) continue;
+    const k = key(f);
+    const ra = rowsA.get(k), rb = rowsB.get(k);
+    if (!ra || !rb) continue;
+    for (const [p, xk, yk] of [['chin', 'chin_x', 'chin_y'], ['sh', 'sh_x', 'sh_y']]) {
+      if (ra[xk] == null || ra[yk] == null || rb[xk] == null || rb[yk] == null) continue;
+      out[p].push(Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h);
+    }
+  }
+  return out;
+}
+
+function distStats(arr) {
+  if (!arr.length) return null;
+  const sorted = [...arr].sort((x, y) => x - y);
+  const n = sorted.length;
+  const mid = n >> 1;
+  return {
+    n,
+    avg: arr.reduce((s, v) => s + v, 0) / n,
+    median: n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+    min: sorted[0],
+    max: sorted[n - 1],
+  };
+}
+
+// Not rebuilt on every render() like renderAgreementCard() above — the
+// whole-queue distribution doesn't change when the labeler pages to a
+// different frame, only when a save actually lands (patchDisagree()) or at
+// login (start()), so recomputing it on every arrow-key press would be
+// pure waste.
+function renderGlobalAgreement() {
+  if (!state.isAdmin) return;
+  const box = $('agree-global');
+  if (!box) return;
+  box.textContent = '';
+  const dists = computeGlobalAgreement();
+  for (const [label, p] of [['Chin', 'chin'], ['Shoulder', 'sh']]) {
+    const s = distStats(dists[p]);
+
+    const nm = document.createElement('div');
+    nm.className = 'team-n';
+    nm.textContent = label;
+
+    const ct = document.createElement('div');
+    ct.className = 'team-c';
+    ct.textContent = s
+      ? `avg ${(s.avg * 100).toFixed(1)}% · median ${(s.median * 100).toFixed(1)}% · `
+        + `min ${(s.min * 100).toFixed(1)}% · max ${(s.max * 100).toFixed(1)}% · n=${s.n}`
+      : 'no shared frames yet';
 
     box.append(nm, ct);
   }
@@ -2525,6 +2593,7 @@ async function start() {
     document.body.style.removeProperty('--hp-color');
     renderTeamProgress();
     renderAgreementCard();
+    renderGlobalAgreement();
     startRosterPoll();
     go(0, { initial: true });
     status('');
