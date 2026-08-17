@@ -732,6 +732,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   transform: scale(var(--inv, 1));
   box-shadow: 0 0 0 1px rgba(0,0,0,.55);
   display: none;
+  /* Above the admin-mode teammate overlay (.tm / #tm-links, z-index 1)
+     unconditionally, not just once dragged (.hp.active goes higher still).
+     The .tm marks are appended to #marks AFTER these two in DOM order, so
+     without this, whichever teammate mark happens to land closest visually
+     covers the very point the labeler is trying to see and drag — worst
+     exactly when they agree closely, which is the common case. */
+  z-index: 2;
 }
 .hp::after {           /* the actual mark — a 2px core the halo centers on */
   content: ''; position: absolute; left: 50%; top: 50%;
@@ -748,7 +755,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .hp.active {
   box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 4px #fff, 0 0 0 5.5px rgba(0,0,0,.4);
   transform: scale(calc(var(--inv, 1) * 1.15));
-  z-index: 2;
+  z-index: 3;
 }
 #hp-chin { background: color-mix(in srgb, var(--accent) 82%, transparent); }
 /* Round for chin, square for shoulder — shape says WHICH landmark, colour
@@ -992,6 +999,9 @@ body.admin #team-card { display: block; }
   position: absolute; pointer-events: auto; cursor: pointer;
   transform: translate(-50%, -50%) scale(var(--inv, 1));
   transition: opacity .12s ease;
+  /* Below .hp (z-index 2/3) unconditionally — read-only marks must never
+     visually cover the point the labeler can actually act on. */
+  z-index: 1;
 }
 .tm.chin {
   width: 9px; height: 9px; border-radius: 50%;
