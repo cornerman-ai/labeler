@@ -146,7 +146,7 @@ const state = {
 
   // ── admin mode ──
   isAdmin: false,
-  adminTarget: null,       // labeler currently selected for editing, or null
+  selected: new Set(),     // labelers currently pinned to the picture — see soloTarget()
   roster: [],              // [{labeler,n,skipped,last_ts,last}] from statsChinPoint
   teamColor: new Map(),    // labeler -> 'var(--team-color-N)'
   teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
@@ -184,11 +184,20 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
 // ── backend ────────────────────────────────────────────────────────────────
 function who() { return ($('labeler-input').value || '').trim(); }
 
+// Exactly one selected labeler is the only state that means "edit this
+// person": 0 selected has nobody to edit, 2+ selected is a comparison view
+// with no single point a click could unambiguously mean. Toggling down to
+// one (or up to one, from empty) is what puts a labeler into edit mode —
+// no separate gesture for it.
+function soloTarget() {
+  return state.selected.size === 1 ? [...state.selected][0] : null;
+}
+
 // Who a save/placement acts on right now — the logged-in name normally, or
-// whichever labeler is selected in admin mode. Threading every per-frame
+// the solo-selected labeler in admin mode. Threading every per-frame
 // function through this instead of who() directly is what lets admin mode
 // reuse the entire placement/save/navigation machinery unmodified.
-function activeLabeler() { return state.isAdmin ? state.adminTarget : who(); }
+function activeLabeler() { return state.isAdmin ? soloTarget() : who(); }
 
 function api(params) {
   const url = new URL(SCRIPT_URL);
@@ -376,10 +385,10 @@ function lerpColor(level) {
 // captured HERE, synchronously, rather than read off `state` again inside
 // the async callbacks below — admin mode swaps state.labels/failed/
 // inflight/chains BY REFERENCE when the selected labeler changes
-// (selectAdminTarget()), and without this capture a save still in flight
-// when that swap happens would resolve into the WRONG labeler's
-// bookkeeping. This ties every save to whoever it was fired for, no matter
-// how many times admin switches targets before it lands.
+// (toggleSelected() -> syncAdminBundle()), and without this capture a save
+// still in flight when that swap happens would resolve into the WRONG
+// labeler's bookkeeping. This ties every save to whoever it was fired for,
+// no matter how many times the selection changes before it lands.
 function save({ skip = null } = {}) {
   if (!state.ready) return false;
   const name = activeLabeler();
@@ -538,8 +547,8 @@ function firstUnlabeled(from = 0) {
 
 // Populate the in-progress editing state from a saved row (or reset to
 // empty if there isn't one) — used both when arriving at a frame (go()) and
-// when admin mode swaps which labeler's row is being edited
-// (selectAdminTarget()), so there's exactly one restore path, not two.
+// when admin mode's selection changes which labeler (if any) is being
+// edited (syncAdminBundle()), so there's exactly one restore path, not two.
 function applySavedRow(saved) {
   state.skipped = !!(saved && saved.skipped);
   state.skipReason = (saved && saved.skip_reason) || null;
@@ -588,40 +597,68 @@ function prefetch() {
   }
 }
 
-// ── admin mode: target selection ────────────────────────────────────────
-// Commit the outgoing target's edit exactly like leaving a frame does (see
-// go()), then swap state.labels/failed/inflight/chains BY REFERENCE to the
-// new target's bundle — every per-frame function above already reads
-// through those four fields, so nothing else has to know admin mode
-// exists. save() captures its own local references to the active bundle at
-// call time, which is what keeps an in-flight save from landing in the
-// WRONG target's bookkeeping if admin switches before it resolves.
-function selectAdminTarget(name) {
-  if (!state.isAdmin || name === state.adminTarget) return;
-  if (!commitCurrent()) { render(); return; }
-  state.adminTarget = name;
-  const bundle = state.teamBundles.get(name);
-  state.labels = state.teamRows.get(name);
-  state.failed = bundle.failed;
-  state.inflight = bundle.inflight;
-  state.chains = bundle.chains;
+// ── admin mode: selection ─────────────────────────────────────────────────
+// state.labels/failed/inflight/chains point at the SOLO target's own bundle
+// when exactly one labeler is selected, or an inert placeholder otherwise
+// (0 or 2+ selected — nothing a click on the canvas could unambiguously
+// save). Every per-frame function elsewhere already reads through those
+// four fields, so nothing else has to know how many are selected. Called
+// after every change to state.selected — toggleSelected() and the initial
+// admin-login state in start().
+function syncAdminBundle() {
+  const solo = soloTarget();
+  // On <body>, not #stage-card: the tool-row buttons live in #side, a
+  // SIBLING of #stage-card, not a descendant — a custom property set on
+  // #stage-card never reaches them, since CSS inheritance only flows
+  // downward. body is the nearest ancestor common to both.
+  const root = document.body;
+  if (solo) {
+    const bundle = state.teamBundles.get(solo);
+    state.labels = state.teamRows.get(solo);
+    state.failed = bundle.failed;
+    state.inflight = bundle.inflight;
+    state.chains = bundle.chains;
+    // Chin and shoulder share ONE colour — this labeler's — with shape as
+    // the only differentiator; see #hp-chin/#hp-sh and .tool-row in the
+    // stylesheet.
+    root.style.setProperty('--hp-color', state.teamColor.get(solo) || 'var(--accent)');
+    $('tool-who-name').textContent = solo;
+  } else {
+    state.labels = new Map();
+    state.failed = new Map();
+    state.inflight = new Set();
+    state.chains = new Map();
+    root.style.removeProperty('--hp-color');
+  }
+  document.body.classList.toggle('no-target', !solo);
   state.active = null;
   closePop();
   closeCtx();
-  document.body.classList.toggle('no-target', !state.adminTarget);
-  // Chin and shoulder share ONE colour — this target's — with shape as the
-  // only differentiator; see #hp-chin/#hp-sh in the stylesheet.
-  document.getElementById('stage-card').style.setProperty('--hp-color', state.teamColor.get(name) || 'var(--accent)');
   applySavedRow(state.labels.get(key(state.frames[state.i])));
   state.shownAt = Date.now();
+}
+
+// A pure toggle — add if not selected, drop if selected — from either a
+// picker row or a canvas mark (see the mousedown/mouseup wiring in bind()).
+// Selections are sticky: picking a second labeler does not bump the first
+// one out, which is what lets admin build up an arbitrary comparison set
+// (e.g. two people who disagree) rather than always jumping straight to
+// either "everyone" or "exactly one." Commits the outgoing solo edit first,
+// exactly like leaving a frame does — dropping out of edit mode (to 0 or
+// 2+) is the same kind of departure.
+function toggleSelected(name) {
+  if (!state.isAdmin) return;
+  if (!commitCurrent()) { render(); return; }
+  if (state.selected.has(name)) state.selected.delete(name);
+  else state.selected.add(name);
+  syncAdminBundle();
   render();
 }
 
 // Hit-test a read-only teammate mark on canvas (admin mode only) — the
-// click-to-select analog of grabbablePoint() for the active target's own
-// point. A little more slack than GRAB_PX: teammate marks are drawn smaller
-// than the active target's .hp markers, on purpose (see the CSS), so they
-// need a bit more forgiveness to hit reliably.
+// click-to-toggle analog of grabbablePoint() for the solo target's own
+// point. A little more slack than GRAB_PX, kept from when teammate marks
+// were smaller than .hp's; harmless generosity now that they match exactly.
 function teammateMarkAt(clientX, clientY) {
   const GRAB = GRAB_PX + 3;
   let best = null, bestD = GRAB;
@@ -761,7 +798,7 @@ function renderAdminPicker() {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'admin-picker-row';
-    row.setAttribute('aria-pressed', String(l.labeler === state.adminTarget));
+    row.setAttribute('aria-pressed', String(state.selected.has(l.labeler)));
     row.style.setProperty('--tm-color', state.teamColor.get(l.labeler) || 'var(--ink-dim)');
     const sw = document.createElement('span');
     sw.className = 'sw';
@@ -777,44 +814,46 @@ function renderAdminPicker() {
     } else if (r && hasPoints(r)) { st.className = 'st dn'; st.textContent = 'placed'; }
     else { st.className = 'st'; st.textContent = '—'; }
     row.append(sw, nm, st);
-    row.onclick = () => selectAdminTarget(l.labeler);
+    row.onclick = () => toggleSelected(l.labeler);
     row.onmouseenter = () => setTeamHover(l.labeler);
     row.onmouseleave = () => setTeamHover(null);
     box.appendChild(row);
   }
 }
 
-// Every roster labeler's saved points for the current slot, drawn
-// read-only — but ONLY when nobody is selected. The moment a target is
-// picked, this draws nothing at all: their own points become the .hp
-// markers (drawn by placeMarks()), and everyone else disappears rather
-// than crowding the frame while admin is trying to look at one person's
-// work. Round = chin, square = shoulder, dashed = inferred, a thin
-// connecting line — the exact shape/size language chin_tuck4.js already
-// uses for a labeler's own two points, so this isn't a second vocabulary.
+// Every SELECTED labeler's saved points for the current slot, drawn
+// read-only — except when exactly one is selected, where this draws
+// nothing at all: that one's points become the .hp markers (drawn by
+// placeMarks()) instead, since there's nothing left to disambiguate a
+// click against. With nobody selected, falls back to showing everyone —
+// the browse default. Round = chin, square = shoulder, dashed = inferred,
+// a thin connecting line — the exact shape/size language chin_tuck4.js
+// already uses for a labeler's own two points, so this isn't a second
+// vocabulary.
 function renderTeamMarks() {
   const box = $('marks');
   for (const el of box.querySelectorAll('.tm')) el.remove();
   const links = $('tm-links');
   links.textContent = '';
-  if (!state.isAdmin || state.adminTarget) return;
+  if (!state.isAdmin || soloTarget()) return;
   const f = state.frames[state.i];
   if (!f) return;
   const k = key(f);
-  for (const l of state.roster) {
-    const r = state.teamRows.get(l.labeler)?.get(k);
+  const names = state.selected.size ? [...state.selected] : state.roster.map((l) => l.labeler);
+  for (const name of names) {
+    const r = state.teamRows.get(name)?.get(k);
     if (!r || !hasPoints(r)) continue;
-    const color = state.teamColor.get(l.labeler) || 'var(--ink-dim)';
+    const color = state.teamColor.get(name) || 'var(--ink-dim)';
     const chin = [r.chin_x, r.chin_y], sh = [r.sh_x, r.sh_y];
     for (const [which, xy, vis] of [['chin', chin, r.chin_vis], ['sh', sh, r.sh_vis]]) {
       const d = document.createElement('div');
       d.className = `tm ${which}${vis === 'inferred' ? ' inferred' : ''}`;
-      d.dataset.who = l.labeler;
+      d.dataset.who = name;
       d.style.setProperty('--tm-color', color);
       d.style.left = `${xy[0] * 100}%`;
       d.style.top = `${xy[1] * 100}%`;
-      d.title = `${l.labeler} — ${which === 'chin' ? 'chin' : 'shoulder'}`;
-      d.onmouseenter = () => setTeamHover(l.labeler);
+      d.title = `${name} — ${which === 'chin' ? 'chin' : 'shoulder'}`;
+      d.onmouseenter = () => setTeamHover(name);
       d.onmouseleave = () => setTeamHover(null);
       box.appendChild(d);
     }
@@ -822,7 +861,7 @@ function renderTeamMarks() {
     line.setAttribute('x1', chin[0]); line.setAttribute('y1', chin[1]);
     line.setAttribute('x2', sh[0]);   line.setAttribute('y2', sh[1]);
     line.setAttribute('stroke', color);
-    line.dataset.who = l.labeler;
+    line.dataset.who = name;
     links.appendChild(line);
   }
 }
@@ -1291,22 +1330,24 @@ function bind() {
     // saw the click.
     if (!state.ready || e.button !== 0) return;
     state.down = { x: e.clientX, y: e.clientY };
-    // The ACTIVE target's own point is checked FIRST — grabbablePoint reads
-    // state.pts, which is empty whenever no admin target is selected, so
-    // this costs nothing in that case and falls straight through to the
+    // The SOLO target's own point is checked FIRST — grabbablePoint reads
+    // state.pts, which is empty whenever nobody is solo-selected, so this
+    // costs nothing in that case and falls straight through to the
     // teammate check below. The ordering matters when a target's own point
     // sits close to a teammate's mark, which happens exactly when the two
     // of them agree closely (the GOOD case): without this, the click would
-    // switch targets instead of grabbing the point admin is trying to drag.
+    // toggle a selection instead of grabbing the point admin is trying to
+    // drag.
     const grab = grabbablePoint(e.clientX, e.clientY);
     if (!grab && state.isAdmin) {
-      // A click on ANY teammate's mark selects them — "selectable" straight
-      // off the canvas, not just from the picker. With admin mode on but
-      // nobody selected yet, nothing else on the stage is interactive:
-      // there's no target for a placed or dragged point to belong to.
+      // A click on ANY visible teammate mark toggles their selection —
+      // "selectable" straight off the canvas, not just from the picker.
+      // With nobody solo-selected, nothing else on the stage is
+      // interactive: there's no single target for a placed or dragged
+      // point to belong to.
       const teammate = teammateMarkAt(e.clientX, e.clientY);
       if (teammate) { state.teammateClick = teammate; e.preventDefault(); return; }
-      if (!state.adminTarget) { e.preventDefault(); return; }
+      if (!soloTarget()) { e.preventDefault(); return; }
     }
     if (grab) {
       state.ptDrag = grab;
@@ -1352,7 +1393,7 @@ function bind() {
     stage.classList.remove('panning');
     if (!startedOnStage || moved) return;      // a real drag, or not ours
     if (!state.ready) return;
-    if (teammateClick) { selectAdminTarget(teammateClick); return; }
+    if (teammateClick) { toggleSelected(teammateClick); return; }
     // A stationary click that landed on an existing dot always selects and
     // repositions THAT dot — never places a new one there, arm or no arm.
     // It used to be swallowed as a zero-length drag, so a 3px correction
@@ -1371,8 +1412,8 @@ function bind() {
     // point the open question is about.
     if (!state.ready || !state.arm) return;
     // Belt-and-suspenders with the same check in onmousedown: nothing to
-    // place a point ON when no admin target is selected.
-    if (state.isAdmin && !state.adminTarget) return;
+    // place a point ON when nobody is solo-selected.
+    if (state.isAdmin && !soloTarget()) return;
     placeAt(state.arm, e.clientX, e.clientY);
   });
   stage.ondblclick = resetZoom;
@@ -1486,18 +1527,14 @@ async function start() {
   setReady(true);
 
   if (state.isAdmin) {
-    // No labeler picked yet — nothing to resume TO. state.labels et al.
-    // point at an inert placeholder until selectAdminTarget() swaps them.
-    state.adminTarget = null;
-    state.labels = new Map();
-    state.failed = new Map();
-    state.inflight = new Set();
-    state.chains = new Map();
-    document.body.classList.add('no-target');
-    // No target selected yet — clear any colour a PRIOR selection in this
-    // same tab left behind. Invisible either way (.hp is display:none with
-    // no target), but keeps the custom property from lying about state.
-    document.getElementById('stage-card').style.removeProperty('--hp-color');
+    // Everyone starts selected — the browse/compare view, all of them shown
+    // at once — so the first click on any one of them DESELECTS just that
+    // one (down to N-1 shown) rather than jumping straight to "edit them
+    // alone." Only re-seeded on a fresh login, not on every roster poll —
+    // an admin's own picks mid-session should never be silently rewritten
+    // by someone else's roster changing.
+    state.selected = new Set(state.roster.map((l) => l.labeler));
+    syncAdminBundle();
     renderTeamProgress();
     if (!state.rosterPoll) {
       state.rosterPoll = setInterval(async () => {
@@ -1512,7 +1549,7 @@ async function start() {
   if (state.rosterPoll) { clearInterval(state.rosterPoll); state.rosterPoll = null; }
   // A normal login has one labeler, so its own points just need --accent —
   // clear any stale --hp-color a PRIOR admin selection left on this tab.
-  document.getElementById('stage-card').style.removeProperty('--hp-color');
+  document.body.style.removeProperty('--hp-color');
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n);
   status(n < 0 ? 'All frames labeled' : '');

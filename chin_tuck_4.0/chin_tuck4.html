@@ -222,14 +222,14 @@ button:focus-visible {
 .pt.used { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 3.5px rgba(50,215,75,.45); }
 /* Guide cross follows the cursor — a straight edge for "is the chin past the
    shoulder", which is hard to eyeball on a tilted body. */
-/* Hairline, and coloured by whichever point the next click will place — the
-   cross is the aiming reticle for that point, so it should be the same green
-   as the shoulder button when the shoulder is armed. */
+/* Hairline aiming reticle — the same colour as whoever's point it's about
+   to place, chin or shoulder alike, matching every other mark on this page
+   now that colour means WHO rather than WHICH landmark. */
 #gx, #gy { position: absolute; background: var(--guide, rgba(0,180,255,.55));
            pointer-events: none; display: none; }
 #gx { left: 0; right: 0; height: .5px; }
 #gy { top: 0; bottom: 0; width: .5px; }
-#stage-card.arm-sh { --guide: var(--yes); }
+#stage-card { --guide: var(--hp-color, var(--accent)); }
 #stage-card.guide #gx, #stage-card.guide #gy { display: block; }
 /* Frozen until this labeler's saved rows have arrived: start() lands them on
    their first unlabeled frame, so anything answered before that is discarded.
@@ -768,8 +768,13 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #hp-sh { border-radius: 3px; }
 
 
-/* The tool card: which point the next click places. The armed row glows the
-   point's own color so hand and eye agree about what a click will do. */
+/* The tool card: which point the next click places. Both rows share ONE
+   colour — --hp-color, the same one the canvas marks use for whoever is
+   currently being edited (falls back to --accent for a normal, single-
+   labeler login) — so the dot here and the dot on the frame always agree
+   about WHOSE points these buttons act on. Shape carries WHICH landmark
+   instead, matching the canvas's own round/square split, since colour no
+   longer can. The armed row glows to say what a click will do right now. */
 .tool-row {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-radius: 8px; margin-bottom: 6px;
@@ -780,19 +785,33 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .tool-row:hover:not([aria-pressed="true"]) { border-color: var(--ink-dim); }
 .tool-row .dot {
   width: 10px; height: 10px; border-radius: 50%; flex: none;
+  background: var(--hp-color, var(--accent));
   box-shadow: 0 0 0 1px rgba(0,0,0,.4);
 }
-.tool-row[data-p="chin"] .dot { background: var(--accent); }
-.tool-row[data-p="sh"] .dot { background: var(--yes); }
-.tool-row[aria-pressed="true"][data-p="chin"] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.tool-row[aria-pressed="true"][data-p="sh"] {
-  border-color: var(--yes);
-  background: color-mix(in srgb, var(--yes) 12%, transparent);
+.tool-row[data-p="sh"] .dot { border-radius: 3px; }
+.tool-row[aria-pressed="true"] {
+  border-color: var(--hp-color, var(--accent));
+  background: color-mix(in srgb, var(--hp-color, var(--accent)) 10%, transparent);
 }
 .tool-row kbd { font: inherit; opacity: .5; }
+/* A visible gap between the chin group (row + its Seen/Occluded switch) and
+   the shoulder group, so the two read as separate controls rather than one
+   running list — the ask that surfaced this: with colour now shared, shape
+   alone wasn't enough distance between them. */
+.tool-row[data-p="sh"] { margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--line); position: relative; }
+/* Names whose points these two rows act on, admin mode only — colour says
+   it, but "say" means text: this is the explicit, unambiguous version,
+   sitting right where the eye already is before it reaches the buttons. */
+#tool-who {
+  display: none; align-items: center; gap: 6px;
+  margin: -2px 0 8px; font-size: 11.5px; font-weight: 590;
+  color: var(--hp-color, var(--accent));
+}
+#tool-who .sw {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: currentColor;
+}
+body.admin:not(.no-target) #tool-who { display: flex; }
 /* An inferred point is a ring, not a dot — a guess about occluded anatomy
    must not look like an observation, on the frame or in the peer overlay. */
 .hp.inferred {
@@ -1113,6 +1132,11 @@ body.admin #team-card { display: block; }
            display:none for a normal login — see body.admin in the
            stylesheet and renderAdminPicker() in chin_tuck4.js. -->
       <div id="admin-picker"></div>
+      <!-- Admin mode, a labeler solo-selected only: names whose points the
+           two rows below act on — colour already says it (--hp-color), this
+           says it in words. Hidden the rest of the time by body.admin:not
+           (.no-target) in the stylesheet. -->
+      <div id="tool-who"><span class="sw"></span><span id="tool-who-name"></span>&rsquo;s points</div>
       <div class="tool-row" data-p="chin" aria-pressed="false">
         <span class="dot"></span>Chin tip<kbd>C</kbd>
       </div>
