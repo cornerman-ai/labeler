@@ -55,10 +55,24 @@ training-critical sheet.
 **Overwrite in place, keyed (video, round, frame, rep)** — same rule as
 2.0/3.0: a re-label replaces the row rather than piling up history. `rep`
 in the identity is what keeps a planted repeat from being read as a
-re-label of the original and overwriting it. A row is a complete pair or a
-skip — the backend refuses a lone chin, and a skip must carry its reason
-(`not_visible` / `no_stance`). `deleteChinPoint` removes a row entirely, no
-soft-delete, same as 2.0/3.0.
+re-label of the original and overwriting it. `deleteChinPoint` removes a
+row entirely, no soft-delete, same as 2.0/3.0.
+
+**Partial saves (2026-08).** A row can carry the chin alone, the shoulder
+alone, both, or (a skip) neither — the one thing still refused is a BROKEN
+point, an x with no y or vice versa, which the client never produces but
+the backend still checks on principle. Partial is provisional by design:
+`isFinished`/`hasPoints` still require the full pair, so a partial row
+never counts toward "done," the same way v2's partially-answered rows
+never did — it exists to be overwritten once the second point lands, not
+as a lesser measurement. `chin_vis`/`sh_vis` follow the point they belong
+to: blank whenever THAT point is absent, regardless of whether the other
+one is present. Leaving a frame with zero points and no explicit skip is
+itself a decision not to label it, so the page auto-records that as a skip
+with reason `unmarked` — a third value in `CS4_SKIP_REASONS`, deliberately
+kept out of the K popover (which still only offers `not_visible` /
+`no_stance`) so an unattended frame never dilutes what those two reasons
+measure.
 
 ## The page
 
@@ -101,14 +115,16 @@ Four deliberate rules:
   missing 3.0's "Lead everyone" footer — every labeler getting write
   access to the whole team's sheet is an admin capability (see admin
   mode's `#lead-row`), not something this panel hands out.
-- **Saving is leaving.** There is no save button: a finished pair is
-  written when the labeler moves on — `↵`, the arrows, Next, the overview,
-  anything that changes frame — because "done with this frame" and "next
-  frame" are one decision, and asking for the second gesture is how the
-  first one's work gets lost. Writes are skipped when nothing changed, so
-  walking back through finished frames costs no rows; the one thing that
-  holds a labeler still is a point placed but not yet answered
-  seen/inferred, which says so in the status line.
+- **Saving is leaving.** There is no save button: whatever points exist —
+  one, both, or neither — are written when the labeler moves on — `↵`, the
+  arrows, Next, the overview, anything that changes frame — because "done
+  here for now" and "next frame" are one decision, and asking for the
+  second gesture is how the first one's work gets lost. Writes are skipped
+  when nothing changed, so walking back through finished frames costs no
+  rows; the one thing that holds a labeler still is a point placed but not
+  yet answered seen/inferred, which says so in the status line. Leaving a
+  frame with zero points and no explicit skip still writes something — see
+  Partial saves above.
 - **One skip, then its reason.** `K` (or the button) opens a popover:
   1 = can't see the points, 2 = not in boxing stance, `Esc` backs out.
   Asked afterwards rather than as two buttons, so the decision to skip and

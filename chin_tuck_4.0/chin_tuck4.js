@@ -35,6 +35,17 @@
 // just "done" or not — so there is nothing in it for a click to anchor on.
 //
 
+// PARTIAL SAVES (2026-08): a row can carry the chin alone, the shoulder
+// alone, both, or (a skip) neither — the backend no longer requires the
+// pair. Partial is provisional by design, meant to be overwritten once the
+// second point lands, so it never counts toward "done" (isResolved/
+// hasPoints still require the full pair) — it just gets its own colour on
+// the overview (see 'part' in renderOverview()) instead of being invisible
+// until finished. Leaving a frame with ZERO points and no explicit skip is
+// itself a decision not to label it, so commitCurrent() records that as a
+// skip with reason 'unmarked' — kept out of the K popover's own two
+// reasons so it never dilutes what those measure.
+//
 // REPEATS: ~10% of queue slots are the same frame planted again (rep=1),
 // blind, ≥200 slots downstream. rep is part of the row identity end to end
 // — key(), the sheet, the backend — so the pair measures the labeler's own
@@ -100,8 +111,13 @@ const GRAB_PX = 10;
 
 const DWELL_CAP_SEC = 120;
 
-// Short forms of the two skip reasons, for the button once a frame is skipped.
-const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in stance' };
+// Short forms of the skip reasons, for the button once a frame is skipped.
+// 'unmarked' is never offered in the K popover — see commitCurrent() —
+// it's what a frame left with zero points reads as, automatically.
+const SKIP_LABELS = {
+  not_visible: "can't see the points", no_stance: 'not in stance',
+  unmarked: 'left blank',
+};
 
 // ── everyone's progress ────────────────────────────────────────────────
 // Ported from 3.0's #team panel — see the file header for why 4.0's
@@ -272,12 +288,23 @@ async function call(params, what) {
 }
 
 // ── labels ─────────────────────────────────────────────────────────────────
+// The full pair. A partial row (see hasAnyPoint) fails this even though the
+// backend now accepts it — partial is provisional by design, not a lesser
+// measurement, so it must not read as "done" anywhere this is used.
 function hasPoints(row) {
   return !!row && FIELDS.every((f) => row[f] !== null && row[f] !== undefined);
 }
 
-// Resolved = a complete point pair, or a deliberate skip. There is no
-// partial state worth keeping: the backend refuses a lone chin.
+// Either point alone is enough to be worth a dot on the overview — see
+// the 'part' class in renderOverview().
+function hasAnyPoint(row) {
+  return !!row && (row.chin_x !== null && row.chin_x !== undefined
+                 || row.sh_x !== null && row.sh_x !== undefined);
+}
+
+// Resolved = a complete point pair, or a deliberate skip. A partial row is
+// neither — it is the one state you still have to come back to, so
+// counting it as progress would overstate how much is left.
 function isResolved(row) {
   return !!row && (row.skipped === 1 || hasPoints(row));
 }
@@ -798,13 +825,19 @@ function save({ skip = null } = {}) {
     else { status('Enter your name first', 'err'); $('labeler-input').focus(); }
     return false;
   }
-  if (!skip && !(state.pts.chin && state.pts.sh)) {
-    status('Place both points first (or skip)', 'err');
-    return false;
-  }
-  if (!skip && !(state.vis.chin && state.vis.sh)) {
-    status('Answer seen or inferred for both points', 'err');
-    return false;
+  // Partial is allowed — a row can carry the chin alone, the shoulder
+  // alone, both, or (skip) neither. What it can't carry is a point that
+  // was placed but never qualified: an unanswered point is provisional in
+  // a way even a partial row isn't, since there's no v-flag to store yet.
+  if (!skip) {
+    if (state.pts.chin && !state.vis.chin) {
+      status('Answer seen or inferred for the chin first', 'err');
+      return false;
+    }
+    if (state.pts.sh && !state.vis.sh) {
+      status('Answer seen or inferred for the shoulder first', 'err');
+      return false;
+    }
   }
   const labelsMap = state.labels, failedMap = state.failed,
         inflightSet = state.inflight, chainsMap = state.chains;
@@ -827,12 +860,18 @@ function save({ skip = null } = {}) {
     camera_bad: state.camBad ? '1' : '0',
     dwell_sec: String(dwell),
   };
-  if (!skip) {
+  // Each point rides on the row independently — sent only when IT is
+  // present, never defaulted from the other one's state.
+  const sendChin = !skip && !!state.pts.chin;
+  const sendSh = !skip && !!state.pts.sh;
+  if (sendChin) {
     params.chin_x = state.pts.chin[0].toFixed(5);
     params.chin_y = state.pts.chin[1].toFixed(5);
+    params.chin_vis = state.vis.chin;
+  }
+  if (sendSh) {
     params.sh_x = state.pts.sh[0].toFixed(5);
     params.sh_y = state.pts.sh[1].toFixed(5);
-    params.chin_vis = state.vis.chin;
     params.sh_vis = state.vis.sh;
   }
 
@@ -842,12 +881,12 @@ function save({ skip = null } = {}) {
     skip_reason: skip || null,
     camera_bad: state.camBad ? 1 : 0,
     dwell_sec: dwell,
-    chin_x: skip ? null : Number(params.chin_x),
-    chin_y: skip ? null : Number(params.chin_y),
-    sh_x: skip ? null : Number(params.sh_x),
-    sh_y: skip ? null : Number(params.sh_y),
-    chin_vis: skip ? null : state.vis.chin,
-    sh_vis: skip ? null : state.vis.sh,
+    chin_x: sendChin ? Number(params.chin_x) : null,
+    chin_y: sendChin ? Number(params.chin_y) : null,
+    sh_x: sendSh ? Number(params.sh_x) : null,
+    sh_y: sendSh ? Number(params.sh_y) : null,
+    chin_vis: sendChin ? state.vis.chin : null,
+    sh_vis: sendSh ? state.vis.sh : null,
   };
   labelsMap.set(k, row);
   failedMap.delete(k);
@@ -882,37 +921,69 @@ function save({ skip = null } = {}) {
 // identical re-write would just cost a lock/write round trip for no new
 // information, and with commit-on-leave a labeler walking back through
 // their work with the arrow keys would otherwise trigger one every step.
+//
+// Per-point, not per-pair, now that a row can be partial: a saved row that
+// already has the chin and nothing else is NOT dirty just because the
+// shoulder is still empty on screen too — "empty here, empty there" is
+// agreement, not a change to write.
 function isDirty(k) {
   const saved = state.labels.get(k);
-  if (!saved || !hasPoints(saved)) return true;
-  const at = (p, i) => Number(p[i].toFixed(5));
-  return at(state.pts.chin, 0) !== Number(saved.chin_x)
-      || at(state.pts.chin, 1) !== Number(saved.chin_y)
-      || at(state.pts.sh, 0) !== Number(saved.sh_x)
-      || at(state.pts.sh, 1) !== Number(saved.sh_y)
-      || state.vis.chin !== saved.chin_vis
-      || state.vis.sh !== saved.sh_vis
+  if (!saved || saved.skipped === 1) return true;
+  const samePoint = (pt, xk, yk, visKey, savedVis) => {
+    if (!pt) return saved[xk] === null && saved[yk] === null;
+    return Number(pt[0].toFixed(5)) === Number(saved[xk])
+        && Number(pt[1].toFixed(5)) === Number(saved[yk])
+        && state.vis[visKey] === savedVis;
+  };
+  return !samePoint(state.pts.chin, 'chin_x', 'chin_y', 'chin', saved.chin_vis)
+      || !samePoint(state.pts.sh, 'sh_x', 'sh_y', 'sh', saved.sh_vis)
       || (state.camBad ? 1 : 0) !== (saved.camera_bad ? 1 : 0);
 }
 
-// The save. There is no save button: a finished pair is written by moving on,
-// because "I'm done with this frame" and "next frame" are the same decision,
-// and making them two gestures means the second one gets forgotten and the
-// first one's work is lost.
+// The save. There is no save button: whatever points exist are written by
+// moving on, because "I'm done here for now" and "next frame" are the same
+// decision, and making them two gestures means the second one gets
+// forgotten and the first one's work is lost.
 //
-// Returns false only when the frame is holding the labeler there — a pair
+// Returns false only when the frame is holding the labeler there — a point
 // placed but not yet qualified as seen/inferred. Everything else (nothing
-// placed, already skipped, nothing changed) is a legitimate way to leave a
-// frame and writes nothing.
+// placed at all, already skipped, nothing changed) is a legitimate way to
+// leave a frame.
+//
+// Zero points and not skipped is the one case that still needs a write:
+// leaving a frame untouched is itself the decision not to label it, so it
+// is recorded as a skip (reason 'unmarked') rather than silently vanishing
+// back into the unlabeled pool — see CS4_SKIP_REASONS in Code.js for why
+// this reason is kept out of the K popover.
 function commitCurrent() {
   if (!state.ready || !state.frames.length) return true;
   if (state.skipped) return true;
-  if (!(state.pts.chin && state.pts.sh)) return true;
-  if (!(state.vis.chin && state.vis.sh)) {
-    status('Answer seen or inferred for both points', 'err');
+  if (state.pts.chin && !state.vis.chin) {
+    status('Answer seen or inferred for the chin first', 'err');
     return false;
   }
-  if (!isDirty(key(state.frames[state.i]))) return true;
+  if (state.pts.sh && !state.vis.sh) {
+    status('Answer seen or inferred for the shoulder first', 'err');
+    return false;
+  }
+  const k = key(state.frames[state.i]);
+  if (!state.pts.chin && !state.pts.sh) {
+    // state.shownAt is 0 only before go() has ever landed on a frame —
+    // commitCurrent() runs at the TOP of go(), including the very first
+    // call at login, which "leaves" state.i's initial value (0) before the
+    // labeler has seen anything. Auto-skip must not fire for that call —
+    // there is nothing to record a decision about yet.
+    if (!state.shownAt) return true;
+    // Admin mode with nobody (or more than one) solo-selected has no
+    // identity to save under — that is a browse/compare state, not a
+    // labeler passing over a frame, so it must not try and fail with
+    // "select a labeler first" on every navigation.
+    if (!activeLabeler()) return true;
+    const saved = state.labels.get(k);
+    if (saved && saved.skipped === 1) return true;
+    return save({ skip: 'unmarked' });
+  }
+  if (!isDirty(k)) return true;
   return save({});
 }
 
@@ -957,23 +1028,39 @@ function applySavedRow(saved) {
   state.skipped = !!(saved && saved.skipped);
   state.skipReason = (saved && saved.skip_reason) || null;
   state.camBad = !!(saved && saved.camera_bad);
-  // A saved pair comes back editable: drag a dot, save again — the backend
-  // overwrites the row in place, no history kept.
-  if (saved && hasPoints(saved)) {
-    state.pts = { chin: [saved.chin_x, saved.chin_y], sh: [saved.sh_x, saved.sh_y] };
-    state.vis = { chin: saved.chin_vis || 'visible', sh: saved.sh_vis || 'visible' };
-    state.arm = null;
-  } else {
-    state.pts = { chin: null, sh: null };
-    state.vis = { chin: null, sh: null };
-    state.arm = 'chin';
-  }
+  // Per point, not per pair — a partial row (chin saved, shoulder still
+  // empty) comes back with the chin editable and the shoulder still
+  // unplaced, not wiped back to nothing just because the PAIR isn't whole.
+  // A saved point comes back editable either way: drag a dot, save again —
+  // the backend overwrites the row in place, no history kept.
+  const chinSaved = !!(saved && saved.chin_x !== null && saved.chin_x !== undefined);
+  const shSaved = !!(saved && saved.sh_x !== null && saved.sh_x !== undefined);
+  state.pts = {
+    chin: chinSaved ? [saved.chin_x, saved.chin_y] : null,
+    sh: shSaved ? [saved.sh_x, saved.sh_y] : null,
+  };
+  state.vis = {
+    chin: chinSaved ? (saved.chin_vis || 'visible') : null,
+    sh: shSaved ? (saved.sh_vis || 'visible') : null,
+  };
+  // Arms whichever point is still missing — coming back to a partial row
+  // means finishing it, and the natural next click is the point that
+  // isn't there yet. Both present (or both absent) arms nothing / chin,
+  // same as before.
+  state.arm = !chinSaved ? 'chin' : (!shSaved ? 'sh' : null);
 }
 
-function go(i) {
+// `initial: true` marks the very first landing of a session — start()'s own
+// go(0)/go(n) calls, not a real navigation away from a frame the labeler
+// was actually looking at. commitCurrent()'s zero-point branch now WRITES
+// (an auto-skip), so treating that first call as a departure would record
+// a decision about frame 0 nobody made — a state.shownAt timing check
+// alone doesn't catch this in admin mode, where syncAdminBundle() sets
+// shownAt before go(0) ever runs.
+function go(i, { initial = false } = {}) {
   // Leaving a finished frame is what saves it — see commitCurrent(). A frame
   // that cannot be committed keeps the labeler where they are.
-  if (!commitCurrent()) { render(); return; }
+  if (!initial && !commitCurrent()) { render(); return; }
   state.i = Math.max(0, Math.min(state.frames.length - 1, i));
   state.active = null;
   closePop();
@@ -1094,15 +1181,31 @@ function render() {
   for (const row of document.querySelectorAll('.tool-row')) {
     const p = row.dataset.p === 'chin' ? 'chin' : 'sh';
     row.setAttribute('aria-pressed', String(state.arm === row.dataset.p));
-    // The switch only appears once the point has an answer — before that,
-    // the popover is the only way to give one, so a control that does
-    // nothing has no reason to be on screen.
-    const sw = document.querySelector(`.vis-switch[data-p="${p}"]`);
-    sw.hidden = !state.pts[p] || !state.vis[p];
-    for (const seg of sw.querySelectorAll('.vis-seg')) {
+    const pt = state.pts[p];
+    // The dot fills the instant a point exists — independent of whether its
+    // seen/inferred answer has landed yet, so a click gets a colour change
+    // before the popover even opens. classList.toggle no-ops when the value
+    // is unchanged, which is what keeps the pop animation from replaying on
+    // every render() rather than only the frame a point is actually placed.
+    const dot = row.querySelector('.dot');
+    dot.classList.toggle('set', !!pt);
+    dot.classList.toggle('inferred', state.vis[p] === 'inferred');
+    updateToolCoord(p, row);
+    // The switch stays on screen at all times now — disabled (not hidden)
+    // until the point has an answer, since before that the popover is the
+    // only way to give one and a control that does nothing should look
+    // inert rather than vanish.
+    for (const seg of row.querySelectorAll('.vis-seg')) {
+      seg.disabled = !pt || !state.vis[p];
       seg.setAttribute('aria-pressed', String(seg.dataset.v === state.vis[p]));
     }
   }
+  // Both points placed AND answered — live in-progress state, not the
+  // saved row, so the badge lands the moment the second vis answer does
+  // rather than waiting on a save that may not happen for seconds.
+  const complete = !!(state.pts.chin && state.vis.chin && state.pts.sh && state.vis.sh);
+  $('q-card').classList.toggle('complete', complete);
+  $('pts-complete').hidden = !complete;
   // The guide cross wears the armed point's colour — see #stage-card.arm-sh.
   $('stage-card').classList.toggle('arm-sh', state.arm === 'sh');
   const skipb = $('skip-btn');
@@ -1116,6 +1219,19 @@ function render() {
   renderTeamMarks();
   renderAdminPicker();
   renderOverview();
+}
+
+// Normalized 0..1, matching what actually gets sent on save — not a
+// screen-pixel value that would mean something different on every
+// monitor. Split out from render() so a drag can call it on every
+// mousemove without paying for a full render() (dot classes, switch
+// state, overview, team marks…) on every frame of the drag.
+function updateToolCoord(name, row) {
+  row = row || document.querySelector(`.tool-row[data-p="${name}"]`);
+  if (!row) return;
+  const pt = state.pts[name];
+  row.querySelector('.trc-x').textContent = pt ? pt[0].toFixed(3) : '—';
+  row.querySelector('.trc-y').textContent = pt ? pt[1].toFixed(3) : '—';
 }
 
 function placeMarks() {
@@ -1221,6 +1337,7 @@ function renderAdminPicker() {
       st.className = 'st sk';
       st.textContent = `skip: ${SKIP_LABELS[r.skip_reason] || r.skip_reason || '?'}`;
     } else if (r && hasPoints(r)) { st.className = 'st dn'; st.textContent = 'placed'; }
+    else if (r && hasAnyPoint(r)) { st.className = 'st'; st.textContent = 'partial'; }
     else { st.className = 'st'; st.textContent = '—'; }
     row.append(sw, nm, st);
     row.onclick = () => toggleSelected(l.labeler);
@@ -1361,6 +1478,9 @@ function renderOverview() {
     let cls = 'd4';
     if (row && row.skipped) cls += ' sk';
     else if (hasPoints(row)) cls += ' dn';
+    // Amber: one point down, the other still to come — provisional, not
+    // done, but a real dot rather than indistinguishable from untouched.
+    else if (hasAnyPoint(row)) cls += ' part';
     if (row && row.camera_bad) cls += ' cb';
     if (i === state.i) cls += ' cur';
     if (d.className !== cls) d.className = cls;
@@ -1500,10 +1620,11 @@ function closePop() {
 }
 
 // The right-click menu is not a popover: it doesn't own the keyboard, and
-// asks nothing — it's one shortcut for the labeler with no Del key (a
-// touchpad-only laptop) or who just prefers a click. Opening it selects the
+// asks nothing — it OFFERS two actions rather than asking a question, for
+// the labeler with no Del key (a touchpad-only laptop), no memory for
+// Shift+C/Shift+S, or who just prefers a click. Opening it selects the
 // point the same way pressing it does, so the highlight matches what a
-// following Del would also act on.
+// following Del (or the menu's own Delete item) would also act on.
 function closeCtx() {
   $('pt-ctx').hidden = true;
   state.ctxFor = null;
@@ -1513,6 +1634,13 @@ function openCtx(name, clientX, clientY) {
   state.ctxFor = name;
   state.active = name;
   placeMarks();
+  // Names the ACTION, not the current state — same convention as the cam
+  // button's own label. Unanswered (state.vis[name] === null, the point
+  // was just placed and the popover hasn't been answered yet) reads the
+  // same as 'visible' here: the natural first offer is "mark it occluded",
+  // matching toggleVis()'s own default direction.
+  const nextVis = state.vis[name] === 'inferred' ? 'visible' : 'inferred';
+  $('pt-ctx-vis').textContent = nextVis === 'inferred' ? 'Mark as Occluded' : 'Mark as Seen';
   const menu = $('pt-ctx');
   const card = $('stage-card').getBoundingClientRect();
   menu.hidden = false;
@@ -1551,7 +1679,12 @@ function positionPointPop(name) {
 function choosePointVis(name, v) {
   if (!state.pts[name]) return;
   state.vis[name] = v;
-  closePop();
+  // Only closes a popover that is asking about THIS point — every existing
+  // caller (the popover's own buttons, the 1/2 keys) already only ever
+  // passes state.pop.name, so this is a no-op change for them. It matters
+  // for the right-click menu, which can name a point OTHER than the one a
+  // still-open popover is asking about, and must not swat that one shut.
+  if (state.pop && state.pop.kind === 'point' && state.pop.name === name) closePop();
   // Answering the chin arms the shoulder; answering the shoulder disarms. A
   // labeler doing frame after frame never touches the tool rows: click chin,
   // answer, click shoulder, answer, Enter.
@@ -1668,6 +1801,17 @@ function bind() {
       if (state.pop && state.pop.kind === 'point') choosePointVis(state.pop.name, b.dataset.v);
     };
   }
+  // Flips seen/occluded the same way Shift+C/Shift+S does — a correction,
+  // not a new answer, so it does not force a save; the normal commit path
+  // (advance, skip, leaving the frame) picks it up via isDirty(), same as
+  // dragging a point does.
+  $('pt-ctx-vis').onclick = () => {
+    const name = state.ctxFor;
+    closeCtx();
+    if (name && state.pts[name]) {
+      choosePointVis(name, state.vis[name] === 'inferred' ? 'visible' : 'inferred');
+    }
+  };
   $('pt-ctx-del').onclick = () => {
     const name = state.ctxFor;
     closeCtx();
@@ -1735,6 +1879,7 @@ function bind() {
       if (p) {
         state.pts[state.ptDrag] = p;
         placeMarks();
+        updateToolCoord(state.ptDrag);   // live x/y in the sidebar while dragging
         // Nudging a point before answering its question is normal; the
         // question has to travel with it.
         if (state.pop && state.pop.kind === 'point' && state.pop.name === state.ptDrag) {
@@ -1987,7 +2132,7 @@ async function start() {
     syncAdminBundle();
     renderTeamProgress();
     startRosterPoll();
-    go(0);
+    go(0, { initial: true });
     status('');
     return;
   }
@@ -1997,7 +2142,7 @@ async function start() {
   // clear any stale --hp-color a PRIOR admin selection left on this tab.
   document.body.style.removeProperty('--hp-color');
   const n = firstUnlabeled(0);
-  go(n < 0 ? state.frames.length - 1 : n);
+  go(n < 0 ? state.frames.length - 1 : n, { initial: true });
   status(n < 0 ? 'All frames labeled' : '');
   // The team read fired above may have landed while `ready` was still
   // false, which skips the own-row overlay — apply it now that the count

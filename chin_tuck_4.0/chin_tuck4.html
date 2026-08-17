@@ -316,6 +316,21 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   text-transform: uppercase; color: var(--ink-dim); margin: 0 0 9px;
   grid-column: 1 / -1;   /* harmless outside a grid; keeps #id-card's intact */
 }
+/* Both points placed AND answered — live, not saved-state, so the badge
+   lands the instant the second seen/occluded answer does, same beat as
+   the dot filling in. Un-uppercased and un-tracked against the eyebrow it
+   sits in, so it reads as a distinct badge rather than more label. */
+.pts-complete {
+  text-transform: none; letter-spacing: 0; font-weight: 700;
+  color: var(--yes);
+}
+/* A quiet ring, not a filled card — the frame is still the thing being
+   looked at, so "done" is confirmed at a glance without repainting the
+   whole panel. Layered onto the existing shadow rather than replacing it,
+   so nothing shifts when it appears. */
+#q-card.complete {
+  box-shadow: var(--shadow), 0 0 0 1.5px color-mix(in srgb, var(--yes) 55%, transparent);
+}
 .q + .q { margin-top: 14px; }
 .q-t { font-size: 13px; font-weight: 590; margin: 0 0 7px; letter-spacing: -.01em; }
 .q-t b { color: var(--ink-dim); font-weight: 400; margin-right: 5px; }
@@ -777,31 +792,78 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    labeler login) — so the dot here and the dot on the frame always agree
    about WHOSE points these buttons act on. Shape carries WHICH landmark
    instead, matching the canvas's own round/square split, since colour no
-   longer can. The armed row glows to say what a click will do right now. */
+   longer can. The armed row glows to say what a click will do right now.
+
+   ONE fixed-height card per landmark — head, coordinates, switch — rather
+   than a row that grows a switch underneath once answered: a control that
+   appears out of nowhere reads as the panel jumping, and there was no
+   feedback at all that a click had registered until it did. Now every
+   piece of state the row can be in is a difference of COLOUR and TEXT
+   inside a card that never changes size. */
 .tool-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 8px; margin-bottom: 6px;
+  display: block; padding: 9px 10px 10px; border-radius: 10px; margin-bottom: 8px;
   border: 1px solid var(--line); cursor: pointer;
-  font-size: 13px; font-weight: 590;
-  transition: border-color .12s ease, background .12s ease;
+  transition: border-color .15s ease, background .15s ease;
 }
 .tool-row:hover:not([aria-pressed="true"]) { border-color: var(--ink-dim); }
-.tool-row .dot {
-  width: 10px; height: 10px; border-radius: 50%; flex: none;
-  background: var(--hp-color, var(--accent));
-  box-shadow: 0 0 0 1px rgba(0,0,0,.4);
-}
-.tool-row[data-p="sh"] .dot { border-radius: 3px; }
 .tool-row[aria-pressed="true"] {
   border-color: var(--hp-color, var(--accent));
   background: color-mix(in srgb, var(--hp-color, var(--accent)) 10%, transparent);
 }
+.tool-row-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 590;
+}
+.tool-row-label { flex: 1; min-width: 0; }
 .tool-row kbd { font: inherit; opacity: .5; }
-/* A visible gap between the chin group (row + its Seen/Occluded switch) and
-   the shoulder group, so the two read as separate controls rather than one
-   running list — the ask that surfaced this: with colour now shared, shape
-   alone wasn't enough distance between them. */
-.tool-row[data-p="sh"] { margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--line); position: relative; }
+/* The dot: a hollow ring until a point exists, filled solid the instant one
+   does — the "did that click land" signal the row was missing, with a
+   quick spring pop on the way in rather than just appearing inert. Sized up
+   from the plain swatch it replaces so a 1.5px ring reads clearly at rest.
+   border-width itself is NOT transitioned — animating a sub-pixel stroke
+   width is exactly the kind of thing that renders as a blurry half-pixel
+   mid-transition on a fractional-DPR display, so ring/fill are instant and
+   the pop animation (a transform, which subpixel rounding does not affect
+   the same way) is what carries the motion. */
+.tool-row .dot {
+  width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 1.5px solid var(--hp-color, var(--accent));
+  background: transparent;
+}
+.tool-row[data-p="sh"] .dot { border-radius: 3px; }
+.tool-row .dot.set {
+  background: var(--hp-color, var(--accent));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+  animation: tool-dot-pop .32s cubic-bezier(.34,1.56,.64,1) both;
+}
+/* An inferred point stays a ring even once set — a guess about occluded
+   anatomy must not look like an observation, on the frame or in this
+   panel; matches the canvas's own .hp.inferred. */
+.tool-row .dot.inferred { background: transparent; border-width: 3px; }
+@keyframes tool-dot-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-row .dot.set { animation: none; }
+}
+/* Coordinates — always on screen, monospace with tabular numerals so the
+   digits don't jitter as they update, an em dash standing in for "nothing
+   placed yet" rather than the line itself appearing and disappearing.
+   Indented to sit under the label, not the dot — 20px = the dot's 12px
+   plus the 8px gap next to it. */
+.tool-row-coord {
+  display: flex; gap: 14px; margin: 7px 0 8px 20px;
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); font-variant-numeric: tabular-nums;
+  transition: color .15s ease;
+}
+.tool-row-coord b { font-weight: 500; opacity: .55; margin-right: 4px; }
+/* A visible gap between the chin card and the shoulder card, so the two
+   read as separate controls rather than one running list — colour is
+   shared between them now, so shape alone wasn't enough distance. */
+.tool-row + .tool-row { margin-top: 2px; }
 /* Names whose points these two rows act on, admin mode only — colour says
    it, but "say" means text: this is the explicit, unambiguous version,
    sitting right where the eye already is before it reaches the buttons. */
@@ -824,18 +886,20 @@ body.admin:not(.no-target) #tool-who { display: flex; }
 .hp.inferred::after { display: none; }
 /* Apple-style segmented control: seen/occluded as two picks in one track,
    so correcting an answer is choosing the right state, not fighting a
-   toggle to work out what it's about to flip to. */
+   toggle to work out what it's about to flip to. Disabled rather than
+   hidden until a point exists to answer for — same "reserve the space,
+   change only the paint" rule the whole card follows now. */
 .vis-switch {
-  display: flex; gap: 2px; margin: 0 0 6px; padding: 2px;
+  display: flex; gap: 2px; margin: 0 0 0 20px; padding: 2px;
   border-radius: 8px; background: rgba(120,120,128,.12);
 }
-.vis-switch[hidden] { display: none; }
 @media (prefers-color-scheme: dark) { .vis-switch { background: rgba(120,120,128,.24); } }
 .vis-seg {
   flex: 1; padding: 4px 0; border: 0; border-radius: 6px; background: none;
   font: inherit; font-size: 11.5px; font-weight: 590; color: var(--ink-dim);
-  cursor: pointer; transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  cursor: pointer; transition: background .15s ease, color .15s ease, box-shadow .15s ease, opacity .15s ease;
 }
+.vis-seg:disabled { opacity: .4; cursor: default; }
 .vis-seg[aria-pressed="true"] {
   background: var(--card); color: var(--ink);
   box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 0 0 .5px rgba(0,0,0,.04);
@@ -879,12 +943,16 @@ body.admin:not(.no-target) #tool-who { display: flex; }
    script, next to the click that opened it. */
 #skip-wrap { position: relative; }
 #skip-pop { left: 0; right: 0; width: auto; bottom: calc(100% + 6px); }
-/* One item, so none of the title's top margin or the popover's full width —
-   just the button, in the colour every other destructive action on this
-   page (Occluded aside) doesn't otherwise use. */
-#pt-ctx { width: auto; min-width: 132px; padding: 5px; }
-#pt-ctx .pop-opt { margin-top: 0; color: var(--no); border-color: transparent; }
-#pt-ctx .pop-opt:hover { background: color-mix(in srgb, var(--no) 10%, transparent); }
+/* Two items, no title, so neither pays the title's top margin — the first
+   sits flush with the menu's own edge, the second gets the normal 6px
+   .pop-opt gap above it. Only Delete gets the destructive red every other
+   such action on this page uses; flipping seen/occluded is a correction,
+   not a loss, so it stays plain ink like the popover's own Seen/Occluded
+   buttons. */
+#pt-ctx { width: auto; min-width: 156px; padding: 5px; }
+#pt-ctx .pop-opt:first-child { margin-top: 0; }
+#pt-ctx-del { color: var(--no); border-color: transparent; }
+#pt-ctx-del:hover { background: color-mix(in srgb, var(--no) 10%, transparent); }
 
 
 /* 4.0's overview — one dot per queue slot, same 20-col/9px geometry and
@@ -899,6 +967,10 @@ body.admin:not(.no-target) #tool-who { display: flex; }
 #ov4 .d4[data-batch] { margin-top: 7px; }
 #ov4 .d4.dn { background: var(--ov-yes); }
 #ov4 .d4.sk { background: var(--ink-dim); }
+/* Amber, same provisional language as the camera flag and the skip
+   button's pressed state — one point down, the other still to come.
+   Overwritten in place once the pair completes, same as any other save. */
+#ov4 .d4.part { background: var(--maybe); }
 #ov4 .d4.cb { box-shadow: 0 0 0 1.5px var(--maybe); }
 #ov4 .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
 
@@ -1193,9 +1265,13 @@ body.admin #team-card { display: block; }
       </button>
       <p class="pop-esc"><kbd>Esc</kbd> — undo this point</p>
     </div>
-    <!-- Right-click a placed point for the one thing there's no dedicated
-         key for on a laptop missing a Del key: delete it outright. -->
+    <!-- Right-click a placed point: flip its seen/occluded answer (same
+         effect as Shift+C/Shift+S, just discoverable without the keyboard
+         shortcut), or delete it outright (the one thing with no dedicated
+         key on a laptop missing a Del key). Label is set in openCtx() —
+         it names the ACTION the click performs, not the current state. -->
     <div id="pt-ctx" class="pop" role="menu" hidden>
+      <button class="pop-opt" id="pt-ctx-vis" type="button" role="menuitem">Mark as Occluded</button>
       <button class="pop-opt" id="pt-ctx-del" type="button" role="menuitem">Delete point</button>
     </div>
   </div>
@@ -1231,7 +1307,7 @@ body.admin #team-card { display: block; }
     </div>
 
     <div class="card" id="q-card">
-      <p class="card-eyebrow">Points</p>
+      <p class="card-eyebrow">Points <span id="pts-complete" class="pts-complete" hidden>&#10003; Complete</span></p>
       <div id="q-lock">Loading…</div>
       <!-- Admin mode only: one row per roster labeler for THIS frame, click
            to arm their two points as the draggable target. Empty and
@@ -1243,19 +1319,40 @@ body.admin #team-card { display: block; }
            says it in words. Hidden the rest of the time by body.admin:not
            (.no-target) in the stylesheet. -->
       <div id="tool-who"><span class="sw"></span><span id="tool-who-name"></span>&rsquo;s points</div>
+      <!-- One self-contained card per landmark — head, coordinates, switch —
+           ALWAYS the same three lines regardless of state, so placing or
+           clearing a point never reflows the card above or below it. The
+           coordinate line and the switch stay on screen (dashes / disabled)
+           rather than appearing and disappearing — see render() in the JS. -->
       <div class="tool-row" data-p="chin" aria-pressed="false">
-        <span class="dot"></span>Chin tip<kbd>C</kbd>
-      </div>
-      <div class="vis-switch" data-p="chin" hidden>
-        <button class="vis-seg" data-p="chin" data-v="visible" type="button">Seen</button>
-        <button class="vis-seg" data-p="chin" data-v="inferred" type="button">Occluded</button>
+        <div class="tool-row-head">
+          <span class="dot"></span>
+          <span class="tool-row-label">Chin tip</span>
+          <kbd>C</kbd>
+        </div>
+        <div class="tool-row-coord">
+          <span><b>x</b><span class="trc-x">&mdash;</span></span>
+          <span><b>y</b><span class="trc-y">&mdash;</span></span>
+        </div>
+        <div class="vis-switch" data-p="chin">
+          <button class="vis-seg" data-p="chin" data-v="visible" type="button" disabled>Seen</button>
+          <button class="vis-seg" data-p="chin" data-v="inferred" type="button" disabled>Occluded</button>
+        </div>
       </div>
       <div class="tool-row" data-p="sh" aria-pressed="false">
-        <span class="dot"></span>Shoulder top<kbd>S</kbd>
-      </div>
-      <div class="vis-switch" data-p="sh" hidden>
-        <button class="vis-seg" data-p="sh" data-v="visible" type="button">Seen</button>
-        <button class="vis-seg" data-p="sh" data-v="inferred" type="button">Occluded</button>
+        <div class="tool-row-head">
+          <span class="dot"></span>
+          <span class="tool-row-label">Shoulder top</span>
+          <kbd>S</kbd>
+        </div>
+        <div class="tool-row-coord">
+          <span><b>x</b><span class="trc-x">&mdash;</span></span>
+          <span><b>y</b><span class="trc-y">&mdash;</span></span>
+        </div>
+        <div class="vis-switch" data-p="sh">
+          <button class="vis-seg" data-p="sh" data-v="visible" type="button" disabled>Seen</button>
+          <button class="vis-seg" data-p="sh" data-v="inferred" type="button" disabled>Occluded</button>
+        </div>
       </div>
     </div>
 
@@ -1263,7 +1360,7 @@ body.admin #team-card { display: block; }
       <p class="card-eyebrow">Buttons</p>
       <!-- No save button: a finished pair is saved by moving on, which is the
            gesture a labeler makes anyway. See commitCurrent(). -->
-      <button id="save-next">Next frame <kbd style="opacity:.6">↵</kbd></button>
+      <button id="save-next">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
       <!-- One skip button; the reason is asked afterwards. Two buttons made the
            labeler pick the wording before deciding to skip at all, and the
            reasons are data — `no_stance` is what measures the sampler. -->
@@ -1325,6 +1422,7 @@ body.admin #team-card { display: block; }
            one shows — see body.admin below. -->
       <div class="legend" id="legend-normal">
         <span><b style="background:var(--ov-yes)"></b>saved</span>
+        <span><b style="background:var(--maybe)"></b>partial</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
         <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b> too low/high</span>
       </div>
@@ -1361,6 +1459,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=18"></script>
+<script src="chin_tuck4.js?v=21"></script>
 </body>
 </html>

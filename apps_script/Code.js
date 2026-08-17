@@ -3364,12 +3364,16 @@ var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec', 'rep
 // stays empty so nothing enum-shaped ever matches these fields.
 var CS4_FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
 
-// A 4.0 skip carries WHY: the points can't be seen, or the boxer isn't in a
-// boxing stance at all. The reasons are data — no_stance is what measures
-// whether the sampler's punch-proximity window is still letting non-stance
-// frames through. Rows from before the column existed have a blank; only
-// new saves are held to the list.
-var CS4_SKIP_REASONS = ['not_visible', 'no_stance'];
+// A 4.0 skip carries WHY: the points can't be seen, the boxer isn't in a
+// boxing stance at all, or (unmarked) the labeler moved on without placing
+// anything and without choosing either of those. The first two are data —
+// no_stance is what measures whether the sampler's punch-proximity window
+// is still letting non-stance frames through — so unmarked is kept out of
+// the K popover entirely (see doSkip's callers) and written only by
+// commitCurrent()'s auto-skip path, so it never dilutes that signal. Rows
+// from before the column existed have a blank; only new saves are held to
+// the list.
+var CS4_SKIP_REASONS = ['not_visible', 'no_stance', 'unmarked'];
 
 // Per-point visibility — COCO's v-flags in words. 'visible' = the landmark
 // was seen and clicked (v=2); 'inferred' = occluded (a glove over the
@@ -4900,11 +4904,16 @@ function cs4RowOut(row, idx) {
     var v = row[idx[CS4_FIELDS[f]]];
     out[CS4_FIELDS[f]] = skipped || v === '' || v === null ? null : Number(v);
   }
-  var VIS = ['chin_vis', 'sh_vis'];
-  for (var vi = 0; vi < VIS.length; vi++) {
-    var vv = idx[VIS[vi]] === undefined ? '' : String(row[idx[VIS[vi]]] || '');
-    out[VIS[vi]] = skipped ? null : (vv === '' ? 'visible' : vv);
-  }
+  // Per-point, not per-row: a partial row can have the chin without the
+  // shoulder (or vice versa), so "blank means visible" only applies to a
+  // vis column whose OWN point actually made it onto this row — otherwise
+  // an absent shoulder would be reported as an observed one.
+  out.chin_vis = (out.chin_x !== null && out.chin_y !== null)
+    ? (idx.chin_vis === undefined || row[idx.chin_vis] === '' ? 'visible' : String(row[idx.chin_vis]))
+    : null;
+  out.sh_vis = (out.sh_x !== null && out.sh_y !== null)
+    ? (idx.sh_vis === undefined || row[idx.sh_vis] === '' ? 'visible' : String(row[idx.sh_vis]))
+    : null;
   return out;
 }
 
@@ -5021,35 +5030,49 @@ function doGetChinPoint(p, labeler, action) {
       }
       coords[spec.fields[cf]] = cv;
     }
-    // The row is a measurement or it is a skip — never half of one. A lone
-    // chin with no shoulder cannot produce the derived distance, so storing
-    // it would create rows that look labeled and score as nothing.
+    // PARTIAL saves are allowed: a row can carry the chin alone, the
+    // shoulder alone, both, or (skipped) neither. What's never allowed is
+    // a BROKEN point — an x with no y or vice versa, which the client
+    // never produces (a point is placed as one atomic [x,y] pair) but the
+    // backend still refuses on principle, same as it always refused a lone
+    // coordinate. isFinished (both points) is what actually counts toward
+    // "done" downstream — see cs4Latest's callers — a partial row is
+    // provisional by design, meant to be overwritten once the second point
+    // lands, not a lesser measurement.
+    var chinComplete = coords.chin_x !== null && coords.chin_y !== null;
+    var chinBroken = (coords.chin_x !== null) !== (coords.chin_y !== null);
+    var shComplete = coords.sh_x !== null && coords.sh_y !== null;
+    var shBroken = (coords.sh_x !== null) !== (coords.sh_y !== null);
     if (skipped && have > 0) {
       return jsonOut({ status: 'error',
                        message: 'a skipped frame cannot also carry points' });
     }
-    if (!skipped && have !== spec.fields.length) {
-      return jsonOut({ status: 'error',
-                       message: 'both points required (chin + shoulder), or skip' });
+    if (chinBroken) {
+      return jsonOut({ status: 'error', message: 'chin needs both chin_x and chin_y, or neither' });
+    }
+    if (shBroken) {
+      return jsonOut({ status: 'error', message: 'shoulder needs both sh_x and sh_y, or neither' });
     }
 
-    // Per-point visibility. Absent means 'visible' — the common case pays
-    // no keystroke — but a value sent must be one of the list, and a skip
-    // must not carry any (a skip has no points to be visible).
+    // Per-point visibility. Absent means 'visible' when that point is
+    // actually on the row — the common case pays no keystroke — but blank
+    // when the point itself is absent (a skip, or simply not placed on
+    // this save). A value sent must be one of the list.
     var vis = {};
-    var VIS_COLS = ['chin_vis', 'sh_vis'];
-    for (var vc = 0; vc < VIS_COLS.length; vc++) {
-      var vraw = String(p[VIS_COLS[vc]] || '');
-      if (vraw === '') { vis[VIS_COLS[vc]] = skipped ? '' : 'visible'; continue; }
-      if (skipped) {
+    var VIS_MAP = [['chin_vis', chinComplete], ['sh_vis', shComplete]];
+    for (var vc = 0; vc < VIS_MAP.length; vc++) {
+      var visCol = VIS_MAP[vc][0], visHasPt = VIS_MAP[vc][1];
+      var vraw = String(p[visCol] || '');
+      if (vraw === '') { vis[visCol] = (skipped || !visHasPt) ? '' : 'visible'; continue; }
+      if (skipped || !visHasPt) {
         return jsonOut({ status: 'error',
-                         message: 'a skipped frame cannot carry ' + VIS_COLS[vc] });
+                         message: visCol + ' sent for a point that is not on this row' });
       }
       if (CS4_VIS.indexOf(vraw) === -1) {
         return jsonOut({ status: 'error',
-                         message: 'invalid ' + VIS_COLS[vc] + ': ' + vraw });
+                         message: 'invalid ' + visCol + ': ' + vraw });
       }
-      vis[VIS_COLS[vc]] = vraw;
+      vis[visCol] = vraw;
     }
 
     var sh = getOrCreateCs2Sheet(who, spec);
