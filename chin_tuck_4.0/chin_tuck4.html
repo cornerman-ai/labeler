@@ -864,19 +864,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    read as separate controls rather than one running list — colour is
    shared between them now, so shape alone wasn't enough distance. */
 .tool-row + .tool-row { margin-top: 2px; }
-/* Names whose points these two rows act on, admin mode only — colour says
-   it, but "say" means text: this is the explicit, unambiguous version,
-   sitting right where the eye already is before it reaches the buttons. */
-#tool-who {
-  display: none; align-items: center; gap: 6px;
-  margin: -2px 0 8px; font-size: 11.5px; font-weight: 590;
-  color: var(--hp-color, var(--accent));
-}
-#tool-who .sw {
-  width: 7px; height: 7px; border-radius: 50%; flex: none;
-  background: currentColor;
-}
-body.admin:not(.no-target) #tool-who { display: flex; }
 /* An inferred point is a ring, not a dot — a guess about occluded anatomy
    must not look like an observation, on the frame or in the peer overlay. */
 .hp.inferred {
@@ -1091,12 +1078,26 @@ body.admin #keys-card { display: none; }
 body.admin #legend-normal { display: none; }
 body.admin #legend-admin { display: flex; }
 
-/* No target picked yet: a click on the stage, or Skip/Next/Cam, would
-   silently act on nobody. Same dim-and-inert idiom body:not(.ready) already
-   uses elsewhere on this page. */
-body.admin.no-target #q-card .tool-row,
-body.admin.no-target #q-card .vis-switch,
-body.admin.no-target #act-card { opacity: .4; pointer-events: none; }
+/* Admin never places a point — that is the ACT of being a labeler, and
+   admin's whole job is correcting and reviewing their work from outside,
+   never impersonating them (2026-08). #q-card's eyebrow swaps to name what
+   the card actually is now (just the loading state + roster list); the
+   placement UI itself — the two tool-rows, their switches, the "Complete"
+   badge — is unreachable and hidden, not just dimmed. Existing points are
+   still fully editable, just through #admin-points-card and dragging a
+   .tm mark directly on canvas — never through this card. */
+#admin-eyebrow { display: none; }
+body.admin #q-eyebrow { display: none; }
+body.admin #admin-eyebrow { display: block; }
+body.admin #q-card .tool-row,
+body.admin #q-card .vis-switch,
+body.admin #pts-complete { display: none; }
+/* Nothing here is "admin's own work" either — Save/Skip/Camera all act on
+   a single active identity's in-progress points, which admin never has.
+   Only Prev/Next survive, for paging through the queue while reviewing. */
+body.admin #save-next,
+body.admin #skip-wrap,
+body.admin #cam-btn { display: none; }
 
 /* ── admin picker — one row per roster labeler, sits above the tool-rows ─
    display:none by default (not just empty): a normal login never runs the
@@ -1108,18 +1109,17 @@ body.admin #admin-picker:empty::after {
   content: 'No labelers yet.'; display: block; font-size: 12px;
   color: var(--ink-dim); padding: 6px 2px;
 }
+/* Read-only roster status now (2026-08) — no click, nothing to select.
+   Hovering still borrows the highlight setTeamHover() already gives a
+   canvas mark, so a name is still useful to point at, just not to press. */
 .admin-picker-row {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 7px 9px; margin-bottom: 4px; border-radius: 8px;
   border: 1px solid var(--line); background: transparent;
-  font-size: 12.5px; text-align: left;
+  font-size: 12.5px; text-align: left; cursor: default;
   transition: border-color .12s ease, background .12s ease;
 }
 .admin-picker-row:hover { border-color: var(--ink-dim); }
-.admin-picker-row[aria-pressed="true"] {
-  border-color: var(--tm-color);
-  background: color-mix(in srgb, var(--tm-color) 12%, transparent);
-}
 .admin-picker-row .sw {
   width: 9px; height: 9px; border-radius: 50%; flex: none;
   background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
@@ -1131,6 +1131,33 @@ body.admin #admin-picker:empty::after {
 .admin-picker-row .st { flex: none; font-size: 11px; color: var(--ink-dim); }
 .admin-picker-row .st.dn { color: var(--yes); }
 .admin-picker-row .st.sk { color: var(--maybe); }
+
+/* ── everyone's points ─────────────────────────────────────────────────
+   One "Points — Name" card per roster member with ACTUAL point data on
+   this frame (a skip earns no card — see hasAnyPoint() in the JS, the
+   same gate the canvas marks use). Admin has no points of its own to give
+   one of these a #q-card-style special treatment — see the admin-mode
+   header comment in the JS — so this is the only Points display admin
+   ever sees. Every dot is draggable directly on the canvas — see
+   grabbableTeammatePoint(). Reuses the SAME .tool-row/.dot/.tool-row-
+   coord/.vis-switch rules #q-card already defines, just scoped to a
+   different person's colour: a --hp-color set LOCALLY on each card wins
+   over anything on <body>, since a closer custom-property definition
+   always does — no new colour rules needed. */
+#admin-points-card { display: none; }
+body.admin #admin-points-card { display: block; }
+.admin-pt-card + .admin-pt-card {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+/* Not clickable — these rows show state and answer corrections (the
+   switch); admin never arms a new placement (see the admin-mode header
+   comment in the JS), so neither the pointer cursor nor the armed-row
+   hover glow — both meant for something you can click to DO something —
+   belong here. */
+.admin-tool-row { cursor: default; }
+.admin-tool-row:hover { border-color: var(--line); }
+#admin-points-empty { display: none; font-size: 12px; color: var(--ink-dim); }
+#admin-points-list:empty + #admin-points-empty { display: block; }
 
 /* ── team progress — modeled on 3.0's #team, a plain proportional bar
    rather than 3.0's queue-range-segment bars, which solved a different
@@ -1183,21 +1210,21 @@ body.admin #team-card { display: block; }
 }
 #ov4 .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
-/* ── teammate marks on canvas — read-only, shown ONLY when nobody is
-   selected (renderTeamMarks() skips drawing them at all once a target is
-   picked — see chin_tuck4.js). Byte-identical size/shape/shadow to .hp
+/* ── teammate marks on canvas — every roster member, ALWAYS (admin has no
+   "own" points to exclude any more — see the admin-mode header comment in
+   chin_tuck4.js), and directly editable: dragging moves the point, right-
+   click offers a seen/occluded-toggle-or-delete menu, both saving
+   immediately (saveTeammateRow()). Byte-identical size/shape/shadow to .hp
    (14px, round for chin, 3px-radius square for shoulder, same white
    centre dot) — a second, smaller dot/bar vocabulary for the same two
    landmarks was exactly the inconsistency the redesign removed. The only
-   differences from .hp: colour comes from --tm-color (one per labeler,
-   not the single active --hp-color), cursor is a plain pointer rather
-   than grab (these don't drag), and hovering a name dims the rest (.dim)
-   — the same move the deleted review.html used for the identical
-   too-many-marks-on-one-jaw problem, back when marks for everyone AND the
-   active target coexisted on screen at once. */
+   difference from .hp: colour comes from --tm-color (one per labeler).
+   Cursor is grab/grabbing exactly like .hp's, and hovering a name still
+   dims the rest (.dim), the same move the deleted review.html used for
+   the identical too-many-marks-on-one-jaw problem. */
 .tm {
   position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
-  border-radius: 50%; pointer-events: auto; cursor: pointer;
+  border-radius: 50%; pointer-events: auto; cursor: grab;
   transform: scale(var(--inv, 1));
   box-shadow: 0 0 0 1px rgba(0,0,0,.55);
   background: color-mix(in srgb, var(--tm-color) 82%, transparent);
@@ -1215,6 +1242,7 @@ body.admin #team-card { display: block; }
 }
 .tm.inferred::after { display: none; }
 .tm.dim { opacity: .18; }
+.tm.dragging { cursor: grabbing; }
 /* width/height:100% ALONGSIDE inset:0 is load-bearing, not redundant: the
    viewBox gives this SVG an intrinsic 1:1 aspect ratio, and a replaced
    element sized only by inset:0 can resolve its height from that ratio
@@ -1307,18 +1335,20 @@ body.admin #team-card { display: block; }
     </div>
 
     <div class="card" id="q-card">
-      <p class="card-eyebrow">Points <span id="pts-complete" class="pts-complete" hidden>&#10003; Complete</span></p>
+      <p class="card-eyebrow" id="q-eyebrow">Points <span id="pts-complete" class="pts-complete" hidden>&#10003; Complete</span></p>
+      <!-- Admin cannot place points at all (2026-08) — the whole idea of
+           "the active identity's own points" doesn't apply, so this card
+           becomes just the loading state and the roster status list. See
+           body.admin in the stylesheet, which hides everything below the
+           two eyebrows except #q-lock and #admin-picker. -->
+      <p class="card-eyebrow" id="admin-eyebrow">Team roster</p>
       <div id="q-lock">Loading…</div>
-      <!-- Admin mode only: one row per roster labeler for THIS frame, click
-           to arm their two points as the draggable target. Empty and
-           display:none for a normal login — see body.admin in the
-           stylesheet and renderAdminPicker() in chin_tuck4.js. -->
+      <!-- Admin mode only: one row per roster labeler, showing their status
+           on THIS frame — read-only, hover to highlight their dots on
+           canvas. Empty and display:none for a normal login — see
+           body.admin in the stylesheet and renderAdminPicker() in
+           chin_tuck4.js. -->
       <div id="admin-picker"></div>
-      <!-- Admin mode, a labeler solo-selected only: names whose points the
-           two rows below act on — colour already says it (--hp-color), this
-           says it in words. Hidden the rest of the time by body.admin:not
-           (.no-target) in the stylesheet. -->
-      <div id="tool-who"><span class="sw"></span><span id="tool-who-name"></span>&rsquo;s points</div>
       <!-- One self-contained card per landmark — head, coordinates, switch —
            ALWAYS the same three lines regardless of state, so placing or
            clearing a point never reflows the card above or below it. The
@@ -1354,6 +1384,21 @@ body.admin #team-card { display: block; }
           <button class="vis-seg" data-p="sh" data-v="inferred" type="button" disabled>Occluded</button>
         </div>
       </div>
+    </div>
+
+    <!-- Admin mode only. One "Points — Name" card per roster member who has
+         placed at least one point on THIS frame — a skip earns no card,
+         same as it draws nothing on the canvas — same dot/coord/switch
+         language as the main labeler's own Points card. Every dot here is
+         directly draggable on the canvas; these cards show state and
+         answer seen/occluded corrections, they never place a new point —
+         admin has no "own" identity to place one AS (see the admin-mode
+         header comment in chin_tuck4.js) — see renderAdminPointsList()
+         and the canvas mousedown/mousemove/mouseup wiring in the JS. -->
+    <div class="card" id="admin-points-card">
+      <p class="card-eyebrow">Team&rsquo;s points</p>
+      <div id="admin-points-list"></div>
+      <div id="admin-points-empty">Nobody has placed a point on this frame yet.</div>
     </div>
 
     <div class="card" id="act-card">
@@ -1459,6 +1504,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=21"></script>
+<script src="chin_tuck4.js?v=23"></script>
 </body>
 </html>
