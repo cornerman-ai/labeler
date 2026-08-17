@@ -609,6 +609,9 @@ function selectAdminTarget(name) {
   closePop();
   closeCtx();
   document.body.classList.toggle('no-target', !state.adminTarget);
+  // Chin and shoulder share ONE colour — this target's — with shape as the
+  // only differentiator; see #hp-chin/#hp-sh in the stylesheet.
+  document.getElementById('stage-card').style.setProperty('--hp-color', state.teamColor.get(name) || 'var(--accent)');
   applySavedRow(state.labels.get(key(state.frames[state.i])));
   state.shownAt = Date.now();
   render();
@@ -781,22 +784,24 @@ function renderAdminPicker() {
   }
 }
 
-// Every roster labeler's saved points for the current slot, drawn read-only
-// — EXCEPT the active target, whose points are the existing .hp markers
-// (drawn by placeMarks()). Same shape language as the labeler's own two
-// points: dot = chin, bar = shoulder, dashed = inferred, a thin connecting
-// line — so admin mode doesn't ask anyone to learn a second vocabulary.
+// Every roster labeler's saved points for the current slot, drawn
+// read-only — but ONLY when nobody is selected. The moment a target is
+// picked, this draws nothing at all: their own points become the .hp
+// markers (drawn by placeMarks()), and everyone else disappears rather
+// than crowding the frame while admin is trying to look at one person's
+// work. Round = chin, square = shoulder, dashed = inferred, a thin
+// connecting line — the exact shape/size language chin_tuck4.js already
+// uses for a labeler's own two points, so this isn't a second vocabulary.
 function renderTeamMarks() {
   const box = $('marks');
   for (const el of box.querySelectorAll('.tm')) el.remove();
   const links = $('tm-links');
   links.textContent = '';
-  if (!state.isAdmin) return;
+  if (!state.isAdmin || state.adminTarget) return;
   const f = state.frames[state.i];
   if (!f) return;
   const k = key(f);
   for (const l of state.roster) {
-    if (l.labeler === state.adminTarget) continue;   // that one's the .hp markers
     const r = state.teamRows.get(l.labeler)?.get(k);
     if (!r || !hasPoints(r)) continue;
     const color = state.teamColor.get(l.labeler) || 'var(--ink-dim)';
@@ -1489,6 +1494,10 @@ async function start() {
     state.inflight = new Set();
     state.chains = new Map();
     document.body.classList.add('no-target');
+    // No target selected yet — clear any colour a PRIOR selection in this
+    // same tab left behind. Invisible either way (.hp is display:none with
+    // no target), but keeps the custom property from lying about state.
+    document.getElementById('stage-card').style.removeProperty('--hp-color');
     renderTeamProgress();
     if (!state.rosterPoll) {
       state.rosterPoll = setInterval(async () => {
@@ -1501,6 +1510,9 @@ async function start() {
   }
 
   if (state.rosterPoll) { clearInterval(state.rosterPoll); state.rosterPoll = null; }
+  // A normal login has one labeler, so its own points just need --accent —
+  // clear any stale --hp-color a PRIOR admin selection left on this tab.
+  document.getElementById('stage-card').style.removeProperty('--hp-color');
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n);
   status(n < 0 ? 'All frames labeled' : '');

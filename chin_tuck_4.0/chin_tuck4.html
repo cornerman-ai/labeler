@@ -757,13 +757,15 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   transform: scale(calc(var(--inv, 1) * 1.15));
   z-index: 3;
 }
-#hp-chin { background: color-mix(in srgb, var(--accent) 82%, transparent); }
-/* Round for chin, square for shoulder — shape says WHICH landmark, colour
-   says WHO, the same split any comparison tooling over this data should use. */
-#hp-sh {
-  background: color-mix(in srgb, var(--yes) 82%, transparent);
-  border-radius: 3px;
+/* Round for chin, square for shoulder — shape says WHICH landmark, so
+   colour is free to say WHO instead: both points share ONE colour per
+   labeler (--hp-color, set by selectAdminTarget() in admin mode; plain
+   --accent for a normal single-labeler login, via the fallback — there's
+   only one labeler, so there's nothing for colour to distinguish there). */
+#hp-chin, #hp-sh {
+  background: color-mix(in srgb, var(--hp-color, var(--accent)) 82%, transparent);
 }
+#hp-sh { border-radius: 3px; }
 
 
 /* The tool card: which point the next click places. The armed row glows the
@@ -793,9 +795,10 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .tool-row kbd { font: inherit; opacity: .5; }
 /* An inferred point is a ring, not a dot — a guess about occluded anatomy
    must not look like an observation, on the frame or in the peer overlay. */
-.hp.inferred { background: transparent !important; border: 3px solid; }
-#hp-chin.inferred { border-color: color-mix(in srgb, var(--accent) 82%, transparent); }
-#hp-sh.inferred { border-color: color-mix(in srgb, var(--yes) 82%, transparent); }
+.hp.inferred {
+  background: transparent !important; border: 3px solid;
+  border-color: color-mix(in srgb, var(--hp-color, var(--accent)) 82%, transparent);
+}
 .hp.inferred::after { display: none; }
 /* Apple-style segmented control: seen/occluded as two picks in one track,
    so correcting an answer is choosing the right state, not fighting a
@@ -987,31 +990,37 @@ body.admin #team-card { display: block; }
 }
 #ov4 .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
-/* ── teammate marks on canvas — read-only, everyone but the active target.
-   Same shape language chin_tuck4.js already uses for the labeler's own two
-   points (dot = chin, bar = shoulder), so admin mode doesn't ask anyone to
-   learn a second vocabulary. Smaller and semi-transparent so the ACTIVE
-   target's large draggable .hp markers stay the obvious thing to act on;
-   hovering a name brings one labeler's marks to full strength and dims the
-   rest (.dim) — the same move the deleted review.html used for the
-   identical too-many-dots-on-one-jaw problem. */
+/* ── teammate marks on canvas — read-only, shown ONLY when nobody is
+   selected (renderTeamMarks() skips drawing them at all once a target is
+   picked — see chin_tuck4.js). Byte-identical size/shape/shadow to .hp
+   (14px, round for chin, 3px-radius square for shoulder, same white
+   centre dot) — a second, smaller dot/bar vocabulary for the same two
+   landmarks was exactly the inconsistency the redesign removed. The only
+   differences from .hp: colour comes from --tm-color (one per labeler,
+   not the single active --hp-color), cursor is a plain pointer rather
+   than grab (these don't drag), and hovering a name dims the rest (.dim)
+   — the same move the deleted review.html used for the identical
+   too-many-marks-on-one-jaw problem, back when marks for everyone AND the
+   active target coexisted on screen at once. */
 .tm {
-  position: absolute; pointer-events: auto; cursor: pointer;
-  transform: translate(-50%, -50%) scale(var(--inv, 1));
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border-radius: 50%; pointer-events: auto; cursor: pointer;
+  transform: scale(var(--inv, 1));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55);
+  background: color-mix(in srgb, var(--tm-color) 82%, transparent);
   transition: opacity .12s ease;
-  /* Below .hp (z-index 2/3) unconditionally — read-only marks must never
-     visually cover the point the labeler can actually act on. */
-  z-index: 1;
 }
-.tm.chin {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+.tm::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 2px; height: 2px; margin: -1px 0 0 -1px; border-radius: 50%;
+  background: #fff;
 }
-.tm.sh {
-  width: 15px; height: 4.5px; border-radius: 2px;
-  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+.tm.sh { border-radius: 3px; }
+.tm.inferred {
+  background: transparent !important;
+  border: 3px solid color-mix(in srgb, var(--tm-color) 82%, transparent);
 }
-.tm.inferred { background: transparent !important; border: 1.6px dashed var(--tm-color); }
+.tm.inferred::after { display: none; }
 .tm.dim { opacity: .18; }
 /* width/height:100% ALONGSIDE inset:0 is load-bearing, not redundant: the
    viewBox gives this SVG an intrinsic 1:1 aspect ratio, and a replaced
