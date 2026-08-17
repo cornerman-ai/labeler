@@ -1286,18 +1286,23 @@ function bind() {
     // saw the click.
     if (!state.ready || e.button !== 0) return;
     state.down = { x: e.clientX, y: e.clientY };
-    if (state.isAdmin) {
+    // The ACTIVE target's own point is checked FIRST — grabbablePoint reads
+    // state.pts, which is empty whenever no admin target is selected, so
+    // this costs nothing in that case and falls straight through to the
+    // teammate check below. The ordering matters when a target's own point
+    // sits close to a teammate's mark, which happens exactly when the two
+    // of them agree closely (the GOOD case): without this, the click would
+    // switch targets instead of grabbing the point admin is trying to drag.
+    const grab = grabbablePoint(e.clientX, e.clientY);
+    if (!grab && state.isAdmin) {
       // A click on ANY teammate's mark selects them — "selectable" straight
-      // off the canvas, not just from the picker — checked before anything
-      // else so it can't be swallowed as a drag-start or a pan. With admin
-      // mode on but nobody selected yet, nothing else on the stage is
-      // interactive: there's no target for a placed or dragged point to
-      // belong to.
+      // off the canvas, not just from the picker. With admin mode on but
+      // nobody selected yet, nothing else on the stage is interactive:
+      // there's no target for a placed or dragged point to belong to.
       const teammate = teammateMarkAt(e.clientX, e.clientY);
       if (teammate) { state.teammateClick = teammate; e.preventDefault(); return; }
       if (!state.adminTarget) { e.preventDefault(); return; }
     }
-    const grab = grabbablePoint(e.clientX, e.clientY);
     if (grab) {
       state.ptDrag = grab;
       state.active = grab;
