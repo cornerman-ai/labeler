@@ -5006,6 +5006,7 @@ function doGetChinPoint(p, labeler, action) {
                        message: 'skip_reason on a non-skipped row: ' + skipReason });
     }
     var flagged = String(p.flag || '') === '1';
+    var camBad = String(p.camera_bad || '') === '1';
     var dwell = Number(p.dwell_sec);
     if (!isFinite(dwell) || dwell < 0) dwell = 0;
 
@@ -5090,7 +5091,7 @@ function doGetChinPoint(p, labeler, action) {
       else if (col === 'skipped') out.push(skipped ? 1 : 0);
       else if (col === 'skip_reason') out.push(skipped ? skipReason : '');
       else if (col === 'flag') out.push(flagged ? 1 : 0);
-      else if (col === 'camera_bad') out.push(String(p.camera_bad || '') === '1' ? 1 : 0);
+      else if (col === 'camera_bad') out.push(camBad ? 1 : 0);
       else if (col === 'dwell_sec') out.push(dwell);
       // '' for a skip, not 0: 0 is a real coordinate (the frame's left/top
       // edge), so the "written-down no answer" convention the enum

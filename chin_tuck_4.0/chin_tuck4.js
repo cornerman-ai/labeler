@@ -20,12 +20,21 @@
 // project bucket behind a shared download token and git carries only code
 // and queue.json. See cornerman-backend ml/research/chin_tuck/v3/.
 //
-// NOTHING on this page shows a labeler anyone else's work. Not the
+// NOTHING on this page shows a labeler anyone else's WORK. Not the
 // pipeline's points (BlazePose shoulders, extrapolated chin), not the other
-// labelers' placements, not how far along anybody is. Whoever can see
-// another answer anchors on it, and an anchored click is not a second
-// opinion — it is the first one, copied.
+// labelers' placements — no answer, no click, is ever visible to anybody
+// but the person who made it. Whoever can see another answer anchors on
+// it, and an anchored click is not a second opinion — it is the first one,
+// copied.
 //
+// "Everyone's progress" (the foldable panel, ported from 3.0 in 2026-08 —
+// see loadRoster()/renderTeamPanel()) is the one exception to "not how far
+// along anybody is," and deliberately a narrow one: it shows a count and
+// WHICH queue positions somebody has touched, never what they answered
+// there. A frame's dot on the shared bar carries no colour, no verdict —
+// just "done" or not — so there is nothing in it for a click to anchor on.
+//
+
 // REPEATS: ~10% of queue slots are the same frame planted again (rep=1),
 // blind, ≥200 slots downstream. rep is part of the row identity end to end
 // — key(), the sheet, the backend — so the pair measures the labeler's own
@@ -38,8 +47,10 @@
 // Position resumes from your own saved rows, never from this browser.
 //
 // Not ported from 3.0: reviewer mode + disagreement jump, pairwise
-// agreement panel, comparison grid, lead-everyone, exclude-video,
-// per-labeler frame ranges.
+// agreement panel, comparison grid, exclude-video. "Lead everyone" also
+// stays out of the normal page — every labeler getting write access to the
+// whole team's sheet is an admin capability, not a progress-panel feature,
+// and admin mode already has its own version (see #lead-row).
 
 'use strict';
 
@@ -48,6 +59,12 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyech
 // Row identity fields — mirrors CS4_FIELDS in apps_script/Code.js.
 const FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
 const PREFETCH = 4;
+
+// Overview grid geometry — same numbers as 3.0's BATCH/BATCH_COLS, so the
+// two generations' progress bars lay out identically: a batch is 100 frames
+// as five rows of 20.
+const BATCH = 100;
+const BATCH_COLS = 20;
 
 // Where the frames live. Path + one shared token — every object carries the
 // same firebaseStorageDownloadTokens value, stamped at upload
@@ -86,6 +103,18 @@ const DWELL_CAP_SEC = 120;
 // Short forms of the two skip reasons, for the button once a frame is skipped.
 const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in stance' };
 
+// ── everyone's progress ────────────────────────────────────────────────
+// Ported from 3.0's #team panel — see the file header for why 4.0's
+// original no-peers stance was reversed for this one panel. Shows
+// aggregate counts and each labeler's frame ranges, never an actual
+// answer, so it does not reopen the anchoring risk the peers panel and
+// per-frame overlay were removed for.
+const HIDE_KEY = 'cs4_hidden';        // localStorage: names hidden from MY OWN team list
+const RANGE_KEY = 'cs4_ranges';       // localStorage: cached per-labeler frame ranges
+const RANGE_FRESH_MS = 60000;         // don't re-read a labeler's full tab more often than this
+const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
+const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 // ── admin mode ──────────────────────────────────────────────────────────
 // Reached by logging in as the literal name "admin" (any case — see
 // state.isAdmin, set in start()). Shows every labeler's points at once,
@@ -96,11 +125,12 @@ const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in st
 // itself (or is only ever called from a call site that does), so a normal
 // login never runs any of this.
 const TEAM_COLOR_COUNT = 8;          // matches the --team-color-N custom properties
-// Roster (who/how-far-along) is polled — a labeler working concurrently in
-// another tab should move on the Team progress bars without a reload. The
-// much heavier per-labeler row data (state.teamRows) is NOT polled — an
-// admin session is minutes long, and re-fetching everyone's full history on
-// a timer would cost far more than it buys. Matches 3.0's TEAM_POLL_MS.
+// Roster (who/how-far-along) is polled in BOTH modes — a labeler working
+// concurrently in another tab should move on the progress panel without a
+// reload. The much heavier per-labeler row data (admin's state.teamRows)
+// is NOT polled — an admin session is minutes long, and re-fetching
+// everyone's full history on a timer would cost far more than it buys.
+// Matches 3.0's TEAM_POLL_MS.
 const TEAM_POLL_MS = 45000;
 // 15% of torso height reads as "fully disagreeing" on the overview
 // gradient — a tunable constant, not a validated statistic (see
@@ -144,15 +174,27 @@ const state = {
   shownAt: 0,
   ovDots: null,            // the 2k overview divs, built once
 
+  // ── everyone's progress (both modes) ──
+  // roster/teamColor/rosterPoll are shared with admin mode below — one
+  // fetch and one poll serve both panels, they just render differently.
+  roster: [],              // [{labeler,n,skipped,last_ts,last}] from statsChinPoint
+  teamColor: new Map(),    // labeler -> 'var(--team-color-N)' (admin canvas only)
+  rosterPoll: null,        // setInterval id for the roster poll
+  teamOpen: false,         // the everyone's-progress list is expanded (normal mode)
+  hidden: new Set(),       // lowercased labeler names hidden from MY OWN list — a view
+                           // preference, localStorage-only, never reaches the sheet
+  openRanges: new Set(),   // team rows unfolded to show their frame ranges
+  rangeCache: new Map(),   // labeler -> {n, ranges, at} | {..., error} — see loadRanges()
+  rangePending: new Map(), // labeler -> in-flight promise, so two asks are one read
+  rangesWarmed: false,     // one unprompted prefetch per session, panel open or not
+  teamTimer: null,         // debounce for the post-save roster refresh
+
   // ── admin mode ──
   isAdmin: false,
   selected: new Set(),     // labelers currently pinned to the picture — see soloTarget()
-  roster: [],              // [{labeler,n,skipped,last_ts,last}] from statsChinPoint
-  teamColor: new Map(),    // labeler -> 'var(--team-color-N)'
   teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
   teamBundles: new Map(),  // labeler -> {failed, inflight, chains} — this labeler's own save bookkeeping
   disagree: new Map(),     // slotKey -> {kind, level}
-  rosterPoll: null,        // setInterval id for the roster poll
   teammateClick: null,     // mousedown-to-mouseup: which teammate mark (if any) was pressed
 };
 
@@ -251,6 +293,18 @@ async function loadLabels() {
   state.labels = new Map();
   state.failed = new Map();
   state.camBad = false;
+  // Only the PREVIOUS labeler's own entry in the range cache is name-
+  // relative (it was computed live from state.labels rather than fetched);
+  // everybody else's is a fact about their tab and survives, which is what
+  // makes a reload or a name change instant instead of another round of
+  // reads. Reloaded from localStorage rather than just filtered in place,
+  // since a name change is exactly when a stale in-memory cache (from a
+  // rebuilt queue, say) should be dropped too.
+  state.rangeCache = loadRangeCache();
+  state.rangePending = new Map();
+  for (const k of [...state.rangeCache.keys()]) {
+    if (k.toLowerCase() === name.toLowerCase()) state.rangeCache.delete(k);
+  }
   if (!name) return;
   const body = await call({ action: 'listChinPoint', labeler: name }, 'load labels');
   for (const r of (body.rows || [])) state.labels.set(rowKey(r), r);
@@ -263,7 +317,7 @@ function dwellFor(k) {
   return Math.round((before + Math.min(Math.max(seg, 0), DWELL_CAP_SEC)) * 10) / 10;
 }
 
-// ── admin mode: team data ───────────────────────────────────────────────────
+// ── team data (both modes) ──────────────────────────────────────────────────
 // The roster: who has ever saved a row, and how far along they are —
 // filtered to n>0 same as every other labeler-picker on this site, and
 // 'admin' itself never appears (filtered server-side too, in doGetChinPoint).
@@ -272,6 +326,353 @@ async function loadRoster() {
   state.roster = (body.labelers || []).filter((l) => l.n > 0);
   [...state.roster].map((l) => l.labeler).sort()
     .forEach((nm, i) => state.teamColor.set(nm, `var(--team-color-${i % TEAM_COLOR_COUNT})`));
+}
+
+// Starts the shared roster poll once, however many times either mode asks
+// for it — the callback re-checks state.isAdmin on every tick rather than
+// being fixed at setup time, so retyping the name field into or out of
+// "admin" mid-session (no reload) is picked up without tearing the
+// interval down and rebuilding it.
+function startRosterPoll() {
+  if (state.rosterPoll) return;
+  state.rosterPoll = setInterval(async () => {
+    try {
+      await loadRoster();
+      if (state.isAdmin) { renderTeamProgress(); renderAdminPicker(); }
+      else { renderTeamPanel(); }
+    } catch (e) { /* keep the stale roster over losing it */ }
+  }, TEAM_POLL_MS);
+}
+
+// Nothing reports presence, so "where someone is" is derived from the frame
+// they saved most recently — a last-known position, not a live cursor.
+function ago(iso) {
+  if (!iso) return '';
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (!isFinite(s)) return '';
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+// ── everyone's progress: hide-from-my-list preference ──────────────────────
+// A VIEW preference, so it lives in localStorage and never reaches the
+// sheet — one person tidying their own list must not change what anybody
+// else sees. Scoped to this list and nothing else on the page.
+function loadHidden() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDE_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map((s) => String(s).toLowerCase()) : []);
+  } catch (e) { return new Set(); }
+}
+
+function saveHidden() {
+  try { localStorage.setItem(HIDE_KEY, JSON.stringify([...state.hidden])); } catch (e) {}
+}
+
+function setNameHidden(name, hidden) {
+  const k = String(name).toLowerCase();
+  if (hidden) state.hidden.add(k); else state.hidden.delete(k);
+  saveHidden();
+  renderTeamPanel();
+}
+
+// ── everyone's progress: frame ranges ───────────────────────────────────────
+// Consecutive queue positions collapse into one run, so "1-100, 401-1100" is
+// three facts rather than eleven hundred.
+function frameRuns(indices) {
+  const s = [...indices].sort((a, b) => a - b);
+  const out = [];
+  let start = null, prev = null;
+  for (const i of s) {
+    if (start === null) { start = prev = i; continue; }
+    if (i === prev) continue;              // a duplicate row for one frame
+    if (i === prev + 1) { prev = i; continue; }
+    out.push([start, prev]);
+    start = prev = i;
+  }
+  if (start !== null) out.push([start, prev]);
+  return out;
+}
+
+// Interval notation, closed on both sides — every number printed is a frame
+// the labeler actually did. 1-based, matching the overview and go-to box.
+function fmtRanges(runs) {
+  return runs.map(([a, b]) => `[${a + 1}, ${b + 1}]`).join('  ·  ');
+}
+
+// Ranges are positions in the CURRENT queue, so a rebuilt queue makes every
+// stored entry meaningless — the length is carried as a cheap version stamp
+// and a mismatch drops the lot. Errors are never stored: a fetch that failed
+// once is worth retrying next session, unlike an answer that is merely stale.
+function loadRangeCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
+    if (!raw || !state.frames.length || raw.q !== state.frames.length) return new Map();
+    return new Map(Object.entries(raw.by || {}));
+  } catch (e) { return new Map(); }
+}
+
+function saveRangeCache() {
+  try {
+    const by = {};
+    for (const [k, v] of state.rangeCache) if (!v.error) by[k] = v;
+    localStorage.setItem(RANGE_KEY, JSON.stringify({ q: state.frames.length, by: by }));
+  } catch (e) {}                                 // quota — the cache is a luxury
+}
+
+// Warm every visible row at once. The reads are independent and Apps Script
+// serves them in parallel, so the whole team costs about what one labeler
+// does; doing it when the panel OPENS rather than when a name is clicked is
+// what turns a multi-second wait into none. Only rows with nothing cached at
+// all — a stale entry is already on screen and revalidates on its own
+// schedule (see the `due` check in renderTeamPanel()).
+function prefetchRanges(force) {
+  if ((!state.teamOpen && !force) || !state.frames.length) return;
+  const me = (who() || '').toLowerCase();
+  for (const r of state.roster) {
+    const k = r.labeler.toLowerCase();
+    if (k !== me && state.hidden.has(k)) continue;
+    if (state.rangeCache.has(r.labeler)) continue;
+    loadRanges(r.labeler, r.n).then(() => renderTeamPanel());
+  }
+}
+
+// Fetched only for rows the panel is actually showing — this is a full read
+// of one labeler's tab, far too much to pull on the roster poll.
+async function loadRanges(labeler, n) {
+  const inflight = state.rangePending.get(labeler);
+  if (inflight) return inflight;                 // a click during a prefetch
+  const p = fetchRanges(labeler, n).finally(() => state.rangePending.delete(labeler));
+  state.rangePending.set(labeler, p);
+  return p;
+}
+
+async function fetchRanges(labeler, n) {
+  let rows;
+  try {
+    if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
+      rows = myRowsInQueue();                    // already in hand, no request
+    } else {
+      const body = await call({ action: 'listChinPoint', labeler }, 'frames');
+      rows = body.rows || [];
+    }
+  } catch (e) {
+    // An error must never overwrite ranges already on screen — but the
+    // ATTEMPT is always stamped, on the old entry if there is one.
+    const had = state.rangeCache.get(labeler);
+    state.rangeCache.set(labeler, had
+      ? Object.assign({}, had, { at: Date.now() })
+      : { n, ranges: [], at: Date.now(), error: e.message });
+    return;
+  }
+  const idx = [];
+  for (const r of rows) {
+    if (!isResolved(r)) continue;                // same set the count is over
+    const i = state.index.get(rowKey(r));
+    if (i !== undefined) idx.push(i);             // rows outside the queue are not shown
+  }
+  state.rangeCache.set(labeler, { n, ranges: frameRuns(idx), at: Date.now() });
+  saveRangeCache();
+}
+
+// ── everyone's progress: panel ──────────────────────────────────────────────
+// Folded like a disclosure pill: it answers a question asked between
+// stretches of labeling, not one watched continuously. The button carries
+// the head count so "how many of us are on this" needs no click at all.
+function setTeamOpen(open) {
+  state.teamOpen = !!open;
+  $('team').classList.toggle('on', state.teamOpen);
+  $('team-btn').setAttribute('aria-expanded', String(state.teamOpen));
+  renderTeamLabel();
+  if (state.teamOpen) prefetchRanges();
+}
+
+function renderTeamLabel() {
+  const n = state.roster.length;
+  $('team-label').textContent = state.teamOpen
+    ? 'Hide progress'
+    : (n ? `Everyone’s progress (${n})` : 'Everyone’s progress');
+}
+
+// Deliberately NOT the admin picture: name, count, a bar of WHERE in the
+// queue those frames fall. Never another labeler's actual answer — that
+// overlay (and this whole panel) was removed from 4.0 once already for
+// anchoring; see the file header. This shows only what somebody has done,
+// not what they said.
+function renderTeamPanel() {
+  const rows = state.roster;
+  renderTeamLabel();
+  const el = $('team');
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div id="team-empty">No labels saved yet</div>';
+    return;
+  }
+  const me = who().toLowerCase();
+  const n = state.frames.length;
+
+  // You can never hide yourself — your own progress is the one row that is
+  // always relevant. Counted over PRESENT rows only, so a name hidden long
+  // ago that has since stopped labeling does not inflate the tally.
+  const isMe = (r) => r.labeler.toLowerCase() === me;
+  const shown = rows.filter((r) => isMe(r) || !state.hidden.has(r.labeler.toLowerCase()));
+  const hiddenNow = rows.length - shown.length;
+
+  // #team is the grid, so each labeler contributes cells directly to it
+  // rather than a wrapper — a wrapper would become the grid item and the
+  // columns would stop lining up between labelers.
+  const cells = [];
+  const add = (cls, html) => {
+    const s = document.createElement('span');
+    s.className = cls;
+    s.innerHTML = html;
+    cells.push(s);
+    return s;
+  };
+
+  shown.forEach((r) => {
+    const mine = isMe(r);
+    const m = mine ? ' who-me' : '';
+    const pct = n ? (r.n / n) * 100 : 0;
+
+    const name = add('who-n' + m, '');
+    const open = state.openRanges.has(r.labeler);
+    if (open) name.classList.add('open');
+    const text = document.createElement('button');
+    text.className = 'who-t';
+    text.textContent = r.labeler;
+    text.title = 'Show which frames ' + r.labeler + ' has done';
+    text.setAttribute('aria-expanded', String(open));
+    text.onclick = () => {
+      if (state.openRanges.has(r.labeler)) state.openRanges.delete(r.labeler);
+      else state.openRanges.add(r.labeler);
+      renderTeamPanel();
+    };
+    const chev = document.createElement('i');
+    chev.className = 'who-chev';
+    chev.innerHTML = CHEV_SVG;
+    name.append(text, chev);
+    if (!mine) {
+      const eye = document.createElement('button');
+      eye.className = 'who-eye';
+      eye.innerHTML = EYE_SVG;
+      eye.title = `Hide ${r.labeler} from this list`;
+      eye.setAttribute('aria-label', eye.title);
+      eye.onclick = (e) => { e.stopPropagation(); setNameHidden(r.labeler, true); };
+      name.appendChild(eye);
+    }
+    add('who-c' + m, `${r.n.toLocaleString()}<s> / ${n.toLocaleString()}</s>`);
+
+    const bar = add('who-bar' + m, '');
+    // The runs the panel already fetches, drawn in place — same cache, so
+    // the bar and the "[1, 100] · [401, 1,100]" under an unfolded row
+    // cannot disagree about what somebody has done.
+    const runs = state.rangeCache.get(r.labeler);
+    if (runs && !runs.error && runs.ranges.length && n) {
+      for (const [from, to] of runs.ranges.slice(0, 400)) {
+        const seg = document.createElement('i');
+        seg.style.left = `${(from / n) * 100}%`;
+        seg.style.width = `${((to - from + 1) / n) * 100}%`;
+        bar.appendChild(seg);
+      }
+    } else if (r.n) {
+      // No runs yet. Fall back to the old proportional fill rather than an
+      // empty track: an empty bar beside "802 / 3,791" reads as nothing done.
+      bar.classList.add('approx');
+      const fill = document.createElement('i');
+      fill.style.left = '0';
+      fill.style.width = `${pct}%`;
+      bar.appendChild(fill);
+    }
+
+    // Position IS still worth knowing — it just is not worth a column.
+    // `last` from stats carries no rep, so this assumes rep 0 (the common
+    // case — only ~10% of frames are planted repeats); worst case the
+    // tooltip's "at #N" is off for a repeat frame, which is the one thing
+    // here that is a hint rather than a fact anybody acts on.
+    const at = r.last
+      ? state.index.get(JSON.stringify([r.last.video, r.last.round, r.last.frame, 0]))
+      : undefined;
+    const detail = [`${r.n.toLocaleString()} of ${n.toLocaleString()} (${pct.toFixed(1)}%)`];
+    if (r.skipped) detail.push(`${r.skipped} skipped`);
+    if (at !== undefined) detail.push(`at #${at + 1}`);
+    if (r.last_ts) detail.push(ago(r.last_ts));
+    const tip = detail.join(' · ');
+    bar.title = tip + (bar.classList.contains('approx')
+      ? ' · bar shows the amount; the positions are still loading'
+      : ' · the bar shows where in the queue');
+    cells[cells.length - 2].title = tip;            // the count cell
+
+    if (open) {
+      const box = add('who-ranges' + m, '');
+      const got = state.rangeCache.get(r.labeler);
+      // Whatever we have goes up straight away. Only a row we have NEVER
+      // read shows a spinner-equivalent; anything else shows its last
+      // known ranges while the refresh runs underneath, so the panel never
+      // blanks what it just said.
+      box.textContent = !got ? 'Loading…'
+        : got.error ? got.error
+        : got.ranges.length ? fmtRanges(got.ranges)
+        : 'nothing in the current queue';
+      if (got && got.n !== r.n) box.classList.add('stale');
+      const due = !got || (got.n !== r.n && Date.now() - (got.at || 0) > RANGE_FRESH_MS);
+      if (due) loadRanges(r.labeler, r.n).then(() => renderTeamPanel());
+    }
+  });
+
+  // Deliberately no "Lead everyone" footer here — that stays an admin-only
+  // capability (see admin's #lead-row), not something every labeler gets
+  // write access to the whole team's sheet for.
+
+  if (hiddenNow) {
+    const foot = document.createElement('div');
+    foot.className = 'who-hidden';
+    const lbl = document.createElement('span');
+    lbl.textContent = `${hiddenNow} hidden`;
+    const all = document.createElement('button');
+    all.className = 'who-show-all';
+    all.textContent = 'Show all';
+    all.onclick = () => { state.hidden.clear(); saveHidden(); renderTeamPanel(); };
+    foot.append(lbl, all);
+    cells.push(foot);
+  }
+
+  el.replaceChildren(...cells);
+}
+
+// Your own row moves the instant you save, so it never waits for the next
+// poll. Admin-guarded: "admin" itself never appears in the roster (filtered
+// server-side), and admin's saves land under the SELECTED labeler's
+// identity, not admin's own — see activeLabeler().
+function bumpMyTeamRow() {
+  if (state.isAdmin) return;
+  const me = who();
+  if (!me) return;
+  let mine = state.roster.find((r) => r.labeler.toLowerCase() === me.toLowerCase());
+  if (!mine) { mine = { labeler: me, n: 0, skipped: 0, last_ts: '', last: null }; state.roster.push(mine); }
+  const mineRows = myRowsInQueue();
+  mine.n = mineRows.filter(isResolved).length;
+  mine.skipped = mineRows.filter((r) => r.skipped).length;
+  mine.last_ts = new Date().toISOString();
+  const f = state.frames[state.i];
+  if (f) mine.last = { video: f.stem, round: f.round, frame: f.frame };
+  state.roster.sort((a, b) => b.n - a.n);
+  renderTeamPanel();
+}
+
+// One real refresh after a burst of saves, not one per save: the stats call
+// reads every labeler sheet, and firing it per frame is what made saving
+// slow in the first place. Debounced rather than immediate.
+function scheduleTeamRefresh() {
+  clearTimeout(state.teamTimer);
+  state.teamTimer = setTimeout(async () => {
+    try {
+      await loadRoster();
+      renderTeamPanel();
+      prefetchRanges();
+    } catch (e) { /* keep the stale roster over losing it */ }
+  }, 4000);
 }
 
 // One listChinPoint call per roster labeler — every row they have, the same
@@ -452,6 +853,7 @@ function save({ skip = null } = {}) {
   failedMap.delete(k);
   inflightSet.add(k);
   showQueueState();
+  if (!state.isAdmin) bumpMyTeamRow();     // your own row moves NOW, not on the next poll
 
   const chain = (chainsMap.get(k) || Promise.resolve())
     .then(() => call(params, 'save'))
@@ -459,11 +861,13 @@ function save({ skip = null } = {}) {
       inflightSet.delete(k);
       showQueueState();
       if (state.isAdmin) patchDisagree(f);
+      else scheduleTeamRefresh();
     })
     .catch((e) => {
       inflightSet.delete(k);
       if (prev) labelsMap.set(k, prev); else labelsMap.delete(k);
       failedMap.set(k, e.message);
+      if (!state.isAdmin) bumpMyTeamRow();  // the row was rolled back — the count must follow
       const at = state.index.get(k);
       status(`Frame #${at === undefined ? '?' : at + 1} did not save — ${e.message}`, 'err');
       render();
@@ -523,7 +927,7 @@ function setReady(on, note, isError) {
 
 function showQueueState() {
   if (state.failed.size) {
-    status(`${state.failed.size} frame(s) failed to save — red in the overview`, 'err');
+    status(`${state.failed.size} frame(s) failed to save`, 'err');
   } else if (state.inflight.size) {
     status(`saving ${state.inflight.size}…`);
   } else {
@@ -731,8 +1135,13 @@ function placeMarks() {
 
 // The label is the same either way — the fact it reports does not change with
 // the answer, only whether it is true, which the pressed state says.
+//
+// Disabled until both points are placed: "too low/high" is a claim about
+// where the chin sits relative to the shoulder, which isn't a judgement
+// there's anything to make yet on a frame with zero or one point down.
 function renderCam() {
   $('cam-btn').setAttribute('aria-pressed', String(!!state.camBad));
+  $('cam-btn').disabled = !(state.pts.chin && state.pts.sh);
 }
 
 function renderNameState() {
@@ -876,6 +1285,9 @@ function buildOverview() {
     const d = document.createElement('div');
     d.className = 'd4';
     d.title = `#${i + 1}`;
+    // The marker goes on the first row of each new batch — same technique
+    // as 3.0's #ov i[data-batch] — and never on the very first batch.
+    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
     frag.appendChild(d);
     state.ovDots.push(d);
   }
@@ -884,6 +1296,26 @@ function buildOverview() {
     const at = state.ovDots.indexOf(e.target);
     if (at >= 0) go(at);
   };
+
+  // Batch-number gutter, bare numbers only (4.0 has no yes/no split to
+  // break out per batch) — same geometry as 3.0's numbers() so a label
+  // never drifts out of step with the batch it names.
+  const gutter = ov.parentElement.querySelector('.ovn');
+  const col = document.createDocumentFragment();
+  for (let b = 0; b * BATCH < state.frames.length; b++) {
+    const count = Math.min(BATCH, state.frames.length - b * BATCH);
+    const rows = Math.ceil(count / BATCH_COLS);
+    const n = document.createElement('b');
+    const num = document.createElement('span');
+    num.textContent = b + 1;
+    n.appendChild(num);
+    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+    n.style.lineHeight = '9px';
+    if (b) n.style.marginTop = '10px';
+    n.title = `frames ${b * BATCH + 1}–${b * BATCH + count}`;
+    col.appendChild(n);
+  }
+  gutter.replaceChildren(col);
 }
 
 // Text for each disagreement kind, admin mode only — the tooltip carries
@@ -927,8 +1359,7 @@ function renderOverview() {
     d.title = `#${i + 1}`;
     const row = state.labels.get(k);
     let cls = 'd4';
-    if (state.failed.has(k)) cls += ' fail';
-    else if (row && row.skipped) cls += ' sk';
+    if (row && row.skipped) cls += ' sk';
     else if (hasPoints(row)) cls += ' dn';
     if (row && row.camera_bad) cls += ' cb';
     if (i === state.i) cls += ' cur';
@@ -1150,17 +1581,6 @@ function toggleVis(name) {
   setVis(name, state.vis[name] === 'inferred' ? 'visible' : 'inferred');
 }
 
-// A change made on a frame whose row already exists goes NOW. Commit-on-leave
-// would catch it too, but a labeler correcting an old frame is often doing
-// exactly that and then closing the tab — the correction should not depend on
-// a departure that may never happen.
-function resaveIfWritten() {
-  const saved = state.labels.get(key(state.frames[state.i]));
-  if (!saved || !isResolved(saved)) return;
-  if (saved.skipped) save({ skip: saved.skip_reason || 'not_visible' });
-  else if (state.pts.chin && state.pts.sh && state.vis.chin && state.vis.sh) save({});
-}
-
 // Esc on the point popover undoes the placement rather than leaving a point
 // with no answer behind: the click and its qualification are one act.
 function cancelPoint(name) {
@@ -1289,11 +1709,16 @@ function bind() {
     if (e.key === 'Enter') commitName();
   };
   $('name-go').onclick = commitName;
+  $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+  // Local toggle only — no save here. Saving is leaving: the flag rides
+  // along on whatever save Next/Prev/Skip (or their keyboard equivalents)
+  // triggers next, same as any other in-progress edit. isDirty() already
+  // diffs camera_bad against the saved row, so a correction on an already-
+  // saved frame is still picked up on the next departure.
   $('cam-btn').onclick = () => {
     state.camBad = !state.camBad;
     renderCam();
     renderOverview();
-    resaveIfWritten();
   };
   wireCopyButtons();
 
@@ -1503,6 +1928,31 @@ async function start() {
     : 'Loading your saved progress…  this can take up to 30 seconds.');
   status(state.isAdmin ? 'Loading the team…' : 'Loading your labels…');
 
+  // Fired now, not awaited: the progress panel is background information
+  // that costs about as much as the label read, so queueing it behind
+  // that read would make the panel land at roughly double the wait for no
+  // reason — nothing in it depends on the label list. Admin fetches its
+  // own roster inside the try block below instead, since its whole page
+  // depends on having it before anything can render.
+  if (!state.isAdmin) {
+    loadRoster().then(() => {
+      renderTeamPanel();
+      prefetchRanges();
+      // One unprompted warm per session, whether or not the panel is
+      // open — the first open of the day is otherwise the one that still
+      // waits, and the disk cache makes every open after it free.
+      if (!state.rangesWarmed) {
+        state.rangesWarmed = true;
+        setTimeout(() => prefetchRanges(true), 8000);
+      }
+    }).catch((e) => {
+      // Never an error banner — the panel is background information and a
+      // failed poll must not sit on top of the labeler's status line.
+      $('team').innerHTML = '<div id="team-empty"></div>';
+      $('team').firstElementChild.textContent = e.message;
+    });
+  }
+
   try {
     if (state.isAdmin) {
       await loadRoster();
@@ -1536,26 +1986,27 @@ async function start() {
     state.selected = new Set(state.roster.map((l) => l.labeler));
     syncAdminBundle();
     renderTeamProgress();
-    if (!state.rosterPoll) {
-      state.rosterPoll = setInterval(async () => {
-        try { await loadRoster(); renderTeamProgress(); renderAdminPicker(); } catch (e) { /* keep the stale roster over losing it */ }
-      }, TEAM_POLL_MS);
-    }
+    startRosterPoll();
     go(0);
     status('');
     return;
   }
 
-  if (state.rosterPoll) { clearInterval(state.rosterPoll); state.rosterPoll = null; }
+  startRosterPoll();
   // A normal login has one labeler, so its own points just need --accent —
   // clear any stale --hp-color a PRIOR admin selection left on this tab.
   document.body.style.removeProperty('--hp-color');
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n);
   status(n < 0 ? 'All frames labeled' : '');
+  // The team read fired above may have landed while `ready` was still
+  // false, which skips the own-row overlay — apply it now that the count
+  // (myRowsInQueue) is known.
+  bumpMyTeamRow();
 }
 
 (async function init() {
+  state.hidden = loadHidden();
   bind();
   try {
     const res = await fetch('queue.json?v=2');

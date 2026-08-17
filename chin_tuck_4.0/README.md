@@ -83,13 +83,24 @@ by matching the click against BlazePose's two shoulder points.
 
 Four deliberate rules:
 
-- **Nobody else's work is on this page.** Not the pipeline's points
+- **Nobody else's WORK is on this page.** Not the pipeline's points
   (BlazePose shoulders + the chin proxy), not the other labelers'
-  placements, not how far along anyone is. The peers panel and the team
-  progress list were both removed in 2026-08: whoever can see another
-  answer anchors on it, and an anchored click is not a second opinion, it
-  is the first one copied. (The `consulted` column, which used to mark rows
-  saved after opening that panel, was dropped from the sheet along with it.)
+  placements or answers. The peers panel was removed in 2026-08 for
+  exactly that reason: whoever can see another answer anchors on it, and
+  an anchored click is not a second opinion, it is the first one copied.
+  (The `consulted` column, which used to mark rows saved after opening
+  that panel, was dropped from the sheet along with it.) **Progress is the
+  one exception**, restored later in 2026-08 as "Everyone's progress" (the
+  foldable pill under the name field, ported from 3.0's `#team` panel): a
+  count and which queue positions somebody has touched, never what they
+  answered there — a dot on the shared bar carries no colour, no verdict,
+  so there's nothing in it for a click to anchor on. Folded by default,
+  each row expandable to the labeler's actual frame ranges (`[1, 100] ·
+  [401, 1,100]`, via `listChinPoint` on demand), with a per-device
+  hide-from-my-list control that never reaches the sheet. Deliberately
+  missing 3.0's "Lead everyone" footer — every labeler getting write
+  access to the whole team's sheet is an admin capability (see admin
+  mode's `#lead-row`), not something this panel hands out.
 - **Saving is leaving.** There is no save button: a finished pair is
   written when the labeler moves on — `↵`, the arrows, Next, the overview,
   anything that changes frame — because "done with this frame" and "next
@@ -113,7 +124,9 @@ Four deliberate rules:
   moving at all. Per frame, because one video can be filmed from the floor
   for a round and from a shelf for the next. Column `camera_bad` (named
   `camera_ground` until 2026-08), which replaced the never-used `flag`
-  ("come back to this").
+  ("come back to this"). Disabled until both points are placed — it's a
+  claim about where the chin sits relative to the shoulder, so there's
+  nothing to judge it against on a frame with zero or one point down.
 - **Per-point visibility, COCO-style.** `chin_vis`/`sh_vis` ∈ visible /
   inferred — asked outright by a popover the moment the point lands
   (1 = seen, 2 = inferred, `Esc` undoes the placement); an inferred point

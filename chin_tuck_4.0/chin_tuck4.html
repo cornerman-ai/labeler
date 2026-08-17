@@ -262,6 +262,9 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #cam-btn[aria-pressed="true"] {
   background: var(--maybe); border-color: transparent; color: #fff;
 }
+/* Only meaningful once both points are placed — the shot can't be judged
+   too low/high against a jaw and shoulder that aren't marked yet. */
+#cam-btn:disabled { opacity: .4; cursor: default; }
 #cam-btn svg { width: 13px; height: 13px; flex: none; }
 
 #q-lock {
@@ -884,20 +887,114 @@ body.admin:not(.no-target) #tool-who { display: flex; }
 #pt-ctx .pop-opt:hover { background: color-mix(in srgb, var(--no) 10%, transparent); }
 
 
-/* 4.0's overview — one dot per queue slot, no batch gutters. */
-#ov4 { display: grid; grid-template-columns: repeat(40, 1fr); gap: 2.5px; margin-top: 10px; }
+/* 4.0's overview — one dot per queue slot, same 20-col/9px geometry and
+   batch-of-100 gutter as 3.0's grids (see .ovw/.ovn above), so the two
+   generations' progress bars read as the same object. */
+#ov4 { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov4 .d4 {
-  aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+  width: 9px; height: 9px; border-radius: 2px; cursor: pointer;
   background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
-  transition: transform .1s ease;
 }
-#ov4 .d4:hover { transform: scale(1.6); }
-@media (prefers-reduced-motion: reduce) { #ov4 .d4 { transition: none; } }
+/* A gap every 100 frames — same marker technique as #ov i[data-batch]. */
+#ov4 .d4[data-batch] { margin-top: 7px; }
 #ov4 .d4.dn { background: var(--ov-yes); }
 #ov4 .d4.sk { background: var(--ink-dim); }
-#ov4 .d4.fail { background: var(--no); }
 #ov4 .d4.cb { box-shadow: 0 0 0 1.5px var(--maybe); }
 #ov4 .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* ── everyone's progress ─────────────────────────────────────────────────
+   Ported from 3.0's #team panel (see the file header for why 4.0's
+   original no-peers stance was reversed here) — same markup, same
+   behaviour, deliberately minus 3.0's "Lead everyone" footer, which stays
+   an admin-only capability. */
+@keyframes clue-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { #team.on { animation: none; } }
+
+/* Two pills, one shape — same disclosure-pill language as #vidx-btn (3.0's,
+   unused on this page otherwise). Folded by default: the count rides on
+   the button, so how many people are labeling is answerable with no
+   click. */
+#team-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#team-btn:disabled { opacity: .4; cursor: default; }
+#team-btn[aria-expanded="true"] {
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
+}
+#team-btn svg { width: 13px; height: 13px; flex: none; }
+#team-chev { transition: transform .2s ease; }
+#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { #team-chev { transition: none; } }
+
+/* Team panel — name, count, bar. Nothing else. Position and a relative
+   timestamp live in the row's tooltip rather than as columns of their own. */
+#team { display: none; grid-template-columns: 1fr auto;
+        column-gap: 10px; align-items: baseline; font-size: 13px; }
+#team.on { display: grid; animation: clue-in .2s ease both;
+           margin: 12px 0 6px; }
+/* The name cell is a flex row so the hide control can sit beside the text
+   without the ellipsis swallowing it — a fourth grid cell would break the
+   column alignment between rows, since #team itself is the grid. */
+.who-n { display: flex; align-items: baseline; gap: 5px;
+         min-width: 0; font-weight: 500; }
+.who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap;
+         padding: 0; border: 0; background: none; font: inherit; color: inherit;
+         text-align: left; }
+.who-t:hover { text-decoration: underline; }
+.who-chev { flex: none; width: 10px; height: 10px; color: var(--ink-dim);
+            opacity: .55; pointer-events: none; transition: transform .15s ease; }
+.who-chev svg { display: block; width: 10px; height: 10px; }
+.who-n.open .who-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .who-chev { transition: none; } }
+/* Which frames, not just how many — ranges are 1-based and inclusive,
+   matching the numbers on the overview and the go-to box. */
+.who-ranges {
+  grid-column: 1 / -1; margin: -6px 0 12px;
+  font: 500 10.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); word-break: break-word;
+}
+.who-ranges.stale { opacity: .55; }
+/* Invisible until the pointer is somewhere in the panel — revealing the
+   whole column on panel hover costs nothing at rest and needs no hunting. */
+.who-eye { flex: none; padding: 0; border: 0; background: none; line-height: 0;
+           color: var(--ink-dim); opacity: 0; transition: opacity .12s ease; }
+#team:hover .who-eye { opacity: .45; }
+.who-eye:hover, .who-eye:focus-visible { opacity: 1; color: var(--ink); }
+.who-eye svg { width: 13px; height: 13px; display: block; }
+.who-hidden { grid-column: 1 / -1; display: flex; align-items: baseline;
+              gap: 8px; font-size: 11.5px; color: var(--ink-dim);
+              margin-top: 2px; }
+.who-show-all { padding: 0; border: 0; background: none; font: inherit;
+                color: var(--accent); font-weight: 500; }
+.who-show-all:hover { text-decoration: underline; }
+.who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
+.who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
+/* Not a progress bar — a MAP of the queue. Each run of consecutive queue
+   positions is drawn where it actually falls, so two labelers who have
+   covered the same ground look alike and two who have not, do not. */
+.who-bar { grid-column: 1 / -1; position: relative; height: 3px;
+           border-radius: 2px; background: rgba(120,120,128,.16);
+           margin: 6px 0 12px; overflow: hidden; }
+.who-bar:last-child { margin-bottom: 0; }
+.who-bar i { position: absolute; top: 0; bottom: 0; border-radius: 1.5px;
+             background: var(--ink-dim); min-width: 1.5px; }
+/* Until the frame list arrives the bar can only say how MUCH, so it says
+   that at a third of the ink and gives itself away on hover. */
+.who-bar.approx i { opacity: .3; }
+.who-me .who-n { color: var(--accent); font-weight: 600; }
+.who-me .who-c { color: var(--accent); }
+.who-me .who-bar i { background: var(--accent); }
+#team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
 
 /* ── admin mode ───────────────────────────────────────────────────────────
    Reached by logging in as the literal name "admin" (case-insensitive —
@@ -905,6 +1002,11 @@ body.admin:not(.no-target) #tool-who { display: flex; }
    body.admin, so a normal login's panel and canvas stay byte-for-byte what
    they were before this section existed.
    ------------------------------------------------------------------------ */
+
+/* Admin already has its own always-visible team card (#team-card below) —
+   the foldable panel would just be a second, redundant copy of the same
+   numbers. */
+body.admin #team-btn, body.admin #team { display: none; }
 
 /* The keys still work — see the keydown handler, unchanged — this just
    stops teaching a vocabulary admin mode doesn't have a parallel for yet
@@ -994,7 +1096,7 @@ body.admin #team-card { display: block; }
 }
 
 /* ── overview grid, admin branch — a disagreement gradient replaces
-   done/skip/fail. Fill is a continuous red<->green value set per-dot from
+   done/skip. Fill is a continuous red<->green value set per-dot from
    JS (a gradient can't be expressed as a fixed set of classes). .dconflict
    layers a ring on top for the one case that ISN'T a point on that
    gradient — a skip conflict, where the disagreement is about whether the
@@ -1106,6 +1208,10 @@ body.admin #team-card { display: block; }
                autocomplete="off" spellcheck="false">
         <button id="name-go" disabled>Start</button>
       </div>
+      <!-- Folded by default — see the CSS note above this panel's rules for
+           why this exists on 4.0 at all. -->
+      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone&rsquo;s progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div id="team"><div id="team-empty">No labels saved yet</div></div>
     </div>
 
     <div class="card" id="id-card">
@@ -1212,7 +1318,7 @@ body.admin #team-card { display: block; }
         <input id="goto-n" type="number" min="1" inputmode="numeric">
         <button id="goto-go">Go</button>
       </div>
-      <div id="ov4"></div>
+      <div class="ovw"><div class="ovn"></div><div id="ov4"></div></div>
       <!-- Two legends, one page: admin mode recolors #ov4 by team
            disagreement rather than by MY OWN completion, so the key
            explaining the colours has to change with it. CSS toggles which
@@ -1220,8 +1326,7 @@ body.admin #team-card { display: block; }
       <div class="legend" id="legend-normal">
         <span><b style="background:var(--ov-yes)"></b>saved</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
-        <span><b style="background:var(--no)"></b>failed</span>
-        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b>camera too low/high</span>
+        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b> too low/high</span>
       </div>
       <div class="legend" id="legend-admin">
         <span><b style="background:var(--yes)"></b>agree</span>
@@ -1256,6 +1361,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=12"></script>
+<script src="chin_tuck4.js?v=18"></script>
 </body>
 </html>
