@@ -24,8 +24,7 @@
 // pipeline's points (BlazePose shoulders, extrapolated chin), not the other
 // labelers' placements, not how far along anybody is. Whoever can see
 // another answer anchors on it, and an anchored click is not a second
-// opinion — it is the first one, copied. Comparison happens on review.html,
-// which writes nothing.
+// opinion — it is the first one, copied.
 //
 // REPEATS: ~10% of queue slots are the same frame planted again (rep=1),
 // blind, ≥200 slots downstream. rep is part of the row identity end to end
@@ -40,8 +39,7 @@
 //
 // Not ported from 3.0: reviewer mode + disagreement jump, pairwise
 // agreement panel, comparison grid, lead-everyone, exclude-video,
-// per-labeler frame ranges. review.html is the review surface, and it is a
-// separate page on purpose — see the independence note above.
+// per-labeler frame ranges.
 
 'use strict';
 

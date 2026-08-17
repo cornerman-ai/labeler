@@ -334,8 +334,7 @@ function doGet(e) {
   // are the data — an overwrite would erase exactly what 4.0 measures. Its
   // tabs live in their OWN spreadsheet (CS4_SPEC.spreadsheetId), not this
   // one — see csSpreadsheet().
-  if (action === 'saveChinPoint' || action === 'listChinPoint' ||
-      action === 'statsChinPoint' || action === 'peersChinPoint') {
+  if (action === 'saveChinPoint' || action === 'listChinPoint') {
     return doGetChinPoint(p, labeler, action);
   }
 
@@ -4910,87 +4909,6 @@ function cs4RowOut(row, idx) {
 
 function doGetChinPoint(p, labeler, action) {
   var spec = CS4_SPEC;
-
-  // === STATS — team panel: distinct resolved identities per labeler ===
-  if (action === 'statsChinPoint') {
-    var cache = null;
-    try { cache = CacheService.getScriptCache(); } catch (e) {}
-    if (cache) {
-      var hit = cache.get(spec.statsKey);
-      if (hit) return ContentService.createTextOutput(hit)
-                       .setMimeType(ContentService.MimeType.JSON);
-    }
-    var sheets = csSpreadsheet(spec).getSheets();
-    var team = [];
-    for (var s = 0; s < sheets.length; s++) {
-      var nm = sheets[s].getName();
-      if (nm.indexOf(spec.prefix) !== 0) continue;
-      var sh0 = sheets[s];
-      var entry = { labeler: nm.substring(spec.prefix.length), n: 0,
-                    skipped: 0, last_ts: '', last: null };
-      if (sh0.getLastRow() > 1) {
-        var d0 = sh0.getDataRange().getValues();
-        var ix = punchDirHeaderIndex(d0[0]);
-        var latest = cs4Latest(d0, ix, 1);
-        for (var k in latest) {
-          var row = latest[k];
-          var isSkip = String(row[ix.skipped]) === '1';
-          var full = true;
-          for (var f = 0; f < spec.fields.length; f++) {
-            var v = row[ix[spec.fields[f]]];
-            if (v === '' || v === null) { full = false; break; }
-          }
-          if (isSkip || full) entry.n++;
-          if (isSkip) entry.skipped++;
-          var ts = String(row[ix.ts] || '');
-          if (ts > entry.last_ts) {
-            entry.last_ts = ts;
-            entry.last = { video: String(row[ix.video]),
-                           round: Number(row[ix.round]),
-                           frame: Number(row[ix.frame]) };
-          }
-        }
-      }
-      team.push(entry);
-    }
-    team.sort(function (a, b) { return b.n - a.n; });
-    var payload = csPayload(spec, { labelers: team });
-    if (cache) { try { cache.put(spec.statsKey, payload, CS2_STATS_TTL); } catch (e) {} }
-    return ContentService.createTextOutput(payload)
-             .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // === PEERS — every labeler's latest placements for ONE frame ===
-  // Serves the reviewer overlay. All reps come back: two placements by the
-  // same labeler on a planted repeat are exactly the scatter the reviewer
-  // is looking at.
-  if (action === 'peersChinPoint') {
-    if (p.video === undefined || p.round === undefined || p.frame === undefined) {
-      return jsonOut({ status: 'error', message: 'missing video/round/frame' });
-    }
-    var psheets = csSpreadsheet(spec).getSheets();
-    var peers = [];
-    for (var ps = 0; ps < psheets.length; ps++) {
-      var pnm = psheets[ps].getName();
-      if (pnm.indexOf(spec.prefix) !== 0) continue;
-      var psh = psheets[ps];
-      if (psh.getLastRow() < 2) continue;
-      var pd = psh.getDataRange().getValues();
-      var pix = punchDirHeaderIndex(pd[0]);
-      var pl = cs4Latest(pd, pix, 1);
-      for (var pk in pl) {
-        var prow = pl[pk];
-        if (!cs2SameVideo(prow[pix.video], p.video)) continue;
-        if (String(prow[pix.round]) !== String(p.round)) continue;
-        if (String(prow[pix.frame]) !== String(p.frame)) continue;
-        var po = cs4RowOut(prow, pix);
-        po.labeler = pnm.substring(spec.prefix.length);
-        peers.push(po);
-      }
-    }
-    return csOut(spec, { video: String(p.video), round: Number(p.round),
-                         frame: Number(p.frame), peers: peers });
-  }
 
   var who = p.labeler || labeler;
   var name = cs2SheetName(who, spec);

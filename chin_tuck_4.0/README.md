@@ -88,9 +88,8 @@ Four deliberate rules:
   placements, not how far along anyone is. The peers panel and the team
   progress list were both removed in 2026-08: whoever can see another
   answer anchors on it, and an anchored click is not a second opinion, it
-  is the first one copied. Comparison lives on `review.html`, which writes
-  nothing. (The `consulted` column, which used to mark rows saved after
-  opening that panel, was dropped from the sheet along with it.)
+  is the first one copied. (The `consulted` column, which used to mark rows
+  saved after opening that panel, was dropped from the sheet along with it.)
 - **Saving is leaving.** There is no save button: a finished pair is
   written when the labeler moves on — `↵`, the arrows, Next, the overview,
   anything that changes frame — because "done with this frame" and "next
@@ -140,98 +139,6 @@ Not ported from 3.0 (deliberately, keep the pilot small): reviewer mode /
 disagreement jump, the kappa panel (kappa is meaningless here — agreement
 is point distance, computed offline), comparison grid, lead-everyone,
 exclude-video, frame ranges.
-
-## The review page
-
-`review.html` — **read-only**, and the ONLY place any comparison happens.
-Tick any set of labelers, walk the frames they share, see every placement on
-the picture at once: **dot = chin, bar = shoulder**, dashed = inferred,
-diamond = the pipeline's chin. Shape carries the landmark and colour carries
-the person — two circles differing only by fill stopped being readable at
-four labelers with repeats. **`C` / `S`** (or the two checkboxes) put one
-landmark on the picture at a time, which is how you look at the half of the
-disagreement the summary says is causing it; the last one on stays on, and
-the chin→shoulder link only draws while both ends are shown.
-
-Hovering a name dims everyone else. Order by most disagreement, queue
-position or video; scope to frames 2+/all/any of the selection touched; or
-isolate the **skip conflicts** — one labeler placed points where another
-said the frame can't be judged, which measures the sampler rather than the
-labeler.
-
-It writes nothing, and it is a separate page from the labeler for the reason
-in "The page" above: comparison while placing turns a second opinion into a
-copy of the first. It reads `listChinPoint` (one call per labeler, every
-row); `peersChinPoint` is now unused by any page.
-
-**The number it reports** is the one the pipeline consumes: the signed
-chin-above-shoulder distance in torso units, `(sh_y - chin_y) / torso_h`,
-identical to `chin_tuck4.js`'s `derivedDist()`. It is vertical, so it needs
-no frame aspect ratio — `queue.json` carries no width/height — and the
-decomposition is therefore exact: a pair's gap in the derived number is the
-difference of their chin-y gap and their shoulder-y gap, so the summary says
-**which point** causes the disagreement. Horizontal spread is left to the
-picture, where an eye reads it better than a median would.
-
-Every pair of selected labelers gets median / p90 / n; every labeler with
-planted repeats gets a **self row** — rep 0 against rep 1, blind, which is
-the noise floor a pair number is meaningless without.
-
-Rows whose (video, round, frame) is not in the current `queue.json` are
-counted and reported rather than silently dropped — that is what a resample
-that moved the frames looks like from here.
-
-### Stats mode
-
-The **Stats** tab (or `T`) aggregates the same rows over the whole corpus
-rather than one frame, for whoever is ticked:
-
-- **Overview** — mean / median / p90 disagreement, the noise floor (median
-  of the labelers' own repeat scatter), and how many frames two or more of
-  them share. That last one governs the rest: under ~30 the page says so.
-- **Between labelers** — per pair: n, mean, median, p90, SD, and the three
-  **signed biases**. Magnitudes say how far apart they are; the signs say
-  who reads what higher, which is the part `|A − B|` throws away.
-- **Each labeler** — placements, skips by reason, inferred count,
-  own-repeat scatter, bias against the average of everyone else,
-  and bias against the pipeline. That last group is the calibration the
-  clicks exist to produce: the chin proxy and BlazePose's shoulder are what
-  is being measured, so a gap there is a finding, not an error.
-- **Hardest footage** — videos by mean spread, worst first, capped at 8
-  (it says so when it truncates). Where the footage, not the labeler, is
-  the problem.
-
-**Sign convention**, stated once and used everywhere: y grows downward, so
-every bias is reported *higher-positive* in torso units —
-`chinHigher(A vs B) = (B.chin_y − A.chin_y) / torso`, likewise for the
-shoulder, and `derivedBias = A.dist − B.dist = chinHigher − shHigher`. That
-identity is exact, which is why all three are shown: a 10% gap because one
-labeler reads the chin higher and a 10% gap because one reads the shoulder
-lower are two different corrections.
-
-### Bland–Altman, and why not correlation
-
-Each pair also gets **bias ± 95% limits of agreement** (`bias ± 1.96·SD`) and
-a **Bland–Altman plot**: one dot per frame, the difference between the two
-labelers against what they averaged, with the bias solid and the limits
-dashed.
-
-Correlation is the wrong tool for agreement — two labelers can correlate
-almost perfectly while one sits consistently higher, which is precisely the
-failure this generation exists to catch. Bland & Altman's split is the right
-one: **bias** is the systematic half (a definitional gap; one conversation
-usually fixes it), the **limits** are the random half — and the limits are
-what a decision actually runs into, because frames are judged one at a time,
-never on average. Plotting against the mean also exposes *proportional*
-bias: agreement on tucked chins but divergence on exposed ones shows as a
-cloud that fans out, which no summary number reveals.
-
-Two honest limits on it. `1.96·SD` assumes roughly normal differences, and
-the limits are themselves estimates — under ~30 pairs the page labels them
-*indicative* rather than printing a confident interval over a handful of
-frames. And no plot can say whether the agreement is *good enough*: that
-threshold comes from the use case (how much difference flips the coaching
-call), which is exactly the judgement 4.0 deferred by storing raw points. That shape is the finding — no single number carries it.
 
 ## Growing / rebuilding
 

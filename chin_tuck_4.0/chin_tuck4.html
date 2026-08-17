@@ -736,9 +736,8 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   z-index: 2;
 }
 #hp-chin { background: color-mix(in srgb, var(--accent) 82%, transparent); }
-/* Round for chin, square for shoulder — the same "shape says WHICH landmark,
-   colour says who placed it" split review.html uses for its dot/bar pair, so
-   a labeler who later reviews reads both pages without relearning. */
+/* Round for chin, square for shoulder — shape says WHICH landmark, colour
+   says WHO, the same split any comparison tooling over this data should use. */
 #hp-sh {
   background: color-mix(in srgb, var(--yes) 82%, transparent);
   border-radius: 3px;
@@ -868,7 +867,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
              pipeline's guess and everyone else's placements are not on this
              page at all — an independent click is the whole value of the
              dataset, and it stops being independent the moment it can be
-             compared. Comparison lives on review.html, which is read-only. -->
+             compared. -->
         <div class="hp" id="hp-chin" title="Chin tip (drag to adjust)"></div>
         <div class="hp" id="hp-sh" title="Shoulder top (drag to adjust)"></div>
       </div>
