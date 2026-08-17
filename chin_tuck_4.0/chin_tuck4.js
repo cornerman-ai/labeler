@@ -128,7 +128,11 @@ const SKIP_LABELS = {
 const HIDE_KEY = 'cs4_hidden';        // localStorage: names hidden from MY OWN team list
 const RANGE_KEY = 'cs4_ranges';       // localStorage: cached per-labeler frame ranges
 const RANGE_FRESH_MS = 60000;         // don't re-read a labeler's full tab more often than this
-const THRESH_KEY = 'cs4_agree_thresh'; // localStorage: admin's chosen agreement threshold (percent, 1-50)
+// localStorage: admin's chosen agreement threshold, chin and shoulder
+// separately (percent, 1-50) — two independent landmarks, no reason a
+// single dial should have to fit both.
+const THRESH_KEY_CHIN = 'cs4_agree_thresh_chin';
+const THRESH_KEY_SH = 'cs4_agree_thresh_sh';
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -171,15 +175,16 @@ const TEAM_POLL_MS = 45000;
 // isn't part of either computation, even if a third labeler placed points
 // on it.
 const AGREE_PAIR = ['Arianne', 'John'];
-// Admin-adjustable (see #agree-thresh in bind()) — a fraction, e.g. 0.05
-// for 5%. PCK-style: a point "agrees" when both raters' clicks land within
-// this fraction of torso height of each other. Defaults to 5%, a
-// standard-ish PCK cutoff, but nothing about it is validated — it's a
-// dial, not a statistic, so the admin can try 10% and see what changes.
-// Persisted so a reload keeps whatever was last chosen.
+// Admin-adjustable, chin and shoulder independently (see #agree-thresh-chin
+// / #agree-thresh-sh in bind()) — each a fraction, e.g. 0.05 for 5%.
+// PCK-style: a point "agrees" when both raters' clicks land within its
+// point's own fraction of torso height of each other. Both default to 5%,
+// a standard-ish PCK cutoff, but neither is validated — they're dials, not
+// statistics, so the admin can try a wider chin tolerance than shoulder
+// and see what changes. Persisted so a reload keeps whatever was chosen.
 const DEFAULT_AGREE_THRESH_PCT = 5;
-function loadAgreeThresh() {
-  const raw = Number(localStorage.getItem(THRESH_KEY));
+function loadAgreeThresh(storageKey) {
+  const raw = Number(localStorage.getItem(storageKey));
   return Number.isFinite(raw) && raw >= 1 && raw <= 50 ? raw / 100 : DEFAULT_AGREE_THRESH_PCT / 100;
 }
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
@@ -240,7 +245,8 @@ const state = {
   teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
   teamBundles: new Map(),  // labeler -> {failed, inflight, chains} — this labeler's own save bookkeeping
   disagree: new Map(),     // slotKey -> {kind, level}
-  agreeThresh: loadAgreeThresh(), // fraction (e.g. 0.05) — see #agree-thresh in bind()
+  agreeThreshChin: loadAgreeThresh(THRESH_KEY_CHIN), // fraction (e.g. 0.05) — see bind()
+  agreeThreshSh: loadAgreeThresh(THRESH_KEY_SH),
   // A teammate's OWN existing dot, directly draggable on canvas — separate
   // from ptDrag/ctxFor, which stay scoped to the normal-mode self (admin
   // has no "own" point path at all any more — see activeLabeler()).
@@ -797,8 +803,8 @@ function disagreeForSlot(f) {
   // even when one landmark is badly off and the other happens to cancel it
   // out.
   if (!f.torso_h) return { kind: 'solo', level: null };
-  const chinOk = frameAgreement(f, 'chin_x', 'chin_y').state === 'agree';
-  const shOk = frameAgreement(f, 'sh_x', 'sh_y').state === 'agree';
+  const chinOk = frameAgreement(f, 'chin', 'chin_x', 'chin_y').state === 'agree';
+  const shOk = frameAgreement(f, 'sh', 'sh_x', 'sh_y').state === 'agree';
   const agreeCount = (chinOk ? 1 : 0) + (shOk ? 1 : 0);
   return {
     kind: 'scored',
@@ -826,10 +832,11 @@ function patchDisagree(f) {
 // an aggregate. The admin is looking at a specific frame; "82% agreement
 // over the whole queue" doesn't say whether THIS one is one of the
 // disagreements, which is the thing a per-frame card is for. "Agree" =
-// their torso-normalized Euclidean distance apart is within
-// state.agreeThresh — admin-adjustable, so this reads the live value
-// rather than a fixed constant.
-function frameAgreement(f, xk, yk) {
+// their torso-normalized Euclidean distance apart is within THAT POINT's
+// own threshold (state.agreeThreshChin / state.agreeThreshSh) — admin-
+// adjustable independently per point, so this reads whichever live value
+// applies rather than a single shared constant.
+function frameAgreement(f, point, xk, yk) {
   const [a, b] = AGREE_PAIR;
   const k = key(f);
   const ra = state.teamRows.get(a)?.get(k);
@@ -841,7 +848,8 @@ function frameAgreement(f, xk, yk) {
   if (!hasB) return { state: 'missing', who: a };
   if (!f.torso_h) return { state: 'none' };
   const dist = Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h;
-  return { state: dist <= state.agreeThresh ? 'agree' : 'disagree', dist };
+  const thresh = point === 'chin' ? state.agreeThreshChin : state.agreeThreshSh;
+  return { state: dist <= thresh ? 'agree' : 'disagree', dist };
 }
 
 // Rebuilt every render() — same as the other per-frame admin cards
@@ -854,30 +862,31 @@ function renderAgreementCard() {
   box.textContent = '';
   const f = state.frames[state.i];
   if (!f) return;
-  for (const [label, xk, yk] of [['Chin', 'chin_x', 'chin_y'], ['Shoulder', 'sh_x', 'sh_y']]) {
-    const r = frameAgreement(f, xk, yk);
+  for (const [label, point, xk, yk] of [['Chin', 'chin', 'chin_x', 'chin_y'], ['Shoulder', 'sh', 'sh_x', 'sh_y']]) {
+    const r = frameAgreement(f, point, xk, yk);
 
-    const nm = document.createElement('div');
-    nm.className = 'team-n';
+    const row = document.createElement('div');
+    row.className = 'agree-row';
+    const nm = document.createElement('span');
+    nm.className = 'agree-row-label';
     nm.textContent = label;
 
-    const ct = document.createElement('div');
-    ct.className = 'team-c';
-    if (r.state === 'none') { ct.textContent = 'neither placed'; ct.style.color = 'var(--ink-dim)'; }
-    else if (r.state === 'missing') { ct.textContent = `only ${r.who}`; ct.style.color = 'var(--ink-dim)'; }
+    const pill = document.createElement('span');
+    if (r.state === 'none') { pill.className = 'agree-pill muted'; pill.textContent = 'Neither placed'; }
+    else if (r.state === 'missing') { pill.className = 'agree-pill muted'; pill.textContent = `Only ${r.who}`; }
     else {
-      const pct = (r.dist * 100).toFixed(1);
-      ct.textContent = `${pct}% apart · ${r.state}`;
-      ct.style.color = r.state === 'agree' ? 'var(--yes)' : 'var(--no)';
+      pill.className = `agree-pill ${r.state}`;
+      pill.textContent = `${(r.dist * 100).toFixed(1)}% · ${r.state === 'agree' ? 'Agree' : 'Disagree'}`;
     }
 
-    box.append(nm, ct);
+    row.append(nm, pill);
+    box.appendChild(row);
   }
 }
 
 // Raw distances across the WHOLE queue, per point — not thresholded, since
 // these are descriptive stats about the distribution, independent of
-// wherever state.agreeThresh currently sits. Same gate as frameAgreement():
+// wherever either threshold currently sits. Same gate as frameAgreement():
 // a frame counts only where BOTH named labelers placed that specific
 // point.
 function computeGlobalAgreement() {
@@ -899,6 +908,9 @@ function computeGlobalAgreement() {
   return out;
 }
 
+// Avg and median only — min/max dropped by request: a single planted
+// outlier isn't informative on its own the way the centre of the
+// distribution is.
 function distStats(arr) {
   if (!arr.length) return null;
   const sorted = [...arr].sort((x, y) => x - y);
@@ -908,8 +920,6 @@ function distStats(arr) {
     n,
     avg: arr.reduce((s, v) => s + v, 0) / n,
     median: n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
-    min: sorted[0],
-    max: sorted[n - 1],
   };
 }
 
@@ -927,18 +937,20 @@ function renderGlobalAgreement() {
   for (const [label, p] of [['Chin', 'chin'], ['Shoulder', 'sh']]) {
     const s = distStats(dists[p]);
 
-    const nm = document.createElement('div');
-    nm.className = 'team-n';
+    const row = document.createElement('div');
+    row.className = 'agree-row';
+    const nm = document.createElement('span');
+    nm.className = 'agree-row-label';
     nm.textContent = label;
 
-    const ct = document.createElement('div');
-    ct.className = 'team-c';
-    ct.textContent = s
-      ? `avg ${(s.avg * 100).toFixed(1)}% · median ${(s.median * 100).toFixed(1)}% · `
-        + `min ${(s.min * 100).toFixed(1)}% · max ${(s.max * 100).toFixed(1)}% · n=${s.n}`
+    const val = document.createElement('span');
+    val.className = 'agree-stat-value';
+    val.textContent = s
+      ? `avg ${(s.avg * 100).toFixed(1)}% · median ${(s.median * 100).toFixed(1)}% · n=${s.n}`
       : 'no shared frames yet';
 
-    box.append(nm, ct);
+    row.append(nm, val);
+    box.appendChild(row);
   }
 }
 
@@ -2254,22 +2266,27 @@ function bind() {
   // Applies immediately — recompute + repaint both the overview grid and
   // the current frame's agreement card — and persists, so a bad value
   // typed mid-digit (e.g. the "1" on the way to "15") never lingers past
-  // the next keystroke, and a good one survives a reload.
-  const threshEl = $('agree-thresh');
-  threshEl.value = String(Math.round(state.agreeThresh * 100));
-  const applyThresh = () => {
-    const n = Math.round(Number(threshEl.value));
-    if (!Number.isFinite(n) || n < 1 || n > 50) return;
-    state.agreeThresh = n / 100;
-    try { localStorage.setItem(THRESH_KEY, String(n)); } catch (e) {}
-    if (state.isAdmin) {
-      computeAllDisagree();
-      renderOverview();
-      renderAgreementCard();
-    }
+  // the next keystroke, and a good one survives a reload. Chin and
+  // shoulder are wired identically but independently — one changing never
+  // touches the other's stored value or input.
+  const wireThresh = (elId, storageKey, field) => {
+    const el = $(elId);
+    el.value = String(Math.round(state[field] * 100));
+    el.oninput = () => {
+      const n = Math.round(Number(el.value));
+      if (!Number.isFinite(n) || n < 1 || n > 50) return;
+      state[field] = n / 100;
+      try { localStorage.setItem(storageKey, String(n)); } catch (e) {}
+      if (state.isAdmin) {
+        computeAllDisagree();
+        renderOverview();
+        renderAgreementCard();
+      }
+    };
+    el.onkeydown = (e) => e.stopPropagation();
   };
-  threshEl.oninput = applyThresh;
-  threshEl.onkeydown = (e) => e.stopPropagation();
+  wireThresh('agree-thresh-chin', THRESH_KEY_CHIN, 'agreeThreshChin');
+  wireThresh('agree-thresh-sh', THRESH_KEY_SH, 'agreeThreshSh');
 
   $('prev').onclick = () => go(state.i - 1);
   $('next').onclick = () => go(state.i + 1);

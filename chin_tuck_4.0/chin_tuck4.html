@@ -1094,18 +1094,21 @@ body.admin #legend-normal { display: none; }
 body.admin #legend-admin { display: flex; }
 
 /* Same shape as #goto above — label, number input, no separate apply
-   button, since the change fires on input rather than needing one. */
+   button, since the change fires on input rather than needing one. Chin
+   and shoulder get their own line — two independent landmarks, two
+   independent dials, see AGREE_THRESH_CHIN/SH in chin_tuck4.js. */
 #agree-thresh-row { display: none; }
 body.admin #agree-thresh-row {
-  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
 }
-#agree-thresh-row label { font-size: 11.5px; color: var(--ink-dim); flex: 1; }
-#agree-thresh {
+.thresh-line { display: flex; align-items: center; gap: 6px; }
+.thresh-line label { font-size: 11.5px; color: var(--ink-dim); flex: 1; }
+.thresh-line input {
   flex: none; width: 52px; font: inherit; font-size: 12.5px;
   padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); text-align: right;
 }
-#agree-thresh:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.thresh-line input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .pct-sign { font-size: 12.5px; color: var(--ink-dim); flex: none; }
 
 /* Admin never places a point — that is the ACT of being a labeler, and
@@ -1207,23 +1210,35 @@ body.admin #team-card { display: block; }
   font-size: 12px; color: var(--ink-dim);
 }
 
-/* ── agreement card — same grid/row classes as team progress above, just a
-   second admin-only card with its own container. Two rows (chin, shoulder)
-   rather than one per labeler. ── */
+/* ── agreement card — Settings.app-style grouped rows: a hairline between
+   Chin and Shoulder rather than the bare label/value pairs this used to
+   be, and the agree/disagree READING is a soft-fill pill (the same
+   language .vis-switch's segmented control and the overview dots already
+   use — green/red/amber system colours, never just coloured text) instead
+   of only a text colour change. ── */
 #agree-card { display: none; }
 body.admin #agree-card { display: block; }
-#agree-list {
-  display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
-  row-gap: 2px; font-size: 12.5px;
+.agree-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line);
 }
+.agree-row:last-child { border-bottom: 0; }
+.agree-row-label { font-size: 13px; font-weight: 510; }
+.agree-pill {
+  flex: none; padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 590; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.agree-pill.agree { background: color-mix(in srgb, var(--yes) 16%, transparent); color: var(--yes); }
+.agree-pill.disagree { background: color-mix(in srgb, var(--no) 16%, transparent); color: var(--no); }
+.agree-pill.muted { background: rgba(120,120,128,.12); color: var(--ink-dim); font-weight: 510; }
 #agree-global-eyebrow {
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+  margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line);
 }
-#agree-global {
-  display: grid; grid-template-columns: auto 1fr; column-gap: 10px;
-  row-gap: 4px; font-size: 12.5px;
+.agree-stat-value {
+  flex: none; text-align: right; font: 500 12px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
 }
-#agree-global .team-c { white-space: normal; line-height: 1.4; }
 .team-n {
   display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 510;
 }
@@ -1554,15 +1569,24 @@ body.admin #agree-card { display: block; }
         <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>only one opinion</span>
         <span><b style="background:rgba(120,120,128,.22)"></b>not labeled</span>
       </div>
-      <!-- Admin-only. Drives both this grid's colours AND the per-frame
-           agreement card's agree/disagree wording — one threshold, read by
-           frameAgreement() wherever it's called. Applies immediately on
-           change (recomputes + repaints both), and persists across
-           reloads via localStorage — see AGREE_THRESH_KEY. -->
+      <!-- Admin-only. Two independent thresholds — chin and shoulder are
+           separate landmarks and don't have to share a tolerance. Each
+           drives both this grid's colours AND the per-frame agreement
+           card's agree/disagree wording for that point, via
+           frameAgreement(). Applies immediately on change (recomputes +
+           repaints both) and persists across reloads via localStorage —
+           see THRESH_KEY_CHIN / THRESH_KEY_SH. -->
       <div id="agree-thresh-row">
-        <label for="agree-thresh">Agreement threshold</label>
-        <input id="agree-thresh" type="number" min="1" max="50" step="1" inputmode="numeric">
-        <span class="pct-sign">%</span>
+        <div class="thresh-line">
+          <label for="agree-thresh-chin">Chin threshold</label>
+          <input id="agree-thresh-chin" type="number" min="1" max="50" step="1" inputmode="numeric">
+          <span class="pct-sign">%</span>
+        </div>
+        <div class="thresh-line">
+          <label for="agree-thresh-sh">Shoulder threshold</label>
+          <input id="agree-thresh-sh" type="number" min="1" max="50" step="1" inputmode="numeric">
+          <span class="pct-sign">%</span>
+        </div>
       </div>
     </div>
 
@@ -1590,6 +1614,6 @@ body.admin #agree-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=30"></script>
+<script src="chin_tuck4.js?v=32"></script>
 </body>
 </html>
