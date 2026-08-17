@@ -164,18 +164,13 @@ const TEAM_COLOR_COUNT = 8;          // matches the --team-color-N custom proper
 // everyone's full history on a timer would cost far more than it buys.
 // Matches 3.0's TEAM_POLL_MS.
 const TEAM_POLL_MS = 45000;
-// 15% of torso height reads as "fully disagreeing" on the overview
-// gradient — a tunable constant, not a validated statistic (see
-// disagreeForSlot()).
-const DISAGREE_CAP = 0.15;
 // The overview's disagreement gradient AND the agreement card below both
 // compare exactly this pair — nobody else, by request, not "whoever's in
 // the roster." A frame either of these two labelers didn't answer simply
 // isn't part of either computation, even if a third labeler placed points
 // on it. AGREE_THRESH is a standard-ish PCK cutoff (percentage of correct
 // keypoints): a point "agrees" when both raters' clicks land within 5% of
-// torso height of each other — a third of DISAGREE_CAP's "fully
-// disagreeing" ceiling, so the two scales stay legible next to each other.
+// torso height of each other.
 const AGREE_PAIR = ['Arianne', 'John'];
 const AGREE_THRESH = 0.05;
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
@@ -747,24 +742,17 @@ async function loadTeamRows() {
   }
 }
 
-// Signed chin-above-shoulder distance in torso units — ADMIN MODE ONLY.
-// Positive = the chin sits above the shoulder top (more exposed). Read-only:
-// never written to a row, only used for the disagreement gradient and (via
-// the same formula the pipeline consumes) is what "spread" below measures.
-function derivedDist(chin, sh, torsoH) {
-  if (!chin || !sh || !torsoH) return null;
-  return (sh[1] - chin[1]) / torsoH;
-}
-
 // Disagreement, per QUEUE SLOT (a planted repeat is scored on its own — the
 // overview grid already treats one dot as one slot, not one distinct
-// picture). `kind` explains WHY a slot reads the way it does; `level`
-// (0 = green .. 1 = red, null when there's nothing to score) is what
-// renderOverview() paints. Computed only from CONFIRMED rows in
-// state.teamRows — see patchDisagree() — never from an in-progress drag, so
-// the grid can't flicker a colour for a save that hasn't landed yet.
-// Scoped to AGREE_PAIR only (see its comment) — a third labeler's row on
-// this frame, even a fully-placed one, does not enter the comparison.
+// picture). `kind` explains WHY a slot reads the way it does; `level` is
+// what renderOverview() paints — 0/0.5/1 are the only values a 'scored'
+// slot ever carries now (see below), so the dot is always exactly green,
+// amber, or red, never a blended in-between colour. Computed only from
+// CONFIRMED rows in state.teamRows — see patchDisagree() — never from an
+// in-progress drag, so the grid can't flicker a colour for a save that
+// hasn't landed yet. Scoped to AGREE_PAIR only (see its comment) — a third
+// labeler's row on this frame, even a fully-placed one, does not enter the
+// comparison.
 function disagreeForSlot(f) {
   const k = key(f);
   const rows = [];
@@ -779,8 +767,9 @@ function disagreeForSlot(f) {
   const skipped = rows.filter((r) => r.skipped === 1);
 
   // A disagreement about whether the frame can be judged AT ALL is more
-  // fundamental than any numeric gap between placed points — the concrete
-  // answer to "skipping disagreement is also disagreement."
+  // fundamental than any numeric gap between placed points — one labeler
+  // skipping while the other placed points is red BY DEFINITION, no matter
+  // how close the points end up being to anything.
   if (placed.length && skipped.length) return { kind: 'conflict', level: 1 };
 
   if (placed.length === 0) {
@@ -791,15 +780,21 @@ function disagreeForSlot(f) {
     return reasons.size <= 1 ? { kind: 'skip-agree', level: 0 } : { kind: 'skip-mixed', level: 0.4 };
   }
 
-  // Everyone placed. Spread = the widest gap in the derived distance across
-  // responders — the same number review.html used to report, computed the
-  // same way, so a spread here means what it would have meant there.
-  const dists = placed
-    .map((r) => derivedDist([r.chin_x, r.chin_y], [r.sh_x, r.sh_y], f.torso_h))
-    .filter((d) => d !== null);
-  if (dists.length < 2) return { kind: 'solo', level: null };
-  const spread = Math.max(...dists) - Math.min(...dists);
-  return { kind: 'scored', level: Math.min(1, spread / DISAGREE_CAP) };
+  // Everyone placed both points. Chin and shoulder scored SEPARATELY
+  // against the same per-point PCK threshold the agreement card uses
+  // (frameAgreement()) — both agreeing is a different, better fact than
+  // "the average gap is small," which a blended spread number could show
+  // even when one landmark is badly off and the other happens to cancel it
+  // out.
+  if (!f.torso_h) return { kind: 'solo', level: null };
+  const chinOk = frameAgreement(f, 'chin_x', 'chin_y').state === 'agree';
+  const shOk = frameAgreement(f, 'sh_x', 'sh_y').state === 'agree';
+  const agreeCount = (chinOk ? 1 : 0) + (shOk ? 1 : 0);
+  return {
+    kind: 'scored',
+    level: agreeCount === 2 ? 0 : agreeCount === 1 ? 0.5 : 1,
+    chinOk, shOk,
+  };
 }
 
 function computeAllDisagree() {
@@ -1718,7 +1713,10 @@ function disagreeTitle(i, dg) {
     case 'conflict': return `${n} — skip conflict: someone placed points, someone else skipped`;
     case 'skip-mixed': return `${n} — everyone skipped, but for different reasons`;
     case 'skip-agree': return `${n} — everyone agrees: can't be labeled`;
-    default: return `${n} — spread ${(dg.level * DISAGREE_CAP * 100).toFixed(1)}% of torso height`;
+    default: {
+      const parts = [dg.chinOk ? 'chin agrees' : 'chin disagrees', dg.shOk ? 'shoulder agrees' : 'shoulder disagrees'];
+      return `${n} — ${parts.join(', ')}`;
+    }
   }
 }
 
@@ -1732,7 +1730,13 @@ function renderOverview() {
       let cls = 'd4';
       d.style.background = '';
       if (dg.kind === 'solo') cls += ' solo';
-      else if (dg.kind !== 'none') {
+      else if (dg.kind === 'scored') {
+        // Discrete, not a gradient: exactly one of three colours, matching
+        // the three possible outcomes (both landmarks agree / one does /
+        // neither does) rather than a blended shade that could mean
+        // several different things.
+        d.style.background = dg.level === 0 ? 'var(--yes)' : dg.level === 1 ? 'var(--no)' : 'var(--maybe)';
+      } else if (dg.kind !== 'none') {
         d.style.background = lerpColor(dg.level);
         if (dg.kind === 'conflict') cls += ` ${CONFLICT_RING}`;
       }
