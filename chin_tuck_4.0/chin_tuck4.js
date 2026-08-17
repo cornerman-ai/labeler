@@ -86,6 +86,28 @@ const DWELL_CAP_SEC = 120;
 // Short forms of the two skip reasons, for the button once a frame is skipped.
 const SKIP_LABELS = { not_visible: "can't see the points", no_stance: 'not in stance' };
 
+// ── admin mode ──────────────────────────────────────────────────────────
+// Reached by logging in as the literal name "admin" (any case — see
+// state.isAdmin, set in start()). Shows every labeler's points at once,
+// lets any of them be selected and dragged, and saves under THAT
+// labeler's identity via the same saveChinPoint action everyone else
+// uses — it already accepts an arbitrary `labeler` param with no
+// ownership check. Every admin-only function below checks state.isAdmin
+// itself (or is only ever called from a call site that does), so a normal
+// login never runs any of this.
+const TEAM_COLOR_COUNT = 8;          // matches the --team-color-N custom properties
+// Roster (who/how-far-along) is polled — a labeler working concurrently in
+// another tab should move on the Team progress bars without a reload. The
+// much heavier per-labeler row data (state.teamRows) is NOT polled — an
+// admin session is minutes long, and re-fetching everyone's full history on
+// a timer would cost far more than it buys. Matches 3.0's TEAM_POLL_MS.
+const TEAM_POLL_MS = 45000;
+// 15% of torso height reads as "fully disagreeing" on the overview
+// gradient — a tunable constant, not a validated statistic (see
+// disagreeForSlot()).
+const DISAGREE_CAP = 0.15;
+const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
+
 const state = {
   frames: [],              // queue.json order (originals + planted repeats)
   index: new Map(),        // key -> queue position
@@ -121,6 +143,17 @@ const state = {
   camBad: false,           // camera shot too low/high for THIS frame
   shownAt: 0,
   ovDots: null,            // the 2k overview divs, built once
+
+  // ── admin mode ──
+  isAdmin: false,
+  adminTarget: null,       // labeler currently selected for editing, or null
+  roster: [],              // [{labeler,n,skipped,last_ts,last}] from statsChinPoint
+  teamColor: new Map(),    // labeler -> 'var(--team-color-N)'
+  teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
+  teamBundles: new Map(),  // labeler -> {failed, inflight, chains} — this labeler's own save bookkeeping
+  disagree: new Map(),     // slotKey -> {kind, level}
+  rosterPoll: null,        // setInterval id for the roster poll
+  teammateClick: null,     // mousedown-to-mouseup: which teammate mark (if any) was pressed
 };
 
 const $ = (id) => document.getElementById(id);
@@ -150,6 +183,12 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
 
 // ── backend ────────────────────────────────────────────────────────────────
 function who() { return ($('labeler-input').value || '').trim(); }
+
+// Who a save/placement acts on right now — the logged-in name normally, or
+// whichever labeler is selected in admin mode. Threading every per-frame
+// function through this instead of who() directly is what lets admin mode
+// reuse the entire placement/save/navigation machinery unmodified.
+function activeLabeler() { return state.isAdmin ? state.adminTarget : who(); }
 
 function api(params) {
   const url = new URL(SCRIPT_URL);
@@ -215,6 +254,114 @@ function dwellFor(k) {
   return Math.round((before + Math.min(Math.max(seg, 0), DWELL_CAP_SEC)) * 10) / 10;
 }
 
+// ── admin mode: team data ───────────────────────────────────────────────────
+// The roster: who has ever saved a row, and how far along they are —
+// filtered to n>0 same as every other labeler-picker on this site, and
+// 'admin' itself never appears (filtered server-side too, in doGetChinPoint).
+async function loadRoster() {
+  const body = await call({ action: 'statsChinPoint' }, 'load team');
+  state.roster = (body.labelers || []).filter((l) => l.n > 0);
+  [...state.roster].map((l) => l.labeler).sort()
+    .forEach((nm, i) => state.teamColor.set(nm, `var(--team-color-${i % TEAM_COLOR_COUNT})`));
+}
+
+// One listChinPoint call per roster labeler — every row they have, the same
+// pattern the deleted review.html used for its whole-corpus stats. Needed up
+// front because the disagreement gradient scores EVERY queue slot, not just
+// the one on screen — see computeAllDisagree(). Each labeler also gets their
+// own save bookkeeping bundle (teamBundles), mirroring state.failed/
+// inflight/chains for a normal single-labeler session.
+async function loadTeamRows() {
+  state.teamRows = new Map();
+  state.teamBundles = new Map();
+  const results = await Promise.allSettled(state.roster.map(async (l) => {
+    const body = await call({ action: 'listChinPoint', labeler: l.labeler }, `load ${l.labeler}`);
+    const rows = new Map();
+    for (const r of (body.rows || [])) rows.set(rowKey(r), r);
+    state.teamRows.set(l.labeler, rows);
+    state.teamBundles.set(l.labeler, { failed: new Map(), inflight: new Set(), chains: new Map() });
+  }));
+  const failed = results.filter((r) => r.status === 'rejected');
+  if (failed.length) {
+    status(`${failed.length} labeler(s) failed to load — ${failed[0].reason.message}`, 'err');
+  }
+}
+
+// Signed chin-above-shoulder distance in torso units — ADMIN MODE ONLY.
+// Positive = the chin sits above the shoulder top (more exposed). Read-only:
+// never written to a row, only used for the disagreement gradient and (via
+// the same formula the pipeline consumes) is what "spread" below measures.
+function derivedDist(chin, sh, torsoH) {
+  if (!chin || !sh || !torsoH) return null;
+  return (sh[1] - chin[1]) / torsoH;
+}
+
+// Disagreement, per QUEUE SLOT (a planted repeat is scored on its own — the
+// overview grid already treats one dot as one slot, not one distinct
+// picture). `kind` explains WHY a slot reads the way it does; `level`
+// (0 = green .. 1 = red, null when there's nothing to score) is what
+// renderOverview() paints. Computed only from CONFIRMED rows in
+// state.teamRows — see patchDisagree() — never from an in-progress drag, so
+// the grid can't flicker a colour for a save that hasn't landed yet.
+function disagreeForSlot(f) {
+  const k = key(f);
+  const rows = [];
+  for (const rowsByKey of state.teamRows.values()) {
+    const r = rowsByKey.get(k);
+    if (r) rows.push(r);
+  }
+  if (rows.length === 0) return { kind: 'none', level: null };
+  if (rows.length === 1) return { kind: 'solo', level: null };
+
+  const placed = rows.filter(hasPoints);
+  const skipped = rows.filter((r) => r.skipped === 1);
+
+  // A disagreement about whether the frame can be judged AT ALL is more
+  // fundamental than any numeric gap between placed points — the concrete
+  // answer to "skipping disagreement is also disagreement."
+  if (placed.length && skipped.length) return { kind: 'conflict', level: 1 };
+
+  if (placed.length === 0) {
+    // Everyone skipped. Agreeing it's unlabelable IS agreement — unless they
+    // disagree about WHY, which is real information a flat "they agree"
+    // would absorb.
+    const reasons = new Set(skipped.map((r) => r.skip_reason || 'unspecified'));
+    return reasons.size <= 1 ? { kind: 'skip-agree', level: 0 } : { kind: 'skip-mixed', level: 0.4 };
+  }
+
+  // Everyone placed. Spread = the widest gap in the derived distance across
+  // responders — the same number review.html used to report, computed the
+  // same way, so a spread here means what it would have meant there.
+  const dists = placed
+    .map((r) => derivedDist([r.chin_x, r.chin_y], [r.sh_x, r.sh_y], f.torso_h))
+    .filter((d) => d !== null);
+  if (dists.length < 2) return { kind: 'solo', level: null };
+  const spread = Math.max(...dists) - Math.min(...dists);
+  return { kind: 'scored', level: Math.min(1, spread / DISAGREE_CAP) };
+}
+
+function computeAllDisagree() {
+  state.disagree = new Map();
+  for (const f of state.frames) state.disagree.set(key(f), disagreeForSlot(f));
+}
+
+// Called only after a save has been CONFIRMED (save()'s success callback) —
+// recomputing from an in-flight drag would show a colour for data that
+// isn't actually saved yet.
+function patchDisagree(f) {
+  state.disagree.set(key(f), disagreeForSlot(f));
+  renderOverview();
+}
+
+// --no (#ff3b30) at level=1, --yes (#34c759) at level=0 — a direct RGB lerp,
+// not buckets, so "gradient from red to green" is literal.
+function lerpColor(level) {
+  const no = [0xff, 0x3b, 0x30], yes = [0x34, 0xc7, 0x59];
+  const t = Math.max(0, Math.min(1, level));
+  const mix = no.map((c, i) => Math.round(yes[i] + (c - yes[i]) * t));
+  return `rgb(${mix.join(',')})`;
+}
+
 // Optimistic, chained per frame — same machinery as 3.0: the local row is
 // recorded and the labeler moves on; a failure rolls the row back, paints
 // the dot red and names the frame in the status line.
@@ -222,10 +369,25 @@ function dwellFor(k) {
 // 'no_stance') — a skip is a statement about why the frame cannot be
 // measured, and the reason is the data: it is what says whether the
 // sampling window is still letting non-stance frames through.
+//
+// ADMIN MODE: `name` resolves to the SELECTED labeler (activeLabeler()),
+// not who() — the whole point of admin mode is writing under someone
+// else's identity. `labelsMap`/`failedMap`/`inflightSet`/`chainsMap` are
+// captured HERE, synchronously, rather than read off `state` again inside
+// the async callbacks below — admin mode swaps state.labels/failed/
+// inflight/chains BY REFERENCE when the selected labeler changes
+// (selectAdminTarget()), and without this capture a save still in flight
+// when that swap happens would resolve into the WRONG labeler's
+// bookkeeping. This ties every save to whoever it was fired for, no matter
+// how many times admin switches targets before it lands.
 function save({ skip = null } = {}) {
   if (!state.ready) return false;
-  const name = who();
-  if (!name) { status('Enter your name first', 'err'); $('labeler-input').focus(); return false; }
+  const name = activeLabeler();
+  if (!name) {
+    if (state.isAdmin) status('Select a labeler first', 'err');
+    else { status('Enter your name first', 'err'); $('labeler-input').focus(); }
+    return false;
+  }
   if (!skip && !(state.pts.chin && state.pts.sh)) {
     status('Place both points first (or skip)', 'err');
     return false;
@@ -234,9 +396,15 @@ function save({ skip = null } = {}) {
     status('Answer seen or inferred for both points', 'err');
     return false;
   }
+  const labelsMap = state.labels, failedMap = state.failed,
+        inflightSet = state.inflight, chainsMap = state.chains;
   const f = state.frames[state.i];
   const k = key(f);
-  const dwell = dwellFor(k);
+  const prev = labelsMap.get(k);
+  // Admin is correcting someone else's frame; the clock that matters for
+  // dwell_sec is THEIR labeling pace, not admin's inspection time, so the
+  // stored value passes through unchanged instead of accumulating more.
+  const dwell = state.isAdmin ? ((prev && Number(prev.dwell_sec)) || 0) : dwellFor(k);
   state.shownAt = Date.now();
   const params = {
     action: 'saveChinPoint', labeler: name,
@@ -271,28 +439,28 @@ function save({ skip = null } = {}) {
     chin_vis: skip ? null : state.vis.chin,
     sh_vis: skip ? null : state.vis.sh,
   };
-  const prev = state.labels.get(k);
-  state.labels.set(k, row);
-  state.failed.delete(k);
-  state.inflight.add(k);
+  labelsMap.set(k, row);
+  failedMap.delete(k);
+  inflightSet.add(k);
   showQueueState();
 
-  const chain = (state.chains.get(k) || Promise.resolve())
+  const chain = (chainsMap.get(k) || Promise.resolve())
     .then(() => call(params, 'save'))
     .then(() => {
-      state.inflight.delete(k);
+      inflightSet.delete(k);
       showQueueState();
+      if (state.isAdmin) patchDisagree(f);
     })
     .catch((e) => {
-      state.inflight.delete(k);
-      if (prev) state.labels.set(k, prev); else state.labels.delete(k);
-      state.failed.set(k, e.message);
+      inflightSet.delete(k);
+      if (prev) labelsMap.set(k, prev); else labelsMap.delete(k);
+      failedMap.set(k, e.message);
       const at = state.index.get(k);
       status(`Frame #${at === undefined ? '?' : at + 1} did not save — ${e.message}`, 'err');
       render();
     })
-    .finally(() => { if (state.chains.get(k) === chain) state.chains.delete(k); });
-  state.chains.set(k, chain);
+    .finally(() => { if (chainsMap.get(k) === chain) chainsMap.delete(k); });
+  chainsMap.set(k, chain);
   return true;
 }
 
@@ -353,6 +521,11 @@ function showQueueState() {
     status('');
   }
   renderOverview();
+  // The picker's per-labeler status chip shows saving/failed too — the
+  // capture fix in save() means a save can land after admin has already
+  // switched away from that labeler, so this is the one place that state
+  // stays visible instead of silently resolving off-screen.
+  if (state.isAdmin) renderAdminPicker();
 }
 
 // ── navigation ─────────────────────────────────────────────────────────────
@@ -363,17 +536,11 @@ function firstUnlabeled(from = 0) {
   return -1;
 }
 
-function go(i) {
-  // Leaving a finished frame is what saves it — see commitCurrent(). A frame
-  // that cannot be committed keeps the labeler where they are.
-  if (!commitCurrent()) { render(); return; }
-  state.i = Math.max(0, Math.min(state.frames.length - 1, i));
-  state.active = null;
-  closePop();
-  closeCtx();
-  resetZoom();
-  const f = state.frames[state.i];
-  const saved = state.labels.get(key(f));
+// Populate the in-progress editing state from a saved row (or reset to
+// empty if there isn't one) — used both when arriving at a frame (go()) and
+// when admin mode swaps which labeler's row is being edited
+// (selectAdminTarget()), so there's exactly one restore path, not two.
+function applySavedRow(saved) {
   state.skipped = !!(saved && saved.skipped);
   state.skipReason = (saved && saved.skip_reason) || null;
   state.camBad = !!(saved && saved.camera_bad);
@@ -388,6 +555,19 @@ function go(i) {
     state.vis = { chin: null, sh: null };
     state.arm = 'chin';
   }
+}
+
+function go(i) {
+  // Leaving a finished frame is what saves it — see commitCurrent(). A frame
+  // that cannot be committed keeps the labeler where they are.
+  if (!commitCurrent()) { render(); return; }
+  state.i = Math.max(0, Math.min(state.frames.length - 1, i));
+  state.active = null;
+  closePop();
+  closeCtx();
+  resetZoom();
+  const f = state.frames[state.i];
+  applySavedRow(state.labels.get(key(f)));
   state.shownAt = Date.now();
   render();
   prefetch();
@@ -406,6 +586,48 @@ function prefetch() {
     const f = state.frames[state.i + n];
     if (f) new Image().src = imgSrc(f);
   }
+}
+
+// ── admin mode: target selection ────────────────────────────────────────
+// Commit the outgoing target's edit exactly like leaving a frame does (see
+// go()), then swap state.labels/failed/inflight/chains BY REFERENCE to the
+// new target's bundle — every per-frame function above already reads
+// through those four fields, so nothing else has to know admin mode
+// exists. save() captures its own local references to the active bundle at
+// call time, which is what keeps an in-flight save from landing in the
+// WRONG target's bookkeeping if admin switches before it resolves.
+function selectAdminTarget(name) {
+  if (!state.isAdmin || name === state.adminTarget) return;
+  if (!commitCurrent()) { render(); return; }
+  state.adminTarget = name;
+  const bundle = state.teamBundles.get(name);
+  state.labels = state.teamRows.get(name);
+  state.failed = bundle.failed;
+  state.inflight = bundle.inflight;
+  state.chains = bundle.chains;
+  state.active = null;
+  closePop();
+  closeCtx();
+  document.body.classList.toggle('no-target', !state.adminTarget);
+  applySavedRow(state.labels.get(key(state.frames[state.i])));
+  state.shownAt = Date.now();
+  render();
+}
+
+// Hit-test a read-only teammate mark on canvas (admin mode only) — the
+// click-to-select analog of grabbablePoint() for the active target's own
+// point. A little more slack than GRAB_PX: teammate marks are drawn smaller
+// than the active target's .hp markers, on purpose (see the CSS), so they
+// need a bit more forgiveness to hit reliably.
+function teammateMarkAt(clientX, clientY) {
+  const GRAB = GRAB_PX + 3;
+  let best = null, bestD = GRAB;
+  for (const el of document.querySelectorAll('#marks .tm')) {
+    const r = el.getBoundingClientRect();
+    const d = Math.hypot(clientX - (r.left + r.width / 2), clientY - (r.top + r.height / 2));
+    if (d <= bestD) { best = el.dataset.who; bestD = d; }
+  }
+  return best;
 }
 
 // ── rendering ──────────────────────────────────────────────────────────────
@@ -447,6 +669,8 @@ function render() {
   renderCam();
 
   placeMarks();
+  renderTeamMarks();
+  renderAdminPicker();
   renderOverview();
 }
 
@@ -475,6 +699,129 @@ function renderNameState() {
   $('name-go').disabled = !who();
 }
 
+// ── admin mode: rendering ───────────────────────────────────────────────────
+// Hovering a name (in the picker or on a mark itself) brings that
+// labeler's marks to full strength and dims the rest — twelve dots on one
+// jaw is unreadable otherwise. Same move the deleted review.html used for
+// the identical problem.
+function setTeamHover(name) {
+  for (const el of document.querySelectorAll('#marks .tm, #tm-links line')) {
+    el.classList.toggle('dim', !!name && el.dataset.who !== name);
+  }
+}
+
+// Corpus-wide, not per-frame — called after loadRoster() and on the 45s
+// poll, NOT from render(), so a frame change doesn't rebuild it for no
+// reason.
+function renderTeamProgress() {
+  if (!state.isAdmin) return;
+  const box = $('team-progress');
+  box.textContent = '';
+  const total = state.frames.length;
+  for (const l of [...state.roster].sort((a, b) => b.n - a.n)) {
+    const color = state.teamColor.get(l.labeler) || 'var(--ink-dim)';
+    const row = document.createElement('div');
+    row.className = 'team-n';
+    row.style.setProperty('--tm-color', color);
+    const sw = document.createElement('span');
+    sw.className = 'sw';
+    const nm = document.createElement('span');
+    nm.textContent = l.labeler;
+    row.append(sw, nm);
+    const pct = total ? Math.round((l.n / total) * 100) : 0;
+    const ct = document.createElement('div');
+    ct.className = 'team-c';
+    ct.textContent = `${l.n} / ${total} · ${pct}%`;
+    const bar = document.createElement('div');
+    bar.className = 'team-bar';
+    bar.style.setProperty('--tm-color', color);
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.min(100, pct)}%`;
+    bar.appendChild(fill);
+    box.append(row, ct, bar);
+  }
+}
+
+// One row per roster labeler for THIS frame — click to arm their points as
+// the draggable target. Rebuilt every render(); the DOM is small (labelers,
+// not frames) so there's no need to diff it.
+function renderAdminPicker() {
+  if (!state.isAdmin) return;
+  const box = $('admin-picker');
+  box.textContent = '';
+  const f = state.frames[state.i];
+  if (!f) return;
+  const k = key(f);
+  for (const l of [...state.roster].sort((a, b) => a.labeler.localeCompare(b.labeler))) {
+    const bundle = state.teamBundles.get(l.labeler);
+    const r = state.teamRows.get(l.labeler)?.get(k);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'admin-picker-row';
+    row.setAttribute('aria-pressed', String(l.labeler === state.adminTarget));
+    row.style.setProperty('--tm-color', state.teamColor.get(l.labeler) || 'var(--ink-dim)');
+    const sw = document.createElement('span');
+    sw.className = 'sw';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = l.labeler;
+    const st = document.createElement('span');
+    if (bundle && bundle.inflight.has(k)) { st.className = 'st'; st.textContent = 'saving…'; }
+    else if (bundle && bundle.failed.has(k)) { st.className = 'st sk'; st.textContent = 'failed'; }
+    else if (r && r.skipped === 1) {
+      st.className = 'st sk';
+      st.textContent = `skip: ${SKIP_LABELS[r.skip_reason] || r.skip_reason || '?'}`;
+    } else if (r && hasPoints(r)) { st.className = 'st dn'; st.textContent = 'placed'; }
+    else { st.className = 'st'; st.textContent = '—'; }
+    row.append(sw, nm, st);
+    row.onclick = () => selectAdminTarget(l.labeler);
+    row.onmouseenter = () => setTeamHover(l.labeler);
+    row.onmouseleave = () => setTeamHover(null);
+    box.appendChild(row);
+  }
+}
+
+// Every roster labeler's saved points for the current slot, drawn read-only
+// — EXCEPT the active target, whose points are the existing .hp markers
+// (drawn by placeMarks()). Same shape language as the labeler's own two
+// points: dot = chin, bar = shoulder, dashed = inferred, a thin connecting
+// line — so admin mode doesn't ask anyone to learn a second vocabulary.
+function renderTeamMarks() {
+  const box = $('marks');
+  for (const el of box.querySelectorAll('.tm')) el.remove();
+  const links = $('tm-links');
+  links.textContent = '';
+  if (!state.isAdmin) return;
+  const f = state.frames[state.i];
+  if (!f) return;
+  const k = key(f);
+  for (const l of state.roster) {
+    if (l.labeler === state.adminTarget) continue;   // that one's the .hp markers
+    const r = state.teamRows.get(l.labeler)?.get(k);
+    if (!r || !hasPoints(r)) continue;
+    const color = state.teamColor.get(l.labeler) || 'var(--ink-dim)';
+    const chin = [r.chin_x, r.chin_y], sh = [r.sh_x, r.sh_y];
+    for (const [which, xy, vis] of [['chin', chin, r.chin_vis], ['sh', sh, r.sh_vis]]) {
+      const d = document.createElement('div');
+      d.className = `tm ${which}${vis === 'inferred' ? ' inferred' : ''}`;
+      d.dataset.who = l.labeler;
+      d.style.setProperty('--tm-color', color);
+      d.style.left = `${xy[0] * 100}%`;
+      d.style.top = `${xy[1] * 100}%`;
+      d.title = `${l.labeler} — ${which === 'chin' ? 'chin' : 'shoulder'}`;
+      d.onmouseenter = () => setTeamHover(l.labeler);
+      d.onmouseleave = () => setTeamHover(null);
+      box.appendChild(d);
+    }
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', chin[0]); line.setAttribute('y1', chin[1]);
+    line.setAttribute('x2', sh[0]);   line.setAttribute('y2', sh[1]);
+    line.setAttribute('stroke', color);
+    line.dataset.who = l.labeler;
+    links.appendChild(line);
+  }
+}
+
 // ── overview grid ──────────────────────────────────────────────────────────
 function buildOverview() {
   const ov = $('ov4');
@@ -495,10 +842,45 @@ function buildOverview() {
   };
 }
 
+// Text for each disagreement kind, admin mode only — the tooltip carries
+// the same information the colour does, so the grid isn't hue-only (a real
+// accessibility gap for red/green colour-blind readers, and cheap to close).
+function disagreeTitle(i, dg) {
+  const n = `#${i + 1}`;
+  switch (dg.kind) {
+    case 'none': return `${n} — not labeled`;
+    case 'solo': return `${n} — only one opinion so far`;
+    case 'conflict': return `${n} — skip conflict: someone placed points, someone else skipped`;
+    case 'skip-mixed': return `${n} — everyone skipped, but for different reasons`;
+    case 'skip-agree': return `${n} — everyone agrees: can't be labeled`;
+    default: return `${n} — spread ${(dg.level * DISAGREE_CAP * 100).toFixed(1)}% of torso height`;
+  }
+}
+
 function renderOverview() {
   if (!state.ovDots) return;
   for (let i = 0; i < state.frames.length; i++) {
     const k = key(state.frames[i]);
+    const d = state.ovDots[i];
+    if (state.isAdmin) {
+      const dg = state.disagree.get(k) || { kind: 'none', level: null };
+      let cls = 'd4';
+      d.style.background = '';
+      if (dg.kind === 'solo') cls += ' solo';
+      else if (dg.kind !== 'none') {
+        d.style.background = lerpColor(dg.level);
+        if (dg.kind === 'conflict') cls += ` ${CONFLICT_RING}`;
+      }
+      if (i === state.i) cls += ' cur';
+      d.title = disagreeTitle(i, dg);
+      if (d.className !== cls) d.className = cls;
+      continue;
+    }
+    // Cheap insurance against a stray leftover from a prior admin-mode
+    // render in this same tab (e.g. testing by retyping the name field) —
+    // both are no-ops on a dot that was never touched.
+    d.style.background = '';
+    d.title = `#${i + 1}`;
     const row = state.labels.get(k);
     let cls = 'd4';
     if (state.failed.has(k)) cls += ' fail';
@@ -506,7 +888,6 @@ function renderOverview() {
     else if (hasPoints(row)) cls += ' dn';
     if (row && row.camera_bad) cls += ' cb';
     if (i === state.i) cls += ' cur';
-    const d = state.ovDots[i];
     if (d.className !== cls) d.className = cls;
   }
 }
@@ -905,6 +1286,17 @@ function bind() {
     // saw the click.
     if (!state.ready || e.button !== 0) return;
     state.down = { x: e.clientX, y: e.clientY };
+    if (state.isAdmin) {
+      // A click on ANY teammate's mark selects them — "selectable" straight
+      // off the canvas, not just from the picker — checked before anything
+      // else so it can't be swallowed as a drag-start or a pan. With admin
+      // mode on but nobody selected yet, nothing else on the stage is
+      // interactive: there's no target for a placed or dragged point to
+      // belong to.
+      const teammate = teammateMarkAt(e.clientX, e.clientY);
+      if (teammate) { state.teammateClick = teammate; e.preventDefault(); return; }
+      if (!state.adminTarget) { e.preventDefault(); return; }
+    }
     const grab = grabbablePoint(e.clientX, e.clientY);
     if (grab) {
       state.ptDrag = grab;
@@ -933,6 +1325,8 @@ function bind() {
   };
   window.addEventListener('mouseup', (e) => {
     const wasPtDrag = state.ptDrag;
+    const teammateClick = state.teammateClick;
+    state.teammateClick = null;
     if (state.ptDrag) {
       $('hp-chin').classList.remove('dragging');
       $('hp-sh').classList.remove('dragging');
@@ -948,6 +1342,7 @@ function bind() {
     stage.classList.remove('panning');
     if (!startedOnStage || moved) return;      // a real drag, or not ours
     if (!state.ready) return;
+    if (teammateClick) { selectAdminTarget(teammateClick); return; }
     // A stationary click that landed on an existing dot always selects and
     // repositions THAT dot — never places a new one there, arm or no arm.
     // It used to be swallowed as a zero-length drag, so a 3px correction
@@ -965,6 +1360,9 @@ function bind() {
     // is armed while a popover is open, so a stray click cannot move the
     // point the open question is about.
     if (!state.ready || !state.arm) return;
+    // Belt-and-suspenders with the same check in onmousedown: nothing to
+    // place a point ON when no admin target is selected.
+    if (state.isAdmin && !state.adminTarget) return;
     placeAt(state.arm, e.clientX, e.clientY);
   });
   stage.ondblclick = resetZoom;
@@ -1033,6 +1431,10 @@ function bind() {
 
 async function start() {
   const name = who();
+  // Recomputed on every call, not cached — retyping the name field into or
+  // out of "admin" mid-session (no reload) has to re-gate immediately.
+  state.isAdmin = name.trim().toLowerCase() === 'admin';
+  document.body.classList.toggle('admin', state.isAdmin);
   if (!name) {
     state.loadedFor = null;
     setReady(false, 'Enter your name and press Start.');
@@ -1045,17 +1447,25 @@ async function start() {
 
   const token = ++state.loadToken;
   state.loadingFor = name;
-  setReady(false, 'Loading your saved progress…  this can take up to 30 seconds.');
-  status('Loading your labels…');
+  setReady(false, state.isAdmin
+    ? 'Loading the team…  this can take a moment.'
+    : 'Loading your saved progress…  this can take up to 30 seconds.');
+  status(state.isAdmin ? 'Loading the team…' : 'Loading your labels…');
 
   try {
-    await loadLabels();
+    if (state.isAdmin) {
+      await loadRoster();
+      await loadTeamRows();
+      computeAllDisagree();
+    } else {
+      await loadLabels();
+    }
   } catch (e) {
     if (token === state.loadToken) {
       state.loadingFor = null;
       renderNameState();
       status(e.message, 'err');
-      setReady(false, 'Could not load your labels. Press Start to try again.', true);
+      setReady(false, 'Could not load. Press Start to try again.', true);
     }
     return;
   }
@@ -1065,6 +1475,27 @@ async function start() {
   renderNameState();
   setReady(true);
 
+  if (state.isAdmin) {
+    // No labeler picked yet — nothing to resume TO. state.labels et al.
+    // point at an inert placeholder until selectAdminTarget() swaps them.
+    state.adminTarget = null;
+    state.labels = new Map();
+    state.failed = new Map();
+    state.inflight = new Set();
+    state.chains = new Map();
+    document.body.classList.add('no-target');
+    renderTeamProgress();
+    if (!state.rosterPoll) {
+      state.rosterPoll = setInterval(async () => {
+        try { await loadRoster(); renderTeamProgress(); renderAdminPicker(); } catch (e) { /* keep the stale roster over losing it */ }
+      }, TEAM_POLL_MS);
+    }
+    go(0);
+    status('');
+    return;
+  }
+
+  if (state.rosterPoll) { clearInterval(state.rosterPoll); state.rosterPoll = null; }
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n);
   status(n < 0 ? 'All frames labeled' : '');

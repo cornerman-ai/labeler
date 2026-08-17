@@ -38,6 +38,17 @@
   --open-line: color-mix(in srgb, var(--accent) 32%, transparent);
   --open-ink: color-mix(in srgb, var(--accent) 82%, black);
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+  /* Admin mode's team palette — Apple's own system-colour rotation, not a
+     bespoke set: each already ships as a tuned light/dark PAIR, which
+     matters more here than it does for --yes/--no above. Those sit on a
+     button with a fixed background; these sit on an arbitrary video frame
+     AND on a --card swatch, so they need the contrast work Apple already
+     did for both. Assigned to labelers by sorted name in JS — never by
+     save order — so a person's colour is stable across sessions. */
+  --team-color-0: #007aff; --team-color-1: #30d158;
+  --team-color-2: #5856d6; --team-color-3: #af52de;
+  --team-color-4: #ff2d55; --team-color-5: #30b0c7;
+  --team-color-6: #ff9500; --team-color-7: #ffcc00;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -52,6 +63,10 @@
     --open-line: color-mix(in srgb, var(--accent) 45%, transparent);
     --open-ink: color-mix(in srgb, var(--accent) 55%, white);
     --shadow: 0 1px 2px rgba(0,0,0,.5);
+    --team-color-0: #0a84ff; --team-color-1: #30d158;
+    --team-color-2: #5e5ce6; --team-color-3: #bf5af2;
+    --team-color-4: #ff375f; --team-color-5: #40c8e0;
+    --team-color-6: #ff9f0a; --team-color-7: #ffd60a;
   }
 }
 * { box-sizing: border-box; }
@@ -854,6 +869,146 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #ov4 .d4.fail { background: var(--no); }
 #ov4 .d4.cb { box-shadow: 0 0 0 1.5px var(--maybe); }
 #ov4 .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* ── admin mode ───────────────────────────────────────────────────────────
+   Reached by logging in as the literal name "admin" (case-insensitive —
+   see state.isAdmin in chin_tuck4.js). Every rule below is scoped under
+   body.admin, so a normal login's panel and canvas stay byte-for-byte what
+   they were before this section existed.
+   ------------------------------------------------------------------------ */
+
+/* The keys still work — see the keydown handler, unchanged — this just
+   stops teaching a vocabulary admin mode doesn't have a parallel for yet
+   (there's no single-key "pick a labeler"), so the card would only be
+   scrolled past. */
+body.admin #keys-card { display: none; }
+
+/* Progress card legend swap — see the two markup blocks in the body. */
+#legend-admin { display: none; }
+body.admin #legend-normal { display: none; }
+body.admin #legend-admin { display: flex; }
+
+/* No target picked yet: a click on the stage, or Skip/Next/Cam, would
+   silently act on nobody. Same dim-and-inert idiom body:not(.ready) already
+   uses elsewhere on this page. */
+body.admin.no-target #q-card .tool-row,
+body.admin.no-target #q-card .vis-switch,
+body.admin.no-target #act-card { opacity: .4; pointer-events: none; }
+
+/* ── admin picker — one row per roster labeler, sits above the tool-rows ─
+   display:none by default (not just empty): a normal login never runs the
+   JS that would populate this, but an unscoped :empty rule would still
+   show its placeholder text to every ordinary labeler. */
+#admin-picker { display: none; }
+body.admin #admin-picker { display: block; margin-bottom: 10px; }
+body.admin #admin-picker:empty::after {
+  content: 'No labelers yet.'; display: block; font-size: 12px;
+  color: var(--ink-dim); padding: 6px 2px;
+}
+.admin-picker-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; margin-bottom: 4px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12.5px; text-align: left;
+  transition: border-color .12s ease, background .12s ease;
+}
+.admin-picker-row:hover { border-color: var(--ink-dim); }
+.admin-picker-row[aria-pressed="true"] {
+  border-color: var(--tm-color);
+  background: color-mix(in srgb, var(--tm-color) 12%, transparent);
+}
+.admin-picker-row .sw {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.admin-picker-row .nm {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 510;
+}
+.admin-picker-row .st { flex: none; font-size: 11px; color: var(--ink-dim); }
+.admin-picker-row .st.dn { color: var(--yes); }
+.admin-picker-row .st.sk { color: var(--maybe); }
+
+/* ── team progress — modeled on 3.0's #team, a plain proportional bar
+   rather than 3.0's queue-range-segment bars, which solved a different
+   problem (showing WHERE in the queue two labelers overlapped) that isn't
+   being asked for here. The whole CARD is admin-only. ── */
+#team-card { display: none; }
+body.admin #team-card { display: block; }
+#team-progress {
+  display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
+  row-gap: 2px; font-size: 12.5px;
+}
+#team-progress:empty::after {
+  content: 'Nobody has labeled anything yet.'; grid-column: 1 / -1;
+  font-size: 12px; color: var(--ink-dim);
+}
+.team-n {
+  display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 510;
+}
+.team-n .sw {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.team-n span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-c {
+  font: 500 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
+}
+.team-bar {
+  grid-column: 1 / -1; position: relative; height: 3px; border-radius: 2px;
+  background: rgba(120,120,128,.16); margin: 4px 0 10px; overflow: hidden;
+}
+.team-bar i {
+  position: absolute; top: 0; left: 0; bottom: 0; border-radius: 1.5px;
+  background: var(--tm-color);
+}
+
+/* ── overview grid, admin branch — a disagreement gradient replaces
+   done/skip/fail. Fill is a continuous red<->green value set per-dot from
+   JS (a gradient can't be expressed as a fixed set of classes). .dconflict
+   layers a ring on top for the one case that ISN'T a point on that
+   gradient — a skip conflict, where the disagreement is about whether the
+   frame can be judged at all, not a distance — deliberately a different
+   ring than .cb (camera_bad): the two facts are unrelated, and a shared
+   ring would blur which one is true. .solo sits off the red-green axis
+   entirely, so "only one opinion exists yet" can never be misread as
+   either agreement or disagreement. */
+#ov4 .d4.dconflict { box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.55); }
+@media (prefers-color-scheme: dark) {
+  #ov4 .d4.dconflict { box-shadow: 0 0 0 1.5px #000, 0 0 0 2.5px rgba(255,255,255,.65); }
+}
+#ov4 .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* ── teammate marks on canvas — read-only, everyone but the active target.
+   Same shape language chin_tuck4.js already uses for the labeler's own two
+   points (dot = chin, bar = shoulder), so admin mode doesn't ask anyone to
+   learn a second vocabulary. Smaller and semi-transparent so the ACTIVE
+   target's large draggable .hp markers stay the obvious thing to act on;
+   hovering a name brings one labeler's marks to full strength and dims the
+   rest (.dim) — the same move the deleted review.html used for the
+   identical too-many-dots-on-one-jaw problem. */
+.tm {
+  position: absolute; pointer-events: auto; cursor: pointer;
+  transform: translate(-50%, -50%) scale(var(--inv, 1));
+  transition: opacity .12s ease;
+}
+.tm.chin {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+}
+.tm.sh {
+  width: 15px; height: 4.5px; border-radius: 2px;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+}
+.tm.inferred { background: transparent !important; border: 1.6px dashed var(--tm-color); }
+.tm.dim { opacity: .18; }
+#tm-links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+#tm-links line {
+  stroke-width: calc(1.1px * var(--inv, 1)); vector-effect: non-scaling-stroke;
+  opacity: .55; transition: opacity .12s ease;
+}
+#tm-links line.dim { opacity: .1; }
 </style>
 </head>
 <body>
@@ -863,11 +1018,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div id="stage">
       <img id="frame" alt="">
       <div id="marks">
-        <!-- Only the labeler's own two points are ever drawn here. The
-             pipeline's guess and everyone else's placements are not on this
-             page at all — an independent click is the whole value of the
-             dataset, and it stops being independent the moment it can be
-             compared. -->
+        <!-- Only the labeler's own two points are ever drawn here in a
+             normal login. Admin mode is the one exception — see
+             renderTeamMarks() in chin_tuck4.js — because there the overlay
+             IS the point of the mode, not something an independent click
+             needs protecting from. -->
+        <svg id="tm-links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
         <div class="hp" id="hp-chin" title="Chin tip (drag to adjust)"></div>
         <div class="hp" id="hp-sh" title="Shoulder top (drag to adjust)"></div>
       </div>
@@ -925,6 +1081,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
     <div class="card" id="q-card">
       <p class="card-eyebrow">Points</p>
       <div id="q-lock">Loading…</div>
+      <!-- Admin mode only: one row per roster labeler for THIS frame, click
+           to arm their two points as the draggable target. Empty and
+           display:none for a normal login — see body.admin in the
+           stylesheet and renderAdminPicker() in chin_tuck4.js. -->
+      <div id="admin-picker"></div>
       <div class="tool-row" data-p="chin" aria-pressed="false">
         <span class="dot"></span>Chin tip<kbd>C</kbd>
       </div>
@@ -979,6 +1140,16 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
       <div id="status"></div>
     </div>
 
+    <!-- Admin mode only — see body.admin in the stylesheet. One row per
+         roster labeler: swatch, name, done/total, a proportional bar.
+         Modeled on 3.0's #team panel, simplified — no queue-range bars,
+         no lead-everyone, no hide-row disclosure; this is a status view,
+         not a management console. -->
+    <div class="card" id="team-card">
+      <p class="card-eyebrow">Team progress</p>
+      <div id="team-progress"></div>
+    </div>
+
     <div class="card">
       <p class="card-eyebrow">Progress</p>
       <div id="head">
@@ -991,15 +1162,26 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         <button id="goto-go">Go</button>
       </div>
       <div id="ov4"></div>
-      <div class="legend">
+      <!-- Two legends, one page: admin mode recolors #ov4 by team
+           disagreement rather than by MY OWN completion, so the key
+           explaining the colours has to change with it. CSS toggles which
+           one shows — see body.admin below. -->
+      <div class="legend" id="legend-normal">
         <span><b style="background:var(--ov-yes)"></b>saved</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
         <span><b style="background:var(--no)"></b>failed</span>
         <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b>camera too low/high</span>
       </div>
+      <div class="legend" id="legend-admin">
+        <span><b style="background:var(--yes)"></b>agree</span>
+        <span><b style="background:var(--no)"></b>disagree</span>
+        <span><b style="box-shadow:0 0 0 1.5px #fff,0 0 0 2.5px rgba(0,0,0,.55);background:var(--no)"></b>skip conflict</span>
+        <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>only one opinion</span>
+        <span><b style="background:rgba(120,120,128,.22)"></b>not labeled</span>
+      </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="keys-card">
       <p class="card-eyebrow">Shortcuts</p>
       <dl id="keys">
         <dt>Place / re-place chin</dt> <dd><kbd>C</kbd></dd>
@@ -1023,6 +1205,6 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=11"></script>
+<script src="chin_tuck4.js?v=12"></script>
 </body>
 </html>
