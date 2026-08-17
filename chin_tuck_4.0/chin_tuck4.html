@@ -1191,6 +1191,16 @@ body.admin #team-card { display: block; }
   content: 'Nobody has labeled anything yet.'; grid-column: 1 / -1;
   font-size: 12px; color: var(--ink-dim);
 }
+
+/* ── agreement card — same grid/row classes as team progress above, just a
+   second admin-only card with its own container. Two rows (chin, shoulder)
+   rather than one per labeler. ── */
+#agree-card { display: none; }
+body.admin #agree-card { display: block; }
+#agree-list {
+  display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
+  row-gap: 2px; font-size: 12.5px;
+}
 .team-n {
   display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 510;
 }
@@ -1472,6 +1482,18 @@ body.admin #team-card { display: block; }
       <div id="team-progress"></div>
     </div>
 
+    <!-- Admin mode only. A FIXED pair, not "everyone" — see AGREE_PAIR in
+         chin_tuck4.js. Rebuilt every render(), so it's ALWAYS about the
+         frame currently on screen, not a whole-queue rollup — a % over
+         2,000 frames doesn't say anything about the one in front of you.
+         Chin and shoulder are two independent rows, never averaged into
+         one number: they're separate landmarks, so a bad shoulder
+         shouldn't get to hide behind a good chin. -->
+    <div class="card" id="agree-card">
+      <p class="card-eyebrow">Agreement — Arianne × John</p>
+      <div id="agree-list"></div>
+    </div>
+
     <div class="card">
       <p class="card-eyebrow">Progress</p>
       <div id="head">
@@ -1527,6 +1549,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=25"></script>
+<script src="chin_tuck4.js?v=27"></script>
 </body>
 </html>

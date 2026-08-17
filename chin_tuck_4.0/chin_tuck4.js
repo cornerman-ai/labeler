@@ -168,6 +168,16 @@ const TEAM_POLL_MS = 45000;
 // gradient — a tunable constant, not a validated statistic (see
 // disagreeForSlot()).
 const DISAGREE_CAP = 0.15;
+// The overview's disagreement gradient AND the agreement card below both
+// compare exactly this pair — nobody else, by request, not "whoever's in
+// the roster." A frame either of these two labelers didn't answer simply
+// isn't part of either computation, even if a third labeler placed points
+// on it. AGREE_THRESH is a standard-ish PCK cutoff (percentage of correct
+// keypoints): a point "agrees" when both raters' clicks land within 5% of
+// torso height of each other — a third of DISAGREE_CAP's "fully
+// disagreeing" ceiling, so the two scales stay legible next to each other.
+const AGREE_PAIR = ['Arianne', 'John'];
+const AGREE_THRESH = 0.05;
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
 
 const state = {
@@ -753,11 +763,13 @@ function derivedDist(chin, sh, torsoH) {
 // renderOverview() paints. Computed only from CONFIRMED rows in
 // state.teamRows — see patchDisagree() — never from an in-progress drag, so
 // the grid can't flicker a colour for a save that hasn't landed yet.
+// Scoped to AGREE_PAIR only (see its comment) — a third labeler's row on
+// this frame, even a fully-placed one, does not enter the comparison.
 function disagreeForSlot(f) {
   const k = key(f);
   const rows = [];
-  for (const rowsByKey of state.teamRows.values()) {
-    const r = rowsByKey.get(k);
+  for (const name of AGREE_PAIR) {
+    const r = state.teamRows.get(name)?.get(k);
     if (r) rows.push(r);
   }
   if (rows.length === 0) return { kind: 'none', level: null };
@@ -801,6 +813,58 @@ function computeAllDisagree() {
 function patchDisagree(f) {
   state.disagree.set(key(f), disagreeForSlot(f));
   renderOverview();
+  renderAgreementCard();
+}
+
+// PCK-style agreement between AGREE_PAIR on ONE point, on ONE frame — not
+// an aggregate. The admin is looking at a specific frame; "82% agreement
+// over the whole queue" doesn't say whether THIS one is one of the
+// disagreements, which is the thing a per-frame card is for. "Agree" =
+// their torso-normalized Euclidean distance apart is within AGREE_THRESH.
+function frameAgreement(f, xk, yk) {
+  const [a, b] = AGREE_PAIR;
+  const k = key(f);
+  const ra = state.teamRows.get(a)?.get(k);
+  const rb = state.teamRows.get(b)?.get(k);
+  const hasA = ra && ra[xk] != null && ra[yk] != null;
+  const hasB = rb && rb[xk] != null && rb[yk] != null;
+  if (!hasA && !hasB) return { state: 'none' };
+  if (!hasA) return { state: 'missing', who: b };
+  if (!hasB) return { state: 'missing', who: a };
+  if (!f.torso_h) return { state: 'none' };
+  const dist = Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h;
+  return { state: dist <= AGREE_THRESH ? 'agree' : 'disagree', dist };
+}
+
+// Rebuilt every render() — same as the other per-frame admin cards
+// (renderAdminPicker(), renderAdminPointsList()) — so it always reflects
+// whatever frame is currently on screen, not a snapshot from login.
+function renderAgreementCard() {
+  if (!state.isAdmin) return;
+  const box = $('agree-list');
+  if (!box) return;
+  box.textContent = '';
+  const f = state.frames[state.i];
+  if (!f) return;
+  for (const [label, xk, yk] of [['Chin', 'chin_x', 'chin_y'], ['Shoulder', 'sh_x', 'sh_y']]) {
+    const r = frameAgreement(f, xk, yk);
+
+    const nm = document.createElement('div');
+    nm.className = 'team-n';
+    nm.textContent = label;
+
+    const ct = document.createElement('div');
+    ct.className = 'team-c';
+    if (r.state === 'none') { ct.textContent = 'neither placed'; ct.style.color = 'var(--ink-dim)'; }
+    else if (r.state === 'missing') { ct.textContent = `only ${r.who}`; ct.style.color = 'var(--ink-dim)'; }
+    else {
+      const pct = (r.dist * 100).toFixed(1);
+      ct.textContent = `${pct}% apart · ${r.state}`;
+      ct.style.color = r.state === 'agree' ? 'var(--yes)' : 'var(--no)';
+    }
+
+    box.append(nm, ct);
+  }
 }
 
 // ── admin mode: editing a TEAMMATE's existing points ────────────────────
@@ -1338,6 +1402,7 @@ function render() {
   renderTeamMarks();
   renderAdminPicker();
   renderAdminPointsList();
+  renderAgreementCard();
   renderOverview();
 }
 
@@ -2423,6 +2488,7 @@ async function start() {
     state.chains = new Map();
     document.body.style.removeProperty('--hp-color');
     renderTeamProgress();
+    renderAgreementCard();
     startRosterPoll();
     go(0, { initial: true });
     status('');
