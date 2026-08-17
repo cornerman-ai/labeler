@@ -863,6 +863,27 @@ function deleteTeammatePoint(labeler, point) {
   saveTeammateRow(labeler);
 }
 
+// Updates just the ONE point's dot/switch after a vis change — not a full
+// renderTeamMarks()/renderAdminPointsList() rebuild. Those tear down and
+// recreate EVERY dot for EVERY labeler, and .dot.set's pop animation (see
+// the stylesheet) plays on any element that's freshly created already
+// wearing the class — so a full rebuild for one person's answer replayed
+// the pop on every already-placed point on screen. classList.toggle here
+// touches only the one element that actually changed, same fix as the
+// no-replay-on-every-render() rule the solo target's own dot already
+// follows.
+function updateTeammateVisUI(labeler, point, vis) {
+  const el = document.querySelector(`#marks .tm.${point}[data-who="${CSS.escape(labeler)}"]`);
+  if (el) el.classList.toggle('inferred', vis === 'inferred');
+  const card = document.querySelector(`.admin-pt-card[data-labeler="${CSS.escape(labeler)}"]`);
+  const rowEl = card && card.querySelector(`.admin-tool-row[data-p="${point}"]`);
+  if (!rowEl) return;
+  rowEl.querySelector('.dot').classList.toggle('inferred', vis === 'inferred');
+  for (const seg of rowEl.querySelectorAll('.vis-seg')) {
+    seg.setAttribute('aria-pressed', String(seg.dataset.v === vis));
+  }
+}
+
 // Sets ONE point's seen/occluded answer and saves immediately — correcting
 // an existing point is unambiguous no matter how many teammates are shown,
 // unlike placing a brand-new one, which admin can never do at all.
@@ -871,8 +892,7 @@ function setAdminVis(labeler, point, v) {
   const row = state.teamRows.get(labeler)?.get(k);
   if (!row || row[point === 'chin' ? 'chin_vis' : 'sh_vis'] === v) return;
   row[point === 'chin' ? 'chin_vis' : 'sh_vis'] = v;
-  renderTeamMarks();
-  renderAdminPointsList();
+  updateTeammateVisUI(labeler, point, v);
   saveTeammateRow(labeler);
 }
 
@@ -1233,6 +1253,23 @@ function advance() {
   // queue is saved by pressing Next on it, not lost for being last.
   if (commitCurrent()) status('End of queue');
   render();
+}
+
+// Writes whatever's on the frame without leaving it — the same write
+// Next/Prev/Skip already trigger on departure, minus the departure, for
+// whenever the next frame isn't where the labeler wants to go yet.
+// commitCurrent() already shows its own message when it's blocking
+// (unanswered vis); "Saved" here is this button's OWN confirmation for
+// every other outcome, including "nothing had changed" — which is still
+// a true thing to say, just not a very interesting one. It's overwritten
+// almost immediately by showQueueState()'s own "saving…"/"" if a real
+// write went out, so it reads as instant confirmation rather than a
+// message that lingers past being true.
+function manualSave() {
+  if (!state.ready) return;
+  const ok = commitCurrent();
+  render();
+  if (ok) status('Saved', 'ok');
 }
 
 function prefetch() {
@@ -1997,6 +2034,7 @@ function bind() {
   // carries a REASON, and "you pressed Enter without placing points" is not
   // one — save() puts the why in the status line.
   $('save-next').onclick = advance;
+  $('save-btn').onclick = manualSave;
   // Skip asks WHY before it writes anything: the reason is the data, and a
   // frame is never skipped without one.
   $('skip-btn').onclick = () => {

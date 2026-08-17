@@ -244,6 +244,19 @@ body:not(.ready) #ov-flags,
 body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
 
+/* Writes now without leaving the frame — the same write Next/Prev/Skip
+   already trigger on departure, just without the departure. Plain
+   secondary styling like #cam-btn beside it, not accent-filled: the
+   primary "I'm done here" gesture is still Save & Next above; this is
+   for the narrower "not yet, but don't lose this" moment. */
+#save-btn {
+  flex: 1; padding: 8px 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; color: var(--ink-dim);
+}
+#save-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#save-btn:disabled { opacity: .4; cursor: default; }
+
 /* Camera on the ground — a fact about the SHOT, not about the labeling. A
    phone lying on the floor looks up at the boxer, and that tilt moves the
    chin over the shoulder in the image without the boxer's head moving at
@@ -1097,6 +1110,7 @@ body.admin #pts-complete { display: none; }
    Only Prev/Next survive, for paging through the queue while reviewing. */
 body.admin #save-next,
 body.admin #skip-wrap,
+body.admin #save-btn,
 body.admin #cam-btn { display: none; }
 
 /* ── admin picker — one row per roster labeler, sits above the tool-rows ─
@@ -1429,6 +1443,12 @@ body.admin #team-card { display: block; }
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
           <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
         </div>
+        <!-- Writes whatever's on the frame WITHOUT moving on — the same
+             write Next/Prev/Skip already trigger on leaving, just without
+             the "and leave" half, for whenever the next frame isn't where
+             the labeler wants to go yet. See commitCurrent(); this button
+             doesn't duplicate its logic, just calls it without a go(). -->
+        <button id="save-btn" type="button" title="Save without moving to the next frame">Save</button>
         <!-- Off unless the labeler says otherwise: a camera lying on the floor
              shoots up at the boxer, which tilts the chin-to-shoulder geometry
              the whole dataset is measuring. Recorded per frame because one
@@ -1504,6 +1524,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=23"></script>
+<script src="chin_tuck4.js?v=24"></script>
 </body>
 </html>
