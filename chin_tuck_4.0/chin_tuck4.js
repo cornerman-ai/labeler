@@ -128,6 +128,7 @@ const SKIP_LABELS = {
 const HIDE_KEY = 'cs4_hidden';        // localStorage: names hidden from MY OWN team list
 const RANGE_KEY = 'cs4_ranges';       // localStorage: cached per-labeler frame ranges
 const RANGE_FRESH_MS = 60000;         // don't re-read a labeler's full tab more often than this
+const THRESH_KEY = 'cs4_agree_thresh'; // localStorage: admin's chosen agreement threshold (percent, 1-50)
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -168,11 +169,19 @@ const TEAM_POLL_MS = 45000;
 // compare exactly this pair — nobody else, by request, not "whoever's in
 // the roster." A frame either of these two labelers didn't answer simply
 // isn't part of either computation, even if a third labeler placed points
-// on it. AGREE_THRESH is a standard-ish PCK cutoff (percentage of correct
-// keypoints): a point "agrees" when both raters' clicks land within 5% of
-// torso height of each other.
+// on it.
 const AGREE_PAIR = ['Arianne', 'John'];
-const AGREE_THRESH = 0.05;
+// Admin-adjustable (see #agree-thresh in bind()) — a fraction, e.g. 0.05
+// for 5%. PCK-style: a point "agrees" when both raters' clicks land within
+// this fraction of torso height of each other. Defaults to 5%, a
+// standard-ish PCK cutoff, but nothing about it is validated — it's a
+// dial, not a statistic, so the admin can try 10% and see what changes.
+// Persisted so a reload keeps whatever was last chosen.
+const DEFAULT_AGREE_THRESH_PCT = 5;
+function loadAgreeThresh() {
+  const raw = Number(localStorage.getItem(THRESH_KEY));
+  return Number.isFinite(raw) && raw >= 1 && raw <= 50 ? raw / 100 : DEFAULT_AGREE_THRESH_PCT / 100;
+}
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
 
 const state = {
@@ -231,6 +240,7 @@ const state = {
   teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
   teamBundles: new Map(),  // labeler -> {failed, inflight, chains} — this labeler's own save bookkeeping
   disagree: new Map(),     // slotKey -> {kind, level}
+  agreeThresh: loadAgreeThresh(), // fraction (e.g. 0.05) — see #agree-thresh in bind()
   // A teammate's OWN existing dot, directly draggable on canvas — separate
   // from ptDrag/ctxFor, which stay scoped to the normal-mode self (admin
   // has no "own" point path at all any more — see activeLabeler()).
@@ -815,7 +825,9 @@ function patchDisagree(f) {
 // an aggregate. The admin is looking at a specific frame; "82% agreement
 // over the whole queue" doesn't say whether THIS one is one of the
 // disagreements, which is the thing a per-frame card is for. "Agree" =
-// their torso-normalized Euclidean distance apart is within AGREE_THRESH.
+// their torso-normalized Euclidean distance apart is within
+// state.agreeThresh — admin-adjustable, so this reads the live value
+// rather than a fixed constant.
 function frameAgreement(f, xk, yk) {
   const [a, b] = AGREE_PAIR;
   const k = key(f);
@@ -828,7 +840,7 @@ function frameAgreement(f, xk, yk) {
   if (!hasB) return { state: 'missing', who: a };
   if (!f.torso_h) return { state: 'none' };
   const dist = Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h;
-  return { state: dist <= AGREE_THRESH ? 'agree' : 'disagree', dist };
+  return { state: dist <= state.agreeThresh ? 'agree' : 'disagree', dist };
 }
 
 // Rebuilt every render() — same as the other per-frame admin cards
@@ -2170,6 +2182,26 @@ function bind() {
     e.stopPropagation();
     if (e.key === 'Enter') gotoFrame();
   };
+
+  // Applies immediately — recompute + repaint both the overview grid and
+  // the current frame's agreement card — and persists, so a bad value
+  // typed mid-digit (e.g. the "1" on the way to "15") never lingers past
+  // the next keystroke, and a good one survives a reload.
+  const threshEl = $('agree-thresh');
+  threshEl.value = String(Math.round(state.agreeThresh * 100));
+  const applyThresh = () => {
+    const n = Math.round(Number(threshEl.value));
+    if (!Number.isFinite(n) || n < 1 || n > 50) return;
+    state.agreeThresh = n / 100;
+    try { localStorage.setItem(THRESH_KEY, String(n)); } catch (e) {}
+    if (state.isAdmin) {
+      computeAllDisagree();
+      renderOverview();
+      renderAgreementCard();
+    }
+  };
+  threshEl.oninput = applyThresh;
+  threshEl.onkeydown = (e) => e.stopPropagation();
 
   $('prev').onclick = () => go(state.i - 1);
   $('next').onclick = () => go(state.i + 1);

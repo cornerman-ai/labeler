@@ -1093,6 +1093,21 @@ body.admin #keys-card { display: none; }
 body.admin #legend-normal { display: none; }
 body.admin #legend-admin { display: flex; }
 
+/* Same shape as #goto above — label, number input, no separate apply
+   button, since the change fires on input rather than needing one. */
+#agree-thresh-row { display: none; }
+body.admin #agree-thresh-row {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+}
+#agree-thresh-row label { font-size: 11.5px; color: var(--ink-dim); flex: 1; }
+#agree-thresh {
+  flex: none; width: 52px; font: inherit; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); text-align: right;
+}
+#agree-thresh:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pct-sign { font-size: 12.5px; color: var(--ink-dim); flex: none; }
+
 /* Admin never places a point — that is the ACT of being a labeler, and
    admin's whole job is correcting and reviewing their work from outside,
    never impersonating them (2026-08). #q-card's eyebrow swaps to name what
@@ -1524,6 +1539,16 @@ body.admin #agree-card { display: block; }
         <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>only one opinion</span>
         <span><b style="background:rgba(120,120,128,.22)"></b>not labeled</span>
       </div>
+      <!-- Admin-only. Drives both this grid's colours AND the per-frame
+           agreement card's agree/disagree wording — one threshold, read by
+           frameAgreement() wherever it's called. Applies immediately on
+           change (recomputes + repaints both), and persists across
+           reloads via localStorage — see AGREE_THRESH_KEY. -->
+      <div id="agree-thresh-row">
+        <label for="agree-thresh">Agreement threshold</label>
+        <input id="agree-thresh" type="number" min="1" max="50" step="1" inputmode="numeric">
+        <span class="pct-sign">%</span>
+      </div>
     </div>
 
     <div class="card" id="keys-card">
@@ -1550,6 +1575,6 @@ body.admin #agree-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=28"></script>
+<script src="chin_tuck4.js?v=29"></script>
 </body>
 </html>
