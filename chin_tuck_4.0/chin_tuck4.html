@@ -244,11 +244,13 @@ body:not(.ready) #ov-flags,
 body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
 
-/* Writes now without leaving the frame — the same write Next/Prev/Skip
-   already trigger on departure, just without the departure. Plain
-   secondary styling like #cam-btn beside it, not accent-filled: the
-   primary "I'm done here" gesture is still Save & Next above; this is
-   for the narrower "not yet, but don't lose this" moment. */
+/* Admin-only — see body.admin below. Every teammate edit already saves the
+   instant it's made (drag release, a vis click, a delete — saveTeammateRow()
+   fires immediately, there's no per-frame "leaving" to hang a write on), so
+   this is a confirmation/retry action, not a deferred commit: "push whatever
+   this frame's rows currently hold, again, now." Plain secondary styling,
+   not accent-filled — it's a safety net beside Prev/Next, not the primary
+   gesture. */
 #save-btn {
   flex: 1; padding: 8px 6px; border-radius: 8px;
   border: 1px solid var(--line); background: transparent;
@@ -1105,13 +1107,15 @@ body.admin #admin-eyebrow { display: block; }
 body.admin #q-card .tool-row,
 body.admin #q-card .vis-switch,
 body.admin #pts-complete { display: none; }
-/* Nothing here is "admin's own work" either — Save/Skip/Camera all act on
-   a single active identity's in-progress points, which admin never has.
-   Only Prev/Next survive, for paging through the queue while reviewing. */
+/* Save & Next / Skip / Camera all act on a single active identity's
+   in-progress points, which admin never has — gone entirely. #save-btn is
+   the opposite: admin-ONLY (hidden in normal mode below), since normal mode
+   already saves on leaving the frame and has nothing left for a manual save
+   to do. */
 body.admin #save-next,
 body.admin #skip-wrap,
-body.admin #save-btn,
 body.admin #cam-btn { display: none; }
+body:not(.admin) #save-btn { display: none; }
 
 /* ── admin picker — one row per roster labeler, sits above the tool-rows ─
    display:none by default (not just empty): a normal login never runs the
@@ -1443,12 +1447,11 @@ body.admin #team-card { display: block; }
           <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
           <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
         </div>
-        <!-- Writes whatever's on the frame WITHOUT moving on — the same
-             write Next/Prev/Skip already trigger on leaving, just without
-             the "and leave" half, for whenever the next frame isn't where
-             the labeler wants to go yet. See commitCurrent(); this button
-             doesn't duplicate its logic, just calls it without a go(). -->
-        <button id="save-btn" type="button" title="Save without moving to the next frame">Save</button>
+        <!-- Admin-only (see body.admin in the stylesheet): re-pushes every
+             roster row that exists for the current frame, in case an edit's
+             own immediate save needs retrying or the labeler just wants
+             confirmation it landed. -->
+        <button id="save-btn" type="button" title="Save this frame's edits">Save</button>
         <!-- Off unless the labeler says otherwise: a camera lying on the floor
              shoots up at the boxer, which tilts the chin-to-shoulder geometry
              the whole dataset is measuring. Recorded per frame because one
@@ -1524,6 +1527,6 @@ body.admin #team-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=24"></script>
+<script src="chin_tuck4.js?v=25"></script>
 </body>
 </html>

@@ -1255,21 +1255,22 @@ function advance() {
   render();
 }
 
-// Writes whatever's on the frame without leaving it — the same write
-// Next/Prev/Skip already trigger on departure, minus the departure, for
-// whenever the next frame isn't where the labeler wants to go yet.
-// commitCurrent() already shows its own message when it's blocking
-// (unanswered vis); "Saved" here is this button's OWN confirmation for
-// every other outcome, including "nothing had changed" — which is still
-// a true thing to say, just not a very interesting one. It's overwritten
-// almost immediately by showQueueState()'s own "saving…"/"" if a real
-// write went out, so it reads as instant confirmation rather than a
-// message that lingers past being true.
-function manualSave() {
-  if (!state.ready) return;
-  const ok = commitCurrent();
-  render();
-  if (ok) status('Saved', 'ok');
+// Admin-only. Every teammate edit already writes the instant it's made
+// (see saveTeammateRow()) — this button doesn't commit anything new, it
+// re-sends whatever the current frame's rows hold right now, for the
+// "did that actually land" moment after a run of edits, or to retry one
+// that failed. Skips labelers with no row here rather than sending an
+// empty save for everyone on every click.
+function adminManualSave() {
+  if (!state.ready || !state.isAdmin) return;
+  const f = state.frames[state.i];
+  if (!f) return;
+  const k = key(f);
+  let any = false;
+  for (const l of state.roster) {
+    if (state.teamRows.get(l.labeler)?.get(k)) { saveTeammateRow(l.labeler); any = true; }
+  }
+  status(any ? 'Saved' : 'Nothing to save on this frame', 'ok');
 }
 
 function prefetch() {
@@ -2034,7 +2035,7 @@ function bind() {
   // carries a REASON, and "you pressed Enter without placing points" is not
   // one — save() puts the why in the status line.
   $('save-next').onclick = advance;
-  $('save-btn').onclick = manualSave;
+  $('save-btn').onclick = adminManualSave;
   // Skip asks WHY before it writes anything: the reason is the data, and a
   // frame is never skipped without one.
   $('skip-btn').onclick = () => {
