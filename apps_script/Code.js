@@ -4963,11 +4963,24 @@ function cs4RowOut(row, idx) {
 
 function doGetChinPoint(p, labeler, action, spec) {
   spec = spec || CS4_SPEC;
+  // Same op-stripping doGetChinShoulderV2 uses: the action arrives as its
+  // full name (listChinPoint / listChinPointDepth) so the dispatch table in
+  // doGet stays one literal string per action; spec.action ('ChinPoint' /
+  // 'ChinPointDepth') is stripped off to leave the OPERATION, which is what
+  // every branch below actually branches on. Missed on CS4D's first cut —
+  // the branches below still checked the literal height-guard action names,
+  // so depth-guard's requests always fell through to "unknown chin-point
+  // action" no matter how the dispatch in doGet routed them.
+  var op = String(action);
+  if (op.length > spec.action.length
+      && op.slice(-spec.action.length) === spec.action) {
+    op = op.slice(0, op.length - spec.action.length);
+  }
 
   // === STATS — roster for the admin-mode team panel: distinct resolved
   // identities per labeler. 'admin' itself is excluded so a stray test tab
   // can never show up as a circular "admin of the admin" row. ===
-  if (action === 'statsChinPoint') {
+  if (op === 'stats') {
     var cache = null;
     try { cache = CacheService.getScriptCache(); } catch (e) {}
     if (cache) {
@@ -5023,7 +5036,7 @@ function doGetChinPoint(p, labeler, action, spec) {
 
   // === LIST — this labeler's latest row per identity ===
   // Same rule as 2.0/3.0: only a save creates a tab.
-  if (action === 'listChinPoint') {
+  if (op === 'list') {
     var lsh = csSpreadsheet(spec).getSheetByName(name);
     if (!lsh || lsh.getLastRow() < 2) {
       return csOut(spec, { labeler: who, sheet: name, rows: [] });
@@ -5037,7 +5050,7 @@ function doGetChinPoint(p, labeler, action, spec) {
   }
 
   // === SAVE — overwrite the row for (video, round, frame, rep), else append ===
-  if (action === 'saveChinPoint') {
+  if (op === 'save') {
     var required = ['video', 'round', 'frame'];
     for (var rq = 0; rq < required.length; rq++) {
       if (p[required[rq]] === undefined || p[required[rq]] === '') {
@@ -5199,7 +5212,7 @@ function doGetChinPoint(p, labeler, action, spec) {
   }
 
   // === DELETE — remove the row entirely (no soft-delete, matching 2.0/3.0) ===
-  if (action === 'deleteChinPoint') {
+  if (op === 'delete') {
     var dRequired = ['video', 'round', 'frame'];
     for (var drq = 0; drq < dRequired.length; drq++) {
       if (p[dRequired[drq]] === undefined || p[dRequired[drq]] === '') {
