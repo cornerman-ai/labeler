@@ -133,6 +133,10 @@ const RANGE_FRESH_MS = 60000;         // don't re-read a labeler's full tab more
 // single dial should have to fit both.
 const THRESH_KEY_CHIN = 'cs4_agree_thresh_chin';
 const THRESH_KEY_SH = 'cs4_agree_thresh_sh';
+// localStorage: which of the three metric grids are folded shut — a
+// per-device view preference (like HIDE_KEY above), never anything that
+// reaches the sheet.
+const FOLD_KEY = 'cs4_metric_folded';
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -183,6 +187,16 @@ const AGREE_PAIR = ['Arianne', 'John'];
 // stance-height difference shows up as HEIGHT, and euclid alone can't
 // tell them apart. Order matters — it's also grid build/render order.
 const AGREE_METRICS = ['euclid', 'height', 'width'];
+// A grid folded shut still builds and repaints normally underneath —
+// folding is purely a display:none on its wrapper (see applyMetricFold())
+// — so there's no separate "don't bother computing this one" path to keep
+// in sync with the other two.
+function loadFoldedMetrics() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOLD_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.filter((m) => AGREE_METRICS.includes(m)) : []);
+  } catch (e) { return new Set(); }
+}
 // Admin-adjustable, chin and shoulder independently (see #agree-thresh-chin
 // / #agree-thresh-sh in bind()) — each a fraction, e.g. 0.05 for 5%.
 // PCK-style: a point "agrees" when both raters' clicks land within its
@@ -264,6 +278,7 @@ const state = {
   // screen at once, not just whichever one is "selected").
   disagreeByMetric: { euclid: new Map(), height: new Map(), width: new Map() },
   agreeMetric: 'euclid',   // which metric the agreement card is currently showing
+  foldedMetrics: loadFoldedMetrics(), // Set of metric names folded shut — a view preference
   agreeThreshChin: loadAgreeThresh(THRESH_KEY_CHIN), // fraction (e.g. 0.05) — see bind()
   agreeThreshSh: loadAgreeThresh(THRESH_KEY_SH),
   // A teammate's OWN existing dot, directly draggable on canvas — separate
@@ -915,6 +930,31 @@ function renderMetricLabels() {
     const el = $(`metric-label-${m}`);
     if (el) el.classList.toggle('active', state.agreeMetric === m);
   }
+}
+
+const METRIC_WRAP_IDS = { euclid: 'ov4-wrap', height: 'ov-height-wrap', width: 'ov-width-wrap' };
+
+function toggleMetricFold(metric) {
+  if (state.foldedMetrics.has(metric)) state.foldedMetrics.delete(metric);
+  else state.foldedMetrics.add(metric);
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...state.foldedMetrics])); } catch (e) {}
+  applyMetricFold(metric);
+}
+
+// Inline style, not a CSS class: the wrapper's default visibility already
+// comes from a body.admin selector (see #ov-height-wrap in the
+// stylesheet), and an inline style is the one thing guaranteed to beat
+// that regardless of how the two rules' specificity compares.
+function applyMetricFold(metric) {
+  const folded = state.foldedMetrics.has(metric);
+  const btn = $(`metric-label-${metric}`);
+  const wrap = $(METRIC_WRAP_IDS[metric]);
+  if (btn) btn.setAttribute('aria-expanded', String(!folded));
+  if (wrap) wrap.style.display = folded ? 'none' : '';
+}
+
+function applyAllMetricFolds() {
+  for (const m of AGREE_METRICS) applyMetricFold(m);
 }
 
 function renderAgreementCard() {
@@ -2430,6 +2470,18 @@ function bind() {
   wireThresh('agree-thresh-chin', THRESH_KEY_CHIN, 'agreeThreshChin');
   wireThresh('agree-thresh-sh', THRESH_KEY_SH, 'agreeThreshSh');
 
+  // Each of the three metric labels doubles as a fold/unfold button — see
+  // toggleMetricFold(). Independent of setAgreeMetric(): folding a grid
+  // away doesn't change which one the agreement card is showing, and
+  // clicking a dot in a grid never folds it. The fold state itself is only
+  // APPLIED once admin mode is confirmed (start()'s admin branch) — #ov4
+  // is shared with normal mode, and applying a persisted "euclid folded"
+  // here, before login, would hide a normal labeler's only progress grid.
+  for (const m of AGREE_METRICS) {
+    const btn = $(`metric-label-${m}`);
+    if (btn) btn.onclick = () => toggleMetricFold(m);
+  }
+
   $('prev').onclick = () => go(state.i - 1);
   $('next').onclick = () => go(state.i + 1);
 
@@ -2754,6 +2806,7 @@ async function start() {
     renderAgreementCard();
     renderGlobalAgreement();
     renderMetricLabels();
+    applyAllMetricFolds();
     startRosterPoll();
     go(0, { initial: true });
     status('');
@@ -2764,6 +2817,11 @@ async function start() {
   // A normal login has one labeler, so its own points just need --accent —
   // clear any stale --hp-color a PRIOR admin session left on this tab.
   document.body.style.removeProperty('--hp-color');
+  // Same reasoning: a prior admin session in this tab may have folded #ov4
+  // shut via an inline style, which normal mode has no button to undo —
+  // #ov4 is the only progress grid it has, so it must never start hidden.
+  const ov4Wrap = $(METRIC_WRAP_IDS.euclid);
+  if (ov4Wrap) ov4Wrap.style.display = '';
   const n = firstUnlabeled(0);
   go(n < 0 ? state.frames.length - 1 : n, { initial: true });
   status(n < 0 ? 'All frames labeled' : '');

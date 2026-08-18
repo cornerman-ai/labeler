@@ -738,7 +738,11 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 /* One per grid, directly under the grid it explains. A single legend at the
    bottom of the card described the FIRST grid while sitting under the SECOND,
    which is the one place it could not mean what it said. */
-.legend { display: flex; gap: 10px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
+/* flex-wrap: the admin legend has six entries ("chin + shoulder agree",
+   "skip conflict", …) that don't fit one line in the sidebar's width —
+   without wrap they ran past the card edge instead of flowing to a
+   second line. */
+.legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
 .legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
 /* One row per action, keys right-aligned in their own column — as a wrapped
    sentence of dot-separated pairs this took the same space and could not be
@@ -1110,19 +1114,35 @@ body.admin #keys-card { display: none; }
 body.admin #legend-normal { display: none; }
 body.admin #legend-admin { display: flex; }
 
-/* Labels above each of the three metric grids. Admin-only, even the one
-   over #ov4 — normal mode doesn't have "metrics" to choose between, it has
-   one grid that just shows its own progress. .active (toggled by
-   renderMetricLabels()) marks whichever metric the agreement card is
-   currently showing — the only visual cue besides the card itself of
-   which of the three is selected. */
+/* Labels above each of the three metric grids — also the fold/unfold
+   button for that one grid (toggleMetricFold()). Admin-only, even the one
+   over #ov4 — normal mode doesn't have "metrics" to choose between or fold
+   away, it has one grid that just shows its own progress. .active
+   (toggled by renderMetricLabels()) marks whichever metric the agreement
+   card is currently showing — independent of fold state, since a folded
+   grid can still be the one selected. */
+/* Padding + a compensating negative margin: the row's hit area (and its
+   hover/active fill) extends into the card's own padding, but the TEXT
+   stays lined up with the grid below it, same trick as a Settings.app row
+   whose highlight bleeds to the group's edges while its label doesn't
+   visually shift. */
 .metric-label {
-  display: none; font-size: 11.5px; font-weight: 510; color: var(--ink-dim);
-  margin: 10px 0 6px;
+  display: none; align-items: center; justify-content: space-between; gap: 6px;
+  width: 100%; margin: 12px -6px 6px; padding: 5px 6px; border: 0; border-radius: 6px;
+  background: none; font: inherit; font-size: 11.5px; font-weight: 510; color: var(--ink-dim);
+  text-align: left; cursor: pointer; transition: background .15s ease, color .15s ease;
 }
 #metric-label-euclid { margin-top: 0; }
-body.admin .metric-label { display: block; }
-.metric-label.active { color: var(--ink); font-weight: 700; }
+body.admin .metric-label { display: flex; }
+.metric-label:hover { background: rgba(120,120,128,.10); color: var(--ink); }
+.metric-label.active { background: rgba(120,120,128,.08); color: var(--ink); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .metric-label { transition: none; } }
+.metric-chev {
+  flex: none; width: 10px; height: 10px; color: var(--ink-dim);
+  opacity: .6; transition: transform .15s ease;
+}
+.metric-label[aria-expanded="false"] .metric-chev { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .metric-chev { transition: none; } }
 #ov-height-wrap, #ov-width-wrap { display: none; }
 body.admin #ov-height-wrap, body.admin #ov-width-wrap { display: flex; }
 
@@ -1588,13 +1608,18 @@ body.admin #agree-card { display: block; }
         <input id="goto-n" type="number" min="1" inputmode="numeric">
         <button id="goto-go">Go</button>
       </div>
-      <!-- Admin-only label, shown only above #ov4 since that grid itself
-           is shared with normal mode (just recoloured — see body.admin
-           below). Clicking any dot in any of the three grids below picks
-           that grid's metric for the Agreement card AND jumps to that
-           frame — see setAgreeMetric()/buildOneGrid() in chin_tuck4.js. -->
-      <p class="metric-label" id="metric-label-euclid">Euclidean distance</p>
-      <div class="ovw"><div class="ovn"></div><div id="ov4" class="d4-grid"></div></div>
+      <!-- Admin-only label/fold-button, shown only above #ov4 since that
+           grid itself is shared with normal mode (just recoloured — see
+           body.admin below). Clicking anywhere on the LABEL folds that one
+           grid shut (toggleMetricFold()) — independent of clicking a DOT
+           in the grid, which picks that grid's metric for the Agreement
+           card AND jumps to that frame (setAgreeMetric()/buildOneGrid()
+           in chin_tuck4.js). -->
+      <button type="button" class="metric-label" id="metric-label-euclid" aria-expanded="true" aria-controls="ov4-wrap">
+        <span>Euclidean distance</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="ovw" id="ov4-wrap"><div class="ovn"></div><div id="ov4" class="d4-grid"></div></div>
       <!-- Two more views of the same per-frame disagreement, isolating
            just the vertical or horizontal component — which axis is
            actually driving disagreement varies by labeling task (a camera
@@ -1602,9 +1627,15 @@ body.admin #agree-card { display: block; }
            HEIGHT), so euclid alone doesn't always say enough. Admin-only;
            same gutter/geometry as #ov4 above so all three read as the same
            object, not a main grid and two lesser afterthoughts. -->
-      <p class="metric-label" id="metric-label-height">Height disagreement</p>
+      <button type="button" class="metric-label" id="metric-label-height" aria-expanded="true" aria-controls="ov-height-wrap">
+        <span>Height disagreement</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="ovw" id="ov-height-wrap"><div class="ovn"></div><div id="ov-height" class="d4-grid"></div></div>
-      <p class="metric-label" id="metric-label-width">Width disagreement</p>
+      <button type="button" class="metric-label" id="metric-label-width" aria-expanded="true" aria-controls="ov-width-wrap">
+        <span>Width disagreement</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="ovw" id="ov-width-wrap"><div class="ovn"></div><div id="ov-width" class="d4-grid"></div></div>
       <!-- Two legends, one page: admin mode recolors #ov4 by team
            disagreement rather than by MY OWN completion, so the key
@@ -1669,6 +1700,6 @@ body.admin #agree-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=36"></script>
+<script src="chin_tuck4.js?v=37"></script>
 </body>
 </html>
