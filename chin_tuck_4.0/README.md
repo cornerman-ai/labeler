@@ -1,12 +1,11 @@
 # chin_tuck 4.0 — the geometric generation
 
-Labelers **click two points** per frame — the chin tip and the top of the
-lead shoulder — instead of answering questions. The raw points are the
-label; over/level/under is derived downstream, so the "level" band can be
-tuned forever without relabeling, disagreement is a measurable distance per
-point, and the clicks double as calibration for the pipeline (human
-shoulder vs BlazePose's, human chin vs the nose→mouth extrapolation that
-`chins/chin_points.json` bakes for 2.0).
+Labelers **click two points** per frame instead of answering questions. The
+raw points are the label; over/level/under is derived downstream, so the
+"level" band can be tuned forever without relabeling, disagreement is a
+measurable distance per point, and the clicks double as calibration for the
+pipeline (human shoulder vs BlazePose's, human chin vs the nose→mouth
+extrapolation that `chins/chin_points.json` bakes for 2.0).
 
 Built after the 2026-08 inter-rater runs: 2.0's four questions came in
 below trainable on three of four, and 3.0's single yes/no traded resolution
@@ -14,7 +13,26 @@ for agreement. 4.0 goes the other way — maximum resolution, with
 disagreement diagnosable instead of categorical. 3.0's yes/no labels remain
 valuable: on the 932 shared frames they validate the derived distance.
 
-## The data
+## Sub-labelers
+
+Two axes, independent of each other: **which landmark pair** is clicked
+(chin tip + shoulder **top**, "height", vs chin tip + shoulder's **most
+frontal point**, "depth") and **which frames** are sampled (**guard** —
+non-punch, punch-adjacent frames, vs **punch** — frames inside a punch).
+Four combinations, one subfolder each:
+
+| Variant | Status | Folder | Landmark pair | Frames |
+| --- | --- | --- | --- | --- |
+| Height guard | live | [`height_guard/`](height_guard/) | chin tip + shoulder top | non-punch, punch-adjacent |
+| Depth guard | live (v1) | [`depth_guard/`](depth_guard/) | chin tip + shoulder's frontal point | non-punch, punch-adjacent (reuses height guard's set as-is for now — see `depth_guard/depth_guard.js` header) |
+| Height punch | planned | [`height_punch/`](height_punch/) | chin tip + shoulder top | inside a punch |
+| Depth punch | planned | [`depth_punch/`](depth_punch/) | chin tip + shoulder's frontal point | inside a punch |
+
+[`shared/chin_frames.json`](shared/chin_frames.json) is the raw sample
+manifest every variant's queue is built from — backend-only, never fetched
+by a page (see "Growing / rebuilding" below).
+
+## The data (height_guard / depth_guard)
 
 **Non-punch, punch-adjacent frames only.** Placing "the top of the
 deltoid" only means one thing in guard — mid-punch the shoulder roll moves
@@ -31,9 +49,12 @@ tightening.
 
 - 1,810 frames across 192 videos: **932 kept from 2.0** (already exported,
   already 3.0-labeled) **+ 878 sampled fresh**
-- queue: **1,996 slots** = 1,810 + **186 planted repeats** (rep=1, ~10%,
-  ≥200 slots downstream, blind) for intra-rater click scatter — the noise
-  floor every inter-rater number is read against
+- height_guard's queue: **1,996 slots** = 1,810 + **186 planted repeats**
+  (rep=1, ~10%, ≥200 slots downstream, blind) for intra-rater click
+  scatter — the noise floor every inter-rater number is read against
+- depth_guard's queue (v1): the first **200 slots** of height_guard's
+  queue, no repeats, sideways-on filtering still TODO — see
+  `depth_guard/depth_guard.js`'s header comment
 - sampler: `cornerman-backend/ml/research/chin_tuck/v3/chin_sampler_v3.py`
   (deterministic, additive growth, same contract as v2)
 
@@ -42,15 +63,19 @@ Pages budget for another generation. Objects sit under
 `labeler_media/chin_point/frames/<stem dir>/r<r>_f<f>.jpg` in the
 `mycorner-bee6a` bucket behind a shared download token (the bucket's rules
 never loosened — see `chin_upload_frames.py`). Git carries only code,
-`chin_frames.json` and `queue.json`.
+`shared/chin_frames.json` and each variant's `*_queue.json`.
 
 ## The backend
 
-Apps Script `doGetChinPoint` (own handler, `CS4_SPEC`), tabs
-`chin_point_labels_<Name>` in the **`Chin Point Labels` spreadsheet**
-(Drive: `Cornerman/data/labels/labeling_team/`, ID in `CS4_SPEC`) — its own
-workbook, not Box Labeled Data, so repeat frames stay out of the
-training-critical sheet.
+Apps Script `doGetChinPoint` (own handler), tabs `chin_point_labels_<Name>`
+(height guard, `CS4_SPEC`) / `chin_point_depth_labels_<Name>` (depth guard,
+`CS4D_SPEC`) in the **`Chin Point Labels` spreadsheet** (Drive:
+`Cornerman/data/labels/labeling_team/`) — its own workbook, not Box
+Labeled Data, so repeat frames stay out of the training-critical sheet.
+Both variants share the same `doGetChinPoint` machinery, parameterized by
+spec — only the spreadsheet tab prefix and frame source differ; the row
+schema (`chin_x`/`chin_y`/`sh_x`/`sh_y`) is unchanged since those columns
+are just click coordinates and don't encode which landmark they are.
 
 **Overwrite in place, keyed (video, round, frame, rep)** — same rule as
 2.0/3.0: a re-label replaces the row rather than piling up history. `rep`
@@ -76,14 +101,17 @@ measure.
 
 ## The page
 
-`chin_tuck4.html` — 3.0's shell (same stylesheet base, name bar, optimistic
-chained saves, overview grid) with the question card replaced
-by point placement: click places the armed point (chin → shoulder →
-disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for precision. Each
-click opens the seen/inferred popover beside the point it just placed, and
-the point is not finished — nor the next one armed — until that is answered.
+`height_guard/height_guard.html` — 3.0's shell (same stylesheet base, name
+bar, optimistic chained saves, overview grid) with the question card
+replaced by point placement: click places the armed point (chin →
+shoulder → disarmed), drag adjusts, `C`/`S` re-arm, zoom to 12x for
+precision. Each click opens the seen/inferred popover beside the point it
+just placed, and the point is not finished — nor the next one armed —
+until that is answered. `depth_guard/depth_guard.html` is the same
+machinery with the second point's landmark swapped (shoulder top →
+shoulder's most frontal point).
 
-The definitions of the two landmarks are NOT on the page: they live in the
+The definitions of the landmarks are NOT on the page: they live in the
 Notion guide ("How to use the chin tuck labeler 4.0"), which the page links
 to. Two copies of "what counts as the top of the shoulder" drift, and the
 copy the team reads before a session is the one that has to be right.
@@ -185,24 +213,38 @@ python chin_tuck/v3/fetch_combined_xlsx.py \
 #    drops only the frames the new gate excludes)
 python chin_tuck/v3/chin_sampler_v3.py \
     --combined combined_snapshot.xlsx \
-    --seed-manifest <labeler>/chin_tuck_4.0/chin_frames.json \
-    --out <labeler>/chin_tuck_4.0/chin_frames.json
+    --seed-manifest <labeler>/chin_tuck_4.0/shared/chin_frames.json \
+    --out <labeler>/chin_tuck_4.0/shared/chin_frames.json
 
 # 3. export new JPEGs (skips existing), then upload (skips existing)
 python chin_tuck/v1/chin_export_frames.py \
-    --manifest <labeler>/chin_tuck_4.0/chin_frames.json \
+    --manifest <labeler>/chin_tuck_4.0/shared/chin_frames.json \
     --videos "<drive>/data/raw_videos/full_source_videos" \
-    --out <staging dir> --hosted-name exported_videos.json
+    --out <staging dir>
 python chin_tuck/v3/chin_upload_frames.py \
     --frames <staging dir> \
     --service-account <backend>/firebase_service_account.json
 
 # 4. queue (--append keeps positions + labels, new frames shuffle to the end)
 python chin_tuck/v3/chin_build_queue_v3.py \
-    --manifest <labeler>/chin_tuck_4.0/chin_frames.json \
-    --out <labeler>/chin_tuck_4.0/queue.json --append
+    --manifest <labeler>/chin_tuck_4.0/shared/chin_frames.json \
+    --out <labeler>/chin_tuck_4.0/height_guard/height_guard_queue.json --append
 ```
 
-Then bump the cache-bust versions — `queue.json?v=` in `chin_tuck4.js` and
-the `chin_tuck4.js?v=` tag in `chin_tuck4.html` — or labelers keep the
-queue their browser cached.
+(Step 3 always writes a hosted-stems JSON next to `--out`, default name
+`chin_hosted.json` — a `--hosted-name exported_videos.json` copy of this
+used to live in this repo but nothing reads it: 4.0 pages fetch frames
+straight from Firebase Storage, not a baked JPEG tree, so the file was
+dead weight and got deleted. Point `--out` at a scratch/staging dir and
+ignore whatever hosted-stems file lands next to it there.)
+
+`depth_guard/depth_guard_queue.json` doesn't have its own build step yet —
+v1 is a straight slice of `height_guard_queue.json`'s first 200 slots (see
+`depth_guard/depth_guard.js`'s header comment). A real sideways-only
+sampling pass is still TODO.
+
+Then bump the cache-bust versions — the queue-file version in each
+variant's `<variant>.js` (`fetch('height_guard_queue.json?v=…')` /
+`fetch('depth_guard_queue.json?v=…')`) and the matching `<variant>.js?v=`
+tag in that variant's `.html` — or labelers keep the queue their browser
+cached.

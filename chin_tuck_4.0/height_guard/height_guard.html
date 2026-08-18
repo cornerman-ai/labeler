@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chin Point 4.0</title>
+<title>Chin Point 4.0 — Height Guard</title>
 <style>
 /* ── 4.0 owns its own styling ───────────────────────────────────────────────
    A COPY of 3.0's sheet (which copied 2.0's), not a share — the generations
@@ -977,7 +977,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    batch-of-100 gutter as 3.0's grids (see .ovw/.ovn above), so the two
    generations' progress bars read as the same object. .d4-grid is shared
    by all three metric grids (#ov4/#ov-height/#ov-width — see
-   buildOneGrid() in chin_tuck4.js); .dn/.sk/.part/.cb below stay scoped to
+   buildOneGrid() in height_guard.js); .dn/.sk/.part/.cb below stay scoped to
    #ov4 alone since only ITS normal-mode branch ever applies them — the
    other two grids are admin-only disagreement views with no normal-mode
    equivalent. */
@@ -1093,7 +1093,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
 /* ── admin mode ───────────────────────────────────────────────────────────
    Reached by logging in as the literal name "admin" (case-insensitive —
-   see state.isAdmin in chin_tuck4.js). Every rule below is scoped under
+   see state.isAdmin in height_guard.js). Every rule below is scoped under
    body.admin, so a normal login's panel and canvas stay byte-for-byte what
    they were before this section existed.
    ------------------------------------------------------------------------ */
@@ -1149,7 +1149,7 @@ body.admin #ov-height-wrap, body.admin #ov-width-wrap { display: flex; }
 /* Same shape as #goto above — label, number input, no separate apply
    button, since the change fires on input rather than needing one. Chin
    and shoulder get their own line — two independent landmarks, two
-   independent dials, see AGREE_THRESH_CHIN/SH in chin_tuck4.js. */
+   independent dials, see AGREE_THRESH_CHIN/SH in height_guard.js. */
 #agree-thresh-row { display: none; }
 body.admin #agree-thresh-row {
   display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
@@ -1331,7 +1331,7 @@ body.admin #agree-card { display: block; }
 
 /* ── teammate marks on canvas — every roster member, ALWAYS (admin has no
    "own" points to exclude any more — see the admin-mode header comment in
-   chin_tuck4.js), and directly editable: dragging moves the point, right-
+   height_guard.js), and directly editable: dragging moves the point, right-
    click offers a seen/occluded-toggle-or-delete menu, both saving
    immediately (saveTeammateRow()). Byte-identical size/shape/shadow to .hp
    (14px, round for chin, 3px-radius square for shoulder, same white
@@ -1387,7 +1387,7 @@ body.admin #agree-card { display: block; }
       <div id="marks">
         <!-- Only the labeler's own two points are ever drawn here in a
              normal login. Admin mode is the one exception — see
-             renderTeamMarks() in chin_tuck4.js — because there the overlay
+             renderTeamMarks() in height_guard.js — because there the overlay
              IS the point of the mode, not something an independent click
              needs protecting from. -->
         <svg id="tm-links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -1466,7 +1466,7 @@ body.admin #agree-card { display: block; }
            on THIS frame — read-only, hover to highlight their dots on
            canvas. Empty and display:none for a normal login — see
            body.admin in the stylesheet and renderAdminPicker() in
-           chin_tuck4.js. -->
+           height_guard.js. -->
       <div id="admin-picker"></div>
       <!-- One self-contained card per landmark — head, coordinates, switch —
            ALWAYS the same three lines regardless of state, so placing or
@@ -1512,7 +1512,7 @@ body.admin #agree-card { display: block; }
          directly draggable on the canvas; these cards show state and
          answer seen/occluded corrections, they never place a new point —
          admin has no "own" identity to place one AS (see the admin-mode
-         header comment in chin_tuck4.js) — see renderAdminPointsList()
+         header comment in height_guard.js) — see renderAdminPointsList()
          and the canvas mousedown/mousemove/mouseup wiring in the JS. -->
     <div class="card" id="admin-points-card">
       <p class="card-eyebrow">Team&rsquo;s points</p>
@@ -1574,7 +1574,7 @@ body.admin #agree-card { display: block; }
     </div>
 
     <!-- Admin mode only. A FIXED pair, not "everyone" — see AGREE_PAIR in
-         chin_tuck4.js. Rebuilt every render(), so it's ALWAYS about the
+         height_guard.js. Rebuilt every render(), so it's ALWAYS about the
          frame currently on screen, not a whole-queue rollup — a % over
          2,000 frames doesn't say anything about the one in front of you.
          Chin and shoulder are two independent rows, never averaged into
@@ -1584,7 +1584,7 @@ body.admin #agree-card { display: block; }
       <!-- Suffix always names the metric currently on screen — " ·
            Euclidean distance" by default, " · Height disagreement" or
            " · Width disagreement" after clicking one of the other two
-           progress bars. Set by setAgreeMetric() in chin_tuck4.js, in
+           progress bars. Set by setAgreeMetric() in height_guard.js, in
            step with renderMetricLabels() bolding that bar's own label. -->
       <p class="card-eyebrow">Agreement — Arianne × John<span id="agree-metric-suffix"></span></p>
       <div id="agree-list"></div>
@@ -1614,7 +1614,7 @@ body.admin #agree-card { display: block; }
            grid shut (toggleMetricFold()) — independent of clicking a DOT
            in the grid, which picks that grid's metric for the Agreement
            card AND jumps to that frame (setAgreeMetric()/buildOneGrid()
-           in chin_tuck4.js). -->
+           in height_guard.js). -->
       <button type="button" class="metric-label" id="metric-label-euclid" aria-expanded="true" aria-controls="ov4-wrap">
         <span>Euclidean distance</span>
         <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1697,9 +1697,9 @@ body.admin #agree-card { display: block; }
   </div>
 </div>
 
-<script src="../shared/labeler_name.js"></script>
+<script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
-     with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=37"></script>
+     with the height_guard_queue.json version in height_guard.js. -->
+<script src="height_guard.js?v=38"></script>
 </body>
 </html>

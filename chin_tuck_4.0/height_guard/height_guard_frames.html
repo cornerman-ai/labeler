@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chin Point 4.0 — all frames</title>
+<title>Chin Point 4.0 — Height Guard — all frames</title>
 <style>
 /* Browse every frame in the 4.0 queue — a contact sheet, not a labeler.
    For eyeballing the dataset: sampling coverage, shoulder ambiguity, crop
@@ -60,7 +60,7 @@ figcaption .new {
 </head>
 <body>
 <header>
-  <h1>Chin Point 4.0 — all frames</h1>
+  <h1>Chin Point 4.0 — Height Guard — all frames</h1>
   <span id="totals">loading…</span>
   <input id="filter" type="search" placeholder="Filter videos…"
          autocomplete="off" spellcheck="false">
@@ -73,7 +73,7 @@ NEW = sampled fresh for 4.0; unmarked frames carry over from 2.0 (and have
 <script>
 'use strict';
 
-// Keep in sync with chin_tuck4.js — same bucket, same shared token.
+// Keep in sync with height_guard.js — same bucket, same shared token.
 const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
 const FRAME_PREFIX = 'labeler_media/chin_point/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
@@ -88,11 +88,11 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
   const out = document.getElementById('out');
   let frames;
   try {
-    const res = await fetch('queue.json?v=2');
+    const res = await fetch('height_guard_queue.json?v=2');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     frames = (await res.json()).frames || [];
   } catch (e) {
-    out.textContent = 'Could not load queue.json — ' + e.message;
+    out.textContent = 'Could not load height_guard_queue.json — ' + e.message;
     return;
   }
 

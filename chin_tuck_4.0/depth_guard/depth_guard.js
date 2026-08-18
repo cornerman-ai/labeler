@@ -1,24 +1,30 @@
-// chin_tuck4.js — chin-point labeler 4.0.
+// depth_guard.js — chin-point labeler 4.0, DEPTH-GUARD variant.
 //
-// GEOMETRY, not a verdict. 1.0–3.0 asked for judgements (over/level/under,
-// four questions, one question) and the inter-rater runs kept coming back
-// below trainable — and because the output was a category, WHY two people
-// disagreed was invisible. 4.0 stores what the labeler can actually be
-// precise about: click the chin tip, click the top of the lead shoulder.
-// Over/level/under is DERIVED downstream from the two points; disagreement
-// becomes a distance in pixels, diagnosable per point; and the clicks
-// double as calibration for the pipeline (human shoulder vs BlazePose's,
-// human chin vs the nose→mouth extrapolation).
+// GEOMETRY, not a verdict — same idea as height-guard (height_guard.js), same
+// two-point-click machinery, different landmark pair: click the chin tip,
+// then the MOST FRONTAL point of the lead shoulder (front-to-back, not
+// top-to-bottom). Meant for frames where the boxer is roughly sideways-on to
+// the camera, so front/back is unambiguous instead of a frontal shot's
+// guesswork. Over/level/under-style verdicts are DERIVED downstream from the
+// two points, same as height-guard; disagreement is a distance, diagnosable
+// per point.
+//
+// v1: reuses height-guard's frame set AS-IS (depth_guard_queue.json is
+// literally the first 200 slots of
+// chin_tuck_4.0/height_guard/height_guard_queue.json) rather than waiting on
+// a real sideways-only sampling gate — that gate is still TODO. So some frames
+// in this queue are frontal or three-quarter shots where "most frontal point
+// of the shoulder" is a harder call than it will be once the real depth-guard
+// sample exists. Expect noisier v1 data for exactly that reason.
 //
 // The frames are NON-PUNCH by construction (chin_sampler_v3.py: every frame
 // sits >0.5s from every labeled punch, in a round that has punch labels).
-// So the shoulder to mark is always the stance-lead shoulder, in guard —
-// "top of the deltoid" means one thing on every frame in this queue.
+// So the shoulder to mark is always the stance-lead shoulder, in guard.
 //
 // Frames come from FIREBASE STORAGE, not this repo — 2.0's 724MB of JPEGs
 // left no Pages budget for another generation, so 4.0's images live in the
 // project bucket behind a shared download token and git carries only code
-// and queue.json. See cornerman-backend ml/research/chin_tuck/v3/.
+// and depth_guard_queue.json. See cornerman-backend ml/research/chin_tuck/v3/.
 //
 // NOTHING on this page shows a labeler anyone else's WORK. Not the
 // pipeline's points (BlazePose shoulders, extrapolated chin), not the other
@@ -46,14 +52,15 @@
 // skip with reason 'unmarked' — kept out of the K popover's own two
 // reasons so it never dilutes what those measure.
 //
-// REPEATS: ~10% of queue slots are the same frame planted again (rep=1),
-// blind, ≥200 slots downstream. rep is part of the row identity end to end
-// — key(), the sheet, the backend — so the pair measures the labeler's own
-// click scatter instead of collapsing into one row.
+// REPEATS: none in this v1 slice — height-guard's planted repeats never
+// land before queue slot 200 (repeat_gap=200), and this queue IS height-
+// guard's first 200 slots, so the repeat-measuring machinery (rep in the row
+// identity, key(), the sheet, the backend) is still here and still correct,
+// it just has nothing to act on yet in this particular queue.
 //
-// The backend OVERWRITES IN PLACE (saveChinPoint), same as 2.0/3.0: a save
-// for a (video,round,frame,rep) that already has a row replaces it, and only
-// a new identity appends. A re-label is not kept as separate history.
+// The backend OVERWRITES IN PLACE (saveChinPointDepth), same as 2.0/3.0: a
+// save for a (video,round,frame,rep) that already has a row replaces it, and
+// only a new identity appends. A re-label is not kept as separate history.
 //
 // Position resumes from your own saved rows, never from this browser.
 //
@@ -125,18 +132,18 @@ const SKIP_LABELS = {
 // aggregate counts and each labeler's frame ranges, never an actual
 // answer, so it does not reopen the anchoring risk the peers panel and
 // per-frame overlay were removed for.
-const HIDE_KEY = 'cs4_hidden';        // localStorage: names hidden from MY OWN team list
-const RANGE_KEY = 'cs4_ranges';       // localStorage: cached per-labeler frame ranges
+const HIDE_KEY = 'cs4d_hidden';        // localStorage: names hidden from MY OWN team list
+const RANGE_KEY = 'cs4d_ranges';       // localStorage: cached per-labeler frame ranges
 const RANGE_FRESH_MS = 60000;         // don't re-read a labeler's full tab more often than this
 // localStorage: admin's chosen agreement threshold, chin and shoulder
 // separately (percent, 1-50) — two independent landmarks, no reason a
 // single dial should have to fit both.
-const THRESH_KEY_CHIN = 'cs4_agree_thresh_chin';
-const THRESH_KEY_SH = 'cs4_agree_thresh_sh';
+const THRESH_KEY_CHIN = 'cs4d_agree_thresh_chin';
+const THRESH_KEY_SH = 'cs4d_agree_thresh_sh';
 // localStorage: which of the three metric grids are folded shut — a
 // per-device view preference (like HIDE_KEY above), never anything that
 // reaches the sheet.
-const FOLD_KEY = 'cs4_metric_folded';
+const FOLD_KEY = 'cs4d_metric_folded';
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -212,7 +219,7 @@ function loadAgreeThresh(storageKey) {
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
 
 const state = {
-  frames: [],              // queue.json order (originals + planted repeats)
+  frames: [],              // depth_guard_queue.json order (a straight slice of height-guard's queue)
   index: new Map(),        // key -> queue position
   labels: new Map(),       // key -> latest saved row (mine)
   i: 0,
@@ -331,7 +338,7 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips; the v4cb marker refuses a deployment that
+// One retry for cold-start blips; the v4d marker refuses a deployment that
 // predates these endpoints (doGet answers unknown actions with a success
 // shape, so without the marker a save could "succeed" writing nothing).
 async function call(params, what) {
@@ -346,7 +353,7 @@ async function call(params, what) {
       last = new Error(body.message || 'unknown error');
       continue;
     }
-    if (body.v4cb !== true) {
+    if (body.v4d !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -401,7 +408,7 @@ async function loadLabels() {
     if (k.toLowerCase() === name.toLowerCase()) state.rangeCache.delete(k);
   }
   if (!name) return;
-  const body = await call({ action: 'listChinPoint', labeler: name }, 'load labels');
+  const body = await call({ action: 'listChinPointDepth', labeler: name }, 'load labels');
   for (const r of (body.rows || [])) state.labels.set(rowKey(r), r);
 }
 
@@ -417,7 +424,7 @@ function dwellFor(k) {
 // filtered to n>0 same as every other labeler-picker on this site, and
 // 'admin' itself never appears (filtered server-side too, in doGetChinPoint).
 async function loadRoster() {
-  const body = await call({ action: 'statsChinPoint' }, 'load team');
+  const body = await call({ action: 'statsChinPointDepth' }, 'load team');
   state.roster = (body.labelers || []).filter((l) => l.n > 0);
   [...state.roster].map((l) => l.labeler).sort()
     .forEach((nm, i) => state.teamColor.set(nm, `var(--team-color-${i % TEAM_COLOR_COUNT})`));
@@ -550,7 +557,7 @@ async function fetchRanges(labeler, n) {
     if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
       rows = myRowsInQueue();                    // already in hand, no request
     } else {
-      const body = await call({ action: 'listChinPoint', labeler }, 'frames');
+      const body = await call({ action: 'listChinPointDepth', labeler }, 'frames');
       rows = body.rows || [];
     }
   } catch (e) {
@@ -780,7 +787,7 @@ async function loadTeamRows() {
   state.teamRows = new Map();
   state.teamBundles = new Map();
   const results = await Promise.allSettled(state.roster.map(async (l) => {
-    const body = await call({ action: 'listChinPoint', labeler: l.labeler }, `load ${l.labeler}`);
+    const body = await call({ action: 'listChinPointDepth', labeler: l.labeler }, `load ${l.labeler}`);
     const rows = new Map();
     for (const r of (body.rows || [])) rows.set(rowKey(r), r);
     state.teamRows.set(l.labeler, rows);
@@ -1177,7 +1184,7 @@ function saveTeammateRow(labeler) {
     renderAdminPointsList();
   }
   const params = {
-    action: 'saveChinPoint', labeler,
+    action: 'saveChinPointDepth', labeler,
     video: f.stem, round: String(f.round), frame: String(f.frame), rep: String(f.rep || 0),
     frame_sec: String(f.pts), stance: f.stance, shoulder_used: f.shoulder,
     skipped: row.skipped === 1 ? '1' : '0',
@@ -1276,7 +1283,7 @@ function save({ skip = null } = {}) {
   const dwell = state.isAdmin ? ((prev && Number(prev.dwell_sec)) || 0) : dwellFor(k);
   state.shownAt = Date.now();
   const params = {
-    action: 'saveChinPoint', labeler: name,
+    action: 'saveChinPointDepth', labeler: name,
     video: f.stem, round: String(f.round), frame: String(f.frame),
     rep: String(f.rep || 0),
     frame_sec: String(f.pts), stance: f.stance,
@@ -1759,7 +1766,7 @@ function renderAdminPointsList() {
     eyebrow.textContent = `Points — ${name}`;
     card.appendChild(eyebrow);
     card.appendChild(buildAdminToolRow(name, 'chin', 'Chin tip', row));
-    card.appendChild(buildAdminToolRow(name, 'sh', 'Shoulder top', row));
+    card.appendChild(buildAdminToolRow(name, 'sh', 'Shoulder front', row));
     box.appendChild(card);
   }
 }
@@ -2246,7 +2253,7 @@ function openPointPop(name) {
   const pop = $('pt-pop');
   $('pt-pop-t').textContent = name === 'chin'
     ? 'The chin tip — could you see it?'
-    : 'The shoulder top — could you see it?';
+    : 'The shoulder’s frontal point — could you see it?';
   pop.hidden = false;
   positionPointPop(name);
 }
@@ -2835,7 +2842,7 @@ async function start() {
   state.hidden = loadHidden();
   bind();
   try {
-    const res = await fetch('queue.json?v=2');
+    const res = await fetch('depth_guard_queue.json?v=1');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const q = await res.json();
     state.frames = q.frames || [];
@@ -2843,14 +2850,14 @@ async function start() {
     const viaFile = location.protocol === 'file:';
     const msg = viaFile
       ? 'Open this page over http (the hosted site or a local server) — not by double-clicking the file.'
-      : 'Could not load queue.json (' + e.message + ').';
+      : 'Could not load depth_guard_queue.json (' + e.message + ').';
     setReady(false, msg, true);
     status(msg, 'err');
     return;
   }
   if (!state.frames.length) {
-    setReady(false, 'queue.json loaded but contains no frames.', true);
-    status('queue.json is empty', 'err');
+    setReady(false, 'depth_guard_queue.json loaded but contains no frames.', true);
+    status('depth_guard_queue.json is empty', 'err');
     return;
   }
   setReady(false, 'Loading…');

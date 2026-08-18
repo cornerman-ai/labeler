@@ -326,8 +326,8 @@ function doGet(e) {
     return doGetChinShoulderV2(p, labeler, action, CS3_SPEC);
   }
 
-  // Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html). GEOMETRY, not a
-  // verdict: the labeler clicks the chin tip and the top of the lead
+  // Chin-point labeler 4.0 (chin_tuck_4.0/height_guard/height_guard.html).
+  // GEOMETRY, not a verdict: the labeler clicks the chin tip and the top of the lead
   // shoulder, and the row stores the two points. Its own machinery
   // (doGetChinPoint, now taking a spec like doGetChinShoulderV2 does):
   // rows are APPEND-ONLY with latest-(video,round,frame,rep)-wins, because
@@ -339,8 +339,8 @@ function doGet(e) {
     return doGetChinPoint(p, labeler, action, CS4_SPEC);
   }
 
-  // Chin-point labeler 4.0, DEPTH-GUARD variant (chin_tuck_4.0/
-  // chin_depth_guard.html). Same two-point-click machinery as height-guard
+  // Chin-point labeler 4.0, DEPTH-GUARD variant (chin_tuck_4.0/depth_guard/
+  // depth_guard.html). Same two-point-click machinery as height-guard
   // above, reusing doGetChinPoint verbatim — only the spec differs. The
   // labeler clicks the chin tip and the MOST FRONTAL point of the lead
   // shoulder instead of its top; the row schema (chin_x/chin_y/sh_x/sh_y)
@@ -4877,7 +4877,7 @@ function doGetChinShoulderV2(p, labeler, action, spec) {
 }
 
 // ============================================================
-// Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html)
+// Chin-point labeler 4.0 (chin_tuck_4.0/height_guard/height_guard.html)
 //
 // Its own handler rather than another spec through doGetChinShoulderV2:
 // `rep` joins the key here — the planted repeat (rep=1) of a frame is a
