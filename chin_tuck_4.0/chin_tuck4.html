@@ -488,6 +488,18 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .ovn-y { color: var(--ov-yes); font-weight: 700; }
 .ovn-n { color: var(--ov-no); font-weight: 700; }
 .ovn-s { color: var(--ink-dim); font-weight: 700; }
+/* Green/amber/red batch tallies under #ov4/#ov-height/#ov-width's batch
+   numbers — same colours as the dots beside them, right-aligned and
+   tabular like the batch number above them, same block-per-line layout
+   as .ovn-y/.ovn-n/.ovn-s. Hidden when zero, same as .ovn-d: this is a
+   PARTIAL breakdown (see paintBatchCounts()), not an exhaustive one, so a
+   zero isn't "none of these hundred" the way .ovn-y/.ovn-n/.ovn-s's zero
+   is — it's just "nothing to point at here," and empty rows down the
+   gutter would bury the ones worth a second look. */
+.ovn-g { color: var(--yes); font-weight: 700; }
+.ovn-a { color: var(--maybe); font-weight: 700; }
+.ovn-r { color: var(--no); font-weight: 700; }
+.ovn-g:empty, .ovn-a:empty, .ovn-r:empty { display: none; }
 #ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
 #ov i, #ov-flags i, #ov-cmp i {
   width: 9px; height: 9px; border-radius: 2px;
@@ -959,14 +971,19 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 
 /* 4.0's overview — one dot per queue slot, same 20-col/9px geometry and
    batch-of-100 gutter as 3.0's grids (see .ovw/.ovn above), so the two
-   generations' progress bars read as the same object. */
-#ov4 { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
-#ov4 .d4 {
+   generations' progress bars read as the same object. .d4-grid is shared
+   by all three metric grids (#ov4/#ov-height/#ov-width — see
+   buildOneGrid() in chin_tuck4.js); .dn/.sk/.part/.cb below stay scoped to
+   #ov4 alone since only ITS normal-mode branch ever applies them — the
+   other two grids are admin-only disagreement views with no normal-mode
+   equivalent. */
+.d4-grid { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
+.d4-grid .d4 {
   width: 9px; height: 9px; border-radius: 2px; cursor: pointer;
   background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
 }
 /* A gap every 100 frames — same marker technique as #ov i[data-batch]. */
-#ov4 .d4[data-batch] { margin-top: 7px; }
+.d4-grid .d4[data-batch] { margin-top: 7px; }
 #ov4 .d4.dn { background: var(--ov-yes); }
 #ov4 .d4.sk { background: var(--ink-dim); }
 /* Amber, same provisional language as the camera flag and the skip
@@ -974,7 +991,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
    Overwritten in place once the pair completes, same as any other save. */
 #ov4 .d4.part { background: var(--maybe); }
 #ov4 .d4.cb { box-shadow: 0 0 0 1.5px var(--maybe); }
-#ov4 .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+.d4-grid .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* ── everyone's progress ─────────────────────────────────────────────────
    Ported from 3.0's #team panel (see the file header for why 4.0's
@@ -1092,6 +1109,22 @@ body.admin #keys-card { display: none; }
 #legend-admin { display: none; }
 body.admin #legend-normal { display: none; }
 body.admin #legend-admin { display: flex; }
+
+/* Labels above each of the three metric grids. Admin-only, even the one
+   over #ov4 — normal mode doesn't have "metrics" to choose between, it has
+   one grid that just shows its own progress. .active (toggled by
+   renderMetricLabels()) marks whichever metric the agreement card is
+   currently showing — the only visual cue besides the card itself of
+   which of the three is selected. */
+.metric-label {
+  display: none; font-size: 11.5px; font-weight: 510; color: var(--ink-dim);
+  margin: 10px 0 6px;
+}
+#metric-label-euclid { margin-top: 0; }
+body.admin .metric-label { display: block; }
+.metric-label.active { color: var(--ink); font-weight: 700; }
+#ov-height-wrap, #ov-width-wrap { display: none; }
+body.admin #ov-height-wrap, body.admin #ov-width-wrap { display: flex; }
 
 /* Same shape as #goto above — label, number input, no separate apply
    button, since the change fires on input rather than needing one. Chin
@@ -1270,11 +1303,11 @@ body.admin #agree-card { display: block; }
    ring would blur which one is true. .solo sits off the red-green axis
    entirely, so "only one opinion exists yet" can never be misread as
    either agreement or disagreement. */
-#ov4 .d4.dconflict { box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.55); }
+.d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.55); }
 @media (prefers-color-scheme: dark) {
-  #ov4 .d4.dconflict { box-shadow: 0 0 0 1.5px #000, 0 0 0 2.5px rgba(255,255,255,.65); }
+  .d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #000, 0 0 0 2.5px rgba(255,255,255,.65); }
 }
-#ov4 .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.d4-grid .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
 /* ── teammate marks on canvas — every roster member, ALWAYS (admin has no
    "own" points to exclude any more — see the admin-mode header comment in
@@ -1528,7 +1561,12 @@ body.admin #agree-card { display: block; }
          one number: they're separate landmarks, so a bad shoulder
          shouldn't get to hide behind a good chin. -->
     <div class="card" id="agree-card">
-      <p class="card-eyebrow">Agreement — Arianne × John</p>
+      <!-- Suffix always names the metric currently on screen — " ·
+           Euclidean distance" by default, " · Height disagreement" or
+           " · Width disagreement" after clicking one of the other two
+           progress bars. Set by setAgreeMetric() in chin_tuck4.js, in
+           step with renderMetricLabels() bolding that bar's own label. -->
+      <p class="card-eyebrow">Agreement — Arianne × John<span id="agree-metric-suffix"></span></p>
       <div id="agree-list"></div>
       <!-- Whole-queue descriptive stats — raw distances, not thresholded,
            so this section doesn't move when the threshold above does; it's
@@ -1550,7 +1588,24 @@ body.admin #agree-card { display: block; }
         <input id="goto-n" type="number" min="1" inputmode="numeric">
         <button id="goto-go">Go</button>
       </div>
-      <div class="ovw"><div class="ovn"></div><div id="ov4"></div></div>
+      <!-- Admin-only label, shown only above #ov4 since that grid itself
+           is shared with normal mode (just recoloured — see body.admin
+           below). Clicking any dot in any of the three grids below picks
+           that grid's metric for the Agreement card AND jumps to that
+           frame — see setAgreeMetric()/buildOneGrid() in chin_tuck4.js. -->
+      <p class="metric-label" id="metric-label-euclid">Euclidean distance</p>
+      <div class="ovw"><div class="ovn"></div><div id="ov4" class="d4-grid"></div></div>
+      <!-- Two more views of the same per-frame disagreement, isolating
+           just the vertical or horizontal component — which axis is
+           actually driving disagreement varies by labeling task (a camera
+           angle skew reads as WIDTH, a stance-height difference reads as
+           HEIGHT), so euclid alone doesn't always say enough. Admin-only;
+           same gutter/geometry as #ov4 above so all three read as the same
+           object, not a main grid and two lesser afterthoughts. -->
+      <p class="metric-label" id="metric-label-height">Height disagreement</p>
+      <div class="ovw" id="ov-height-wrap"><div class="ovn"></div><div id="ov-height" class="d4-grid"></div></div>
+      <p class="metric-label" id="metric-label-width">Width disagreement</p>
+      <div class="ovw" id="ov-width-wrap"><div class="ovn"></div><div id="ov-width" class="d4-grid"></div></div>
       <!-- Two legends, one page: admin mode recolors #ov4 by team
            disagreement rather than by MY OWN completion, so the key
            explaining the colours has to change with it. CSS toggles which
@@ -1614,6 +1669,6 @@ body.admin #agree-card { display: block; }
 <script src="../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the queue.json version in chin_tuck4.js. -->
-<script src="chin_tuck4.js?v=32"></script>
+<script src="chin_tuck4.js?v=36"></script>
 </body>
 </html>

@@ -175,6 +175,14 @@ const TEAM_POLL_MS = 45000;
 // isn't part of either computation, even if a third labeler placed points
 // on it.
 const AGREE_PAIR = ['Arianne', 'John'];
+// 'euclid' is the main, default measure — full 2D distance. 'height'/
+// 'width' isolate just the vertical/horizontal component (raw |y1-y2| or
+// |x1-x2|, torso-normalized, same as the euclidean version minus the
+// other axis) — different labeling tasks need different disagreement
+// lenses: a systematic camera-angle skew shows up as a WIDTH problem, a
+// stance-height difference shows up as HEIGHT, and euclid alone can't
+// tell them apart. Order matters — it's also grid build/render order.
+const AGREE_METRICS = ['euclid', 'height', 'width'];
 // Admin-adjustable, chin and shoulder independently (see #agree-thresh-chin
 // / #agree-thresh-sh in bind()) — each a fraction, e.g. 0.05 for 5%.
 // PCK-style: a point "agrees" when both raters' clicks land within its
@@ -223,7 +231,14 @@ const state = {
   ready: false,
   camBad: false,           // camera shot too low/high for THIS frame
   shownAt: 0,
-  ovDots: null,            // the 2k overview divs, built once
+  // Overview divs, built once — normal mode only ever uses .euclid (#ov4,
+  // the only grid it shows); admin mode uses all three.
+  ovDots: { euclid: null, height: null, width: null },
+  // metric -> [{g,a,r}] per batch — the three count spans under each
+  // batch number, built once (buildOneGrid()) and updated in place
+  // (paintBatchCounts()) rather than rebuilt, same node-stability rule as
+  // the dots themselves.
+  ovGutters: { euclid: null, height: null, width: null },
 
   // ── everyone's progress (both modes) ──
   // roster/teamColor/rosterPoll are shared with admin mode below — one
@@ -244,7 +259,11 @@ const state = {
   isAdmin: false,
   teamRows: new Map(),     // labeler -> Map(slotKey -> row) — this labeler's own "state.labels"
   teamBundles: new Map(),  // labeler -> {failed, inflight, chains} — this labeler's own save bookkeeping
-  disagree: new Map(),     // slotKey -> {kind, level}
+  // metric -> Map(slotKey -> {kind, level}) — one full set per AGREE_METRICS
+  // entry, all kept live simultaneously (all three grids are always on
+  // screen at once, not just whichever one is "selected").
+  disagreeByMetric: { euclid: new Map(), height: new Map(), width: new Map() },
+  agreeMetric: 'euclid',   // which metric the agreement card is currently showing
   agreeThreshChin: loadAgreeThresh(THRESH_KEY_CHIN), // fraction (e.g. 0.05) — see bind()
   agreeThreshSh: loadAgreeThresh(THRESH_KEY_SH),
   // A teammate's OWN existing dot, directly draggable on canvas — separate
@@ -760,8 +779,9 @@ async function loadTeamRows() {
 
 // Disagreement, per QUEUE SLOT (a planted repeat is scored on its own — the
 // overview grid already treats one dot as one slot, not one distinct
-// picture). `kind` explains WHY a slot reads the way it does; `level` is
-// what renderOverview() paints — 0/0.5/1 are the only values a 'scored'
+// picture), for ONE metric ('euclid' | 'height' | 'width' — see
+// AGREE_METRICS). `kind` explains WHY a slot reads the way it does; `level`
+// is what renderOverview() paints — 0/0.5/1 are the only values a 'scored'
 // slot ever carries now (see below), so the dot is always exactly green,
 // amber, or red, never a blended in-between colour. Computed only from
 // CONFIRMED rows in state.teamRows — see patchDisagree() — never from an
@@ -769,7 +789,7 @@ async function loadTeamRows() {
 // hasn't landed yet. Scoped to AGREE_PAIR only (see its comment) — a third
 // labeler's row on this frame, even a fully-placed one, does not enter the
 // comparison.
-function disagreeForSlot(f) {
+function disagreeForSlot(f, metric) {
   const k = key(f);
   const rows = [];
   for (const name of AGREE_PAIR) {
@@ -785,13 +805,14 @@ function disagreeForSlot(f) {
   // A disagreement about whether the frame can be judged AT ALL is more
   // fundamental than any numeric gap between placed points — one labeler
   // skipping while the other placed points is red BY DEFINITION, no matter
-  // how close the points end up being to anything.
+  // how close the points end up being to anything, on ANY metric.
   if (placed.length && skipped.length) return { kind: 'conflict', level: 1 };
 
   if (placed.length === 0) {
     // Everyone skipped. Agreeing it's unlabelable IS agreement — unless they
     // disagree about WHY, which is real information a flat "they agree"
-    // would absorb.
+    // would absorb. Metric-independent — a skip has no coordinates to
+    // measure.
     const reasons = new Set(skipped.map((r) => r.skip_reason || 'unspecified'));
     return reasons.size <= 1 ? { kind: 'skip-agree', level: 0 } : { kind: 'skip-mixed', level: 0.4 };
   }
@@ -803,8 +824,8 @@ function disagreeForSlot(f) {
   // even when one landmark is badly off and the other happens to cancel it
   // out.
   if (!f.torso_h) return { kind: 'solo', level: null };
-  const chinOk = frameAgreement(f, 'chin', 'chin_x', 'chin_y').state === 'agree';
-  const shOk = frameAgreement(f, 'sh', 'sh_x', 'sh_y').state === 'agree';
+  const chinOk = frameAgreement(f, 'chin', 'chin_x', 'chin_y', metric).state === 'agree';
+  const shOk = frameAgreement(f, 'sh', 'sh_x', 'sh_y', metric).state === 'agree';
   const agreeCount = (chinOk ? 1 : 0) + (shOk ? 1 : 0);
   return {
     kind: 'scored',
@@ -813,30 +834,39 @@ function disagreeForSlot(f) {
   };
 }
 
+// All three metrics, kept live simultaneously — every grid is on screen at
+// once, not just whichever one the agreement card currently shows.
 function computeAllDisagree() {
-  state.disagree = new Map();
-  for (const f of state.frames) state.disagree.set(key(f), disagreeForSlot(f));
+  state.disagreeByMetric = { euclid: new Map(), height: new Map(), width: new Map() };
+  for (const f of state.frames) {
+    const k = key(f);
+    for (const m of AGREE_METRICS) state.disagreeByMetric[m].set(k, disagreeForSlot(f, m));
+  }
 }
 
 // Called only after a save has been CONFIRMED (save()'s success callback) —
 // recomputing from an in-flight drag would show a colour for data that
 // isn't actually saved yet.
 function patchDisagree(f) {
-  state.disagree.set(key(f), disagreeForSlot(f));
+  const k = key(f);
+  for (const m of AGREE_METRICS) state.disagreeByMetric[m].set(k, disagreeForSlot(f, m));
   renderOverview();
   renderAgreementCard();
   renderGlobalAgreement();
 }
 
-// PCK-style agreement between AGREE_PAIR on ONE point, on ONE frame — not
-// an aggregate. The admin is looking at a specific frame; "82% agreement
-// over the whole queue" doesn't say whether THIS one is one of the
-// disagreements, which is the thing a per-frame card is for. "Agree" =
-// their torso-normalized Euclidean distance apart is within THAT POINT's
-// own threshold (state.agreeThreshChin / state.agreeThreshSh) — admin-
-// adjustable independently per point, so this reads whichever live value
-// applies rather than a single shared constant.
-function frameAgreement(f, point, xk, yk) {
+// PCK-style agreement between AGREE_PAIR on ONE point, on ONE frame, for
+// ONE metric — not an aggregate. The admin is looking at a specific frame;
+// "82% agreement over the whole queue" doesn't say whether THIS one is one
+// of the disagreements, which is the thing a per-frame card is for.
+// 'euclid' = full 2D distance; 'height'/'width' isolate just that axis
+// (raw |y1-y2| or |x1-x2|), same torso-height normalization either way.
+// "Agree" = the distance is within THAT POINT's own threshold
+// (state.agreeThreshChin / state.agreeThreshSh) — admin-adjustable
+// independently per point, and shared across all three metrics: the
+// tolerance for "how far apart is too far" doesn't change depending on
+// which axis you're measuring it along.
+function frameAgreement(f, point, xk, yk, metric) {
   const [a, b] = AGREE_PAIR;
   const k = key(f);
   const ra = state.teamRows.get(a)?.get(k);
@@ -847,7 +877,10 @@ function frameAgreement(f, point, xk, yk) {
   if (!hasA) return { state: 'missing', who: b };
   if (!hasB) return { state: 'missing', who: a };
   if (!f.torso_h) return { state: 'none' };
-  const dist = Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h;
+  const dx = ra[xk] - rb[xk], dy = ra[yk] - rb[yk];
+  const dist = metric === 'height' ? Math.abs(dy) / f.torso_h
+    : metric === 'width' ? Math.abs(dx) / f.torso_h
+    : Math.hypot(dx, dy) / f.torso_h;
   const thresh = point === 'chin' ? state.agreeThreshChin : state.agreeThreshSh;
   return { state: dist <= thresh ? 'agree' : 'disagree', dist };
 }
@@ -855,15 +888,46 @@ function frameAgreement(f, point, xk, yk) {
 // Rebuilt every render() — same as the other per-frame admin cards
 // (renderAdminPicker(), renderAdminPointsList()) — so it always reflects
 // whatever frame is currently on screen, not a snapshot from login.
+const METRIC_LABELS = { euclid: 'Euclidean', height: 'Height', width: 'Width' };
+// Longer form, matching the .metric-label text above each grid exactly —
+// used for the card's own eyebrow suffix, where "Euclidean" alone would
+// read as cut off next to "Height disagreement"/"Width disagreement".
+const METRIC_SUFFIX_LABELS = {
+  euclid: 'Euclidean distance', height: 'Height disagreement', width: 'Width disagreement',
+};
+
+// Picks which metric the card and the whole-queue stats below show, and
+// repaints both — the shared entry point for the three overview grids'
+// click handlers (see buildOneGrid()).
+function setAgreeMetric(metric) {
+  if (state.agreeMetric === metric) return;
+  state.agreeMetric = metric;
+  renderAgreementCard();
+  renderGlobalAgreement();
+  renderMetricLabels();
+}
+
+// Bolds whichever of the three labels above the grids matches the metric
+// the agreement card is currently showing — the only visual cue, besides
+// the card itself, of which of the three the labeler is looking at.
+function renderMetricLabels() {
+  for (const m of AGREE_METRICS) {
+    const el = $(`metric-label-${m}`);
+    if (el) el.classList.toggle('active', state.agreeMetric === m);
+  }
+}
+
 function renderAgreementCard() {
   if (!state.isAdmin) return;
   const box = $('agree-list');
   if (!box) return;
+  const suffix = $('agree-metric-suffix');
+  if (suffix) suffix.textContent = ` · ${METRIC_SUFFIX_LABELS[state.agreeMetric]}`;
   box.textContent = '';
   const f = state.frames[state.i];
   if (!f) return;
   for (const [label, point, xk, yk] of [['Chin', 'chin', 'chin_x', 'chin_y'], ['Shoulder', 'sh', 'sh_x', 'sh_y']]) {
-    const r = frameAgreement(f, point, xk, yk);
+    const r = frameAgreement(f, point, xk, yk, state.agreeMetric);
 
     const row = document.createElement('div');
     row.className = 'agree-row';
@@ -884,12 +948,12 @@ function renderAgreementCard() {
   }
 }
 
-// Raw distances across the WHOLE queue, per point — not thresholded, since
-// these are descriptive stats about the distribution, independent of
-// wherever either threshold currently sits. Same gate as frameAgreement():
-// a frame counts only where BOTH named labelers placed that specific
-// point.
-function computeGlobalAgreement() {
+// Raw distances across the WHOLE queue, per point, for ONE metric — not
+// thresholded, since these are descriptive stats about the distribution,
+// independent of wherever either threshold currently sits. Same gate as
+// frameAgreement(): a frame counts only where BOTH named labelers placed
+// that specific point.
+function computeGlobalAgreement(metric) {
   const [a, b] = AGREE_PAIR;
   const rowsA = state.teamRows.get(a);
   const rowsB = state.teamRows.get(b);
@@ -902,7 +966,11 @@ function computeGlobalAgreement() {
     if (!ra || !rb) continue;
     for (const [p, xk, yk] of [['chin', 'chin_x', 'chin_y'], ['sh', 'sh_x', 'sh_y']]) {
       if (ra[xk] == null || ra[yk] == null || rb[xk] == null || rb[yk] == null) continue;
-      out[p].push(Math.hypot(ra[xk] - rb[xk], ra[yk] - rb[yk]) / f.torso_h);
+      const dx = ra[xk] - rb[xk], dy = ra[yk] - rb[yk];
+      const dist = metric === 'height' ? Math.abs(dy) / f.torso_h
+        : metric === 'width' ? Math.abs(dx) / f.torso_h
+        : Math.hypot(dx, dy) / f.torso_h;
+      out[p].push(dist);
     }
   }
   return out;
@@ -933,7 +1001,7 @@ function renderGlobalAgreement() {
   const box = $('agree-global');
   if (!box) return;
   box.textContent = '';
-  const dists = computeGlobalAgreement();
+  const dists = computeGlobalAgreement(state.agreeMetric);
   for (const [label, p] of [['Chin', 'chin'], ['Shoulder', 'sh']]) {
     const s = distStats(dists[p]);
 
@@ -1752,10 +1820,22 @@ function renderTeamMarks() {
 }
 
 // ── overview grid ──────────────────────────────────────────────────────────
+// One grid per AGREE_METRICS entry, all three built identically — same
+// batch-number gutter, same geometry — so they read as three views of one
+// object rather than a main grid and two lesser afterthoughts. Clicking
+// any dot does what #ov4 always did (go to that frame) AND picks which
+// metric the agreement card below is showing — see setAgreeMetric().
 function buildOverview() {
-  const ov = $('ov4');
+  buildOneGrid('ov4', 'euclid', true);
+  buildOneGrid('ov-height', 'height', true);
+  buildOneGrid('ov-width', 'width', true);
+}
+
+function buildOneGrid(containerId, metric, withGutter) {
+  const ov = $(containerId);
+  if (!ov) return;
   ov.textContent = '';
-  state.ovDots = [];
+  const dots = [];
   const frag = document.createDocumentFragment();
   for (let i = 0; i < state.frames.length; i++) {
     const d = document.createElement('div');
@@ -1765,39 +1845,54 @@ function buildOverview() {
     // as 3.0's #ov i[data-batch] — and never on the very first batch.
     if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
     frag.appendChild(d);
-    state.ovDots.push(d);
+    dots.push(d);
   }
   ov.appendChild(frag);
+  state.ovDots[metric] = dots;
   ov.onclick = (e) => {
-    const at = state.ovDots.indexOf(e.target);
-    if (at >= 0) go(at);
+    const at = dots.indexOf(e.target);
+    if (at < 0) return;
+    setAgreeMetric(metric);
+    go(at);
   };
+  if (!withGutter) return;
 
-  // Batch-number gutter, bare numbers only (4.0 has no yes/no split to
-  // break out per batch) — same geometry as 3.0's numbers() so a label
-  // never drifts out of step with the batch it names.
+  // Batch-number gutter, plus three count spans per batch (green/amber/red
+  // — filled in by paintBatchCounts(), which runs whenever the disagree
+  // maps do) — same geometry as 3.0's numbers() so a label never drifts
+  // out of step with the batch it names.
   const gutter = ov.parentElement.querySelector('.ovn');
+  if (!gutter) return;
   const col = document.createDocumentFragment();
+  const gutterEls = [];
   for (let b = 0; b * BATCH < state.frames.length; b++) {
     const count = Math.min(BATCH, state.frames.length - b * BATCH);
     const rows = Math.ceil(count / BATCH_COLS);
     const n = document.createElement('b');
     const num = document.createElement('span');
     num.textContent = b + 1;
-    n.appendChild(num);
+    const g = document.createElement('span');
+    g.className = 'ovn-g';
+    const a = document.createElement('span');
+    a.className = 'ovn-a';
+    const r = document.createElement('span');
+    r.className = 'ovn-r';
+    n.append(num, g, a, r);
     n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
     n.style.lineHeight = '9px';
     if (b) n.style.marginTop = '10px';
     n.title = `frames ${b * BATCH + 1}–${b * BATCH + count}`;
     col.appendChild(n);
+    gutterEls.push({ g, a, r });
   }
   gutter.replaceChildren(col);
+  state.ovGutters[metric] = gutterEls;
 }
 
 // Text for each disagreement kind, admin mode only — the tooltip carries
 // the same information the colour does, so the grid isn't hue-only (a real
 // accessibility gap for red/green colour-blind readers, and cheap to close).
-function disagreeTitle(i, dg) {
+function disagreeTitle(i, dg, metric) {
   const n = `#${i + 1}`;
   switch (dg.kind) {
     case 'none': return `${n} — not labeled`;
@@ -1807,18 +1902,64 @@ function disagreeTitle(i, dg) {
     case 'skip-agree': return `${n} — everyone agrees: can't be labeled`;
     default: {
       const parts = [dg.chinOk ? 'chin agrees' : 'chin disagrees', dg.shOk ? 'shoulder agrees' : 'shoulder disagrees'];
-      return `${n} — ${parts.join(', ')}`;
+      return `${n} — ${METRIC_LABELS[metric]}: ${parts.join(', ')}`;
     }
   }
 }
 
+// #ov4 (euclid) paints in both modes — it's the only grid normal mode
+// shows, with its own done/skip/partial colouring below. The two
+// secondary grids (height/width) are admin-only visualizations of a
+// disagreement TYPE, meaningless without a second labeler to compare
+// against, so they're skipped entirely in normal mode.
 function renderOverview() {
-  if (!state.ovDots) return;
+  paintOneGrid('euclid');
+  if (!state.isAdmin) return;
+  paintBatchCounts('euclid');
+  paintOneGrid('height');
+  paintBatchCounts('height');
+  paintOneGrid('width');
+  paintBatchCounts('width');
+}
+
+// Green/amber/red tally per batch, under that batch's number — admin-only,
+// same colour meaning as the dots beside it. A PARTIAL breakdown, not a
+// full accounting: only 'scored' and the two kinds that render one of the
+// three clean colours exactly ('skip-agree' -> green, 'conflict' -> red)
+// count. 'skip-mixed' (a blended amber-ish tone) and 'solo'/'none' aren't
+// any of the three, so they're left out rather than force-fit — the three
+// numbers do NOT have to sum to the batch size. Updates the spans
+// buildOneGrid() already created rather than rebuilding them, so this can
+// run on every disagree-map change without replaying anything.
+function paintBatchCounts(metric) {
+  const gutterEls = state.ovGutters[metric];
+  const map = state.disagreeByMetric[metric];
+  if (!gutterEls || !map) return;
+  for (let b = 0; b < gutterEls.length; b++) {
+    let g = 0, a = 0, r = 0;
+    const start = b * BATCH, end = Math.min(start + BATCH, state.frames.length);
+    for (let i = start; i < end; i++) {
+      const dg = map.get(key(state.frames[i]));
+      if (!dg) continue;
+      if (dg.kind === 'skip-agree' || (dg.kind === 'scored' && dg.level === 0)) g++;
+      else if (dg.kind === 'scored' && dg.level === 0.5) a++;
+      else if (dg.kind === 'conflict' || (dg.kind === 'scored' && dg.level === 1)) r++;
+    }
+    const els = gutterEls[b];
+    els.g.textContent = g || '';
+    els.a.textContent = a || '';
+    els.r.textContent = r || '';
+  }
+}
+
+function paintOneGrid(metric) {
+  const dots = state.ovDots[metric];
+  if (!dots) return;
   for (let i = 0; i < state.frames.length; i++) {
     const k = key(state.frames[i]);
-    const d = state.ovDots[i];
+    const d = dots[i];
     if (state.isAdmin) {
-      const dg = state.disagree.get(k) || { kind: 'none', level: null };
+      const dg = state.disagreeByMetric[metric].get(k) || { kind: 'none', level: null };
       let cls = 'd4';
       d.style.background = '';
       if (dg.kind === 'solo') cls += ' solo';
@@ -1833,13 +1974,14 @@ function renderOverview() {
         if (dg.kind === 'conflict') cls += ` ${CONFLICT_RING}`;
       }
       if (i === state.i) cls += ' cur';
-      d.title = disagreeTitle(i, dg);
+      d.title = disagreeTitle(i, dg, metric);
       if (d.className !== cls) d.className = cls;
       continue;
     }
     // Cheap insurance against a stray leftover from a prior admin-mode
     // render in this same tab (e.g. testing by retyping the name field) —
-    // both are no-ops on a dot that was never touched.
+    // both are no-ops on a dot that was never touched. Only 'euclid' ever
+    // reaches here — see the isAdmin guard in renderOverview() above.
     d.style.background = '';
     d.title = `#${i + 1}`;
     const row = state.labels.get(k);
@@ -2611,6 +2753,7 @@ async function start() {
     renderTeamProgress();
     renderAgreementCard();
     renderGlobalAgreement();
+    renderMetricLabels();
     startRosterPoll();
     go(0, { initial: true });
     status('');
