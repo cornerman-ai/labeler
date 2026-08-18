@@ -24,7 +24,7 @@ Four combinations, one subfolder each:
 | Variant | Status | Folder | Landmark pair | Frames |
 | --- | --- | --- | --- | --- |
 | Height guard | live | [`height_guard/`](height_guard/) | chin tip + shoulder top | non-punch, punch-adjacent |
-| Depth guard | live (v1) | [`depth_guard/`](depth_guard/) | chin tip + shoulder's frontal point | non-punch, punch-adjacent (reuses height guard's set as-is for now — see `depth_guard/depth_guard.js` header) |
+| Depth guard | live | [`depth_guard/`](depth_guard/) | chin tip + shoulder's frontal point | non-punch, side-view only (own sample — see below) |
 | Height punch | planned | [`height_punch/`](height_punch/) | chin tip + shoulder top | inside a punch |
 | Depth punch | planned | [`depth_punch/`](depth_punch/) | chin tip + shoulder's frontal point | inside a punch |
 
@@ -52,18 +52,40 @@ tightening.
 - height_guard's queue: **1,996 slots** = 1,810 + **186 planted repeats**
   (rep=1, ~10%, ≥200 slots downstream, blind) for intra-rater click
   scatter — the noise floor every inter-rater number is read against
-- depth_guard's queue (v1): the first **200 slots** of height_guard's
-  queue, no repeats, sideways-on filtering still TODO — see
-  `depth_guard/depth_guard.js`'s header comment
 - sampler: `cornerman-backend/ml/research/chin_tuck/v3/chin_sampler_v3.py`
   (deterministic, additive growth, same contract as v2)
 
+**depth_guard has its own sample, not a slice of height_guard's.** "Most
+frontal point of the shoulder" is only legible from a side-on camera — from
+the front it collapses onto the same outline the labeler already can't
+judge depth from — so the pool is restricted to frames the camera is
+actually shooting from the side. Combined Data only tags camera angle
+(`Side`/`Front`/`Back`) on punch rows, not on the empty space between them,
+so a non-punch frame borrows the angle of its temporally nearest labeled
+punch (recorded per sample as `angle_dist_sec`, so the inference is
+auditable rather than silent).
+
+- 1,828 frames across 36 videos, `--min-gap 0.5` (video count is capped by
+  how many of the 204 punch-labeled videos have ANY `Side`-tagged punch at
+  all, not by the sampler's target or gap)
+- depth_guard's queue: **2,011 slots** = 1,828 + **183 planted repeats**,
+  same contract as height_guard's
+- sampler: `cornerman-backend/ml/research/chin_tuck/v4/chin_sampler_guard_angle.py
+  --angle Side --target 150 --min-gap 0.5` — see `v4/README.md` for the two
+  earlier, lower-yield attempts (a hand-curated side-span file, and the same
+  script at `--min-gap 2.0`) this replaced
+
 **Frames live in Firebase Storage, not this repo.** 2.0's 724MB left no
-Pages budget for another generation. Objects sit under
-`labeler_media/chin_point/frames/<stem dir>/r<r>_f<f>.jpg` in the
+Pages budget for another generation. height_guard's objects sit under
+`labeler_media/chin_point/frames/<stem dir>/r<r>_f<f>.jpg`; depth_guard's
+under `labeler_media/chin_point/depth_guard_v4_frames/frames/<stem
+dir>/r<r>_f<f>.jpg` — its own prefix, not height_guard's, because it's a
+genuinely different (side-view-filtered) pool of frames. Both live in the
 `mycorner-bee6a` bucket behind a shared download token (the bucket's rules
 never loosened — see `chin_upload_frames.py`). Git carries only code,
-`shared/chin_frames.json` and each variant's `*_queue.json`.
+each variant's raw sample manifest (`shared/chin_frames.json` for
+height_guard, `depth_guard/depth_guard_frames.json` for depth_guard) and
+each variant's `*_queue.json`.
 
 ## The backend
 
@@ -238,10 +260,37 @@ straight from Firebase Storage, not a baked JPEG tree, so the file was
 dead weight and got deleted. Point `--out` at a scratch/staging dir and
 ignore whatever hosted-stems file lands next to it there.)
 
-`depth_guard/depth_guard_queue.json` doesn't have its own build step yet —
-v1 is a straight slice of `height_guard_queue.json`'s first 200 slots (see
-`depth_guard/depth_guard.js`'s header comment). A real sideways-only
-sampling pass is still TODO.
+`depth_guard/depth_guard_queue.json` has its own build path — steps 2–4
+above, substituted like so:
+
+```bash
+# 2. sample — side-view pool via borrowed punch angle, not chin_sampler_v3.py
+python chin_tuck/v4/chin_sampler_guard_angle.py \
+    --combined combined_snapshot.xlsx \
+    --angle Side --target 150 --min-gap 0.5 \
+    --seed-manifest <labeler>/chin_tuck_4.0/depth_guard/depth_guard_frames.json \
+    --out <labeler>/chin_tuck_4.0/depth_guard/depth_guard_frames.json
+
+# 3. export + upload — SAME scripts as height_guard, but upload under
+#    depth_guard's OWN prefix so the two pools can't collide on the bucket
+python chin_tuck/v1/chin_export_frames.py \
+    --manifest <labeler>/chin_tuck_4.0/depth_guard/depth_guard_frames.json \
+    --videos "<drive>/data/raw_videos/full_source_videos" \
+    --out <staging dir>
+python chin_tuck/v3/chin_upload_frames.py \
+    --frames <staging dir> \
+    --prefix labeler_media/chin_point/depth_guard_v4_frames/frames \
+    --service-account <backend>/firebase_service_account.json
+
+# 4. queue
+python chin_tuck/v3/chin_build_queue_v3.py \
+    --manifest <labeler>/chin_tuck_4.0/depth_guard/depth_guard_frames.json \
+    --out <labeler>/chin_tuck_4.0/depth_guard/depth_guard_queue.json --append
+```
+
+`depth_guard/depth_guard.js`'s `FRAME_PREFIX` constant must match whatever
+`--prefix` step 3 was actually given — nothing keeps the two in step
+automatically, see the comment above that constant.
 
 Then bump the cache-bust versions — the queue-file version in each
 variant's `<variant>.js` (`fetch('height_guard_queue.json?v=…')` /

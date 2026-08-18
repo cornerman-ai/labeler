@@ -9,22 +9,32 @@
 // two points, same as height-guard; disagreement is a distance, diagnosable
 // per point.
 //
-// v1: reuses height-guard's frame set AS-IS (depth_guard_queue.json is
-// literally the first 200 slots of
-// chin_tuck_4.0/height_guard/height_guard_queue.json) rather than waiting on
-// a real sideways-only sampling gate — that gate is still TODO. So some frames
-// in this queue are frontal or three-quarter shots where "most frontal point
-// of the shoulder" is a harder call than it will be once the real depth-guard
-// sample exists. Expect noisier v1 data for exactly that reason.
+// Real depth-guard sample (2026-08), replacing the old v1 placeholder that
+// reused height-guard's frame set as-is: 1,828 frames / 36 videos, pool
+// restricted to SIDE-VIEW footage via the borrowed-angle gate in
+// cornerman-backend's chin_sampler_guard_angle.py (`--angle Side`) — a
+// non-punch frame inherits the camera angle of its nearest labeled punch,
+// since Combined Data's per-punch `angle` column is the only place camera
+// angle is recorded at all. Video count is capped by how many punch-labeled
+// videos have ANY Side-tagged punch, not by --target/--min-gap. See
+// cornerman-backend ml/research/chin_tuck/v4/README.md for the full
+// rationale and the two earlier attempts this replaced.
 //
-// The frames are NON-PUNCH by construction (chin_sampler_v3.py: every frame
-// sits >0.5s from every labeled punch, in a round that has punch labels).
-// So the shoulder to mark is always the stance-lead shoulder, in guard.
+// The frames are NON-PUNCH by construction (same gate as height-guard: every
+// frame sits >0.5s from every labeled punch, in a round that has punch
+// labels). So the shoulder to mark is always the stance-lead shoulder, in
+// guard.
 //
 // Frames come from FIREBASE STORAGE, not this repo — 2.0's 724MB of JPEGs
 // left no Pages budget for another generation, so 4.0's images live in the
-// project bucket behind a shared download token and git carries only code
-// and depth_guard_queue.json. See cornerman-backend ml/research/chin_tuck/v3/.
+// project bucket behind a shared download token and git carries only code,
+// depth_guard_queue.json and depth_guard_frames.json (the raw sample
+// manifest, backend-only, mirrors height_guard's shared/chin_frames.json).
+// UPLOADED UNDER ITS OWN PREFIX (labeler_media/chin_point/depth_guard_v4_frames/frames,
+// not height-guard's labeler_media/chin_point/frames) — see FRAME_PREFIX
+// below — because this sample's frame set is a genuinely different pool
+// (side-view-filtered), not a slice of height-guard's. See
+// cornerman-backend ml/research/chin_tuck/v3/chin_upload_frames.py and v4/.
 //
 // NOTHING on this page shows a labeler anyone else's WORK. Not the
 // pipeline's points (BlazePose shoulders, extrapolated chin), not the other
@@ -52,11 +62,10 @@
 // skip with reason 'unmarked' — kept out of the K popover's own two
 // reasons so it never dilutes what those measure.
 //
-// REPEATS: none in this v1 slice — height-guard's planted repeats never
-// land before queue slot 200 (repeat_gap=200), and this queue IS height-
-// guard's first 200 slots, so the repeat-measuring machinery (rep in the row
-// identity, key(), the sheet, the backend) is still here and still correct,
-// it just has nothing to act on yet in this particular queue.
+// REPEATS: 183 planted (rep=1, ~10% of the 1,828 real frames, repeat_gap=200
+// slots apart, blind), same contract as height-guard's — the noise floor
+// inter-rater numbers get read against. rep is part of the row identity
+// (key()/rowKey()) so a repeat never overwrites its original.
 //
 // The backend OVERWRITES IN PLACE (saveChinPointDepth), same as 2.0/3.0: a
 // save for a (video,round,frame,rep) that already has a row replaces it, and
@@ -89,7 +98,11 @@ const BATCH_COLS = 20;
 // (chin_upload_frames.py). Rotating the token means re-stamping every
 // object AND shipping this constant.
 const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
-const FRAME_PREFIX = 'labeler_media/chin_point/frames';
+// Own prefix, NOT height-guard's labeler_media/chin_point/frames — this
+// sample is a genuinely different (side-view-filtered) pool of frames, not a
+// slice of height-guard's, so it was uploaded under its own variant
+// directory. See the file header and chin_upload_frames.py.
+const FRAME_PREFIX = 'labeler_media/chin_point/depth_guard_v4_frames/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;
@@ -219,7 +232,7 @@ function loadAgreeThresh(storageKey) {
 const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
 
 const state = {
-  frames: [],              // depth_guard_queue.json order (a straight slice of height-guard's queue)
+  frames: [],              // depth_guard_queue.json order (originals + planted repeats)
   index: new Map(),        // key -> queue position
   labels: new Map(),       // key -> latest saved row (mine)
   i: 0,
@@ -2842,7 +2855,7 @@ async function start() {
   state.hidden = loadHidden();
   bind();
   try {
-    const res = await fetch('depth_guard_queue.json?v=1');
+    const res = await fetch('depth_guard_queue.json?v=3');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const q = await res.json();
     state.frames = q.frames || [];
