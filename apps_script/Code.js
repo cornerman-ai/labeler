@@ -329,14 +329,29 @@ function doGet(e) {
   // Chin-point labeler 4.0 (chin_tuck_4.0/chin_tuck4.html). GEOMETRY, not a
   // verdict: the labeler clicks the chin tip and the top of the lead
   // shoulder, and the row stores the two points. Its own machinery
-  // (doGetChinPoint): rows are APPEND-ONLY with latest-(video,round,frame,
-  // rep)-wins, because planted repeat frames (rep>0) and re-label history
-  // are the data — an overwrite would erase exactly what 4.0 measures. Its
-  // tabs live in their OWN spreadsheet (CS4_SPEC.spreadsheetId), not this
-  // one — see csSpreadsheet().
+  // (doGetChinPoint, now taking a spec like doGetChinShoulderV2 does):
+  // rows are APPEND-ONLY with latest-(video,round,frame,rep)-wins, because
+  // planted repeat frames (rep>0) and re-label history are the data — an
+  // overwrite would erase exactly what 4.0 measures. Its tabs live in their
+  // OWN spreadsheet (spec.spreadsheetId), not this one — see csSpreadsheet().
   if (action === 'saveChinPoint' || action === 'listChinPoint' ||
       action === 'statsChinPoint') {
-    return doGetChinPoint(p, labeler, action);
+    return doGetChinPoint(p, labeler, action, CS4_SPEC);
+  }
+
+  // Chin-point labeler 4.0, DEPTH-GUARD variant (chin_tuck_4.0/
+  // chin_depth_guard.html). Same two-point-click machinery as height-guard
+  // above, reusing doGetChinPoint verbatim — only the spec differs. The
+  // labeler clicks the chin tip and the MOST FRONTAL point of the lead
+  // shoulder instead of its top; the row schema (chin_x/chin_y/sh_x/sh_y)
+  // is unchanged, since those columns are just click coordinates and don't
+  // encode which landmark they are — see CS4D_SPEC. Own spreadsheet AND own
+  // tab prefix (not chin_point_labels_) so its cached stats key can never
+  // collide with height-guard's, even though both specs happen to share the
+  // Apps Script script-level cache.
+  if (action === 'saveChinPointDepth' || action === 'listChinPointDepth' ||
+      action === 'statsChinPointDepth') {
+    return doGetChinPoint(p, labeler, action, CS4D_SPEC);
   }
 
   // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
@@ -3404,6 +3419,35 @@ var CS4_SPEC = {
   spreadsheetId: '1eOz25mCxSyJjRwxaW38Vp2xpDlbuAluu8cetheZCb1w'
 };
 
+// Chin-point 4.0, DEPTH-GUARD variant — same doGetChinPoint machinery,
+// different spec. Labeler clicks the chin tip and the MOST FRONTAL point of
+// the lead shoulder (front-to-back, not top-to-bottom) on frames where the
+// boxer is sideways-on to the camera, so the geometry is solvable. chin_x/
+// chin_y/sh_x/sh_y stay the same headers as height-guard on purpose — a
+// column of normalized click coordinates doesn't encode which landmark it
+// is, that meaning lives entirely in which spec/tab it's under. Own
+// spreadsheet, given by the user (Drive: Chin-tuck 4.0 depth guard). prefix
+// is DELIBERATELY NOT chin_point_labels_ (even though it's a different
+// workbook and wouldn't collide on sheet lookups) — deriveStatsKeys() below
+// derives every spec's cache key from its prefix, and CacheService's script
+// cache is shared across every spec/spreadsheet this script serves, so
+// reusing CS4_SPEC's prefix here would make both specs' statsChinPoint*
+// calls read/write the SAME cache entry despite pointing at different
+// spreadsheets.
+var CS4D_HEADERS = CS4_HEADERS;
+var CS4D_FIELDS = CS4_FIELDS;
+var CS4D_SPEC = {
+  tag: 'v4d',
+  prefix: 'chin_point_depth_labels_',
+  headers: CS4D_HEADERS,
+  values: {},
+  fields: CS4D_FIELDS,
+  statsKey: 'cs_stats_chin_point_depth_labels_',
+  overlapKey: 'cs_overlap_',
+  action: 'ChinPointDepth',
+  spreadsheetId: '1ROd7QRUi5zPDeYVbS9sUQjgF03G93qbfKDqXuSu_oOs'
+};
+
 // The spreadsheet a spec's tabs live in. Every chin generation now carries
 // spreadsheetId and gets its own workbook, since all four moved out of
 // Box Labeled Data (the script's bound spreadsheet) in 2026-08 — this
@@ -3461,7 +3505,7 @@ function csPayload(spec, o) {
 // so those entries moved on their own when the tabs were renamed. Appending the
 // prefix as well would just spell it twice.
 (function deriveStatsKeys() {
-  var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC];
+  var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC, CS4D_SPEC];
   for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
 })();
 
@@ -4917,8 +4961,8 @@ function cs4RowOut(row, idx) {
   return out;
 }
 
-function doGetChinPoint(p, labeler, action) {
-  var spec = CS4_SPEC;
+function doGetChinPoint(p, labeler, action, spec) {
+  spec = spec || CS4_SPEC;
 
   // === STATS — roster for the admin-mode team panel: distinct resolved
   // identities per labeler. 'admin' itself is excluded so a stray test tab

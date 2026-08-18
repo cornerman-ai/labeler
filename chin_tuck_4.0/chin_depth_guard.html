@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chin Point 4.0 — Depth Guard</title>
+<style>
+/* ── 4.0 owns its own styling ───────────────────────────────────────────────
+   A COPY of 3.0's sheet (which copied 2.0's), not a share — the generations
+   are free to drift. Everything up to the "4.0 additions" banner is 3.0's
+   block verbatim; the point-placement rules live below it. */
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --line: rgba(0,0,0,.10);
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  --accent: #0071e3;
+  --yes: #34c759;
+  --no: #ff3b30;
+  --maybe: #ff9f0a;
+  /* The first overview grid only. Green/red there meant one thing on the dots
+     ("the answer was yes") and the opposite thing everywhere else on the page
+     ("this is good" / "this is a problem"), on a question where yes means the
+     tuck is BAD — so the grid read as a wall of verdicts rather than a wall of
+     answers. Blue and yellow carry no such baggage: they say "one answer or the
+     other" and nothing about which is better. The buttons keep green/no-red,
+     because there the colour is attached to a word you are reading. */
+  --ov-yes: #0071e3;
+  --ov-no:  #e8a600;
+  --radius: 12px;
+  /* Expanded disclosure pills (clue / progress / compare) — a light wash rather
+     than a solid accent fill. Solid blue gave them the weight of a primary
+     action, the same as Save, when all they do is open a panel. Driven from
+     variables so the three buttons cannot drift apart, and so the dark scheme
+     can mix toward white instead of black without restating the selectors. */
+  --open-bg: color-mix(in srgb, var(--accent) 13%, transparent);
+  --open-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --open-ink: color-mix(in srgb, var(--accent) 82%, black);
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+  /* Admin mode's team palette — Apple's own system-colour rotation, not a
+     bespoke set: each already ships as a tuned light/dark PAIR, which
+     matters more here than it does for --yes/--no above. Those sit on a
+     button with a fixed background; these sit on an arbitrary video frame
+     AND on a --card swatch, so they need the contrast work Apple already
+     did for both. Assigned to labelers by sorted name in JS — never by
+     save order — so a person's colour is stable across sessions. */
+  --team-color-0: #007aff; --team-color-1: #30d158;
+  --team-color-2: #5856d6; --team-color-3: #af52de;
+  --team-color-4: #ff2d55; --team-color-5: #30b0c7;
+  --team-color-6: #ff9500; --team-color-7: #ffcc00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
+    --ink: #f5f5f7; --ink-dim: #98989d; --accent: #0a84ff;
+    /* Both lift off a near-black card; the amber especially, which at #e8a600
+       sits too close to the background to read as a colour at 9px. */
+    --ov-yes: #3d9bff; --ov-no: #ffd60a;
+    /* Same wash, but the ink lightens instead of darkening: on a near-black
+       card the accent needs to come UP off the background, not down into it. */
+    --open-bg: color-mix(in srgb, var(--accent) 24%, transparent);
+    --open-line: color-mix(in srgb, var(--accent) 45%, transparent);
+    --open-ink: color-mix(in srgb, var(--accent) 55%, white);
+    --shadow: 0 1px 2px rgba(0,0,0,.5);
+    --team-color-0: #0a84ff; --team-color-1: #30d158;
+    --team-color-2: #5e5ce6; --team-color-3: #bf5af2;
+    --team-color-4: #ff375f; --team-color-5: #40c8e0;
+    --team-color-6: #ff9f0a; --team-color-7: #ffd60a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+/* One tactile press for every button on the page, rather than each button's
+   own :active rule reinventing it slightly differently — the platform's
+   controls all give this same small, quick "I felt that" on press. Outline
+   over box-shadow for focus because several buttons already carry their own
+   shadow (the popovers) or none at all (nav, kbd-styled), and outline is the
+   one ring that layers cleanly on either. :focus-visible only, so a mouse
+   click still gets the plain press with no ring left behind. */
+button {
+  transition: transform .1s ease;
+}
+button:active:not(:disabled) { transform: scale(.96); }
+button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
+
+/* labeler_name.js prepends a shared identity strip to every page. Here it is a
+   full-width line spent on one short word, above a tool whose whole point is
+   the picture — so it is hidden and the name sits inline in the side panel
+   instead. Page-scoped: every other labeler keeps the shared bar. */
+#cm-labeler-chip { display: none !important; }
+
+/* Your name sits at the head of the team list rather than in a panel of its
+   own: it is the same fact as the rows below it — who is labeling — and a
+   whole card for one short field read as an empty box. Filled-field styling,
+   no border, the way a system settings field looks.
+   `display: block !important` is load-bearing: labeler_name.js hides this
+   input by inline style on load, on the assumption its own bar is the name UI,
+   and an inline style only loses to !important. */
+#name-row { display: flex; gap: 6px; margin-bottom: 10px; }
+#labeler-input {
+  display: block !important;
+  flex: 1; min-width: 0;
+  border: 0; border-radius: 9px;
+  background: rgba(120,120,128,.12); color: var(--ink);
+  padding: 9px 12px; font-size: 14px; font-weight: 500;
+}
+#name-go {
+  flex: none; padding: 0 15px; border: 0; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
+}
+#name-go:disabled { opacity: .3; cursor: default; }
+/* Committing the name is what unlocks the page and decides which sheet every
+   answer lands in, and until now the only sign it had taken was the frame
+   quietly becoming clickable. Green button, green field: the name in the box
+   is the name being saved under. Edit the box and both revert, because what is
+   typed is no longer what is committed. */
+#name-row.saved #name-go { background: var(--yes); }
+#name-row.saved #labeler-input {
+  box-shadow: inset 0 0 0 1.5px var(--yes);
+  background: color-mix(in srgb, var(--yes) 10%, transparent);
+}
+#labeler-input::placeholder { color: var(--ink-dim); font-weight: 400; }
+#labeler-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-color-scheme: dark) {
+  #labeler-input { background: rgba(120,120,128,.24); }
+}
+
+/* Position and total head the overview, which is the one place that already
+   answers "where am I in this queue" — a bar of their own cost the frame ~50px
+   of height, and a progress bar restated what 3,791 dots already show. */
+#head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+/* Jumping by number. The overview is clickable, but finding frame 2300 among
+   3,791 dots by eye is not a thing anyone should have to do. */
+#goto { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+#goto label { font-size: 11.5px; color: var(--ink-dim); flex: none; }
+#goto-n {
+  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink);
+}
+#goto-n:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+#goto-go {
+  flex: none; padding: 5px 11px; border-radius: 8px; border: 0;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 590;
+}
+#goto-go:disabled { opacity: .4; cursor: default; }
+#count {
+  font: 600 17px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: -.02em; white-space: nowrap;
+}
+#count small { color: var(--ink-dim); font-weight: 400; font-size: 13px; }
+#done { font-size: 12px; color: var(--ink-dim); white-space: nowrap; margin-left: auto; }
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+/* No right padding here: the side panel runs to the window edge so its
+   scrollbar sits in the corner. The gap that keeps the cards off the edge is
+   #side's own padding-right, which a scrollbar renders outside of. */
+#wrap { display: flex; gap: 12px; padding: 16px 0 16px 16px;
+        align-items: flex-start; height: 100vh; }
+#stage-card {
+  flex: 1; min-width: 0; height: 100%;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+/* #stage carries the frame's aspect ratio (set from naturalWidth/Height on
+   load) and the image fills it exactly. Every marker is positioned in % of
+   #stage, so this is what makes the overlay and the image the same box —
+   letting the img size itself and overlaying inset:0 does NOT, because the
+   img's max-height:100% resolves against a parent with no definite height and
+   the picture silently overflows its own overlay. */
+#stage { position: relative; display: block; max-width: 100%; max-height: 100%;
+         aspect-ratio: 9 / 16; cursor: crosshair; user-select: none;
+         transform-origin: 0 0; }   /* 0 0 is what makes zoom-at-cursor solvable */
+#stage img { display: block; width: 100%; height: 100%; }
+/* Past SHARP_MAG device pixels per source pixel the browser's smoothing is
+   inventing pixels between the real ones, and the labeler ends up aiming at a
+   smear. Pixelated shows the actual grid the frame is made of — no more
+   information, but the edge you are clicking is where the pixels say it is.
+   Below that, and on sources already stretched that far just to fill the
+   stage, it stays smooth — see magnification(). */
+#stage.sharp img { image-rendering: pixelated; }
+#stage img.broken { background: repeating-linear-gradient(45deg,
+  rgba(255,59,48,.10) 0 10px, rgba(255,59,48,.20) 10px 20px); }
+/* Zoomed in is exactly when a point is being placed precisely, so the stage
+   keeps its crosshair: the grab hand said "this is a pan surface now" and took
+   the aiming cursor away at the moment it matters most. The closed hand still
+   shows while a pan drag is actually happening. */
+#stage.zoomed { cursor: crosshair; }
+#stage.panning { cursor: grabbing; }
+#marks { position: absolute; inset: 0; pointer-events: none; }
+
+/* Points are deliberately tiny — a big marker hides the very pixels the
+   question is about (is the chin safe?). 5px reads at a glance and still
+   leaves the jawline visible; zoom is there when it isn't enough.
+   --inv is 1/zoom, set by applyTransform(): the dots sit inside the scaled
+   stage so their POSITION tracks the frame, while counter-scaling keeps their
+   SIZE constant on screen — without it a 5px dot is 60px at 12x and buries the
+   chin it is pointing at. */
+.pt { position: absolute; width: 5px; height: 5px; border-radius: 50%;
+      transform: translate(-50%, -50%) scale(var(--inv, 1));
+      box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
+.pt.chin { background: #ff375f; }
+.pt.sh   { background: #32d74b; }
+/* The shoulder the questions are asked against gets a ring: question 1 asks
+   whether THAT point is right, so it has to be identifiable among the two. */
+.pt.used { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 3.5px rgba(50,215,75,.45); }
+/* Guide cross follows the cursor — a straight edge for "is the chin past the
+   shoulder", which is hard to eyeball on a tilted body. */
+/* Hairline aiming reticle — the same colour as whoever's point it's about
+   to place, chin or shoulder alike, matching every other mark on this page
+   now that colour means WHO rather than WHICH landmark. */
+#gx, #gy { position: absolute; background: var(--guide, rgba(0,180,255,.55));
+           pointer-events: none; display: none; }
+#gx { left: 0; right: 0; height: .5px; }
+#gy { top: 0; bottom: 0; width: .5px; }
+#stage-card { --guide: var(--hp-color, var(--accent)); }
+#stage-card.guide #gx, #stage-card.guide #gy { display: block; }
+/* Frozen until this labeler's saved rows have arrived: start() lands them on
+   their first unlabeled frame, so anything answered before that is discarded.
+   The FRAME stays fully visible — an earlier version dimmed and blurred the
+   whole stage, which made a slow (or failed) label load look exactly like a
+   broken tool: no image, dead buttons, no explanation. Only the controls that
+   act on a frame are inert. */
+body:not(.ready) #q-card .q,
+body:not(.ready) #act-card,
+body:not(.ready) #ov,
+body:not(.ready) #ov-flags,
+body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
+
+
+/* Admin-only — see body.admin below. Every teammate edit already saves the
+   instant it's made (drag release, a vis click, a delete — saveTeammateRow()
+   fires immediately, there's no per-frame "leaving" to hang a write on), so
+   this is a confirmation/retry action, not a deferred commit: "push whatever
+   this frame's rows currently hold, again, now." Plain secondary styling,
+   not accent-filled — it's a safety net beside Prev/Next, not the primary
+   gesture. */
+#save-btn {
+  flex: 1; padding: 8px 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; color: var(--ink-dim);
+}
+#save-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#save-btn:disabled { opacity: .4; cursor: default; }
+
+/* Camera on the ground — a fact about the SHOT, not about the labeling. A
+   phone lying on the floor looks up at the boxer, and that tilt moves the
+   chin over the shoulder in the image without the boxer's head moving at
+   all: the rows are honest points on a picture that the geometry has to be
+   told about. Off unless ticked, per frame, because a single video can be
+   filmed from the floor for one round and from a shelf for the next. */
+#cam-btn {
+  flex: 1; padding: 8px 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; color: var(--ink-dim);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+#cam-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+/* Amber, not red: this is a note about the footage, and red on this page is
+   reserved for the states that mean something went wrong. */
+#cam-btn[aria-pressed="true"] {
+  background: var(--maybe); border-color: transparent; color: #fff;
+}
+/* Only meaningful once both points are placed — the shot can't be judged
+   too low/high against a jaw and shoulder that aren't marked yet. */
+#cam-btn:disabled { opacity: .4; cursor: default; }
+#cam-btn svg { width: 13px; height: 13px; flex: none; }
+
+#q-lock {
+  display: none; margin-bottom: 12px; padding: 8px 11px; border-radius: 9px;
+  background: rgba(120,120,128,.14); color: var(--ink-dim);
+  font-size: 12px; font-weight: 500;
+}
+#q-lock.err { background: rgba(255,59,48,.14); color: var(--no); }
+@media (prefers-color-scheme: dark) {
+  #q-lock { background: rgba(120,120,128,.24); }
+}
+/* A breathing label, not a static one, for the one state on the page with
+   no other sign anything is happening — the frame is already visible and
+   idle-looking while the labeler's own rows are still loading behind it. */
+#q-lock:not(.err) { animation: q-lock-breathe 1.6s ease-in-out infinite; }
+@keyframes q-lock-breathe { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) {
+  #q-lock:not(.err) { animation: none; }
+}
+
+#hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+        color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
+        padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+
+/* ── right column ───────────────────────────────────────────────────────── */
+/* 342 = 330 card + 2 padding + 10 scroll gutter, so the cards keep their width
+   and sit 12px off the window edge — the same 12px that separates them from
+   the canvas — while the track runs down the corner. The gutter is 10 because
+   `scrollbar-width: thin` wins over the ::-webkit-scrollbar width below, which
+   this engine ignores. scrollbar-gutter: stable reserves it even when the panel
+   does not overflow, otherwise the cards would shift sideways as content grows. */
+#side { width: 342px; padding-right: 2px; flex: none; height: 100%;
+        overflow-y: auto; scrollbar-gutter: stable;
+        display: flex; flex-direction: column; gap: 12px;
+        scrollbar-width: thin; scrollbar-color: rgba(120,120,128,.45) transparent; }
+#side::-webkit-scrollbar { width: 8px; }
+#side::-webkit-scrollbar-track { background: transparent; }
+#side::-webkit-scrollbar-thumb {
+  background: rgba(120,120,128,.45); border-radius: 4px;
+}
+#side::-webkit-scrollbar-thumb:hover { background: rgba(120,120,128,.7); }
+.card { background: var(--card); border-radius: var(--radius);
+        box-shadow: var(--shadow); padding: 16px; }
+/* Settings.app's own grouped-list pattern: a small caps label names the
+   section instead of the card having to be read to find out what it is —
+   the id-card in particular was three unlabeled facts until this. */
+.card-eyebrow {
+  font-size: 11px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim); margin: 0 0 9px;
+  grid-column: 1 / -1;   /* harmless outside a grid; keeps #id-card's intact */
+}
+/* Both points placed AND answered — live, not saved-state, so the badge
+   lands the instant the second seen/occluded answer does, same beat as
+   the dot filling in. Un-uppercased and un-tracked against the eyebrow it
+   sits in, so it reads as a distinct badge rather than more label. */
+.pts-complete {
+  text-transform: none; letter-spacing: 0; font-weight: 700;
+  color: var(--yes);
+}
+/* A quiet ring, not a filled card — the frame is still the thing being
+   looked at, so "done" is confirmed at a glance without repainting the
+   whole panel. Layered onto the existing shadow rather than replacing it,
+   so nothing shifts when it appears. */
+#q-card.complete {
+  box-shadow: var(--shadow), 0 0 0 1.5px color-mix(in srgb, var(--yes) 55%, transparent);
+}
+.q + .q { margin-top: 14px; }
+.q-t { font-size: 13px; font-weight: 590; margin: 0 0 7px; letter-spacing: -.01em; }
+.q-t b { color: var(--ink-dim); font-weight: 400; margin-right: 5px; }
+.opts { display: flex; gap: 6px; }
+.opt {
+  flex: 1; padding: 8px 4px; border-radius: 8px; text-align: center;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 510; transition: all .12s ease;
+}
+.opt:hover { border-color: var(--ink-dim); }
+.opt[aria-pressed="true"] { color: #fff; border-color: transparent; }
+/* Every question is phrased so that YES is the good answer — the point is
+   correct, the chin is safe — so green/red carries the same meaning on all
+   four and never has to be read against the question. */
+/* Green for yes, red for no — the same as 2.0 and every other yes/no in the
+   tool. The colour tracks the ANSWER, not whether the boxing is any good; this
+   question is the one place where those two point opposite ways, and a labeler
+   pressing the same button in both generations should not have it change colour
+   under them. Read "green = the answer is yes", not "green = good tuck". */
+.opt[data-v="yes"][aria-pressed="true"] { background: var(--yes); }
+.opt[data-v="no"][aria-pressed="true"] { background: var(--no); }
+.q-hint { font-size: 11.5px; color: var(--ink-dim); margin: 7px 0 0; }
+.opt kbd { font: inherit; opacity: .5; margin-left: 3px; }
+
+/* Vertical twin of #ag-scope: same track, same raised selected segment, turned
+   90°. Stacked because the two buttons it governs are themselves stacked —
+   the switcher should read as their label, not as a third thing competing with
+   them for a horizontal row. */
+#mode-switch { display: flex; flex-direction: column; gap: 3px;
+               margin-bottom: 10px; padding: 2px; border-radius: 9px;
+               background: rgba(120,120,128,.12); }
+#mode-switch button {
+  padding: 7px 4px; border: 0; border-radius: 7px; background: none;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-dim);
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+#mode-switch button[aria-selected="true"] {
+  background: var(--card); color: var(--ink); font-weight: 590;
+  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  #mode-switch { background: rgba(120,120,128,.20); }
+  #mode-switch button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--ink) 22%, var(--card));
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #mode-switch button { transition: none; }
+}
+
+/* Moving on IS the save, so this is still the primary action and keeps the
+   primary look. It is never disabled: leaving a frame you placed nothing on is
+   allowed, and the one state that holds you here (a point placed but not yet
+   answered seen/inferred) says so in the status line rather than by greying
+   out the way forward with no explanation. */
+#save-next {
+  width: 100%; padding: 11px; border: none; border-radius: 10px;
+  background: var(--accent); color: #fff; font-weight: 590; font-size: 15px;
+}
+/* Filled grey rather than the transparent outline it had: skip is a real action
+   with a real cost — the frame leaves the queue judged unjudgeable — so it needs
+   to be visible, but it must never compete with the blue Save above it. Grey
+   fill, dimmed label, full-strength ink on hover. */
+.skipb {
+  width: 100%; padding: 11px; margin-top: 8px; border-radius: 10px;
+  border: 1px solid transparent; font-weight: 510;
+  background: rgba(120,120,128,.14);
+  /* Not --ink-dim outright: against this fill that lands at 4.3:1, just under
+     the 4.5 a body label needs. Mixed back toward --ink it reads at 6:1 in both
+     schemes and still looks demoted next to Save. */
+  color: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
+}
+.skipb:hover:not([aria-pressed="true"]) {
+  background: rgba(120,120,128,.20); color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .skipb { background: rgba(120,120,128,.26); }
+  .skipb:hover:not([aria-pressed="true"]) { background: rgba(120,120,128,.34); }
+}
+.skipb[aria-pressed="true"] { background: var(--maybe); color: #fff; border-color: transparent; }
+/* Prev/next are a joined segmented pair — the arrow IS the label, so spelling
+   it out only made three buttons compete for the same glance. Next-unlabeled
+   keeps its words because it is the one action you cannot infer from a glyph. */
+#nav { display: flex; gap: 8px; margin-top: 10px; }
+#seg { display: flex; flex: none; }
+#seg button {
+  width: 42px; padding: 8px 0; font-size: 17px; line-height: 1;
+  border: 1px solid var(--line); background: transparent;
+}
+#seg button:first-child { border-radius: 8px 0 0 8px; }
+#seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+#nav button:hover { border-color: var(--ink-dim); z-index: 1; }
+#nav button:active { background: rgba(120,120,128,.14); }
+#status { font-size: 12px; color: var(--ink-dim); }
+#status:not(:empty) { margin-top: 9px; }
+#status.err { color: var(--no); }
+#status.ok { color: var(--yes); }
+
+/* Overview — one dot per frame, so 3,791 fit without scrolling forever.
+   The two grids share this height rather than each naming its own: they hold
+   the same 3,791 dots in the same order, and different heights made them look
+   like different amounts of work. One variable so they cannot drift again. */
+:root { --grid-h: 150px; }
+/* The grid and its batch numbers scroll TOGETHER, so the scroller is the
+   wrapper rather than the grid — otherwise the numbers stay put while the dots
+   move and every label points at the wrong batch. */
+.ovw { display: flex; gap: 6px; max-height: var(--grid-h);
+        overflow-y: auto; overflow-x: hidden; }
+/* One label per batch, its height computed from the rows that batch actually
+   occupies (the last one is short: 3,791 is 75 full batches and then 41). The
+   7px lead matches the gap the dots take, which is what keeps a number level
+   with the batch it names. */
+.ovn { flex: none; width: 18px; }
+.ovn b {
+  display: block; text-align: right; font-weight: 500;
+  font: 500 9px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
+}
+/* The batch number, and under it — on the comparison grid only — how many
+   frames in that batch you and somebody else answered differently. A second
+   line rather than a second column: the gutter is 18px and the grids are
+   already at the width where anything wider brings back the horizontal
+   scrollbar, whereas a full batch label is 57px tall and using 18 of it for
+   two 9px lines costs nothing. */
+.ovn b span { display: block; }
+.ovn-d { color: var(--no); font-weight: 700; }
+/* A batch with no disagreements says nothing rather than "0" — that number is
+   there to steer the eye to the batches worth re-opening, and 38 zeroes down the
+   side is the opposite of that. The three under the FIRST grid are different:
+   they are a breakdown of a batch everyone has finished, so a zero is a real
+   fact about it ("none of these hundred was a no") and the three always add up
+   to something the reader can check. Hence no :empty rule for them. */
+.ovn-d:empty { display: none; }
+/* Yes / no / skipped for each batch of the first grid, in the same colours as
+   the dots beside them. Four 9px lines in a label that is 57px tall — every
+   batch is five rows, including the short last one, so there is room in all of
+   them. Right-aligned like the batch number, and tabular so a 7 and a 70 line
+   up down the column rather than wandering. */
+.ovn-y { color: var(--ov-yes); font-weight: 700; }
+.ovn-n { color: var(--ov-no); font-weight: 700; }
+.ovn-s { color: var(--ink-dim); font-weight: 700; }
+/* Green/amber/red batch tallies under #ov4/#ov-height/#ov-width's batch
+   numbers — same colours as the dots beside them, right-aligned and
+   tabular like the batch number above them, same block-per-line layout
+   as .ovn-y/.ovn-n/.ovn-s. Hidden when zero, same as .ovn-d: this is a
+   PARTIAL breakdown (see paintBatchCounts()), not an exhaustive one, so a
+   zero isn't "none of these hundred" the way .ovn-y/.ovn-n/.ovn-s's zero
+   is — it's just "nothing to point at here," and empty rows down the
+   gutter would bury the ones worth a second look. */
+.ovn-g { color: var(--yes); font-weight: 700; }
+.ovn-a { color: var(--maybe); font-weight: 700; }
+.ovn-r { color: var(--no); font-weight: 700; }
+.ovn-g:empty, .ovn-a:empty, .ovn-r:empty { display: none; }
+#ov { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
+#ov i, #ov-flags i, #ov-cmp i {
+  width: 9px; height: 9px; border-radius: 2px;
+  background: rgba(120,120,128,.22); cursor: pointer;
+}
+/* A gap every 100 frames, so a position can be counted off in batches instead
+   of squinting at 3,791 identical dots. The columns above are pinned to make
+   this expressible at all: under auto-fill the row length changed with the
+   panel, so no fixed arithmetic could line up with a batch boundary.
+   20 is the widest count that BOTH divides 100 evenly — five clean rows per
+   batch — and fits: the card gives 302px, the number gutter takes 24, and 25
+   columns wanted 297 of the remaining 278, which is what put a horizontal
+   scrollbar under every grid. 20 * 9 + 19 * 3 = 237px.
+   Marked with a data attribute rather than a class because renderOverview
+   rewrites className on every paint and would wipe a class straight off. */
+#ov i[data-batch], #ov-flags i[data-batch], #ov-cmp i[data-batch] { margin-top: 7px; }
+/* The first grid shows the ANSWER, not merely that one exists: green for yes,
+   red for no. It used to paint every answered frame the same green, which made
+   the densest information on the page — 3,791 verdicts — unreadable, when the
+   whole question 3.0 asks is how often the answer is yes.
+   The colours are the ones on the buttons, so the grid and the control agree.
+   Note the polarity: in 3.0 `yes` means the tuck is BAD, and green still tracks
+   the ANSWER rather than whether the boxing is any good — same as the buttons.
+   No .part here: with one question a frame is answered or it is not; #ov-cmp
+   below still has an amber-ish state, where it means the team is split. */
+#ov i.yes { background: var(--ov-yes); }
+#ov i.no  { background: var(--ov-no); }
+#ov i.skip { background: var(--ink-dim); }
+/* A save that came back with an error. Optimistic saving means the labeler has
+   already moved on, so the frame has to stay visible until they deal with it.
+   Plain red again: with the answers on blue and yellow, red is once more the
+   only alarming thing in this grid and needs no second signal to be told apart
+   from an answer. */
+#ov i.fail { background: var(--no); }
+/* Neutral rather than accent-blue. The first grid now paints "yes" in very
+   nearly the accent, and a blue ring around a blue dot is not a marker. Ink
+   contrasts with all five states in both schemes, and it is the same ring on
+   all three grids — a position that meant one thing here and another there
+   would be worse than the colour it fixes. */
+#ov i.here, #ov-flags i.here, #ov-cmp i.here {
+  outline: 2px solid var(--ink); outline-offset: 1px;
+}
+
+/* Second grid, same frames in the same order, showing one thing only: flagged
+   or not. Kept separate from the grid above rather than layered onto it —
+   flagged is orthogonal to label state, and two facts on one dot is what made
+   the corner-pip version hard to scan. */
+#ov-flags { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
+#ov-flags i.flag { background: var(--no); }
+
+/* Third grid: how each of your answers sits against everyone else's.
+   Green and red mean what they mean everywhere else on this page, and the
+   fourth state is the important one — a frame nobody else has reached is not a
+   disagreement, so it stays grey rather than joining the red. */
+#ov-cmp { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
+#ov-cmp i.agree { background: var(--yes); }
+/* No .part rule: one yes/no has no middle verdict, so the comparison grid is
+   green, red or grey. See CMP_CLASS. */
+#ov-cmp i.dis   { background: var(--no); }
+#ov-cmp i.alone { background: var(--ink-dim); }
+/* Right-aligned to line up with "N done" in #head directly above it. The two
+   numbers answer the same shape of question about the grid beneath each of
+   them, so they belong in the same column of the eye's path. */
+.ov-sub { display: flex; justify-content: flex-end; margin: 16px 0 8px; }
+#ov-sub-n, #ov-cmp-n { font-size: 12px; color: var(--ink-dim); }
+
+/* Which frame you are actually looking at. The queue position answers "where am
+   I", but (video, round, frame) is the KEY — it is what the sheet stores, what a
+   bug report has to name and what anyone goes back to the source video with, and
+   until now the page never showed it anywhere. One row per part, each separately
+   copyable, because they are pasted into different places. */
+#id-card { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px;
+           align-items: baseline; }
+.idl { font-size: 11px; color: var(--ink-dim); }
+.idv {
+  min-width: 0; font: 500 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  /* Wrapped, not truncated. These stems run to a hundred characters and the
+     point of putting them on screen is to be read; an ellipsis would mean
+     hovering for a tooltip to learn which video you are looking at. */
+  word-break: break-word;
+}
+.idc {
+  flex: none; padding: 2px; border: 0; border-radius: 5px; background: none;
+  color: var(--ink-dim); line-height: 0; opacity: .5;
+  transition: opacity .12s ease, color .12s ease;
+}
+.idc:hover, .idc:focus-visible { opacity: 1; color: var(--ink);
+                                 background: rgba(120,120,128,.14); }
+.idc.copied { opacity: 1; color: var(--yes); }
+.idc svg { width: 13px; height: 13px; display: block; }
+/* The destructive row of the group that identifies the video, so it sits last
+   and its separator runs the full width — that is the boundary between "what
+   this frame is" and "act on it", not a division inside a list of facts. Red
+   label, no icon, no border: the platform does not decorate a destructive row,
+   it colours it. */
+/* Excluding a video, by picking it — not just the one on screen. Same
+   disclosure pill as Compare and Everyone's progress, so opening it costs
+   nothing to learn, and a search field over a plain scrollable list rather
+   than a wall of two hundred names: the platform's own answer to "find one
+   thing in a long, named list" is type-to-filter, not a scrollbar.
+   The video the current frame belongs to is highlighted in the list rather
+   than being the only one on offer — colour AND a text suffix, "(current)",
+   the same two-signal treatment the labeler picker gives "(you)", so the
+   highlight still reads if colour is stripped. */
+#vidx-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#vidx-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#vidx-btn:disabled { opacity: .4; cursor: default; }
+#vidx-btn[aria-expanded="true"] {
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
+}
+#vidx-btn svg { width: 13px; height: 13px; flex: none; }
+#vidx-chev { transition: transform .2s ease; }
+#vidx-btn[aria-expanded="true"] #vidx-chev { transform: rotate(180deg); }
+
+#vidx-out { margin-top: 10px; font-size: 12px; display: none; }
+#vidx-out.on { display: block; }
+
+#vidx-search {
+  display: block; width: 100%; margin-bottom: 8px; font: inherit;
+  font-size: 12.5px; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+#vidx-search:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+#vidx-search::placeholder { color: var(--ink-dim); }
+
+/* Recessed, not another card — this already lives inside one. Same restraint
+   #team uses for its own nested list: a wash to group it, no shadow of its own. */
+#vidx-list { max-height: 260px; overflow-y: auto; border-radius: 9px;
+             background: rgba(120,120,128,.06); }
+@media (prefers-color-scheme: dark) { #vidx-list { background: rgba(120,120,128,.12); } }
+.vidx-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 11px; border: 0; background: none; text-align: left;
+  font-size: 12.5px; color: var(--ink);
+  transition: background .12s ease;
+}
+.vidx-row + .vidx-row { position: relative; }
+.vidx-row + .vidx-row::before {
+  content: ''; position: absolute; left: 11px; right: 0; top: 0; height: 1px;
+  background: var(--line);
+}
+.vidx-row:hover { background: rgba(120,120,128,.08); }
+.vidx-row:active { background: rgba(120,120,128,.14); }
+.vidx-row.current { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.vidx-row.current .vidx-name { color: var(--accent); font-weight: 590; }
+.vidx-name { flex: 1; min-width: 0; word-break: break-word; line-height: 1.35; }
+.vidx-meta { flex: none; color: var(--ink-dim); font-size: 10.5px;
+             font-variant-numeric: tabular-nums; }
+.vidx-chevron { flex: none; width: 7px; height: 7px; color: var(--ink-dim); opacity: .5; }
+.vidx-empty { padding: 16px 11px; font-size: 11.5px; color: var(--ink-dim);
+              text-align: center; }
+@media (prefers-reduced-motion: reduce) { .vidx-row { transition: none; } }
+/* The one destructive control on the page, so it is styled as one: it sits
+   apart at the foot of the team list, it is not a primary action, and it says
+   what it does rather than being an icon. Red only on hover — a permanently red
+   button next to six progress bars reads as an alarm about the data. */
+#lead-row { grid-column: 1 / -1; margin-top: 12px; padding-top: 10px;
+            border-top: 1px solid var(--line); }
+#lead-btn {
+  width: 100%; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: none; color: var(--ink-dim);
+  font-size: 12px; font-weight: 500;
+}
+#lead-btn:hover:not(:disabled) {
+  color: var(--no); border-color: color-mix(in srgb, var(--no) 45%, transparent);
+  background: color-mix(in srgb, var(--no) 8%, transparent);
+}
+#lead-btn:disabled { opacity: .4; cursor: default; }
+#lead-note { margin-top: 6px; font-size: 11px; line-height: 1.45;
+             color: var(--ink-dim); }
+
+/* The confirmation. A native confirm() would do the job, but it cannot show the
+   numbers — and the numbers are the whole difference between a labeler who
+   knows what they are about to do and one who does not. */
+#lead-mask {
+  position: fixed; inset: 0; z-index: 60; display: flex;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(2px);
+}
+#lead-mask[hidden] { display: none; }
+#lead-box {
+  width: min(430px, 100%); background: var(--card); color: var(--ink);
+  border-radius: 14px; box-shadow: 0 12px 48px rgba(0,0,0,.35); padding: 20px;
+}
+#lead-box h3 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
+#lead-box p { margin: 0 0 10px; font-size: 13px; line-height: 1.5;
+              color: var(--ink-dim); }
+#lead-box b { color: var(--ink); font-weight: 600; }
+/* An alert's actions are hairline-separated plain text across the foot of the
+   card, not filled rectangles inside it. The destructive one is red and the
+   safe one is the bold, preferred choice — which is the platform's way of
+   making the harmless button the easy one to hit without hiding the other. */
+#lead-acts {
+  display: flex; margin: 18px -20px -20px;
+  border-top: 1px solid var(--line);
+}
+#lead-acts button {
+  flex: 1; padding: 12px 10px; border: 0; background: none;
+  font-size: 14px; line-height: 1.2;
+}
+#lead-cancel { font-weight: 600; color: var(--accent); }
+#lead-go { font-weight: 400; color: var(--accent); border-left: 1px solid var(--line); }
+#lead-go.danger { color: var(--no); }
+#lead-acts button:hover:not(:disabled) { background: rgba(120,120,128,.08); }
+#lead-go:disabled { opacity: .5; cursor: default; }
+/* Both of these rewrite entire sheets for the whole team, so the click is
+   followed by a wait measured in seconds, not milliseconds. The dialog stays up
+   and becomes unclosable for the duration: dismissing it would not stop the
+   request, it would only take away the one thing on screen saying it is still
+   running.
+   The label is what carries that message. The ring is decoration on top, and
+   deliberately so — CSS animation does not advance in a tab that is not
+   compositing, and this has already bitten the comparison bars once. */
+#lead-go .spin {
+  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
+  vertical-align: -1px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  animation: lead-spin .7s linear infinite;
+}
+@keyframes lead-spin { to { transform: rotate(360deg); } }
+#lead-mask.busy #lead-cancel { opacity: .4; cursor: default; }
+#lead-mask.busy #lead-box { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  #lead-go .spin { animation: none; }
+}
+
+
+/* One per grid, directly under the grid it explains. A single legend at the
+   bottom of the card described the FIRST grid while sitting under the SECOND,
+   which is the one place it could not mean what it said. */
+/* flex-wrap: the admin legend has six entries ("chin + shoulder agree",
+   "skip conflict", …) that don't fit one line in the sidebar's width —
+   without wrap they ran past the card edge instead of flowing to a
+   second line. */
+.legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
+.legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+/* One row per action, keys right-aligned in their own column — as a wrapped
+   sentence of dot-separated pairs this took the same space and could not be
+   scanned for the one key you were after. */
+#keys { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+        margin: 0; font-size: 11.5px; align-items: center; }
+#keys dt { color: var(--ink-dim); }
+#keys dd { margin: 0; display: flex; gap: 3px; justify-content: flex-end; }
+#keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
+#keys kbd, #save-next kbd, .skipb kbd {
+  font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 5px; min-width: 18px; text-align: center;
+  color: var(--ink); background: rgba(120,120,128,.10);
+}
+@media (prefers-color-scheme: dark) {
+  #keys kbd { background: rgba(120,120,128,.22); }
+}
+
+/* ── 4.0 additions — geometric point placement ──────────────────────────────
+   Everything above is 3.0's sheet, carried over verbatim so the page keeps
+   the family look; the rules below are the only 4.0-specific ones. Unused
+   3.0 selectors (video index, batch grids) are harmless dead weight and
+   staying close to 3.0's block keeps future diffs of the shared part
+   meaningful — but the ones that DREW other people's work (peer overlay,
+   team progress, agreement panel) are gone rather than dormant, so nothing
+   can put them back on the page by accident.
+   ------------------------------------------------------------------------ */
+
+/* Human points — larger than the 5px machine dots the other pages draw,
+   with a hairline center so a labeler can see exactly what they placed even
+   at 12x. Counter-scaled by --inv like every marker (see the .pt note). */
+.hp {
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border-radius: 50%; pointer-events: auto; cursor: grab;
+  transform: scale(var(--inv, 1));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55);
+  display: none;
+  /* Above the admin-mode teammate overlay (.tm / #tm-links, z-index 1)
+     unconditionally, not just once dragged (.hp.active goes higher still).
+     The .tm marks are appended to #marks AFTER these two in DOM order, so
+     without this, whichever teammate mark happens to land closest visually
+     covers the very point the labeler is trying to see and drag — worst
+     exactly when they agree closely, which is the common case. */
+  z-index: 2;
+}
+.hp::after {           /* the actual mark — a 2px core the halo centers on */
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 2px; height: 2px; margin: -1px 0 0 -1px; border-radius: 50%;
+  background: #fff;
+}
+.hp.set { display: block; }
+.hp.dragging { cursor: grabbing; }
+/* Picked up: pressing an existing point marks it ACTIVE — a halo on top of
+   the fill colour, since the fill already says WHICH landmark and this has
+   to say WHICH ONE, right now, of a possible two. Stays lit after release
+   so Del or the right-click menu have something to act on without a second
+   press to re-select it. */
+.hp.active {
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 4px #fff, 0 0 0 5.5px rgba(0,0,0,.4);
+  transform: scale(calc(var(--inv, 1) * 1.15));
+  z-index: 3;
+}
+/* Round for chin, square for shoulder — shape says WHICH landmark, so
+   colour is free to say WHO instead: both points share ONE colour per
+   labeler (--hp-color, set by selectAdminTarget() in admin mode; plain
+   --accent for a normal single-labeler login, via the fallback — there's
+   only one labeler, so there's nothing for colour to distinguish there). */
+#hp-chin, #hp-sh {
+  background: color-mix(in srgb, var(--hp-color, var(--accent)) 82%, transparent);
+}
+#hp-sh { border-radius: 3px; }
+
+
+/* The tool card: which point the next click places. Both rows share ONE
+   colour — --hp-color, the same one the canvas marks use for whoever is
+   currently being edited (falls back to --accent for a normal, single-
+   labeler login) — so the dot here and the dot on the frame always agree
+   about WHOSE points these buttons act on. Shape carries WHICH landmark
+   instead, matching the canvas's own round/square split, since colour no
+   longer can. The armed row glows to say what a click will do right now.
+
+   ONE fixed-height card per landmark — head, coordinates, switch — rather
+   than a row that grows a switch underneath once answered: a control that
+   appears out of nowhere reads as the panel jumping, and there was no
+   feedback at all that a click had registered until it did. Now every
+   piece of state the row can be in is a difference of COLOUR and TEXT
+   inside a card that never changes size. */
+.tool-row {
+  display: block; padding: 9px 10px 10px; border-radius: 10px; margin-bottom: 8px;
+  border: 1px solid var(--line); cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.tool-row:hover:not([aria-pressed="true"]) { border-color: var(--ink-dim); }
+.tool-row[aria-pressed="true"] {
+  border-color: var(--hp-color, var(--accent));
+  background: color-mix(in srgb, var(--hp-color, var(--accent)) 10%, transparent);
+}
+.tool-row-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 590;
+}
+.tool-row-label { flex: 1; min-width: 0; }
+.tool-row kbd { font: inherit; opacity: .5; }
+/* The dot: a hollow ring until a point exists, filled solid the instant one
+   does — the "did that click land" signal the row was missing, with a
+   quick spring pop on the way in rather than just appearing inert. Sized up
+   from the plain swatch it replaces so a 1.5px ring reads clearly at rest.
+   border-width itself is NOT transitioned — animating a sub-pixel stroke
+   width is exactly the kind of thing that renders as a blurry half-pixel
+   mid-transition on a fractional-DPR display, so ring/fill are instant and
+   the pop animation (a transform, which subpixel rounding does not affect
+   the same way) is what carries the motion. */
+.tool-row .dot {
+  width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 1.5px solid var(--hp-color, var(--accent));
+  background: transparent;
+}
+.tool-row[data-p="sh"] .dot { border-radius: 3px; }
+.tool-row .dot.set {
+  background: var(--hp-color, var(--accent));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+  animation: tool-dot-pop .32s cubic-bezier(.34,1.56,.64,1) both;
+}
+/* An inferred point stays a ring even once set — a guess about occluded
+   anatomy must not look like an observation, on the frame or in this
+   panel; matches the canvas's own .hp.inferred. */
+.tool-row .dot.inferred { background: transparent; border-width: 3px; }
+@keyframes tool-dot-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-row .dot.set { animation: none; }
+}
+/* Coordinates — always on screen, monospace with tabular numerals so the
+   digits don't jitter as they update, an em dash standing in for "nothing
+   placed yet" rather than the line itself appearing and disappearing.
+   Indented to sit under the label, not the dot — 20px = the dot's 12px
+   plus the 8px gap next to it. */
+.tool-row-coord {
+  display: flex; gap: 14px; margin: 7px 0 8px 20px;
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); font-variant-numeric: tabular-nums;
+  transition: color .15s ease;
+}
+.tool-row-coord b { font-weight: 500; opacity: .55; margin-right: 4px; }
+/* A visible gap between the chin card and the shoulder card, so the two
+   read as separate controls rather than one running list — colour is
+   shared between them now, so shape alone wasn't enough distance. */
+.tool-row + .tool-row { margin-top: 2px; }
+/* An inferred point is a ring, not a dot — a guess about occluded anatomy
+   must not look like an observation, on the frame or in the peer overlay. */
+.hp.inferred {
+  background: transparent !important; border: 3px solid;
+  border-color: color-mix(in srgb, var(--hp-color, var(--accent)) 82%, transparent);
+}
+.hp.inferred::after { display: none; }
+/* Apple-style segmented control: seen/occluded as two picks in one track,
+   so correcting an answer is choosing the right state, not fighting a
+   toggle to work out what it's about to flip to. Disabled rather than
+   hidden until a point exists to answer for — same "reserve the space,
+   change only the paint" rule the whole card follows now. */
+.vis-switch {
+  display: flex; gap: 2px; margin: 0 0 0 20px; padding: 2px;
+  border-radius: 8px; background: rgba(120,120,128,.12);
+}
+@media (prefers-color-scheme: dark) { .vis-switch { background: rgba(120,120,128,.24); } }
+.vis-seg {
+  flex: 1; padding: 4px 0; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 11.5px; font-weight: 590; color: var(--ink-dim);
+  cursor: pointer; transition: background .15s ease, color .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.vis-seg:disabled { opacity: .4; cursor: default; }
+.vis-seg[aria-pressed="true"] {
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  .vis-seg[aria-pressed="true"] { background: rgba(120,120,128,.42); box-shadow: none; }
+}
+/* Popovers — the visibility question after a point, the reason behind a skip.
+   Both are anchored next to the thing they ask about rather than centered: a
+   modal in the middle of the screen would cover the frame the answer depends
+   on. */
+.pop {
+  /* max-width because #stage-card clips: on a narrow window the point
+     popover would otherwise run off the card and lose half its options. */
+  position: absolute; z-index: 30; width: 236px; max-width: calc(100% - 16px);
+  padding: 11px;
+  background: var(--card); border-radius: 11px; border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgba(0,0,0,.20), 0 1px 3px rgba(0,0,0,.10);
+  text-align: left; animation: pop-in .16s cubic-bezier(.2,.8,.4,1.4) both;
+}
+.pop[hidden] { display: none; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
+.pop-t { font-size: 12.5px; font-weight: 590; margin: 0 0 8px; letter-spacing: -.01em; }
+.pop-opt {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  width: 100%; padding: 8px 9px; margin-top: 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 590; color: var(--ink);
+  cursor: pointer; text-align: left;
+}
+.pop-opt:hover { border-color: var(--ink-dim); background: rgba(120,120,128,.10); }
+.pop-opt kbd { font: inherit; font-size: 11px; opacity: .5; }
+.pop-opt s {
+  grid-column: 1 / -1; text-decoration: none; font-weight: 400;
+  font-size: 11.5px; line-height: 1.4; color: var(--ink-dim);
+}
+.pop-esc { font-size: 11px; color: var(--ink-dim); margin: 9px 0 0; }
+.pop-esc kbd { font: inherit; font-weight: 590; }
+/* The skip popover hangs off its own button; the point popover is placed in
+   script, next to the click that opened it. */
+#skip-wrap { position: relative; }
+#skip-pop { left: 0; right: 0; width: auto; bottom: calc(100% + 6px); }
+/* Two items, no title, so neither pays the title's top margin — the first
+   sits flush with the menu's own edge, the second gets the normal 6px
+   .pop-opt gap above it. Only Delete gets the destructive red every other
+   such action on this page uses; flipping seen/occluded is a correction,
+   not a loss, so it stays plain ink like the popover's own Seen/Occluded
+   buttons. */
+#pt-ctx { width: auto; min-width: 156px; padding: 5px; }
+#pt-ctx .pop-opt:first-child { margin-top: 0; }
+#pt-ctx-del { color: var(--no); border-color: transparent; }
+#pt-ctx-del:hover { background: color-mix(in srgb, var(--no) 10%, transparent); }
+
+
+/* 4.0's overview — one dot per queue slot, same 20-col/9px geometry and
+   batch-of-100 gutter as 3.0's grids (see .ovw/.ovn above), so the two
+   generations' progress bars read as the same object. .d4-grid is shared
+   by all three metric grids (#ov4/#ov-height/#ov-width — see
+   buildOneGrid() in chin_depth_guard.js); .dn/.sk/.part/.cb below stay scoped to
+   #ov4 alone since only ITS normal-mode branch ever applies them — the
+   other two grids are admin-only disagreement views with no normal-mode
+   equivalent. */
+.d4-grid { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px; }
+.d4-grid .d4 {
+  width: 9px; height: 9px; border-radius: 2px; cursor: pointer;
+  background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
+}
+/* A gap every 100 frames — same marker technique as #ov i[data-batch]. */
+.d4-grid .d4[data-batch] { margin-top: 7px; }
+#ov4 .d4.dn { background: var(--ov-yes); }
+#ov4 .d4.sk { background: var(--ink-dim); }
+/* Amber, same provisional language as the camera flag and the skip
+   button's pressed state — one point down, the other still to come.
+   Overwritten in place once the pair completes, same as any other save. */
+#ov4 .d4.part { background: var(--maybe); }
+#ov4 .d4.cb { box-shadow: 0 0 0 1.5px var(--maybe); }
+.d4-grid .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* ── everyone's progress ─────────────────────────────────────────────────
+   Ported from 3.0's #team panel (see the file header for why 4.0's
+   original no-peers stance was reversed here) — same markup, same
+   behaviour, deliberately minus 3.0's "Lead everyone" footer, which stays
+   an admin-only capability. */
+@keyframes clue-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { #team.on { animation: none; } }
+
+/* Two pills, one shape — same disclosure-pill language as #vidx-btn (3.0's,
+   unused on this page otherwise). Folded by default: the count rides on
+   the button, so how many people are labeling is answerable with no
+   click. */
+#team-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#team-btn:disabled { opacity: .4; cursor: default; }
+#team-btn[aria-expanded="true"] {
+  background: var(--open-bg); border-color: var(--open-line);
+  color: var(--open-ink);
+}
+#team-btn svg { width: 13px; height: 13px; flex: none; }
+#team-chev { transition: transform .2s ease; }
+#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { #team-chev { transition: none; } }
+
+/* Team panel — name, count, bar. Nothing else. Position and a relative
+   timestamp live in the row's tooltip rather than as columns of their own. */
+#team { display: none; grid-template-columns: 1fr auto;
+        column-gap: 10px; align-items: baseline; font-size: 13px; }
+#team.on { display: grid; animation: clue-in .2s ease both;
+           margin: 12px 0 6px; }
+/* The name cell is a flex row so the hide control can sit beside the text
+   without the ellipsis swallowing it — a fourth grid cell would break the
+   column alignment between rows, since #team itself is the grid. */
+.who-n { display: flex; align-items: baseline; gap: 5px;
+         min-width: 0; font-weight: 500; }
+.who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap;
+         padding: 0; border: 0; background: none; font: inherit; color: inherit;
+         text-align: left; }
+.who-t:hover { text-decoration: underline; }
+.who-chev { flex: none; width: 10px; height: 10px; color: var(--ink-dim);
+            opacity: .55; pointer-events: none; transition: transform .15s ease; }
+.who-chev svg { display: block; width: 10px; height: 10px; }
+.who-n.open .who-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .who-chev { transition: none; } }
+/* Which frames, not just how many — ranges are 1-based and inclusive,
+   matching the numbers on the overview and the go-to box. */
+.who-ranges {
+  grid-column: 1 / -1; margin: -6px 0 12px;
+  font: 500 10.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); word-break: break-word;
+}
+.who-ranges.stale { opacity: .55; }
+/* Invisible until the pointer is somewhere in the panel — revealing the
+   whole column on panel hover costs nothing at rest and needs no hunting. */
+.who-eye { flex: none; padding: 0; border: 0; background: none; line-height: 0;
+           color: var(--ink-dim); opacity: 0; transition: opacity .12s ease; }
+#team:hover .who-eye { opacity: .45; }
+.who-eye:hover, .who-eye:focus-visible { opacity: 1; color: var(--ink); }
+.who-eye svg { width: 13px; height: 13px; display: block; }
+.who-hidden { grid-column: 1 / -1; display: flex; align-items: baseline;
+              gap: 8px; font-size: 11.5px; color: var(--ink-dim);
+              margin-top: 2px; }
+.who-show-all { padding: 0; border: 0; background: none; font: inherit;
+                color: var(--accent); font-weight: 500; }
+.who-show-all:hover { text-decoration: underline; }
+.who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
+.who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
+/* Not a progress bar — a MAP of the queue. Each run of consecutive queue
+   positions is drawn where it actually falls, so two labelers who have
+   covered the same ground look alike and two who have not, do not. */
+.who-bar { grid-column: 1 / -1; position: relative; height: 3px;
+           border-radius: 2px; background: rgba(120,120,128,.16);
+           margin: 6px 0 12px; overflow: hidden; }
+.who-bar:last-child { margin-bottom: 0; }
+.who-bar i { position: absolute; top: 0; bottom: 0; border-radius: 1.5px;
+             background: var(--ink-dim); min-width: 1.5px; }
+/* Until the frame list arrives the bar can only say how MUCH, so it says
+   that at a third of the ink and gives itself away on hover. */
+.who-bar.approx i { opacity: .3; }
+.who-me .who-n { color: var(--accent); font-weight: 600; }
+.who-me .who-c { color: var(--accent); }
+.who-me .who-bar i { background: var(--accent); }
+#team-empty { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); }
+
+/* ── admin mode ───────────────────────────────────────────────────────────
+   Reached by logging in as the literal name "admin" (case-insensitive —
+   see state.isAdmin in chin_depth_guard.js). Every rule below is scoped under
+   body.admin, so a normal login's panel and canvas stay byte-for-byte what
+   they were before this section existed.
+   ------------------------------------------------------------------------ */
+
+/* Admin already has its own always-visible team card (#team-card below) —
+   the foldable panel would just be a second, redundant copy of the same
+   numbers. */
+body.admin #team-btn, body.admin #team { display: none; }
+
+/* The keys still work — see the keydown handler, unchanged — this just
+   stops teaching a vocabulary admin mode doesn't have a parallel for yet
+   (there's no single-key "pick a labeler"), so the card would only be
+   scrolled past. */
+body.admin #keys-card { display: none; }
+
+/* Progress card legend swap — see the two markup blocks in the body. */
+#legend-admin { display: none; }
+body.admin #legend-normal { display: none; }
+body.admin #legend-admin { display: flex; }
+
+/* Labels above each of the three metric grids — also the fold/unfold
+   button for that one grid (toggleMetricFold()). Admin-only, even the one
+   over #ov4 — normal mode doesn't have "metrics" to choose between or fold
+   away, it has one grid that just shows its own progress. .active
+   (toggled by renderMetricLabels()) marks whichever metric the agreement
+   card is currently showing — independent of fold state, since a folded
+   grid can still be the one selected. */
+/* Padding + a compensating negative margin: the row's hit area (and its
+   hover/active fill) extends into the card's own padding, but the TEXT
+   stays lined up with the grid below it, same trick as a Settings.app row
+   whose highlight bleeds to the group's edges while its label doesn't
+   visually shift. */
+.metric-label {
+  display: none; align-items: center; justify-content: space-between; gap: 6px;
+  width: 100%; margin: 12px -6px 6px; padding: 5px 6px; border: 0; border-radius: 6px;
+  background: none; font: inherit; font-size: 11.5px; font-weight: 510; color: var(--ink-dim);
+  text-align: left; cursor: pointer; transition: background .15s ease, color .15s ease;
+}
+#metric-label-euclid { margin-top: 0; }
+body.admin .metric-label { display: flex; }
+.metric-label:hover { background: rgba(120,120,128,.10); color: var(--ink); }
+.metric-label.active { background: rgba(120,120,128,.08); color: var(--ink); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .metric-label { transition: none; } }
+.metric-chev {
+  flex: none; width: 10px; height: 10px; color: var(--ink-dim);
+  opacity: .6; transition: transform .15s ease;
+}
+.metric-label[aria-expanded="false"] .metric-chev { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .metric-chev { transition: none; } }
+#ov-height-wrap, #ov-width-wrap { display: none; }
+body.admin #ov-height-wrap, body.admin #ov-width-wrap { display: flex; }
+
+/* Same shape as #goto above — label, number input, no separate apply
+   button, since the change fires on input rather than needing one. Chin
+   and shoulder get their own line — two independent landmarks, two
+   independent dials, see AGREE_THRESH_CHIN/SH in chin_depth_guard.js. */
+#agree-thresh-row { display: none; }
+body.admin #agree-thresh-row {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
+}
+.thresh-line { display: flex; align-items: center; gap: 6px; }
+.thresh-line label { font-size: 11.5px; color: var(--ink-dim); flex: 1; }
+.thresh-line input {
+  flex: none; width: 52px; font: inherit; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); text-align: right;
+}
+.thresh-line input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pct-sign { font-size: 12.5px; color: var(--ink-dim); flex: none; }
+
+/* Admin never places a point — that is the ACT of being a labeler, and
+   admin's whole job is correcting and reviewing their work from outside,
+   never impersonating them (2026-08). #q-card's eyebrow swaps to name what
+   the card actually is now (just the loading state + roster list); the
+   placement UI itself — the two tool-rows, their switches, the "Complete"
+   badge — is unreachable and hidden, not just dimmed. Existing points are
+   still fully editable, just through #admin-points-card and dragging a
+   .tm mark directly on canvas — never through this card. */
+#admin-eyebrow { display: none; }
+body.admin #q-eyebrow { display: none; }
+body.admin #admin-eyebrow { display: block; }
+body.admin #q-card .tool-row,
+body.admin #q-card .vis-switch,
+body.admin #pts-complete { display: none; }
+/* Save & Next / Skip / Camera all act on a single active identity's
+   in-progress points, which admin never has — gone entirely. #save-btn is
+   the opposite: admin-ONLY (hidden in normal mode below), since normal mode
+   already saves on leaving the frame and has nothing left for a manual save
+   to do. */
+body.admin #save-next,
+body.admin #skip-wrap,
+body.admin #cam-btn { display: none; }
+body:not(.admin) #save-btn { display: none; }
+
+/* ── admin picker — one row per roster labeler, sits above the tool-rows ─
+   display:none by default (not just empty): a normal login never runs the
+   JS that would populate this, but an unscoped :empty rule would still
+   show its placeholder text to every ordinary labeler. */
+#admin-picker { display: none; }
+body.admin #admin-picker { display: block; margin-bottom: 10px; }
+body.admin #admin-picker:empty::after {
+  content: 'No labelers yet.'; display: block; font-size: 12px;
+  color: var(--ink-dim); padding: 6px 2px;
+}
+/* Read-only roster status now (2026-08) — no click, nothing to select.
+   Hovering still borrows the highlight setTeamHover() already gives a
+   canvas mark, so a name is still useful to point at, just not to press. */
+.admin-picker-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; margin-bottom: 4px; border-radius: 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12.5px; text-align: left; cursor: default;
+  transition: border-color .12s ease, background .12s ease;
+}
+.admin-picker-row:hover { border-color: var(--ink-dim); }
+.admin-picker-row .sw {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.admin-picker-row .nm {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 510;
+}
+.admin-picker-row .st { flex: none; font-size: 11px; color: var(--ink-dim); }
+.admin-picker-row .st.dn { color: var(--yes); }
+.admin-picker-row .st.sk { color: var(--maybe); }
+
+/* ── everyone's points ─────────────────────────────────────────────────
+   One "Points — Name" card per roster member with ACTUAL point data on
+   this frame (a skip earns no card — see hasAnyPoint() in the JS, the
+   same gate the canvas marks use). Admin has no points of its own to give
+   one of these a #q-card-style special treatment — see the admin-mode
+   header comment in the JS — so this is the only Points display admin
+   ever sees. Every dot is draggable directly on the canvas — see
+   grabbableTeammatePoint(). Reuses the SAME .tool-row/.dot/.tool-row-
+   coord/.vis-switch rules #q-card already defines, just scoped to a
+   different person's colour: a --hp-color set LOCALLY on each card wins
+   over anything on <body>, since a closer custom-property definition
+   always does — no new colour rules needed. */
+#admin-points-card { display: none; }
+body.admin #admin-points-card { display: block; }
+.admin-pt-card + .admin-pt-card {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+/* Not clickable — these rows show state and answer corrections (the
+   switch); admin never arms a new placement (see the admin-mode header
+   comment in the JS), so neither the pointer cursor nor the armed-row
+   hover glow — both meant for something you can click to DO something —
+   belong here. */
+.admin-tool-row { cursor: default; }
+.admin-tool-row:hover { border-color: var(--line); }
+#admin-points-empty { display: none; font-size: 12px; color: var(--ink-dim); }
+#admin-points-list:empty + #admin-points-empty { display: block; }
+
+/* ── team progress — modeled on 3.0's #team, a plain proportional bar
+   rather than 3.0's queue-range-segment bars, which solved a different
+   problem (showing WHERE in the queue two labelers overlapped) that isn't
+   being asked for here. The whole CARD is admin-only. ── */
+#team-card { display: none; }
+body.admin #team-card { display: block; }
+#team-progress {
+  display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
+  row-gap: 2px; font-size: 12.5px;
+}
+#team-progress:empty::after {
+  content: 'Nobody has labeled anything yet.'; grid-column: 1 / -1;
+  font-size: 12px; color: var(--ink-dim);
+}
+
+/* ── agreement card — Settings.app-style grouped rows: a hairline between
+   Chin and Shoulder rather than the bare label/value pairs this used to
+   be, and the agree/disagree READING is a soft-fill pill (the same
+   language .vis-switch's segmented control and the overview dots already
+   use — green/red/amber system colours, never just coloured text) instead
+   of only a text colour change. ── */
+#agree-card { display: none; }
+body.admin #agree-card { display: block; }
+.agree-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line);
+}
+.agree-row:last-child { border-bottom: 0; }
+.agree-row-label { font-size: 13px; font-weight: 510; }
+.agree-pill {
+  flex: none; padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 590; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.agree-pill.agree { background: color-mix(in srgb, var(--yes) 16%, transparent); color: var(--yes); }
+.agree-pill.disagree { background: color-mix(in srgb, var(--no) 16%, transparent); color: var(--no); }
+.agree-pill.muted { background: rgba(120,120,128,.12); color: var(--ink-dim); font-weight: 510; }
+#agree-global-eyebrow {
+  margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.agree-stat-value {
+  flex: none; text-align: right; font: 500 12px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
+}
+.team-n {
+  display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 510;
+}
+.team-n .sw {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--tm-color); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.team-n span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-c {
+  font: 500 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim);
+}
+.team-bar {
+  grid-column: 1 / -1; position: relative; height: 3px; border-radius: 2px;
+  background: rgba(120,120,128,.16); margin: 4px 0 10px; overflow: hidden;
+}
+.team-bar i {
+  position: absolute; top: 0; left: 0; bottom: 0; border-radius: 1.5px;
+  background: var(--tm-color);
+}
+
+/* ── overview grid, admin branch — a disagreement gradient replaces
+   done/skip. Fill is a continuous red<->green value set per-dot from
+   JS (a gradient can't be expressed as a fixed set of classes). .dconflict
+   layers a ring on top for the one case that ISN'T a point on that
+   gradient — a skip conflict, where the disagreement is about whether the
+   frame can be judged at all, not a distance — deliberately a different
+   ring than .cb (camera_bad): the two facts are unrelated, and a shared
+   ring would blur which one is true. .solo sits off the red-green axis
+   entirely, so "only one opinion exists yet" can never be misread as
+   either agreement or disagreement. */
+.d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.55); }
+@media (prefers-color-scheme: dark) {
+  .d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #000, 0 0 0 2.5px rgba(255,255,255,.65); }
+}
+.d4-grid .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* ── teammate marks on canvas — every roster member, ALWAYS (admin has no
+   "own" points to exclude any more — see the admin-mode header comment in
+   chin_depth_guard.js), and directly editable: dragging moves the point, right-
+   click offers a seen/occluded-toggle-or-delete menu, both saving
+   immediately (saveTeammateRow()). Byte-identical size/shape/shadow to .hp
+   (14px, round for chin, 3px-radius square for shoulder, same white
+   centre dot) — a second, smaller dot/bar vocabulary for the same two
+   landmarks was exactly the inconsistency the redesign removed. The only
+   difference from .hp: colour comes from --tm-color (one per labeler).
+   Cursor is grab/grabbing exactly like .hp's, and hovering a name still
+   dims the rest (.dim), the same move the deleted review.html used for
+   the identical too-many-marks-on-one-jaw problem. */
+.tm {
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border-radius: 50%; pointer-events: auto; cursor: grab;
+  transform: scale(var(--inv, 1));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55);
+  background: color-mix(in srgb, var(--tm-color) 82%, transparent);
+  transition: opacity .12s ease;
+}
+.tm::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 2px; height: 2px; margin: -1px 0 0 -1px; border-radius: 50%;
+  background: #fff;
+}
+.tm.sh { border-radius: 3px; }
+.tm.inferred {
+  background: transparent !important;
+  border: 3px solid color-mix(in srgb, var(--tm-color) 82%, transparent);
+}
+.tm.inferred::after { display: none; }
+.tm.dim { opacity: .18; }
+.tm.dragging { cursor: grabbing; }
+/* width/height:100% ALONGSIDE inset:0 is load-bearing, not redundant: the
+   viewBox gives this SVG an intrinsic 1:1 aspect ratio, and a replaced
+   element sized only by inset:0 can resolve its height from that ratio
+   instead of independently from top/bottom — rendering as a square instead
+   of stretching to the (non-square) stage. Explicit 100%/100% forces both
+   axes to the container regardless. Matches the deleted review.html's
+   #links, which got this right the first time. */
+#tm-links { position: absolute; inset: 0; width: 100%; height: 100%;
+            pointer-events: none; overflow: visible; }
+#tm-links line {
+  stroke-width: calc(1.1px * var(--inv, 1)); vector-effect: non-scaling-stroke;
+  opacity: .55; transition: opacity .12s ease;
+}
+#tm-links line.dim { opacity: .1; }
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div id="stage-card">
+    <div id="stage">
+      <img id="frame" alt="">
+      <div id="marks">
+        <!-- Only the labeler's own two points are ever drawn here in a
+             normal login. Admin mode is the one exception — see
+             renderTeamMarks() in chin_depth_guard.js — because there the overlay
+             IS the point of the mode, not something an independent click
+             needs protecting from. -->
+        <svg id="tm-links" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="hp" id="hp-chin" title="Chin tip (drag to adjust)"></div>
+        <div class="hp" id="hp-sh" title="Shoulder front (drag to adjust)"></div>
+      </div>
+    </div>
+    <div id="gx"></div><div id="gy"></div>
+    <div id="hint">click = place point · scroll = zoom · drag = pan · double-click = reset</div>
+    <!-- A point is not finished until the labeler says whether they SAW the
+         landmark or estimated it. The question is asked right where the click
+         landed, while the pixels it is about are still under the eye. -->
+    <div id="pt-pop" class="pop" role="dialog" aria-labelledby="pt-pop-t" hidden>
+      <p class="pop-t" id="pt-pop-t">Could you see it?</p>
+      <button class="pop-opt" type="button" data-v="visible">
+        Seen <kbd>1</kbd>
+        <s>the landmark itself is visible in this frame</s>
+      </button>
+      <button class="pop-opt" type="button" data-v="inferred">
+        Occluded <kbd>2</kbd>
+        <s>hidden by a glove, blur or clothing — this is your best estimate of where it must be</s>
+      </button>
+      <p class="pop-esc"><kbd>Esc</kbd> — undo this point</p>
+    </div>
+    <!-- Right-click a placed point: flip its seen/occluded answer (same
+         effect as Shift+C/Shift+S, just discoverable without the keyboard
+         shortcut), or delete it outright (the one thing with no dedicated
+         key on a laptop missing a Del key). Label is set in openCtx() —
+         it names the ACTION the click performs, not the current state. -->
+    <div id="pt-ctx" class="pop" role="menu" hidden>
+      <button class="pop-opt" id="pt-ctx-vis" type="button" role="menuitem">Mark as Occluded</button>
+      <button class="pop-opt" id="pt-ctx-del" type="button" role="menuitem">Delete point</button>
+    </div>
+  </div>
+
+  <div id="side">
+    <div class="card">
+      <p class="card-eyebrow">Labeler</p>
+      <div id="name-row">
+        <input id="labeler-input" placeholder="Your name" title="Your name"
+               autocomplete="off" spellcheck="false">
+        <button id="name-go" disabled>Start</button>
+      </div>
+      <!-- Folded by default — see the CSS note above this panel's rules for
+           why this exists on 4.0 at all. -->
+      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone&rsquo;s progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div id="team"><div id="team-empty">No labels saved yet</div></div>
+    </div>
+
+    <div class="card" id="id-card">
+      <p class="card-eyebrow">Frame</p>
+      <span class="idl">Video</span>
+      <span class="idv" id="id-video">&mdash;</span>
+      <button class="idc" data-copy="id-video" type="button"
+              title="Copy video name" aria-label="Copy video name"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Round</span>
+      <span class="idv" id="id-round">&mdash;</span>
+      <button class="idc" data-copy="id-round" type="button"
+              title="Copy round" aria-label="Copy round"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+      <span class="idl">Frame</span>
+      <span class="idv" id="id-frame">&mdash;</span>
+      <button class="idc" data-copy="id-frame" type="button"
+              title="Copy frame" aria-label="Copy frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+    </div>
+
+    <div class="card" id="q-card">
+      <p class="card-eyebrow" id="q-eyebrow">Points <span id="pts-complete" class="pts-complete" hidden>&#10003; Complete</span></p>
+      <!-- Admin cannot place points at all (2026-08) — the whole idea of
+           "the active identity's own points" doesn't apply, so this card
+           becomes just the loading state and the roster status list. See
+           body.admin in the stylesheet, which hides everything below the
+           two eyebrows except #q-lock and #admin-picker. -->
+      <p class="card-eyebrow" id="admin-eyebrow">Team roster</p>
+      <div id="q-lock">Loading…</div>
+      <!-- Admin mode only: one row per roster labeler, showing their status
+           on THIS frame — read-only, hover to highlight their dots on
+           canvas. Empty and display:none for a normal login — see
+           body.admin in the stylesheet and renderAdminPicker() in
+           chin_depth_guard.js. -->
+      <div id="admin-picker"></div>
+      <!-- One self-contained card per landmark — head, coordinates, switch —
+           ALWAYS the same three lines regardless of state, so placing or
+           clearing a point never reflows the card above or below it. The
+           coordinate line and the switch stay on screen (dashes / disabled)
+           rather than appearing and disappearing — see render() in the JS. -->
+      <div class="tool-row" data-p="chin" aria-pressed="false">
+        <div class="tool-row-head">
+          <span class="dot"></span>
+          <span class="tool-row-label">Chin tip</span>
+          <kbd>C</kbd>
+        </div>
+        <div class="tool-row-coord">
+          <span><b>x</b><span class="trc-x">&mdash;</span></span>
+          <span><b>y</b><span class="trc-y">&mdash;</span></span>
+        </div>
+        <div class="vis-switch" data-p="chin">
+          <button class="vis-seg" data-p="chin" data-v="visible" type="button" disabled>Seen</button>
+          <button class="vis-seg" data-p="chin" data-v="inferred" type="button" disabled>Occluded</button>
+        </div>
+      </div>
+      <div class="tool-row" data-p="sh" aria-pressed="false">
+        <div class="tool-row-head">
+          <span class="dot"></span>
+          <span class="tool-row-label">Shoulder front</span>
+          <kbd>S</kbd>
+        </div>
+        <div class="tool-row-coord">
+          <span><b>x</b><span class="trc-x">&mdash;</span></span>
+          <span><b>y</b><span class="trc-y">&mdash;</span></span>
+        </div>
+        <div class="vis-switch" data-p="sh">
+          <button class="vis-seg" data-p="sh" data-v="visible" type="button" disabled>Seen</button>
+          <button class="vis-seg" data-p="sh" data-v="inferred" type="button" disabled>Occluded</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin mode only. One "Points — Name" card per roster member who has
+         placed at least one point on THIS frame — a skip earns no card,
+         same as it draws nothing on the canvas — same dot/coord/switch
+         language as the main labeler's own Points card. Every dot here is
+         directly draggable on the canvas; these cards show state and
+         answer seen/occluded corrections, they never place a new point —
+         admin has no "own" identity to place one AS (see the admin-mode
+         header comment in chin_depth_guard.js) — see renderAdminPointsList()
+         and the canvas mousedown/mousemove/mouseup wiring in the JS. -->
+    <div class="card" id="admin-points-card">
+      <p class="card-eyebrow">Team&rsquo;s points</p>
+      <div id="admin-points-list"></div>
+      <div id="admin-points-empty">Nobody has placed a point on this frame yet.</div>
+    </div>
+
+    <div class="card" id="act-card">
+      <p class="card-eyebrow">Buttons</p>
+      <!-- No save button: a finished pair is saved by moving on, which is the
+           gesture a labeler makes anyway. See commitCurrent(). -->
+      <button id="save-next">Save &amp; next <kbd style="opacity:.6">↵</kbd></button>
+      <!-- One skip button; the reason is asked afterwards. Two buttons made the
+           labeler pick the wording before deciding to skip at all, and the
+           reasons are data — `no_stance` is what measures the sampler. -->
+      <div id="skip-wrap">
+        <button id="skip-btn" class="skipb" type="button">Skip frame <kbd style="opacity:.6">K</kbd></button>
+        <div id="skip-pop" class="pop" role="dialog" aria-labelledby="skip-pop-t" hidden>
+          <p class="pop-t" id="skip-pop-t">Why can&rsquo;t this frame be labeled?</p>
+          <button class="pop-opt" type="button" data-reason="not_visible">
+            Can&rsquo;t see the points <kbd>1</kbd>
+            <s>out of frame, fully hidden or too blurred to even estimate</s>
+          </button>
+          <button class="pop-opt" type="button" data-reason="no_stance">
+            Not in boxing stance <kbd>2</kbd>
+            <s>another exercise, or clearly stopped boxing — explaining WHILE boxing still gets labeled</s>
+          </button>
+          <p class="pop-esc"><kbd>Esc</kbd> — cancel</p>
+        </div>
+      </div>
+      <div id="nav">
+        <div id="seg">
+          <button id="prev" title="Previous frame (←)" aria-label="Previous frame">‹</button>
+          <button id="next" title="Next frame (→)" aria-label="Next frame">›</button>
+        </div>
+        <!-- Admin-only (see body.admin in the stylesheet): re-pushes every
+             roster row that exists for the current frame, in case an edit's
+             own immediate save needs retrying or the labeler just wants
+             confirmation it landed. -->
+        <button id="save-btn" type="button" title="Save this frame's edits">Save</button>
+        <!-- Off unless the labeler says otherwise: a camera lying on the floor
+             shoots up at the boxer, which tilts the chin-to-shoulder geometry
+             the whole dataset is measuring. Recorded per frame because one
+             video can be filmed from the floor for part of a round. -->
+        <button id="cam-btn" aria-pressed="false"
+                title="Camera is too low or too high for this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Camera too low/high</span></button>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <!-- Admin mode only — see body.admin in the stylesheet. One row per
+         roster labeler: swatch, name, done/total, a proportional bar.
+         Modeled on 3.0's #team panel, simplified — no queue-range bars,
+         no lead-everyone, no hide-row disclosure; this is a status view,
+         not a management console. -->
+    <div class="card" id="team-card">
+      <p class="card-eyebrow">Team progress</p>
+      <div id="team-progress"></div>
+    </div>
+
+    <!-- Admin mode only. A FIXED pair, not "everyone" — see AGREE_PAIR in
+         chin_depth_guard.js. Rebuilt every render(), so it's ALWAYS about the
+         frame currently on screen, not a whole-queue rollup — a % over
+         2,000 frames doesn't say anything about the one in front of you.
+         Chin and shoulder are two independent rows, never averaged into
+         one number: they're separate landmarks, so a bad shoulder
+         shouldn't get to hide behind a good chin. -->
+    <div class="card" id="agree-card">
+      <!-- Suffix always names the metric currently on screen — " ·
+           Euclidean distance" by default, " · Height disagreement" or
+           " · Width disagreement" after clicking one of the other two
+           progress bars. Set by setAgreeMetric() in chin_depth_guard.js, in
+           step with renderMetricLabels() bolding that bar's own label. -->
+      <p class="card-eyebrow">Agreement — Arianne × John<span id="agree-metric-suffix"></span></p>
+      <div id="agree-list"></div>
+      <!-- Whole-queue descriptive stats — raw distances, not thresholded,
+           so this section doesn't move when the threshold above does; it's
+           the distribution the threshold is a cutoff INTO. Only recomputed
+           when the underlying data changes (login, a save landing), not on
+           every frame navigation like #agree-list above. -->
+      <p class="card-eyebrow" id="agree-global-eyebrow">All frames</p>
+      <div id="agree-global"></div>
+    </div>
+
+    <div class="card">
+      <p class="card-eyebrow">Progress</p>
+      <div id="head">
+        <div id="count">—<small> / —</small></div>
+        <span id="done">—</span>
+      </div>
+      <div id="goto">
+        <label for="goto-n">Go to frame</label>
+        <input id="goto-n" type="number" min="1" inputmode="numeric">
+        <button id="goto-go">Go</button>
+      </div>
+      <!-- Admin-only label/fold-button, shown only above #ov4 since that
+           grid itself is shared with normal mode (just recoloured — see
+           body.admin below). Clicking anywhere on the LABEL folds that one
+           grid shut (toggleMetricFold()) — independent of clicking a DOT
+           in the grid, which picks that grid's metric for the Agreement
+           card AND jumps to that frame (setAgreeMetric()/buildOneGrid()
+           in chin_depth_guard.js). -->
+      <button type="button" class="metric-label" id="metric-label-euclid" aria-expanded="true" aria-controls="ov4-wrap">
+        <span>Euclidean distance</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="ovw" id="ov4-wrap"><div class="ovn"></div><div id="ov4" class="d4-grid"></div></div>
+      <!-- Two more views of the same per-frame disagreement, isolating
+           just the vertical or horizontal component — which axis is
+           actually driving disagreement varies by labeling task (a camera
+           angle skew reads as WIDTH, a stance-height difference reads as
+           HEIGHT), so euclid alone doesn't always say enough. Admin-only;
+           same gutter/geometry as #ov4 above so all three read as the same
+           object, not a main grid and two lesser afterthoughts. -->
+      <button type="button" class="metric-label" id="metric-label-height" aria-expanded="true" aria-controls="ov-height-wrap">
+        <span>Height disagreement</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="ovw" id="ov-height-wrap"><div class="ovn"></div><div id="ov-height" class="d4-grid"></div></div>
+      <button type="button" class="metric-label" id="metric-label-width" aria-expanded="true" aria-controls="ov-width-wrap">
+        <span>Width disagreement</span>
+        <svg class="metric-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="ovw" id="ov-width-wrap"><div class="ovn"></div><div id="ov-width" class="d4-grid"></div></div>
+      <!-- Two legends, one page: admin mode recolors #ov4 by team
+           disagreement rather than by MY OWN completion, so the key
+           explaining the colours has to change with it. CSS toggles which
+           one shows — see body.admin below. -->
+      <div class="legend" id="legend-normal">
+        <span><b style="background:var(--ov-yes)"></b>saved</span>
+        <span><b style="background:var(--maybe)"></b>partial</span>
+        <span><b style="background:var(--ink-dim)"></b>skipped</span>
+        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b> too low/high</span>
+      </div>
+      <div class="legend" id="legend-admin">
+        <span><b style="background:var(--yes)"></b>chin + shoulder agree</span>
+        <span><b style="background:var(--maybe)"></b>one of two agrees</span>
+        <span><b style="background:var(--no)"></b>neither agrees</span>
+        <span><b style="box-shadow:0 0 0 1.5px #fff,0 0 0 2.5px rgba(0,0,0,.55);background:var(--no)"></b>skip conflict</span>
+        <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>only one opinion</span>
+        <span><b style="background:rgba(120,120,128,.22)"></b>not labeled</span>
+      </div>
+      <!-- Admin-only. Two independent thresholds — chin and shoulder are
+           separate landmarks and don't have to share a tolerance. Each
+           drives both this grid's colours AND the per-frame agreement
+           card's agree/disagree wording for that point, via
+           frameAgreement(). Applies immediately on change (recomputes +
+           repaints both) and persists across reloads via localStorage —
+           see THRESH_KEY_CHIN / THRESH_KEY_SH. -->
+      <div id="agree-thresh-row">
+        <div class="thresh-line">
+          <label for="agree-thresh-chin">Chin threshold</label>
+          <input id="agree-thresh-chin" type="number" min="1" max="50" step="1" inputmode="numeric">
+          <span class="pct-sign">%</span>
+        </div>
+        <div class="thresh-line">
+          <label for="agree-thresh-sh">Shoulder threshold</label>
+          <input id="agree-thresh-sh" type="number" min="1" max="50" step="1" inputmode="numeric">
+          <span class="pct-sign">%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="keys-card">
+      <p class="card-eyebrow">Shortcuts</p>
+      <dl id="keys">
+        <dt>Place / re-place chin</dt> <dd><kbd>C</kbd></dd>
+        <dt>Place / re-place shoulder</dt> <dd><kbd>S</kbd></dd>
+        <dt>Seen / occluded</dt>     <dd><kbd>1</kbd><kbd>2</kbd></dd>
+        <dt>Switch one after</dt>    <dd><kbd>⇧</kbd><kbd>C</kbd>/<kbd>S</kbd></dd>
+        <dt>Delete active point</dt> <dd><kbd>Del</kbd></dd>
+        <dt>Clear both points</dt>   <dd><kbd>Esc</kbd></dd>
+        <div class="sep"></div>
+        <dt>Next frame (saves)</dt>  <dd><kbd>↵</kbd></dd>
+        <dt>Skip frame</dt>          <dd><kbd>K</kbd></dd>
+        <div class="sep"></div>
+        <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
+        <div class="sep"></div>
+        <dt>Camera too low/high</dt> <dd><kbd>G</kbd></dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/labeler_name.js"></script>
+<!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
+     with the depth_queue.json version in chin_depth_guard.js. -->
+<script src="chin_depth_guard.js?v=1"></script>
+</body>
+</html>
