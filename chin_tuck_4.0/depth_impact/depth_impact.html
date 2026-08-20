@@ -259,12 +259,12 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 #save-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
 #save-btn:disabled { opacity: .4; cursor: default; }
 
-/* Camera on the ground — a fact about the SHOT, not about the labeling. A
-   phone lying on the floor looks up at the boxer, and that tilt moves the
-   chin over the shoulder in the image without the boxer's head moving at
-   all: the rows are honest points on a picture that the geometry has to be
-   told about. Off unless ticked, per frame, because a single video can be
-   filmed from the floor for one round and from a shelf for the next. */
+/* Angle too frontal — a fact about the SHOT, not about the labeling. The
+   shoulder's most frontal point is only legible from a roughly side-on
+   camera; from close to straight-on it collapses onto the same outline the
+   labeler already can't judge depth from, so the click is a guess dressed
+   up as a point. Off unless ticked, per frame, because a single video can
+   swing from side-on to frontal within one round. */
 #cam-btn {
   flex: 1; padding: 8px 6px; border-radius: 8px;
   border: 1px solid var(--line); background: transparent;
@@ -278,7 +278,7 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
   background: var(--maybe); border-color: transparent; color: #fff;
 }
 /* Only meaningful once both points are placed — the shot can't be judged
-   too low/high against a jaw and shoulder that aren't marked yet. */
+   too frontal against a jaw and shoulder that aren't marked yet. */
 #cam-btn:disabled { opacity: .4; cursor: default; }
 #cam-btn svg { width: 13px; height: 13px; flex: none; }
 
@@ -1271,6 +1271,20 @@ body.admin #team-card { display: block; }
    of only a text colour change. ── */
 #agree-card { display: none; }
 body.admin #agree-card { display: block; }
+/* Which two labelers are being compared — admin-changeable mid-session
+   (setAgreePair() in depth_impact.js), not a fixed pair baked into the
+   page. Changing it recomputes the agreement card, the global stats below
+   it, AND the three progress grids' disagreement colouring — all three
+   read the same state.agreePair. */
+#agree-pair-picker {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 10px;
+}
+#agree-pair-picker select {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 510; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px; background: transparent;
+  padding: 4px 6px;
+}
+#agree-pair-picker .agree-x { color: var(--ink-dim); font-size: 12px; flex: none; }
 .agree-row {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line);
@@ -1553,12 +1567,13 @@ body.admin #agree-card { display: block; }
              own immediate save needs retrying or the labeler just wants
              confirmation it landed. -->
         <button id="save-btn" type="button" title="Save this frame's edits">Save</button>
-        <!-- Off unless the labeler says otherwise: a camera lying on the floor
-             shoots up at the boxer, which tilts the chin-to-shoulder geometry
-             the whole dataset is measuring. Recorded per frame because one
-             video can be filmed from the floor for part of a round. -->
+        <!-- Off unless the labeler says otherwise: a shot too close to
+             straight-on collapses the shoulder's front-to-back extent onto
+             one outline, which is exactly what this landmark needs to be
+             visible. Recorded per frame because one video can swing from
+             side-on to frontal within a round. -->
         <button id="cam-btn" aria-pressed="false"
-                title="Camera is too low or too high for this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Camera too low/high</span></button>
+                title="Camera angle is too frontal to judge depth on this frame (G)"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.4 4.9a1.2 1.2 0 0 1 1.2-1.2h1.7l.9-1.3h3.6l.9 1.3h1.7a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="7" cy="7.1" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M.8 12.6h12.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="cam-label">Angle too frontal</span></button>
       </div>
       <div id="status"></div>
     </div>
@@ -1573,20 +1588,27 @@ body.admin #agree-card { display: block; }
       <div id="team-progress"></div>
     </div>
 
-    <!-- Admin mode only. A FIXED pair, not "everyone" — see AGREE_PAIR in
-         depth_impact.js. Rebuilt every render(), so it's ALWAYS about the
-         frame currently on screen, not a whole-queue rollup — a % over
-         2,000 frames doesn't say anything about the one in front of you.
-         Chin and shoulder are two independent rows, never averaged into
-         one number: they're separate landmarks, so a bad shoulder
-         shouldn't get to hide behind a good chin. -->
+    <!-- Admin mode only. A PAIR, not "everyone" — see state.agreePair in
+         depth_impact.js, changeable mid-session via the two selects below
+         (renderAgreePairPicker()/setAgreePair()). Rebuilt every render(),
+         so it's ALWAYS about the frame currently on screen, not a
+         whole-queue rollup — a % over 2,000 frames doesn't say anything
+         about the one in front of you. Chin and shoulder are two
+         independent rows, never averaged into one number: they're separate
+         landmarks, so a bad shoulder shouldn't get to hide behind a good
+         chin. -->
     <div class="card" id="agree-card">
       <!-- Suffix always names the metric currently on screen — " ·
            Euclidean distance" by default, " · Height disagreement" or
            " · Width disagreement" after clicking one of the other two
            progress bars. Set by setAgreeMetric() in depth_impact.js, in
            step with renderMetricLabels() bolding that bar's own label. -->
-      <p class="card-eyebrow">Agreement — Arianne × John<span id="agree-metric-suffix"></span></p>
+      <p class="card-eyebrow">Agreement<span id="agree-metric-suffix"></span></p>
+      <div id="agree-pair-picker">
+        <select id="agree-a" aria-label="First labeler to compare"></select>
+        <span class="agree-x">&times;</span>
+        <select id="agree-b" aria-label="Second labeler to compare"></select>
+      </div>
       <div id="agree-list"></div>
       <!-- Whole-queue descriptive stats — raw distances, not thresholded,
            so this section doesn't move when the threshold above does; it's
@@ -1645,7 +1667,7 @@ body.admin #agree-card { display: block; }
         <span><b style="background:var(--ov-yes)"></b>saved</span>
         <span><b style="background:var(--maybe)"></b>partial</span>
         <span><b style="background:var(--ink-dim)"></b>skipped</span>
-        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b> too low/high</span>
+        <span><b style="box-shadow:0 0 0 1.5px var(--maybe);background:transparent"></b> too frontal</span>
       </div>
       <div class="legend" id="legend-admin">
         <span><b style="background:var(--yes)"></b>chin + shoulder agree</span>
@@ -1691,7 +1713,7 @@ body.admin #agree-card { display: block; }
         <div class="sep"></div>
         <dt>Prev / next frame</dt>   <dd><kbd>←</kbd><kbd>→</kbd></dd>
         <div class="sep"></div>
-        <dt>Camera too low/high</dt> <dd><kbd>G</kbd></dd>
+        <dt>Angle too frontal</dt> <dd><kbd>G</kbd></dd>
       </dl>
     </div>
   </div>
@@ -1700,6 +1722,6 @@ body.admin #agree-card { display: block; }
 <script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the depth_impact_queue.json version in depth_impact.js. -->
-<script src="depth_impact.js?v=1"></script>
+<script src="depth_impact.js?v=3"></script>
 </body>
 </html>

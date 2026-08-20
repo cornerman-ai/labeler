@@ -52,10 +52,9 @@
 // second point lands, so it never counts toward "done" (isResolved/
 // hasPoints still require the full pair) — it just gets its own colour on
 // the overview (see 'part' in renderOverview()) instead of being invisible
-// until finished. Leaving a frame with ZERO points and no explicit skip is
-// itself a decision not to label it, so commitCurrent() records that as a
-// skip with reason 'unmarked' — kept out of the K popover's own two
-// reasons so it never dilutes what those measure.
+// until finished. Leaving a frame with ZERO points and no explicit skip
+// writes NOTHING (commitCurrent()) — just passing through a frame must not
+// cost a row, so it stays exactly as unlabeled as it was before.
 //
 // REPEATS: 184 planted (rep=1, ~10% of the 1,842 real frames, repeat_gap=200
 // slots apart, blind), same contract as height_impact's — the noise floor
@@ -70,12 +69,32 @@
 // Position resumes from your own saved rows, never from this browser.
 //
 // Not ported from 3.0: reviewer mode + disagreement jump, pairwise
-// agreement panel, comparison grid, exclude-video. "Lead everyone" also
-// stays out of the normal page — every labeler getting write access to the
-// whole team's sheet is an admin capability, not a progress-panel feature,
-// and admin mode already has its own version (see #lead-row).
+// agreement panel, comparison grid, exclude-video, lead-everyone. "Lead
+// everyone" stays out of the normal page for the usual reason (every
+// labeler getting write access to the whole team's sheet is an admin
+// capability, not a progress-panel feature) — but admin mode has no
+// version of it either here (#lead-row/#lead-mask are styled in the
+// stylesheet from an earlier plan but nothing renders or wires them; see
+// the note where the normal page's team panel omits it, below).
 
 'use strict';
+
+// Last-resort safety net (2026-08). Two labelers — most plausibly two
+// people both in admin mode at once, editing the same teammate's row from
+// two tabs — hitting the exact same moment in a way this file's explicit
+// try/catch blocks don't anticipate must show up as a visible message the
+// labeler can act on, never a silently frozen page. Deliberately does not
+// try to keep going: state may be inconsistent after an uncaught error, so
+// this only says so, pointing at a reload, rather than pretending nothing
+// happened.
+function reportUncaught(err) {
+  try {
+    const msg = (err && err.message) || String(err);
+    status(`Something went wrong (${msg}) — reload the page.`, 'err');
+  } catch (e) { /* the DOM itself is what's broken; nothing left to do */ }
+}
+window.addEventListener('error', (e) => reportUncaught(e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => reportUncaught(e.reason));
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyechZQLtMzlmeT15bhIy0eozKpA0jHlmuZPSqVzyEcS5Vy0A5cS/exec';
 
@@ -140,8 +159,9 @@ const GRAB_PX = 10;
 const DWELL_CAP_SEC = 120;
 
 // Short forms of the skip reasons, for the button once a frame is skipped.
-// 'unmarked' is never offered in the K popover — see commitCurrent() —
-// it's what a frame left with zero points reads as, automatically.
+// 'unmarked' is never offered in the K popover and commitCurrent() no
+// longer writes it (2026-08) — kept here only so rows saved before that
+// change still render a label instead of a raw enum value.
 const SKIP_LABELS = {
   not_visible: "can't see the points", no_stance: 'not in stance',
   unmarked: 'left blank',
@@ -202,11 +222,27 @@ const TEAM_COLOR_COUNT = 8;          // matches the --team-color-N custom proper
 // Matches 3.0's TEAM_POLL_MS.
 const TEAM_POLL_MS = 45000;
 // The overview's disagreement gradient AND the agreement card below both
-// compare exactly this pair — nobody else, by request, not "whoever's in
-// the roster." A frame either of these two labelers didn't answer simply
-// isn't part of either computation, even if a third labeler placed points
-// on it.
-const AGREE_PAIR = ['Arianne', 'John'];
+// compare exactly this pair — nobody else, not "whoever's in the roster."
+// A frame either of these two labelers didn't answer simply isn't part of
+// either computation, even if a third labeler placed points on it.
+// Changeable mid-session (the two selects in #agree-pair-picker,
+// setAgreePair() below) — state.agreePair is the live value everything
+// reads; DEFAULT_AGREE_PAIR is only the starting point for a labeler who
+// has never picked one on this device.
+const DEFAULT_AGREE_PAIR = ['Arianne', 'John'];
+const AGREE_PAIR_KEY = 'cs4di_agree_pair';
+
+function loadAgreePair() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AGREE_PAIR_KEY) || 'null');
+    if (Array.isArray(raw) && raw.length === 2) return [String(raw[0] || ''), String(raw[1] || '')];
+  } catch (e) {}
+  return [...DEFAULT_AGREE_PAIR];
+}
+
+function saveAgreePair(pair) {
+  try { localStorage.setItem(AGREE_PAIR_KEY, JSON.stringify(pair)); } catch (e) {}
+}
 // 'euclid' is the main, default measure — full 2D distance. 'height'/
 // 'width' isolate just the vertical/horizontal component (raw |y1-y2| or
 // |x1-x2|, torso-normalized, same as the euclidean version minus the
@@ -271,7 +307,7 @@ const state = {
   chains: new Map(),
   failed: new Map(),
   ready: false,
-  camBad: false,           // camera shot too low/high for THIS frame
+  camBad: false,           // camera angle too frontal to judge depth on THIS frame
   shownAt: 0,
   // Overview divs, built once — normal mode only ever uses .euclid (#ov4,
   // the only grid it shows); admin mode uses all three.
@@ -309,6 +345,7 @@ const state = {
   foldedMetrics: loadFoldedMetrics(), // Set of metric names folded shut — a view preference
   agreeThreshChin: loadAgreeThresh(THRESH_KEY_CHIN), // fraction (e.g. 0.05) — see bind()
   agreeThreshSh: loadAgreeThresh(THRESH_KEY_SH),
+  agreePair: loadAgreePair(), // [labelerA, labelerB] — see setAgreePair()
   // A teammate's OWN existing dot, directly draggable on canvas — separate
   // from ptDrag/ctxFor, which stay scoped to the normal-mode self (admin
   // has no "own" point path at all any more — see activeLabeler()).
@@ -359,9 +396,10 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips; the v4d marker refuses a deployment that
-// predates these endpoints (doGet answers unknown actions with a success
-// shape, so without the marker a save could "succeed" writing nothing).
+// One retry for cold-start blips; the v4di marker (CS4DI_SPEC's tag) refuses
+// a deployment that predates these endpoints (doGet answers unknown
+// actions with a success shape, so without the marker a save could
+// "succeed" writing nothing).
 async function call(params, what) {
   let last;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -374,7 +412,7 @@ async function call(params, what) {
       last = new Error(body.message || 'unknown error');
       continue;
     }
-    if (body.v4d !== true) {
+    if (body.v4di !== true) {
       throw new Error('Apps Script is out of date — redeploy it '
                       + `(${params.action} fell through to the default handler)`);
     }
@@ -744,9 +782,11 @@ function renderTeamPanel() {
     }
   });
 
-  // Deliberately no "Lead everyone" footer here — that stays an admin-only
-  // capability (see admin's #lead-row), not something every labeler gets
-  // write access to the whole team's sheet for.
+  // Deliberately no "Lead everyone" footer here — every labeler getting
+  // write access to the whole team's sheet is not something a normal
+  // labeler session should ever offer. Admin mode has no built version of
+  // it either (see the file header comment) — this is not "go find it
+  // there instead."
 
   if (hiddenNow) {
     const foot = document.createElement('div');
@@ -829,13 +869,13 @@ async function loadTeamRows() {
 // amber, or red, never a blended in-between colour. Computed only from
 // CONFIRMED rows in state.teamRows — see patchDisagree() — never from an
 // in-progress drag, so the grid can't flicker a colour for a save that
-// hasn't landed yet. Scoped to AGREE_PAIR only (see its comment) — a third
-// labeler's row on this frame, even a fully-placed one, does not enter the
-// comparison.
+// hasn't landed yet. Scoped to state.agreePair only (see its comment) — a
+// third labeler's row on this frame, even a fully-placed one, does not
+// enter the comparison.
 function disagreeForSlot(f, metric) {
   const k = key(f);
   const rows = [];
-  for (const name of AGREE_PAIR) {
+  for (const name of state.agreePair) {
     const r = state.teamRows.get(name)?.get(k);
     if (r) rows.push(r);
   }
@@ -898,8 +938,8 @@ function patchDisagree(f) {
   renderGlobalAgreement();
 }
 
-// PCK-style agreement between AGREE_PAIR on ONE point, on ONE frame, for
-// ONE metric — not an aggregate. The admin is looking at a specific frame;
+// PCK-style agreement between state.agreePair on ONE point, on ONE frame,
+// for ONE metric — not an aggregate. The admin is looking at a specific frame;
 // "82% agreement over the whole queue" doesn't say whether THIS one is one
 // of the disagreements, which is the thing a per-frame card is for.
 // 'euclid' = full 2D distance; 'height'/'width' isolate just that axis
@@ -910,7 +950,7 @@ function patchDisagree(f) {
 // tolerance for "how far apart is too far" doesn't change depending on
 // which axis you're measuring it along.
 function frameAgreement(f, point, xk, yk, metric) {
-  const [a, b] = AGREE_PAIR;
+  const [a, b] = state.agreePair;
   const k = key(f);
   const ra = state.teamRows.get(a)?.get(k);
   const rb = state.teamRows.get(b)?.get(k);
@@ -1022,7 +1062,7 @@ function renderAgreementCard() {
 // frameAgreement(): a frame counts only where BOTH named labelers placed
 // that specific point.
 function computeGlobalAgreement(metric) {
-  const [a, b] = AGREE_PAIR;
+  const [a, b] = state.agreePair;
   const rowsA = state.teamRows.get(a);
   const rowsB = state.teamRows.get(b);
   const out = { chin: [], sh: [] };
@@ -1183,10 +1223,12 @@ function setAdminVis(labeler, point, v) {
   saveTeammateRow(labeler);
 }
 
-// Writes a teammate's WHOLE current row (both points, whichever exist) —
-// same "zero points and not already a skip becomes skip reason 'unmarked'"
-// rule commitCurrent() applies for the active identity, since clearing a
-// teammate's last point is still a decision, just made on their behalf.
+// Writes a teammate's WHOLE current row (both points, whichever exist).
+// Clearing the last point down to zero (deleteTeammatePoint()) is not
+// treated as a skip — same "writes nothing to invent, just the facts as
+// they stand" rule commitCurrent() applies for the active identity — it
+// saves as an ordinary unskipped, pointless row, which the backend already
+// accepts (see PARTIAL SAVES above).
 function saveTeammateRow(labeler) {
   const f = state.frames[state.i];
   const k = key(f);
@@ -1195,15 +1237,6 @@ function saveTeammateRow(labeler) {
   if (!row || !bundle) return;
   const hasChin = row.chin_x !== null && row.chin_x !== undefined;
   const hasSh = row.sh_x !== null && row.sh_x !== undefined;
-  if (!hasChin && !hasSh && row.skipped !== 1) {
-    row.skipped = 1;
-    row.skip_reason = 'unmarked';
-    // The card branches on row.skipped to show the "Skipped" note instead
-    // of two empty tool-rows — that mutation just happened, so the render
-    // callers upstream (deleteTeammatePoint(), which ran BEFORE this
-    // conversion existed) are already stale without this.
-    renderAdminPointsList();
-  }
   const params = {
     action: 'saveChinPointDepthImpact', labeler,
     video: f.stem, round: String(f.round), frame: String(f.frame), rep: String(f.rep || 0),
@@ -1404,11 +1437,14 @@ function isDirty(k) {
 // placed at all, already skipped, nothing changed) is a legitimate way to
 // leave a frame.
 //
-// Zero points and not skipped is the one case that still needs a write:
-// leaving a frame untouched is itself the decision not to label it, so it
-// is recorded as a skip (reason 'unmarked') rather than silently vanishing
-// back into the unlabeled pool — see CS4_SKIP_REASONS in Code.js for why
-// this reason is kept out of the K popover.
+// Zero points and not skipped writes NOTHING (2026-08 — used to auto-write
+// a skip with reason 'unmarked' so the frame wouldn't "silently vanish back
+// into the unlabeled pool"; the team found that worse than just leaving it
+// unlabeled, since a frame nobody has actually looked at hard enough to
+// place or skip is exactly what "unlabeled" already means). Passing through
+// without placing anything is a legitimate way to preview a frame — it must
+// not cost a row. SKIP_LABELS below still maps 'unmarked' to a display
+// string for the rows that already carry it from before this changed.
 //
 // ADMIN NEVER REACHES ANY OF THIS: admin has no "own" in-progress point to
 // commit — every edit it makes is to an EXISTING point, saved immediately
@@ -1416,9 +1452,9 @@ function isDirty(k) {
 // deferred to "leaving the frame." An explicit early return, not an
 // implicit one via activeLabeler() always being null: relying on that
 // alone would still let the zero-point branch below run for admin (state.
-// pts stays empty for the whole session) and try to auto-skip whatever
-// frame is current on every single navigation — silently "setting a point
-// as admin" is exactly what this function must never do.
+// pts stays empty for the whole session) and try to act on whatever frame
+// is current on every single navigation — silently "doing something as
+// admin" is exactly what this function must never do.
 function commitCurrent() {
   if (!state.ready || !state.frames.length) return true;
   if (state.isAdmin) return true;
@@ -1432,17 +1468,7 @@ function commitCurrent() {
     return false;
   }
   const k = key(state.frames[state.i]);
-  if (!state.pts.chin && !state.pts.sh) {
-    // state.shownAt is 0 only before go() has ever landed on a frame —
-    // commitCurrent() runs at the TOP of go(), including the very first
-    // call at login, which "leaves" state.i's initial value (0) before the
-    // labeler has seen anything. Auto-skip must not fire for that call —
-    // there is nothing to record a decision about yet.
-    if (!state.shownAt) return true;
-    const saved = state.labels.get(k);
-    if (saved && saved.skipped === 1) return true;
-    return save({ skip: 'unmarked' });
-  }
+  if (!state.pts.chin && !state.pts.sh) return true;
   if (!isDirty(k)) return true;
   return save({});
 }
@@ -1660,7 +1686,7 @@ function placeMarks() {
 // The label is the same either way — the fact it reports does not change with
 // the answer, only whether it is true, which the pressed state says.
 //
-// Disabled until both points are placed: "too low/high" is a claim about
+// Disabled until both points are placed: "too frontal" is a claim about
 // where the chin sits relative to the shoulder, which isn't a judgement
 // there's anything to make yet on a frame with zero or one point down.
 function renderCam() {
@@ -1713,6 +1739,61 @@ function renderTeamProgress() {
     bar.appendChild(fill);
     box.append(row, ct, bar);
   }
+  renderAgreePairPicker();
+}
+
+// Populates the two "who to compare" selects from the current roster,
+// preserving state.agreePair's current names even if the roster hasn't
+// caught up to them yet (a brand-new pair with zero saved rows). Disables
+// each select's OWN current pick inside the OTHER select — comparing
+// someone against themselves is not a comparison. Called wherever the
+// roster refreshes (see renderTeamProgress(), just above), not on every
+// frame render — the roster doesn't change that often.
+function renderAgreePairPicker() {
+  if (!state.isAdmin) return;
+  const selA = $('agree-a'), selB = $('agree-b');
+  if (!selA || !selB) return;
+  const names = new Set(state.roster.map((l) => l.labeler));
+  names.add(state.agreePair[0]);
+  names.add(state.agreePair[1]);
+  names.delete('');
+  const sorted = [...names].sort((a, b) => a.localeCompare(b));
+  for (const [sel, own, other] of [[selA, state.agreePair[0], state.agreePair[1]],
+                                    [selB, state.agreePair[1], state.agreePair[0]]]) {
+    sel.textContent = '';
+    for (const nm of sorted) {
+      const opt = document.createElement('option');
+      opt.value = nm;
+      opt.textContent = nm;
+      opt.disabled = nm === other && nm !== own;
+      sel.appendChild(opt);
+    }
+    sel.value = own;
+  }
+}
+
+// Changes one side of the pair being compared — mid-session, admin-only.
+// Recomputes everything that reads state.agreePair: the per-frame
+// agreement card, the whole-queue stats below it, AND the three progress
+// grids' disagreement colouring (computeAllDisagree() -> renderOverview()).
+function setAgreePair(idx, name) {
+  if (!name || state.agreePair[idx] === name) return;
+  const next = [...state.agreePair];
+  const otherIdx = idx === 0 ? 1 : 0;
+  // The disabled <option> in the OTHER select already stops this through
+  // the UI, but a disabled option still accepts a scripted .value
+  // assignment — swap rather than allow both slots to end up on the same
+  // name, since picking the other slot's name is an unambiguous "swap
+  // them" gesture, not a mistake to silently drop.
+  if (next[otherIdx] === name) next[otherIdx] = next[idx];
+  next[idx] = name;
+  state.agreePair = next;
+  saveAgreePair(next);
+  computeAllDisagree();
+  renderAgreePairPicker();
+  renderAgreementCard();
+  renderGlobalAgreement();
+  renderOverview();
 }
 
 // One row per roster labeler for THIS frame — a read-only status list
@@ -2497,6 +2578,10 @@ function bind() {
   };
   wireThresh('agree-thresh-chin', THRESH_KEY_CHIN, 'agreeThreshChin');
   wireThresh('agree-thresh-sh', THRESH_KEY_SH, 'agreeThreshSh');
+
+  // Which two labelers state.agreePair compares — see setAgreePair().
+  $('agree-a').onchange = (e) => setAgreePair(0, e.target.value);
+  $('agree-b').onchange = (e) => setAgreePair(1, e.target.value);
 
   // Each of the three metric labels doubles as a fold/unfold button — see
   // toggleMetricFold(). Independent of setAgreeMetric(): folding a grid

@@ -183,8 +183,10 @@ Four deliberate rules:
   [401, 1,100]`, via `listChinPoint` on demand), with a per-device
   hide-from-my-list control that never reaches the sheet. Deliberately
   missing 3.0's "Lead everyone" footer — every labeler getting write
-  access to the whole team's sheet is an admin capability (see admin
-  mode's `#lead-row`), not something this panel hands out.
+  access to the whole team's sheet is an admin capability, not something
+  this panel hands out. Admin mode has no built version of it either:
+  `#lead-row`/`#lead-mask` are styled in the stylesheet from an earlier
+  plan, but nothing in any of the four pages renders or wires them.
 - **Saving is leaving.** There is no save button: whatever points exist —
   one, both, or neither — are written when the labeler moves on — `↵`, the
   arrows, Next, the overview, anything that changes frame — because "done

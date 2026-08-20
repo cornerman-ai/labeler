@@ -1271,6 +1271,20 @@ body.admin #team-card { display: block; }
    of only a text colour change. ── */
 #agree-card { display: none; }
 body.admin #agree-card { display: block; }
+/* Which two labelers are being compared — admin-changeable mid-session
+   (setAgreePair() in height_guard.js), not a fixed pair baked into the
+   page. Changing it recomputes the agreement card, the global stats below
+   it, AND the three progress grids' disagreement colouring — all three
+   read the same state.agreePair. */
+#agree-pair-picker {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 10px;
+}
+#agree-pair-picker select {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 510; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px; background: transparent;
+  padding: 4px 6px;
+}
+#agree-pair-picker .agree-x { color: var(--ink-dim); font-size: 12px; flex: none; }
 .agree-row {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line);
@@ -1573,20 +1587,27 @@ body.admin #agree-card { display: block; }
       <div id="team-progress"></div>
     </div>
 
-    <!-- Admin mode only. A FIXED pair, not "everyone" — see AGREE_PAIR in
-         height_guard.js. Rebuilt every render(), so it's ALWAYS about the
-         frame currently on screen, not a whole-queue rollup — a % over
-         2,000 frames doesn't say anything about the one in front of you.
-         Chin and shoulder are two independent rows, never averaged into
-         one number: they're separate landmarks, so a bad shoulder
-         shouldn't get to hide behind a good chin. -->
+    <!-- Admin mode only. A PAIR, not "everyone" — see state.agreePair in
+         height_guard.js, changeable mid-session via the two selects below
+         (renderAgreePairPicker()/setAgreePair()). Rebuilt every render(),
+         so it's ALWAYS about the frame currently on screen, not a
+         whole-queue rollup — a % over 2,000 frames doesn't say anything
+         about the one in front of you. Chin and shoulder are two
+         independent rows, never averaged into one number: they're separate
+         landmarks, so a bad shoulder shouldn't get to hide behind a good
+         chin. -->
     <div class="card" id="agree-card">
       <!-- Suffix always names the metric currently on screen — " ·
            Euclidean distance" by default, " · Height disagreement" or
            " · Width disagreement" after clicking one of the other two
            progress bars. Set by setAgreeMetric() in height_guard.js, in
            step with renderMetricLabels() bolding that bar's own label. -->
-      <p class="card-eyebrow">Agreement — Arianne × John<span id="agree-metric-suffix"></span></p>
+      <p class="card-eyebrow">Agreement<span id="agree-metric-suffix"></span></p>
+      <div id="agree-pair-picker">
+        <select id="agree-a" aria-label="First labeler to compare"></select>
+        <span class="agree-x">&times;</span>
+        <select id="agree-b" aria-label="Second labeler to compare"></select>
+      </div>
       <div id="agree-list"></div>
       <!-- Whole-queue descriptive stats — raw distances, not thresholded,
            so this section doesn't move when the threshold above does; it's
@@ -1700,6 +1721,6 @@ body.admin #agree-card { display: block; }
 <script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the height_guard_queue.json version in height_guard.js. -->
-<script src="height_guard.js?v=38"></script>
+<script src="height_guard.js?v=40"></script>
 </body>
 </html>

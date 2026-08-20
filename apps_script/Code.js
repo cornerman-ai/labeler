@@ -3398,15 +3398,17 @@ var CS4_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'frame_sec', 'rep
 // stays empty so nothing enum-shaped ever matches these fields.
 var CS4_FIELDS = ['chin_x', 'chin_y', 'sh_x', 'sh_y'];
 
-// A 4.0 skip carries WHY: the points can't be seen, the boxer isn't in a
-// boxing stance at all, or (unmarked) the labeler moved on without placing
-// anything and without choosing either of those. The first two are data —
-// no_stance is what measures whether the sampler's punch-proximity window
-// is still letting non-stance frames through — so unmarked is kept out of
-// the K popover entirely (see doSkip's callers) and written only by
-// commitCurrent()'s auto-skip path, so it never dilutes that signal. Rows
+// A 4.0 skip carries WHY: the points can't be seen, or the boxer isn't in a
+// boxing stance at all — no_stance is what measures whether the sampler's
+// punch-proximity window is still letting non-stance frames through. Rows
 // from before the column existed have a blank; only new saves are held to
-// the list.
+// the list. 'unmarked' (2026-08: the labeler moved on without placing
+// anything and without choosing either of those two reasons) stays in this
+// list even though no page writes it any more — every 4.0 page now leaves a
+// frame like that unsaved instead of auto-skipping it — purely so a stale
+// cached page from before that change does not get a hard validation error
+// mid-deploy; the K popover never offered it either way. Rows already
+// carrying it keep it; nothing produces a new one.
 var CS4_SKIP_REASONS = ['not_visible', 'no_stance', 'unmarked'];
 
 // Per-point visibility — COCO's v-flags in words. 'visible' = the landmark
