@@ -77,10 +77,11 @@ auditable rather than silent).
 
 **Frames live in Firebase Storage, not this repo.** 2.0's 724MB left no
 Pages budget for another generation. height_guard's objects sit under
-`labeler_media/chin_point/frames/<stem dir>/r<r>_f<f>.jpg`; depth_guard's
-under `labeler_media/chin_point/depth_guard_v4_frames/frames/<stem
-dir>/r<r>_f<f>.jpg` — its own prefix, not height_guard's, because it's a
-genuinely different (side-view-filtered) pool of frames. Both live in the
+`labeler_media/chin_tuck/v4/height_guard_v4_frames/frames/<stem dir>/r<r>
+_f<f>.jpg`; depth_guard's under `labeler_media/chin_tuck/v4/
+depth_guard_v4_frames/frames/<stem dir>/r<r>_f<f>.jpg` — its own prefix,
+not height_guard's, because it's a genuinely different (side-view-filtered)
+pool of frames. Both live in the
 `mycorner-bee6a` bucket behind a shared download token (the bucket's rules
 never loosened — see `chin_upload_frames.py`). Git carries only code,
 each variant's raw sample manifest (`shared/chin_frames.json` for
@@ -279,7 +280,7 @@ python chin_tuck/v1/chin_export_frames.py \
     --out <staging dir>
 python chin_tuck/v3/chin_upload_frames.py \
     --frames <staging dir> \
-    --prefix labeler_media/chin_point/depth_guard_v4_frames/frames \
+    --prefix labeler_media/chin_tuck/v4/depth_guard_v4_frames/frames \
     --service-account <backend>/firebase_service_account.json
 
 # 4. queue

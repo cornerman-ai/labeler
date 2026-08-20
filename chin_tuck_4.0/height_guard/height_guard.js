@@ -82,7 +82,7 @@ const BATCH_COLS = 20;
 // (chin_upload_frames.py). Rotating the token means re-stamping every
 // object AND shipping this constant.
 const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
-const FRAME_PREFIX = 'labeler_media/chin_point/frames';
+const FRAME_PREFIX = 'labeler_media/chin_tuck/v4/height_guard_v4_frames/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;

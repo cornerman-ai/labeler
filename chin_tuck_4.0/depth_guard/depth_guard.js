@@ -30,10 +30,10 @@
 // project bucket behind a shared download token and git carries only code,
 // depth_guard_queue.json and depth_guard_frames.json (the raw sample
 // manifest, backend-only, mirrors height_guard's shared/chin_frames.json).
-// UPLOADED UNDER ITS OWN PREFIX (labeler_media/chin_point/depth_guard_v4_frames/frames,
-// not height-guard's labeler_media/chin_point/frames) — see FRAME_PREFIX
-// below — because this sample's frame set is a genuinely different pool
-// (side-view-filtered), not a slice of height-guard's. See
+// UPLOADED UNDER ITS OWN PREFIX (labeler_media/chin_tuck/v4/depth_guard_v4_frames/frames,
+// not height-guard's labeler_media/chin_tuck/v4/height_guard_v4_frames/frames) — see
+// FRAME_PREFIX below — because this sample's frame set is a genuinely
+// different pool (side-view-filtered), not a slice of height-guard's. See
 // cornerman-backend ml/research/chin_tuck/v3/chin_upload_frames.py and v4/.
 //
 // NOTHING on this page shows a labeler anyone else's WORK. Not the
@@ -102,7 +102,7 @@ const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
 // sample is a genuinely different (side-view-filtered) pool of frames, not a
 // slice of height-guard's, so it was uploaded under its own variant
 // directory. See the file header and chin_upload_frames.py.
-const FRAME_PREFIX = 'labeler_media/chin_point/depth_guard_v4_frames/frames';
+const FRAME_PREFIX = 'labeler_media/chin_tuck/v4/depth_guard_v4_frames/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const MIN_ZOOM = 1 / 3;
