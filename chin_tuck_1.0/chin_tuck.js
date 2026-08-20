@@ -151,8 +151,21 @@ function frameDir(stem) {
   return stem.replace(/[. ]+$/, '');
 }
 
+// Frames come from FIREBASE STORAGE, not this repo (moved 2026-08 — the
+// 472MB under frames/ was most of this folder's checkout size, and the
+// same bucket already serves every v2/v3/v4 pool the same way). Path +
+// one shared token — every object carries the same
+// firebaseStorageDownloadTokens value (chin_upload_frames.py /
+// firebase_media.py). Rotating the token means re-stamping every object
+// AND shipping this constant.
+const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
+const FRAME_PREFIX = 'labeler_media/chin_tuck/v1/frames';
+const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
+
 function frameUrl(stem, s) {
-  return './frames/' + encodeURIComponent(frameDir(stem)) + '/r' + s.round + '_f' + s.frame + '.jpg';
+  return 'https://firebasestorage.googleapis.com/v0/b/' + FRAME_BUCKET + '/o/'
+    + encodeURIComponent(FRAME_PREFIX + '/' + frameDir(stem) + '/r' + s.round + '_f' + s.frame + '.jpg')
+    + '?alt=media&token=' + FRAME_TOKEN;
 }
 
 // Show the JPEG or the video element, never both.

@@ -5,10 +5,13 @@
 // is the 3-question chin-vs-lead-shoulder labeler ("Chin Shoulder Labels").
 //
 // chin tuck 0.0 has no data of its own — it reads chin_tuck_1.0's
-// chin_frames.json / chin_hosted.json / chin_excluded.json / frames/ by
-// relative path (same pattern 3.0 uses against 2.0's queue.json), rather
-// than duplicating a 472MB frames directory that would otherwise drift out
-// of sync with 1.0's copy. Moving or deleting chin_tuck_1.0/ breaks 0.0.
+// chin_frames.json / chin_hosted.json / chin_excluded.json by relative
+// path (same pattern 3.0 uses against 2.0's queue.json; deleting
+// chin_tuck_1.0/ still breaks 0.0). The frame JPEGs themselves come from
+// Firebase Storage now (moved 2026-08, same bucket every v1/v2/v3/v4 pool
+// shares — see FRAME_PREFIX below), not a local copy: that was never
+// about tidiness, a second 472MB frames directory for 0.0 alone was
+// never worth the drift risk against 1.0's.
 //
 // Chin-position labeler, one verdict per sampled frame.
 //
@@ -107,8 +110,17 @@ function frameDir(stem) {
   return stem.replace(/[. ]+$/, '');
 }
 
+// Frames come from FIREBASE STORAGE (see the note at the top) — same
+// bucket/prefix/token as chin_tuck.js (1.0), since 0.0 has no frame pool
+// of its own.
+const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
+const FRAME_PREFIX = 'labeler_media/chin_tuck/v1/frames';
+const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
+
 function frameUrl(stem, s) {
-  return '../chin_tuck_1.0/frames/' + encodeURIComponent(frameDir(stem)) + '/r' + s.round + '_f' + s.frame + '.jpg';
+  return 'https://firebasestorage.googleapis.com/v0/b/' + FRAME_BUCKET + '/o/'
+    + encodeURIComponent(FRAME_PREFIX + '/' + frameDir(stem) + '/r' + s.round + '_f' + s.frame + '.jpg')
+    + '?alt=media&token=' + FRAME_TOKEN;
 }
 
 // Show the JPEG or the video element, never both.

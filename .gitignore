@@ -9,13 +9,17 @@ config.local.json
 __pycache__/
 *.pyc
 
-# chin tuck 0.0/1.0 frames — untracked as of the 2.0 rollout. GitHub Pages
-# refuses to publish a site over 1 GB and these were 467 MB of it; 2.0
-# supersedes the 1.0 labeler and its 3,475 labels are already in the Sheet.
-# The JPEGs are a DERIVED artifact — cornerman-backend's chin_export_frames.py
-# rebuilds them from the source videos in about an hour, so nothing is lost by
-# not shipping them. Note this means chin_tuck.html cannot load frames from
-# Pages. 0.0 has no frames/ of its own — it reads 1.0's, same as 3.0 reads 2.0's.
+# chin tuck 0.0/1.0 frames — untracked since the 2.0 rollout (GitHub Pages
+# refuses to publish a site over 1 GB and these were 467 MB of it). That
+# originally left chin_tuck.html/chin_tuck_john.html unable to load frames
+# from Pages at all — fixed 2026-08 by moving the JPEGs to Firebase
+# Storage (labeler_media/chin_tuck/v1/frames/, same bucket every
+# v2/v3/v4 pool uses); chin_tuck.js / chin_tuck_john.js build Firebase
+# URLs now, not a local path. Still ignored here because the JPEGs are a
+# DERIVED artifact — cornerman-backend's chin_export_frames.py rebuilds
+# them from the source videos in about an hour — so a local export copy
+# should never get committed by accident. 0.0 has no frames/ of its own —
+# it reads 1.0's pool, same as 3.0 reads 2.0's.
 chin_tuck_1.0/frames/
 
 # JetBrains project settings
