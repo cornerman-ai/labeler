@@ -190,10 +190,20 @@ byte-for-byte (verified).
 chin_tuck_2.0/
   chin_frames.json       the 3,942 frames to label
   exported_videos.json   the 200 stems whose JPEGs are ready
-  frames/<video>/r<round>_f<frame>.jpg    724 MB
   skeletons/<video>/r<round>_f<frame>.npy 5.0 MB
   chins/chin_points.json                  3,942 derived chin points
 ```
+
+**`frames/<video>/r<round>_f<frame>.jpg` (724 MB) moved to Firebase
+Storage 2026-08** — `labeler_media/chin_tuck/v2/frames/`, same bucket
+every v3/v4 pool lives in — and is no longer committed here; it was most
+of this repo's checkout size for a 1GB GitHub Pages budget. Both
+`chin_shoulder.js` (2.0) and `chin_tuck3.js` (3.0, which has no frame
+pool of its own) build Firebase URLs from `FRAME_PREFIX` rather than a
+local relative path. Re-upload via `cornerman-backend`'s
+`ml/research/chin_tuck/v4/firebase_media.py upload --local
+chin_tuck_2.0/frames --prefix labeler_media/chin_tuck/v2/frames` if this
+folder is ever regenerated.
 
 The three per-frame folders use one key — `r{round}_f{frame}` — as filename and
 as JSON key, so they join with no name mapping. Verified 1:1: 3,942 JPEGs,

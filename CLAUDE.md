@@ -163,9 +163,12 @@ malformed one refuses rather than falling back to acting on everything. For `agr
 no payload means the whole queue, which is what "All frames" and every older
 page send, so the default request is unchanged.
 
-3.0 has NO data of its own: it reads `../chin_tuck_2.0/queue.json` and
-`../chin_tuck_2.0/frames/`. The frames are 666MB against a 1GB Pages limit, so a
-copy would not fit — moving or deleting `chin_tuck_2.0/` breaks 3.0.
+3.0 has NO data of its own: it reads `../chin_tuck_2.0/queue.json` (still
+committed there — small) for the queue, and Firebase Storage
+(`labeler_media/chin_tuck/v2/frames/`, moved there 2026-08 — see
+`chin_tuck_2.0/PIPELINE.md`) for the frame JPEGs, same as 2.0 itself.
+Deleting `chin_tuck_2.0/queue.json` still breaks 3.0; the frames no
+longer live in this repo at all.
 
 **Combined Form Labels sheet**:
 Same columns as Form Labels + `labeler`. Built by `rebuildCombinedFormLabels()` (MyCorner > Rebuild Combined Form Labels). Dedupes by (punch_uuid, labeler) — same uuid intentionally appears across labelers (inter-rater data). Header mapping is by name, so per-labeler column-order differences are tolerated.

@@ -2,10 +2,13 @@
 //
 // 2.0 with ONE question: is this an obvious bad chin tuck?
 //
-// Same frames, same queue, same order — this page reads 2.0's queue.json and
-// 2.0's committed JPEGs rather than copies of them. That is not tidiness: the
-// frames are 666MB against a 1GB GitHub Pages limit, so a second copy would not
-// fit on the site at all. Moving or deleting chin_tuck_2.0/ breaks this page.
+// Same frames, same queue, same order — this page reads 2.0's queue.json
+// rather than a copy of it (deleting chin_tuck_2.0/ still breaks this
+// page). The frames themselves come from Firebase Storage now (moved
+// 2026-08, same bucket every v2/v3/v4 pool shares — see FRAME_PREFIX
+// below), not from a local JPEG copy: that was never tidiness, the 699MB
+// under chin_tuck_2.0/frames/ was already most of a 1GB GitHub Pages
+// budget, so a second local copy for 3.0 was never an option.
 //
 // Why one question. 2.0 asks where the chin sits relative to the shoulder and
 // whether the two baked points are any good; the 2026-08 inter-rater run put
@@ -141,10 +144,20 @@ const key = (f) => JSON.stringify([f.stem, f.round, f.frame]);
 // Windows strips trailing dots/spaces from directory names, so the exporter
 // sanitized them. Mirrors chin_export_frames.frame_dir() — keep in sync.
 const frameDir = (stem) => stem.replace(/[. ]+$/, '');
-// 2.0's frames, by relative path. See the note at the top: a copy would not fit
-// inside the Pages size limit.
+// 2.0's queue.json, by relative path — still local (small; unlike the
+// frames, keeping it committed was never a size problem).
 const DATA = '../chin_tuck_2.0/';
-const imgSrc = (f) => `${DATA}frames/${encodeURIComponent(frameDir(f.stem))}/r${f.round}_f${f.frame}.jpg`;
+
+// Frames come from FIREBASE STORAGE (see the note at the top) — same
+// bucket/prefix/token as chin_shoulder.js (2.0), since 3.0 has no frame
+// pool of its own.
+const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
+const FRAME_PREFIX = 'labeler_media/chin_tuck/v2/frames';
+const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
+const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
+  + FRAME_BUCKET + '/o/'
+  + encodeURIComponent(`${FRAME_PREFIX}/${frameDir(f.stem)}/r${f.round}_f${f.frame}.jpg`)
+  + `?alt=media&token=${FRAME_TOKEN}`;
 
 // ── backend ────────────────────────────────────────────────────────────────
 // The name lives in the shared top bar (labeler_name.js), which hides this
