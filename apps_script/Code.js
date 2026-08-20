@@ -354,6 +354,25 @@ function doGet(e) {
     return doGetChinPoint(p, labeler, action, CS4D_SPEC);
   }
 
+  // Chin-point labeler 4.0, HEIGHT-IMPACT variant (chin_tuck_4.0/
+  // height_impact/height_impact.html). Same two-point-click machinery and
+  // landmark pair as height-guard above (chin tip + shoulder top), but
+  // sampled from the human-labeled IMPACT frame of a real punch instead of
+  // the non-punch guard band — see CS4I_SPEC.
+  if (action === 'saveChinPointImpact' || action === 'listChinPointImpact' ||
+      action === 'statsChinPointImpact') {
+    return doGetChinPoint(p, labeler, action, CS4I_SPEC);
+  }
+
+  // Chin-point labeler 4.0, DEPTH-IMPACT variant (chin_tuck_4.0/
+  // depth_impact/depth_impact.html). Same machinery as depth-guard above
+  // (chin tip + shoulder's most frontal point), on impact frames instead of
+  // the non-punch guard band — see CS4DI_SPEC.
+  if (action === 'saveChinPointDepthImpact' || action === 'listChinPointDepthImpact' ||
+      action === 'statsChinPointDepthImpact') {
+    return doGetChinPoint(p, labeler, action, CS4DI_SPEC);
+  }
+
   // Pairwise bladedness labeler (bladed_pairs.html). One row per comparison
   // answered, keyed by (labeler, pair_id). The pair list itself is fixed and
   // seeded in bladed_pairs.json — every labeler answers the SAME comparisons,
@@ -3448,6 +3467,46 @@ var CS4D_SPEC = {
   spreadsheetId: '1ROd7QRUi5zPDeYVbS9sUQjgF03G93qbfKDqXuSu_oOs'
 };
 
+// Chin-point 4.0, HEIGHT-IMPACT variant (chin_tuck_4.0/height_impact/
+// height_impact.html) — same doGetChinPoint machinery and same landmark
+// pair as CS4_SPEC (chin tip + top of shoulder), but the frames are the
+// human-labeled IMPACT frame of a real punch, not the non-punch guard band —
+// so the shoulder to mark is the PUNCHING hand's shoulder (known exactly
+// per punch_uuid), not the stance-inferred lead. Own spreadsheet, given by
+// the user. prefix is its own string (not chin_point_labels_) for the same
+// CacheService-collision reason CS4D_SPEC's comment explains.
+var CS4I_HEADERS = CS4_HEADERS;
+var CS4I_FIELDS = CS4_FIELDS;
+var CS4I_SPEC = {
+  tag: 'v4hi',
+  prefix: 'chin_point_impact_labels_',
+  headers: CS4I_HEADERS,
+  values: {},
+  fields: CS4I_FIELDS,
+  statsKey: 'cs_stats_chin_point_impact_labels_',
+  overlapKey: 'cs_overlap_',
+  action: 'ChinPointImpact',
+  spreadsheetId: '1Z5nuicWHhhQiJFv_tQ5yBcj0NC4lmzUAvPxZ_gIerag'
+};
+
+// Chin-point 4.0, DEPTH-IMPACT variant (chin_tuck_4.0/depth_impact/
+// depth_impact.html) — same machinery as CS4I_SPEC, landmark pair swapped
+// to chin tip + the shoulder's most frontal point (CS4D_SPEC's landmark),
+// on impact frames filtered to angle==Side. Own spreadsheet, own prefix.
+var CS4DI_HEADERS = CS4_HEADERS;
+var CS4DI_FIELDS = CS4_FIELDS;
+var CS4DI_SPEC = {
+  tag: 'v4di',
+  prefix: 'chin_point_depth_impact_labels_',
+  headers: CS4DI_HEADERS,
+  values: {},
+  fields: CS4DI_FIELDS,
+  statsKey: 'cs_stats_chin_point_depth_impact_labels_',
+  overlapKey: 'cs_overlap_',
+  action: 'ChinPointDepthImpact',
+  spreadsheetId: '1dWnc6E6O3rGn6s0DBZFm26aMdN1Cs65RUZNKajnx1Xo'
+};
+
 // The spreadsheet a spec's tabs live in. Every chin generation now carries
 // spreadsheetId and gets its own workbook, since all four moved out of
 // Box Labeled Data (the script's bound spreadsheet) in 2026-08 — this
@@ -3505,7 +3564,7 @@ function csPayload(spec, o) {
 // so those entries moved on their own when the tabs were renamed. Appending the
 // prefix as well would just spell it twice.
 (function deriveStatsKeys() {
-  var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC, CS4D_SPEC];
+  var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC, CS4D_SPEC, CS4I_SPEC, CS4DI_SPEC];
   for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
 })();
 

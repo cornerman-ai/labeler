@@ -18,15 +18,24 @@ valuable: on the 932 shared frames they validate the derived distance.
 Two axes, independent of each other: **which landmark pair** is clicked
 (chin tip + shoulder **top**, "height", vs chin tip + shoulder's **most
 frontal point**, "depth") and **which frames** are sampled (**guard** —
-non-punch, punch-adjacent frames, vs **punch** — frames inside a punch).
-Four combinations, one subfolder each:
+non-punch, punch-adjacent frames, vs **impact** — the human-labeled IMPACT
+frame of a real punch). Four combinations, one subfolder each:
 
 | Variant | Status | Folder | Landmark pair | Frames |
 | --- | --- | --- | --- | --- |
 | Height guard | live | [`height_guard/`](height_guard/) | chin tip + shoulder top | non-punch, punch-adjacent |
 | Depth guard | live | [`depth_guard/`](depth_guard/) | chin tip + shoulder's frontal point | non-punch, side-view only (own sample — see below) |
-| Height punch | planned | [`height_punch/`](height_punch/) | chin tip + shoulder top | inside a punch |
-| Depth punch | planned | [`depth_punch/`](depth_punch/) | chin tip + shoulder's frontal point | inside a punch |
+| Height impact | live | [`height_impact/`](height_impact/) | chin tip + shoulder top | the IMPACT frame of a real punch |
+| Depth impact | live | [`depth_impact/`](depth_impact/) | chin tip + shoulder's frontal point | the IMPACT frame of a real punch, side-view only |
+
+On the impact variants the shoulder to mark is known **exactly** — the
+PUNCHING hand's shoulder (lead for a lead-hand punch, rear for a rear-hand
+one), read off the punch each frame is tied to — rather than inferred from
+stance the way the guard variants' hint is. See
+[`height_impact/README.md`](height_impact/README.md) and
+[`depth_impact/README.md`](depth_impact/README.md) for their sample sizes
+and where their data actually lives (Firebase only — unlike the guard
+variants, nothing but page code is committed to this repo for them).
 
 [`shared/chin_frames.json`](shared/chin_frames.json) is the raw sample
 manifest every variant's queue is built from — backend-only, never fetched
@@ -99,6 +108,16 @@ Both variants share the same `doGetChinPoint` machinery, parameterized by
 spec — only the spreadsheet tab prefix and frame source differ; the row
 schema (`chin_x`/`chin_y`/`sh_x`/`sh_y`) is unchanged since those columns
 are just click coordinates and don't encode which landmark they are.
+
+The two impact variants reuse the exact same `doGetChinPoint` machinery and
+row schema, via `CS4I_SPEC` (height impact, tabs
+`chin_point_impact_labels_<Name>`) and `CS4DI_SPEC` (depth impact, tabs
+`chin_point_depth_impact_labels_<Name>`) — but each in its **own**
+standalone spreadsheet (given by whoever built the impact sample), not the
+`Chin Point Labels` workbook above. `deriveStatsKeys()` derives every spec's
+cache key from its prefix, and CacheService's script cache is shared across
+every spec this script serves regardless of spreadsheet, so each variant
+still needs a prefix no other spec uses.
 
 **Overwrite in place, keyed (video, round, frame, rep)** — same rule as
 2.0/3.0: a re-label replaces the row rather than piling up history. `rep`
@@ -220,6 +239,12 @@ disagreement jump, the kappa panel (kappa is meaningless here — agreement
 is point distance, computed offline), comparison grid, lead-everyone,
 exclude-video, frame ranges.
 
+`height_impact.html`/`depth_impact.html` are the exact same page mechanics
+as their guard counterparts (four deliberate rules above included) — only
+the frame source, the backend spec, and the action names differ. See
+[`height_impact/README.md`](height_impact/README.md) and
+[`depth_impact/README.md`](depth_impact/README.md).
+
 ## Growing / rebuilding
 
 All from `cornerman-backend/ml/research/`, in order:
@@ -298,3 +323,13 @@ variant's `<variant>.js` (`fetch('height_guard_queue.json?v=…')` /
 `fetch('depth_guard_queue.json?v=…')`) and the matching `<variant>.js?v=`
 tag in that variant's `.html` — or labelers keep the queue their browser
 cached.
+
+**height_impact / depth_impact do not follow this recipe.** Their sample and
+queue were built and uploaded straight from cornerman-backend without a git
+round-trip — `chin_frames.json` and `queue.json` for each sit only in
+Firebase Storage (see each variant's own README for the exact paths), and
+`height_impact.js`/`depth_impact.js` fetch `queue.json` from there
+(`QUEUE_URL`) instead of a relative fetch of a committed file. Regrowing
+either queue means re-uploading `queue.json` to that Firebase path and
+bumping `QUEUE_CACHE_BUST` in that variant's `.js` — there is no local file
+or `?v=` tag to touch.
