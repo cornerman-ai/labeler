@@ -12,7 +12,7 @@
 // Real depth-guard sample (2026-08), replacing the old v1 placeholder that
 // reused height-guard's frame set as-is: 1,828 frames / 36 videos, pool
 // restricted to SIDE-VIEW footage via the borrowed-angle gate in
-// cornerman-backend's chin_sampler_guard_angle.py (`--angle Side`) — a
+// cornerman-backend's v4/sample_depth_guard.py (`--angle Side`) — a
 // non-punch frame inherits the camera angle of its nearest labeled punch,
 // since Combined Data's per-punch `angle` column is the only place camera
 // angle is recorded at all. Video count is capped by how many punch-labeled

@@ -70,10 +70,10 @@ auditable rather than silent).
   all, not by the sampler's target or gap)
 - depth_guard's queue: **2,011 slots** = 1,828 + **183 planted repeats**,
   same contract as height_guard's
-- sampler: `cornerman-backend/ml/research/chin_tuck/v4/chin_sampler_guard_angle.py
+- sampler: `cornerman-backend/ml/research/chin_tuck/v4/sample_depth_guard.py
   --angle Side --target 150 --min-gap 0.5` — see `v4/README.md` for the two
-  earlier, lower-yield attempts (a hand-curated side-span file, and the same
-  script at `--min-gap 2.0`) this replaced
+  earlier, lower-yield attempts (the archived hand-curated side-span
+  script, and this same script at `--min-gap 2.0`) this replaced
 
 **Frames live in Firebase Storage, not this repo.** 2.0's 724MB left no
 Pages budget for another generation. height_guard's objects sit under
@@ -265,7 +265,7 @@ above, substituted like so:
 
 ```bash
 # 2. sample — side-view pool via borrowed punch angle, not chin_sampler_v3.py
-python chin_tuck/v4/chin_sampler_guard_angle.py \
+python chin_tuck/v4/sample_depth_guard.py \
     --combined combined_snapshot.xlsx \
     --angle Side --target 150 --min-gap 0.5 \
     --seed-manifest <labeler>/chin_tuck_4.0/depth_guard/depth_guard_frames.json \
