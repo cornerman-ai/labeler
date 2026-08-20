@@ -241,6 +241,26 @@ disagreement jump, the kappa panel (kappa is meaningless here — agreement
 is point distance, computed offline), comparison grid, lead-everyone,
 exclude-video, frame ranges.
 
+**Which two labelers "Agreement" and the three progress grids compare is
+admin-changeable mid-session** (two selects at the top of the Agreement
+card, `state.agreePair`/`setAgreePair()`), not a pair baked into the page —
+picking a name already on the other side swaps the two rather than
+comparing someone against themselves. Persisted per device (`localStorage`,
+key prefixed by the variant), defaulting to `Arianne`/`John` on a device
+that has never picked one. Changing it recomputes the agreement card, the
+whole-queue stats, and the three progress grids' disagreement colouring
+together — all four read the same `state.agreePair`.
+
+**"Export disagreement PNG"** (admin-only, next to the Progress card
+eyebrow) renders all three metric grids for the WHOLE queue — every batch,
+not just what is scrolled into view — as one PNG: three long columns
+(euclid | height | width) with a shared batch-number gutter, a legend, and
+a timestamp, via `<canvas>` (no library). `disagreeFillColor()` mirrors
+`paintOneGrid()`'s admin colouring but returns literal colour strings
+instead of a CSS class, and is fixed to the light palette regardless of the
+viewer's OS theme — an exported image is looked at later, by someone else,
+possibly printed, and should not change depending on who opens it.
+
 `height_impact.html`/`depth_impact.html` are the exact same page mechanics
 as their guard counterparts (four deliberate rules above included) — only
 the frame source, the backend spec, and the action names differ. See

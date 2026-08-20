@@ -2137,6 +2137,144 @@ function paintOneGrid(metric) {
   }
 }
 
+// ── disagreement PNG export ─────────────────────────────────────────────────
+// Same kind/level -> colour mapping as paintOneGrid()'s admin branch, but
+// returning literal colour strings (canvas fillStyle, not a CSS class) —
+// the two renderers draw to different targets, so this is a small parallel
+// implementation rather than a forced shared abstraction. Fixed to the
+// LIGHT palette regardless of the viewer's OS theme: an exported image is
+// looked at later, by someone else, possibly printed — it should not
+// change depending on who opens it.
+function disagreeFillColor(dg) {
+  if (dg.kind === 'none') return { fill: 'rgba(120,120,128,.22)', ring: false };
+  if (dg.kind === 'solo') return { fill: 'rgba(0,113,227,.35)', ring: false };
+  if (dg.kind === 'scored') {
+    return { fill: dg.level === 0 ? '#34c759' : dg.level === 1 ? '#ff3b30' : '#ff9f0a', ring: false };
+  }
+  return { fill: lerpColor(dg.level), ring: dg.kind === 'conflict' };
+}
+
+// One PNG, all three metrics, every batch — not just whatever the browser
+// currently has scrolled into view. Three long columns side by side
+// (euclid | height | width) rather than the on-screen stacked cards, since
+// a static image is read by eye-sweeping across a row, not by scrolling
+// three separate sections back to the same batch. Admin-only: the whole
+// point is state.agreePair's disagreement, which normal mode never
+// computes (state.disagreeByMetric stays empty for it).
+function exportDisagreementPNG() {
+  if (!state.isAdmin || !state.frames.length) return;
+  const DOT = 9, GAP = 3, GUTTER = 30, COL_GAP = 26, MARGIN = 16;
+  const ROWS = Math.ceil(BATCH_COLS ? BATCH / BATCH_COLS : 1) || 1; // 5, same as the on-screen grid
+  const colW = BATCH_COLS * DOT + (BATCH_COLS - 1) * GAP;
+  const batchH = ROWS * DOT + (ROWS - 1) * GAP;
+  const BATCH_GAP = 12;
+  const nBatches = Math.max(1, Math.ceil(state.frames.length / BATCH));
+
+  const titleY = 24, subY = 44, headY = 70, legendY = 90;
+  const gridTop = legendY + 16;
+  const W = MARGIN * 2 + GUTTER + AGREE_METRICS.length * colW + (AGREE_METRICS.length - 1) * COL_GAP;
+  const H = gridTop + nBatches * batchH + (nBatches - 1) * BATCH_GAP + MARGIN;
+
+  const scale = 2; // crisp on a retina display without the file ballooning
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+
+  ctx.fillStyle = '#f5f5f7';
+  ctx.fillRect(0, 0, W, H);
+
+  const [a, b] = state.agreePair;
+  ctx.fillStyle = '#1d1d1f';
+  ctx.font = `600 15px ${FONT}`;
+  ctx.fillText(`Disagreement — ${a || '—'} × ${b || '—'}`, MARGIN, titleY);
+  ctx.font = `400 12px ${FONT}`;
+  ctx.fillStyle = '#6e6e73';
+  const stamp = new Date().toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  ctx.fillText(`${state.frames.length} frames, ${nBatches} batches — exported ${stamp}`, MARGIN, subY);
+
+  ctx.font = `600 12px ${FONT}`;
+  ctx.fillStyle = '#1d1d1f';
+  AGREE_METRICS.forEach((m, ci) => {
+    const x = MARGIN + GUTTER + ci * (colW + COL_GAP);
+    ctx.fillText(METRIC_SUFFIX_LABELS[m], x, headY);
+  });
+
+  // One compact legend, shared by all three columns — same six readings as
+  // #legend-admin in the stylesheet.
+  const legendItems = [
+    ['#34c759', 'agree'], ['#ff9f0a', 'one agrees'], ['#ff3b30', 'neither agrees'],
+    ['#ff3b30', 'skip conflict', true], ['rgba(0,113,227,.35)', 'one opinion'], ['rgba(120,120,128,.22)', 'not labeled'],
+  ];
+  let lx = MARGIN;
+  ctx.font = `400 11px ${FONT}`;
+  for (const [color, label, ring] of legendItems) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(lx, legendY - 8, 8, 8, 2);
+    ctx.fill();
+    if (ring) {
+      ctx.strokeStyle = 'rgba(0,0,0,.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx - 1, legendY - 9, 10, 10);
+    }
+    lx += 12;
+    ctx.fillStyle = '#6e6e73';
+    ctx.fillText(label, lx, legendY);
+    lx += ctx.measureText(label).width + 14;
+  }
+
+  for (let bi = 0; bi < nBatches; bi++) {
+    const rowTop = gridTop + bi * (batchH + BATCH_GAP);
+    const start = bi * BATCH, end = Math.min(start + BATCH, state.frames.length);
+
+    ctx.font = `600 9px ${FONT}`;
+    ctx.fillStyle = '#1d1d1f';
+    ctx.textBaseline = 'top';
+    ctx.fillText(String(bi + 1), MARGIN, rowTop);
+
+    AGREE_METRICS.forEach((m, ci) => {
+      const colX = MARGIN + GUTTER + ci * (colW + COL_GAP);
+      const map = state.disagreeByMetric[m];
+      for (let i = start; i < end; i++) {
+        const local = i - start;
+        const col = local % BATCH_COLS, row = (local / BATCH_COLS) | 0;
+        const x = colX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
+        const dg = map.get(key(state.frames[i])) || { kind: 'none', level: null };
+        const { fill, ring } = disagreeFillColor(dg);
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.roundRect(x, y, DOT, DOT, 2);
+        ctx.fill();
+        if (ring) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x - 0.75, y - 0.75, DOT + 1.5, DOT + 1.5);
+          ctx.strokeStyle = 'rgba(0,0,0,.55)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x - 1.75, y - 1.75, DOT + 3.5, DOT + 3.5);
+        }
+      }
+    });
+  }
+  ctx.textBaseline = 'alphabetic';
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const stampFile = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `disagreement-depth_guard-${(a || 'a').toLowerCase()}-${(b || 'b').toLowerCase()}-${stampFile}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
 // ── copy buttons / status ──────────────────────────────────────────────────
 function wireCopyButtons() {
   for (const b of document.querySelectorAll('.idc')) {
@@ -2573,6 +2711,8 @@ function bind() {
   // Which two labelers state.agreePair compares — see setAgreePair().
   $('agree-a').onchange = (e) => setAgreePair(0, e.target.value);
   $('agree-b').onchange = (e) => setAgreePair(1, e.target.value);
+
+  $('export-png-btn').onclick = () => exportDisagreementPNG();
 
   // Each of the three metric labels doubles as a fold/unfold button — see
   // toggleMetricFold(). Independent of setAgreeMetric(): folding a grid
