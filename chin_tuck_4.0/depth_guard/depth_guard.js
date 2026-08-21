@@ -2213,29 +2213,37 @@ function renderOverview() {
   paintBatchCounts('width');
 }
 
-// Green/amber/red tally per batch, under that batch's number — admin-only,
-// same colour meaning as the dots beside it. A PARTIAL breakdown, not a
-// full accounting: only 'scored' and the two kinds that render one of the
-// three clean colours exactly ('skip-agree' -> green, 'conflict' -> red)
-// count. 'skip-mixed' (a blended amber-ish tone) and 'solo'/'none' aren't
-// any of the three, so they're left out rather than force-fit — the three
-// numbers do NOT have to sum to the batch size. Updates the spans
-// buildOneGrid() already created rather than rebuilding them, so this can
-// run on every disagree-map change without replaying anything.
+// Green/amber/red tally over [start, end) of state.frames for one metric's
+// disagree map — shared by the on-screen gutter (paintBatchCounts, one
+// batch at a time) and the PNG export (both per-batch and, passed the
+// whole queue, the overall totals). A PARTIAL breakdown, not a full
+// accounting: only 'scored' and the two kinds that render one of the three
+// clean colours exactly ('skip-agree' -> green, 'conflict' -> red) count.
+// 'skip-mixed' (a blended amber-ish tone) and 'solo'/'none' aren't any of
+// the three, so they're left out rather than force-fit — the three numbers
+// do NOT have to sum to the range size.
+function tallyDisagreeCounts(map, frames, start, end) {
+  let g = 0, a = 0, r = 0;
+  for (let i = start; i < end; i++) {
+    const dg = map.get(key(frames[i]));
+    if (!dg) continue;
+    if (dg.kind === 'skip-agree' || (dg.kind === 'scored' && dg.level === 0)) g++;
+    else if (dg.kind === 'scored' && dg.level === 0.5) a++;
+    else if (dg.kind === 'conflict' || (dg.kind === 'scored' && dg.level === 1)) r++;
+  }
+  return { g, a, r };
+}
+
+// Paints tallyDisagreeCounts() into the spans buildOneGrid() already
+// created rather than rebuilding them, so this can run on every
+// disagree-map change without replaying anything.
 function paintBatchCounts(metric) {
   const gutterEls = state.ovGutters[metric];
   const map = state.disagreeByMetric[metric];
   if (!gutterEls || !map) return;
   for (let b = 0; b < gutterEls.length; b++) {
-    let g = 0, a = 0, r = 0;
     const start = b * BATCH, end = Math.min(start + BATCH, state.frames.length);
-    for (let i = start; i < end; i++) {
-      const dg = map.get(key(state.frames[i]));
-      if (!dg) continue;
-      if (dg.kind === 'skip-agree' || (dg.kind === 'scored' && dg.level === 0)) g++;
-      else if (dg.kind === 'scored' && dg.level === 0.5) a++;
-      else if (dg.kind === 'conflict' || (dg.kind === 'scored' && dg.level === 1)) r++;
-    }
+    const { g, a, r } = tallyDisagreeCounts(map, state.frames, start, end);
     const els = gutterEls[b];
     els.g.textContent = g || '';
     els.a.textContent = a || '';
@@ -2314,16 +2322,24 @@ function disagreeFillColor(dg) {
 // computes (state.disagreeByMetric stays empty for it).
 function exportDisagreementPNG() {
   if (!state.isAdmin || !state.frames.length) return;
-  const DOT = 9, GAP = 3, GUTTER = 30, COL_GAP = 26, MARGIN = 16;
+  const DOT = 9, GAP = 3, GUTTER = 30, COL_GUTTER = 18, COL_GAP = 26, MARGIN = 16;
   const ROWS = Math.ceil(BATCH_COLS ? BATCH / BATCH_COLS : 1) || 1; // 5, same as the on-screen grid
   const colW = BATCH_COLS * DOT + (BATCH_COLS - 1) * GAP;
   const batchH = ROWS * DOT + (ROWS - 1) * GAP;
   const BATCH_GAP = 12;
+  const LINE_H = 10;
   const nBatches = Math.max(1, Math.ceil(state.frames.length / BATCH));
+  // x of each metric's own g/a/r gutter, and where its dot grid starts just
+  // past it — same two-gutter idea as the on-screen grids (a shared batch
+  // number on the far left, then a per-metric tally column of its own,
+  // since the counts a batch earns differ by metric even though the batch
+  // number doesn't).
+  const colGutterX = (ci) => MARGIN + GUTTER + ci * (COL_GUTTER + colW + COL_GAP);
+  const colDotsX = (ci) => colGutterX(ci) + COL_GUTTER;
 
-  const titleY = 24, subY = 44, headY = 70, legendY = 90;
+  const titleY = 24, subY = 44, headY = 70, totalY = 86, statY1 = 101, statY2 = 113, legendY = 138;
   const gridTop = legendY + 16;
-  const W = MARGIN * 2 + GUTTER + AGREE_METRICS.length * colW + (AGREE_METRICS.length - 1) * COL_GAP;
+  const W = MARGIN * 2 + GUTTER + AGREE_METRICS.length * (COL_GUTTER + colW) + (AGREE_METRICS.length - 1) * COL_GAP;
   const H = gridTop + nBatches * batchH + (nBatches - 1) * BATCH_GAP + MARGIN;
 
   const scale = 2; // crisp on a retina display without the file ballooning
@@ -2348,11 +2364,50 @@ function exportDisagreementPNG() {
   });
   ctx.fillText(`${state.frames.length} frames, ${nBatches} batches — exported ${stamp}`, MARGIN, subY);
 
-  ctx.font = `600 12px ${FONT}`;
-  ctx.fillStyle = '#1d1d1f';
+  // Column header, then that metric's OWN queue-wide green/amber/red tally
+  // right under it — tallyDisagreeCounts() over the whole queue rather than
+  // one batch, the same classification paintBatchCounts() uses per batch
+  // below, so the two totals (this line, and the batches' own numbers) are
+  // never computed two different ways.
   AGREE_METRICS.forEach((m, ci) => {
-    const x = MARGIN + GUTTER + ci * (colW + COL_GAP);
+    const x = colDotsX(ci);
+    ctx.font = `600 12px ${FONT}`;
+    ctx.fillStyle = '#1d1d1f';
     ctx.fillText(METRIC_SUFFIX_LABELS[m], x, headY);
+
+    const tot = tallyDisagreeCounts(state.disagreeByMetric[m], state.frames, 0, state.frames.length);
+    ctx.font = `700 11px ${FONT}`;
+    let tx = x;
+    [[tot.g, '#34c759'], [tot.a, '#ff9f0a'], [tot.r, '#ff3b30']].forEach(([val, color], idx, arr) => {
+      ctx.fillStyle = color;
+      const txt = String(val);
+      ctx.fillText(txt, tx, totalY);
+      tx += ctx.measureText(txt).width;
+      if (idx < arr.length - 1) {
+        ctx.fillStyle = '#6e6e73';
+        ctx.fillText(' · ', tx, totalY);
+        tx += ctx.measureText(' · ').width;
+      }
+    });
+
+    // Avg/median disagreement distance for this metric, chin and shoulder
+    // separately — same numbers renderGlobalAgreement() shows in the
+    // sidebar for whichever ONE metric is currently selected, computed
+    // here for all three so the export doesn't force picking one before
+    // exporting. distStats() is min/max-free by design (see its own
+    // comment): a single planted outlier isn't informative next to the
+    // centre of the distribution.
+    ctx.font = `400 10px ${FONT}`;
+    const dists = computeGlobalAgreement(m);
+    const chinStats = distStats(dists.chin);
+    const shStats = distStats(dists.sh);
+    ctx.fillStyle = '#6e6e73';
+    ctx.fillText(chinStats
+      ? `Chin avg ${(chinStats.avg * 100).toFixed(1)}% · med ${(chinStats.median * 100).toFixed(1)}% (n=${chinStats.n})`
+      : 'Chin — no shared frames', x, statY1);
+    ctx.fillText(shStats
+      ? `Sh avg ${(shStats.avg * 100).toFixed(1)}% · med ${(shStats.median * 100).toFixed(1)}% (n=${shStats.n})`
+      : 'Sh — no shared frames', x, statY2);
   });
 
   // One compact legend, shared by all three columns — same six readings as
@@ -2379,22 +2434,39 @@ function exportDisagreementPNG() {
     lx += ctx.measureText(label).width + 14;
   }
 
+  ctx.textBaseline = 'top';
   for (let bi = 0; bi < nBatches; bi++) {
     const rowTop = gridTop + bi * (batchH + BATCH_GAP);
     const start = bi * BATCH, end = Math.min(start + BATCH, state.frames.length);
 
     ctx.font = `600 9px ${FONT}`;
     ctx.fillStyle = '#1d1d1f';
-    ctx.textBaseline = 'top';
     ctx.fillText(String(bi + 1), MARGIN, rowTop);
 
     AGREE_METRICS.forEach((m, ci) => {
-      const colX = MARGIN + GUTTER + ci * (colW + COL_GAP);
+      const dotsX = colDotsX(ci);
       const map = state.disagreeByMetric[m];
+
+      // This batch's own green/amber/red tally for THIS metric, stacked in
+      // its gutter same as the on-screen .ovn-g/.ovn-a/.ovn-r — right-
+      // aligned, zero entries skipped rather than printed as "0" so the
+      // eye is drawn to batches with something to point at.
+      const { g, a: am, r } = tallyDisagreeCounts(map, state.frames, start, end);
+      ctx.font = `700 9px ${FONT}`;
+      ctx.textAlign = 'right';
+      let ty = rowTop;
+      for (const [val, color] of [[g, '#34c759'], [am, '#ff9f0a'], [r, '#ff3b30']]) {
+        if (!val) continue;
+        ctx.fillStyle = color;
+        ctx.fillText(String(val), dotsX - 3, ty);
+        ty += LINE_H;
+      }
+      ctx.textAlign = 'left';
+
       for (let i = start; i < end; i++) {
         const local = i - start;
         const col = local % BATCH_COLS, row = (local / BATCH_COLS) | 0;
-        const x = colX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
+        const x = dotsX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
         const dg = map.get(key(state.frames[i])) || { kind: 'none', level: null };
         const { fill, ring } = disagreeFillColor(dg);
         ctx.fillStyle = fill;
