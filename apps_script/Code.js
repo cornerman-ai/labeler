@@ -335,7 +335,8 @@ function doGet(e) {
   // overwrite would erase exactly what 4.0 measures. Its tabs live in their
   // OWN spreadsheet (spec.spreadsheetId), not this one — see csSpreadsheet().
   if (action === 'saveChinPoint' || action === 'listChinPoint' ||
-      action === 'statsChinPoint') {
+      action === 'statsChinPoint' || action === 'pingPresenceChinPoint' ||
+      action === 'getPresenceChinPoint') {
     return doGetChinPoint(p, labeler, action, CS4_SPEC);
   }
 
@@ -350,7 +351,8 @@ function doGet(e) {
   // collide with height-guard's, even though both specs happen to share the
   // Apps Script script-level cache.
   if (action === 'saveChinPointDepth' || action === 'listChinPointDepth' ||
-      action === 'statsChinPointDepth') {
+      action === 'statsChinPointDepth' || action === 'pingPresenceChinPointDepth' ||
+      action === 'getPresenceChinPointDepth') {
     return doGetChinPoint(p, labeler, action, CS4D_SPEC);
   }
 
@@ -360,7 +362,8 @@ function doGet(e) {
   // sampled from the human-labeled IMPACT frame of a real punch instead of
   // the non-punch guard band — see CS4I_SPEC.
   if (action === 'saveChinPointImpact' || action === 'listChinPointImpact' ||
-      action === 'statsChinPointImpact') {
+      action === 'statsChinPointImpact' || action === 'pingPresenceChinPointImpact' ||
+      action === 'getPresenceChinPointImpact') {
     return doGetChinPoint(p, labeler, action, CS4I_SPEC);
   }
 
@@ -369,7 +372,8 @@ function doGet(e) {
   // (chin tip + shoulder's most frontal point), on impact frames instead of
   // the non-punch guard band — see CS4DI_SPEC.
   if (action === 'saveChinPointDepthImpact' || action === 'listChinPointDepthImpact' ||
-      action === 'statsChinPointDepthImpact') {
+      action === 'statsChinPointDepthImpact' || action === 'pingPresenceChinPointDepthImpact' ||
+      action === 'getPresenceChinPointDepthImpact') {
     return doGetChinPoint(p, labeler, action, CS4DI_SPEC);
   }
 
@@ -3568,6 +3572,11 @@ function csPayload(spec, o) {
 (function deriveStatsKeys() {
   var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC, CS4D_SPEC, CS4I_SPEC, CS4DI_SPEC];
   for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
+  // Admin-presence cache key — same derive-from-prefix reasoning as
+  // statsKey above, chin-point 4.0 only (see pingPresence/getPresence in
+  // doGetChinPoint).
+  var chin4Specs = [CS4_SPEC, CS4D_SPEC, CS4I_SPEC, CS4DI_SPEC];
+  for (var j = 0; j < chin4Specs.length; j++) chin4Specs[j].presenceKey = 'cs_presence_' + chin4Specs[j].prefix;
 })();
 
 function cs2SheetName(labeler, spec) {
@@ -3851,6 +3860,15 @@ function cs4DedupeRows() {
 // everyone. Any save/delete drops the cache, so your own row still moves the
 // instant you label something.
 var CS2_STATS_TTL = 60;   // seconds
+
+// How long an admin-presence ping stays visible to everyone else without a
+// follow-up ping — see pingPresence/getPresence in doGetChinPoint. Short on
+// purpose: this is "is admin on this frame RIGHT NOW," not a schedule, and
+// a stale presence entry outliving the admin session it came from (closed
+// tab, lost connection) would leave a phantom warning nobody can clear.
+// The admin client re-pings well inside this window (see PRESENCE_PING_MS
+// in the labeler JS) so a still-open tab never visibly lapses.
+var CS_PRESENCE_TTL = 20; // seconds
 
 function cs2InvalidateStats(spec, labeler) {
   spec = spec || CS2_SPEC;
@@ -5041,10 +5059,19 @@ function doGetChinPoint(p, labeler, action, spec) {
   // === STATS — roster for the admin-mode team panel: distinct resolved
   // identities per labeler. 'admin' itself is excluded so a stray test tab
   // can never show up as a circular "admin of the admin" row. ===
+  //
+  // p.force skips the cache READ (not the write below, which still refreshes
+  // it — a nice side effect: one person's forced refresh also warms the
+  // cache for everyone else's next ordinary poll). Exists because the
+  // roster changes by someone editing the spreadsheet directly (adding a
+  // labeler's tab, deleting one) — nothing in that flow calls
+  // cs2InvalidateStats, so without a way to skip the cache a manual "Refresh
+  // now" click could still show up to CS2_STATS_TTL seconds of nothing
+  // happening. See #roster-refresh-btn / refreshRoster() in the labeler JS.
   if (op === 'stats') {
     var cache = null;
     try { cache = CacheService.getScriptCache(); } catch (e) {}
-    if (cache) {
+    if (cache && !p.force) {
       var hit = cache.get(spec.statsKey);
       if (hit) return ContentService.createTextOutput(hit)
                        .setMimeType(ContentService.MimeType.JSON);
@@ -5089,6 +5116,42 @@ function doGetChinPoint(p, labeler, action, spec) {
     if (cache) { try { cache.put(spec.statsKey, payload, CS2_STATS_TTL); } catch (e) {} }
     return ContentService.createTextOutput(payload)
              .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === PING PRESENCE — admin broadcasts "I'm on this frame right now" so
+  // any normal labeler currently on the SAME frame can back off instead of
+  // racing a concurrent edit. Cache-only, no sheet touched: a presence
+  // entry is not data, it is a fact about this instant, gone the moment
+  // nobody is refreshing it (TTL, not an explicit clear — there is no
+  // reliable "the tab closed" signal to hang a clear on). Whichever
+  // teammate admin is actually looking at on this frame doesn't matter:
+  // admin's picker shows every labeler's row for one frame at once, so the
+  // FRAME is the unit of "something might change here," not a person. ===
+  if (op === 'pingPresence') {
+    var pcache = null;
+    try { pcache = CacheService.getScriptCache(); } catch (e) {}
+    if (pcache && p.video) {
+      try {
+        pcache.put(spec.presenceKey, JSON.stringify({
+          video: String(p.video), round: Number(p.round), frame: Number(p.frame), ts: Date.now(),
+        }), CS_PRESENCE_TTL);
+      } catch (e) {}
+    }
+    return csOut(spec, {});
+  }
+
+  // === GET PRESENCE — read-only, polled by every normal labeler session.
+  // null once the TTL lapses (CacheService's own expiry, not a flag this
+  // code checks) — admin closing the tab, or going idle for
+  // CS_PRESENCE_TTL seconds, and the notice disappearing on its own is the
+  // point, not a gap. ===
+  if (op === 'getPresence') {
+    var gcache = null;
+    try { gcache = CacheService.getScriptCache(); } catch (e) {}
+    var praw = gcache ? gcache.get(spec.presenceKey) : null;
+    var presence = null;
+    if (praw) { try { presence = JSON.parse(praw); } catch (e) {} }
+    return csOut(spec, { presence: presence });
   }
 
   var who = p.labeler || labeler;

@@ -304,6 +304,23 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
         color: rgba(255,255,255,.75); background: rgba(0,0,0,.45);
         padding: 3px 8px; border-radius: 6px; pointer-events: none; }
 
+/* Admin-presence warning — amber, not the neutral #q-lock grey: this is a
+   caution about a race, not a loading state. Normal mode only; admin is
+   the one broadcasting presence, never the one who should see this. */
+#presence-banner {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 12px;
+  padding: 8px 11px; border-radius: 9px;
+  background: color-mix(in srgb, var(--maybe) 16%, transparent); color: var(--maybe);
+  font-size: 12px; font-weight: 590;
+}
+#presence-banner[hidden] { display: none; }
+#presence-banner svg { width: 14px; height: 14px; flex: none; }
+body.admin #presence-banner { display: none !important; }
+@media (prefers-reduced-motion: no-preference) {
+  #presence-banner { animation: presence-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes presence-pulse { 50% { opacity: .7; } }
+
 /* ── right column ───────────────────────────────────────────────────────── */
 /* 342 = 330 card + 2 padding + 10 scroll gutter, so the cards keep their width
    and sit 12px off the window edge — the same 12px that separates them from
@@ -338,6 +355,22 @@ body:not(.ready) #ov-cmp { opacity: .4; pointer-events: none; }
 .pts-complete {
   text-transform: none; letter-spacing: 0; font-weight: 700;
   color: var(--yes);
+}
+/* Floated into the "Team progress" eyebrow's own line rather than a
+   separate row — this is a small, occasional action (see refreshRoster()
+   in height_impact.js), not something that deserves its own card real
+   estate. */
+#roster-refresh-btn {
+  float: right; margin-top: -2px; padding: 2px; border: 0; background: none;
+  color: var(--ink-dim); cursor: pointer; line-height: 0;
+}
+#roster-refresh-btn:hover:not(:disabled) { color: var(--ink); }
+#roster-refresh-btn:disabled { opacity: .4; cursor: default; }
+#roster-refresh-btn svg { width: 12px; height: 12px; }
+#roster-refresh-btn:disabled svg { animation: roster-spin .7s linear infinite; }
+@keyframes roster-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #roster-refresh-btn:disabled svg { animation: none; }
 }
 /* A quiet ring, not a filled card — the frame is still the thing being
    looked at, so "done" is confirmed at a glance without repainting the
@@ -1408,6 +1441,12 @@ body.admin #agree-card { display: block; }
 
 <div id="wrap">
   <div id="stage-card">
+    <!-- Normal mode only (body.admin force-hides it — admin is the one
+         broadcasting presence, never the one receiving it). Polled
+         independently of everything else, much faster than the roster poll
+         — see PRESENCE_LOOP_MS / applyPresenceBanner() in
+         height_impact.js. -->
+    <div id="presence-banner" hidden><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1.3 13 11.8H1L7 1.3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 5.6v2.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".9" fill="currentColor"/></svg>Admin is on this frame right now — anything you save may be overwritten.</div>
     <div id="stage">
       <img id="frame" alt="">
       <div id="marks">
@@ -1595,7 +1634,7 @@ body.admin #agree-card { display: block; }
          no lead-everyone, no hide-row disclosure; this is a status view,
          not a management console. -->
     <div class="card" id="team-card">
-      <p class="card-eyebrow">Team progress</p>
+      <p class="card-eyebrow">Team progress<button type="button" id="roster-refresh-btn" title="Refresh now — picks up a labeler added or removed by hand-editing the spreadsheet"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M12.2 7A5.2 5.2 0 1 1 10.6 3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M12.2 2.6v3.1h-3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
       <div id="team-progress"></div>
     </div>
 
@@ -1738,6 +1777,6 @@ body.admin #agree-card { display: block; }
 <script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the height_impact_queue.json version in height_impact.js. -->
-<script src="height_impact.js?v=4"></script>
+<script src="height_impact.js?v=5"></script>
 </body>
 </html>

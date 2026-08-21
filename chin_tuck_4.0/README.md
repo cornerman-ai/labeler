@@ -261,6 +261,34 @@ instead of a CSS class, and is fixed to the light palette regardless of the
 viewer's OS theme — an exported image is looked at later, by someone else,
 possibly printed, and should not change depending on who opens it.
 
+**"Refresh now"** (the small icon next to the Team progress eyebrow,
+`refreshRoster()`) forces a full admin data reload — roster AND
+`state.teamRows` — for a labeler added or removed by hand-editing the
+spreadsheet, which is otherwise invisible for up to a minute even after the
+next automatic poll: nothing in a manual sheet edit calls
+`cs2InvalidateStats`, so the server's cached `stats` answer (`CS2_STATS_TTL`
+= 60s) keeps serving the old roster until it naturally expires. The button
+sends `force=1`, which the `stats` op treats as "skip the cache read" (still
+writing the fresh result back, so it also warms the cache for everyone
+else's next ordinary poll). `loadRoster()` alone only refreshes the roster
+COUNTS; `refreshRoster()` also re-runs `loadTeamRows()`, since a
+newly-added labeler is invisible to the disagreement grids, the
+agree-pair picker, and the points list until that rebuilds too.
+
+**Admin presence.** While admin is on a frame, every normal-mode session
+polls for that and, if it's the exact frame they're looking at, shows an
+amber banner above the stage: "Admin is on this frame right now — anything
+you save may be overwritten." Admin broadcasts (`pingPresence()`, on every
+navigation and on a `PRESENCE_LOOP_MS` (7s) timer) to a Cache Service entry
+(`pingPresenceChinPoint`/`getPresenceChinPoint` and their per-variant
+siblings in `doGetChinPoint`, `CS_PRESENCE_TTL` = 20s in Code.js) — no
+sheet touched, nothing to clean up, the entry simply lapses if admin closes
+the tab or goes idle. This is advisory, not a lock: the backend still
+overwrites in place on whoever saves last, same as always, so the banner is
+what makes "admin's edit wins" actually true in practice — a labeler who
+sees it stops racing it, rather than the two of them being arbitrated after
+the fact.
+
 `height_impact.html`/`depth_impact.html` are the exact same page mechanics
 as their guard counterparts (four deliberate rules above included) — only
 the frame source, the backend spec, and the action names differ. See

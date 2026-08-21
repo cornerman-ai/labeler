@@ -213,6 +213,12 @@ const TEAM_COLOR_COUNT = 8;          // matches the --team-color-N custom proper
 // everyone's full history on a timer would cost far more than it buys.
 // Matches 3.0's TEAM_POLL_MS.
 const TEAM_POLL_MS = 45000;
+// Admin presence — "is admin on the exact frame I'm looking at right now"
+// — needs to be much faster than the roster poll above: the whole point is
+// a labeler seeing the notice WHILE they're still on the frame, not up to
+// 45 seconds later. Comfortably inside CS_PRESENCE_TTL (20s, in Code.js) so
+// a still-open admin tab never visibly lapses between two pings.
+const PRESENCE_LOOP_MS = 7000;
 // The overview's disagreement gradient AND the agreement card below both
 // compare exactly this pair — nobody else, not "whoever's in the roster."
 // A frame either of these two labelers didn't answer simply isn't part of
@@ -316,6 +322,8 @@ const state = {
   roster: [],              // [{labeler,n,skipped,last_ts,last}] from statsChinPoint
   teamColor: new Map(),    // labeler -> 'var(--team-color-N)' (admin canvas only)
   rosterPoll: null,        // setInterval id for the roster poll
+  presenceLoop: null,      // setInterval id for the admin-presence ping/poll — see startPresenceLoop()
+  lastPresence: null,      // most recent {video,round,frame,ts} from getPresence, or null
   teamOpen: false,         // the everyone's-progress list is expanded (normal mode)
   hidden: new Set(),       // lowercased labeler names hidden from MY OWN list — a view
                            // preference, localStorage-only, never reaches the sheet
@@ -473,8 +481,15 @@ function dwellFor(k) {
 // The roster: who has ever saved a row, and how far along they are —
 // filtered to n>0 same as every other labeler-picker on this site, and
 // 'admin' itself never appears (filtered server-side too, in doGetChinPoint).
-async function loadRoster() {
-  const body = await call({ action: 'statsChinPointDepth' }, 'load team');
+// `force` skips the server's cached answer (see the 'stats' op in
+// Code.js) — for a labeler who was just added or removed by hand-editing
+// the spreadsheet, nothing calls cs2InvalidateStats, so an ordinary poll
+// could otherwise show nothing happening for up to CS2_STATS_TTL seconds.
+// See refreshRoster().
+async function loadRoster(force) {
+  const params = { action: 'statsChinPointDepth' };
+  if (force) params.force = '1';
+  const body = await call(params, 'load team');
   state.roster = (body.labelers || []).filter((l) => l.n > 0);
   [...state.roster].map((l) => l.labeler).sort()
     .forEach((nm, i) => state.teamColor.set(nm, `var(--team-color-${i % TEAM_COLOR_COUNT})`));
@@ -496,8 +511,83 @@ function startRosterPoll() {
   }, TEAM_POLL_MS);
 }
 
-// Nothing reports presence, so "where someone is" is derived from the frame
-// they saved most recently — a last-known position, not a live cursor.
+// Admin-triggered, full refresh — not just the roster COUNTS (loadRoster
+// alone), but the actual per-labeler row data too (loadTeamRows), since a
+// labeler added by hand-editing the spreadsheet mid-session is invisible to
+// the disagreement grids, the agree-pair picker, and the points list until
+// state.teamRows is rebuilt, even after their name shows up in the roster.
+// force=1 on the roster read (see loadRoster()) so the button actually
+// means "now," not "whenever the cache next expires."
+async function refreshRoster() {
+  if (!state.isAdmin) return;
+  const btn = $('roster-refresh-btn');
+  if (btn) btn.disabled = true;
+  status('Refreshing team…');
+  try {
+    await loadRoster(true);
+    await loadTeamRows();
+    computeAllDisagree();
+    renderTeamProgress();
+    renderAdminPicker();
+    renderAgreementCard();
+    renderGlobalAgreement();
+    renderOverview();
+    status('Team refreshed', 'ok');
+  } catch (e) {
+    status(e.message, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── admin presence ──────────────────────────────────────────────────────
+// Admin broadcasts the exact frame it's on; every normal-mode session polls
+// for that and, if it matches the frame THEY'RE looking at, shows a banner
+// — so a labeler mid-edit sees admin arrive instead of quietly losing a
+// race to it. See CS_PRESENCE_TTL / pingPresence / getPresence in Code.js.
+// Whichever teammate admin is actually focused on doesn't matter: admin's
+// picker shows everyone's row for one frame at once, so the frame is the
+// unit that matters, not a specific person.
+async function pingPresence() {
+  const f = state.frames[state.i];
+  if (!f) return;
+  try {
+    await call({ action: 'pingPresenceChinPointDepth', video: f.stem, round: String(f.round), frame: String(f.frame) }, 'presence');
+  } catch (e) { /* the next tick tries again; not worth a status-line error */ }
+}
+
+async function pollPresence() {
+  try {
+    const body = await call({ action: 'getPresenceChinPointDepth' }, 'presence');
+    state.lastPresence = body.presence || null;
+  } catch (e) { return; } // keep showing whatever was already known
+  applyPresenceBanner();
+}
+
+// Synchronous, no network — called from go() so leaving a frame the notice
+// was showing on hides it immediately, and landing on one it already
+// covers (state.lastPresence not yet stale) shows it without waiting for
+// the next poll tick.
+function applyPresenceBanner() {
+  const bar = $('presence-banner');
+  if (!bar) return;
+  const f = state.frames[state.i];
+  const p = state.lastPresence;
+  const on = !!(f && p && p.video === f.stem && Number(p.round) === f.round && Number(p.frame) === f.frame);
+  bar.hidden = !on;
+}
+
+// Same "one shared interval, gated by state.isAdmin every tick" shape as
+// startRosterPoll() above, and started alongside it — admin pings, normal
+// mode polls, and retyping the name field into or out of "admin" switches
+// which one fires on the very next tick with nothing to tear down.
+function startPresenceLoop() {
+  if (state.presenceLoop) return;
+  state.presenceLoop = setInterval(() => {
+    if (state.isAdmin) pingPresence(); else pollPresence();
+  }, PRESENCE_LOOP_MS);
+}
+
 function ago(iso) {
   if (!iso) return '';
   const s = (Date.now() - Date.parse(iso)) / 1000;
@@ -1549,6 +1639,11 @@ function go(i, { initial = false } = {}) {
   state.shownAt = Date.now();
   render();
   prefetch();
+  // Admin-presence: ping the new frame immediately (don't wait for the next
+  // PRESENCE_LOOP_MS tick — a labeler landing on this exact frame a second
+  // later should see it right away) and re-evaluate the banner against
+  // whatever presence is already known, synchronously.
+  if (state.isAdmin) pingPresence(); else applyPresenceBanner();
 }
 
 function advance() {
@@ -2713,6 +2808,7 @@ function bind() {
   $('agree-b').onchange = (e) => setAgreePair(1, e.target.value);
 
   $('export-png-btn').onclick = () => exportDisagreementPNG();
+  $('roster-refresh-btn').onclick = () => refreshRoster();
 
   // Each of the three metric labels doubles as a fold/unfold button — see
   // toggleMetricFold(). Independent of setAgreeMetric(): folding a grid
@@ -3052,12 +3148,14 @@ async function start() {
     renderMetricLabels();
     applyAllMetricFolds();
     startRosterPoll();
+    startPresenceLoop();
     go(0, { initial: true });
     status('');
     return;
   }
 
   startRosterPoll();
+  startPresenceLoop();
   // A normal login has one labeler, so its own points just need --accent —
   // clear any stale --hp-color a PRIOR admin session left on this tab.
   document.body.style.removeProperty('--hp-color');
