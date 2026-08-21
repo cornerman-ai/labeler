@@ -1056,24 +1056,27 @@ body.admin #export-png-btn {
 /* Two pills, one shape — same disclosure-pill language as #vidx-btn (3.0's,
    unused on this page otherwise). Folded by default: the count rides on
    the button, so how many people are labeling is answerable with no
-   click. */
-#team-btn {
+   click. Sits next to #bugreport-btn in #util-row below, which owns the
+   spacing between and above them now (gap + margin-top) — same reasoning
+   as the comment on that markup. */
+#util-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#team-btn, #bugreport-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  margin-top: 8px; padding: 6px 11px; border-radius: 999px;
+  padding: 6px 11px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent;
   font-size: 12px; font-weight: 500; color: var(--ink-dim);
   transition: background .12s ease, color .12s ease, border-color .12s ease;
 }
-#team-btn:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#team-btn:hover:not(:disabled), #bugreport-btn:hover { border-color: var(--ink-dim); color: var(--ink); }
 #team-btn:disabled { opacity: .4; cursor: default; }
-#team-btn[aria-expanded="true"] {
+#team-btn[aria-expanded="true"], #bugreport-btn[aria-expanded="true"] {
   background: var(--open-bg); border-color: var(--open-line);
   color: var(--open-ink);
 }
-#team-btn svg { width: 13px; height: 13px; flex: none; }
-#team-chev { transition: transform .2s ease; }
-#team-btn[aria-expanded="true"] #team-chev { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { #team-chev { transition: none; } }
+#team-btn svg, #bugreport-btn svg { width: 13px; height: 13px; flex: none; }
+#team-chev, #bugreport-chev { transition: transform .2s ease; }
+#team-btn[aria-expanded="true"] #team-chev, #bugreport-btn[aria-expanded="true"] #bugreport-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { #team-chev, #bugreport-chev { transition: none; } }
 
 /* Team panel — name, count, bar. Nothing else. Position and a relative
    timestamp live in the row's tooltip rather than as columns of their own. */
@@ -1437,30 +1440,12 @@ body.admin #agree-card { display: block; }
 #tm-links line.dim { opacity: .1; }
 
 /* ── bug report console ──────────────────────────────────────────────────
-   Same disclosure-pill language as #team-btn above (same open/closed
-   colours, same rotating chevron, same clue-in reveal) — a second
-   instance of a pattern the page already has, not a new one. Available in
-   every mode, admin included: a bug is a bug regardless of who is
-   signed in, so nothing here is gated by body.admin. Lives as the LAST
-   card in #side, not a page-spanning footer — #wrap is a fixed 100vh with
-   no page scroll, and #side is the one thing on the page that already
-   scrolls, so "at the bottom" means the bottom of that scroll. */
-#bugreport-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 11px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent;
-  font-size: 12px; font-weight: 500; color: var(--ink-dim);
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-#bugreport-btn:hover { border-color: var(--ink-dim); color: var(--ink); }
-#bugreport-btn[aria-expanded="true"] {
-  background: var(--open-bg); border-color: var(--open-line); color: var(--open-ink);
-}
-#bugreport-btn svg { width: 13px; height: 13px; flex: none; }
-#bugreport-chev { transition: transform .2s ease; }
-#bugreport-btn[aria-expanded="true"] #bugreport-chev { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { #bugreport-chev { transition: none; } }
-
+   Same disclosure-pill language as #team-btn (shares its base rule, hover,
+   open state, svg sizing and chevron rotation — see #team-btn, #bugreport-btn
+   above). Available in every mode, admin included: a bug is a bug
+   regardless of who is signed in, so nothing here is gated by body.admin.
+   Sits in #util-row next to "Everyone's progress" so both disclosures are
+   one glance apart. */
 #bugreport-panel { display: none; }
 #bugreport-panel.on { display: block; animation: clue-in .2s ease both; margin-top: 12px; }
 @media (prefers-reduced-motion: reduce) { #bugreport-panel.on { animation: none; } }
@@ -1551,10 +1536,29 @@ body.admin #agree-card { display: block; }
                autocomplete="off" spellcheck="false">
         <button id="name-go" disabled>Start</button>
       </div>
-      <!-- Folded by default — see the CSS note above this panel's rules for
-           why this exists on 4.0 at all. -->
-      <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone&rsquo;s progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <!-- "Everyone's progress" and the bug report console are folded pills
+           kept next to each other on purpose: "how's everyone doing" and
+           "something's wrong" are both questions asked BETWEEN stretches
+           of labeling, not while looking at one frame, so they belong
+           together rather than one at the top of the sidebar and one at
+           the bottom. Folded by default — see the CSS note above #team-btn's
+           rules for why "Everyone's progress" exists on 4.0 at all; the bug
+           report console (every mode, not body.admin-gated) is saved to a
+           site-wide sheet shared by every labeler, not this tool's own —
+           see saveBugReport / doGetBugReport in apps_script/Code.js. -->
+      <div id="util-row">
+        <button id="team-btn" aria-expanded="false" aria-controls="team"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.8 11.4V6.9M5.6 11.4V2.6M9.4 11.4V8.2M13 11.4V4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span id="team-label">Everyone&rsquo;s progress</span><svg id="team-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button type="button" id="bugreport-btn" aria-expanded="false" aria-controls="bugreport-panel"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 4.4A2.4 2.4 0 0 1 4.4 2h5.2A2.4 2.4 0 0 1 12 4.4v3.3a2.4 2.4 0 0 1-2.4 2.4H6.3L3.6 12V9.7A2.4 2.4 0 0 1 2 7.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 4.6v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="8.5" r=".85" fill="currentColor"/></svg><span>Report a problem</span><svg id="bugreport-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
       <div id="team"><div id="team-empty">No labels saved yet</div></div>
+      <div id="bugreport-panel">
+        <p id="bugreport-context"></p>
+        <textarea id="bugreport-text" maxlength="1000" placeholder="What's not working? We'll attach the frame you're on."></textarea>
+        <div id="bugreport-row">
+          <span id="bugreport-note"></span>
+          <button type="button" id="bugreport-send" disabled>Send</button>
+        </div>
+      </div>
     </div>
 
     <div class="card" id="id-card">
@@ -1826,27 +1830,12 @@ body.admin #agree-card { display: block; }
         <dt>Camera too low/high</dt> <dd><kbd>G</kbd></dd>
       </dl>
     </div>
-
-    <!-- Bug report console — every mode, not body.admin-gated. Saved to a
-         site-wide sheet shared by every labeler, not this tool's own —
-         see saveBugReport / doGetBugReport in apps_script/Code.js. -->
-    <div class="card" id="bugreport-card">
-      <button type="button" id="bugreport-btn" aria-expanded="false" aria-controls="bugreport-panel"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 4.4A2.4 2.4 0 0 1 4.4 2h5.2A2.4 2.4 0 0 1 12 4.4v3.3a2.4 2.4 0 0 1-2.4 2.4H6.3L3.6 12V9.7A2.4 2.4 0 0 1 2 7.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 4.6v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="8.5" r=".85" fill="currentColor"/></svg><span>Report a problem</span><svg id="bugreport-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <div id="bugreport-panel">
-        <p id="bugreport-context"></p>
-        <textarea id="bugreport-text" maxlength="1000" placeholder="What's not working? We'll attach the frame you're on."></textarea>
-        <div id="bugreport-row">
-          <span id="bugreport-note"></span>
-          <button type="button" id="bugreport-send" disabled>Send</button>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 
 <script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the height_impact_queue.json version in height_impact.js. -->
-<script src="height_impact.js?v=6"></script>
+<script src="height_impact.js?v=7"></script>
 </body>
 </html>
