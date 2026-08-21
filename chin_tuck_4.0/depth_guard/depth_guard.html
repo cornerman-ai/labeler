@@ -1435,6 +1435,61 @@ body.admin #agree-card { display: block; }
   opacity: .55; transition: opacity .12s ease;
 }
 #tm-links line.dim { opacity: .1; }
+
+/* ── bug report console ──────────────────────────────────────────────────
+   Same disclosure-pill language as #team-btn above (same open/closed
+   colours, same rotating chevron, same clue-in reveal) — a second
+   instance of a pattern the page already has, not a new one. Available in
+   every mode, admin included: a bug is a bug regardless of who is
+   signed in, so nothing here is gated by body.admin. Lives as the LAST
+   card in #side, not a page-spanning footer — #wrap is a fixed 100vh with
+   no page scroll, and #side is the one thing on the page that already
+   scrolls, so "at the bottom" means the bottom of that scroll. */
+#bugreport-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12px; font-weight: 500; color: var(--ink-dim);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#bugreport-btn:hover { border-color: var(--ink-dim); color: var(--ink); }
+#bugreport-btn[aria-expanded="true"] {
+  background: var(--open-bg); border-color: var(--open-line); color: var(--open-ink);
+}
+#bugreport-btn svg { width: 13px; height: 13px; flex: none; }
+#bugreport-chev { transition: transform .2s ease; }
+#bugreport-btn[aria-expanded="true"] #bugreport-chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { #bugreport-chev { transition: none; } }
+
+#bugreport-panel { display: none; }
+#bugreport-panel.on { display: block; animation: clue-in .2s ease both; margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) { #bugreport-panel.on { animation: none; } }
+/* What will actually land in the sheet, named plainly, so filing a report
+   is never a leap of faith about what got attached. */
+#bugreport-context { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-dim); }
+#bugreport-text {
+  display: block; width: 100%; min-height: 70px; box-sizing: border-box;
+  border: 0; border-radius: 9px; resize: vertical;
+  background: rgba(120,120,128,.12); color: var(--ink);
+  padding: 9px 12px; font: inherit; font-size: 13px;
+}
+#bugreport-text::placeholder { color: var(--ink-dim); font-weight: 400; }
+#bugreport-text:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-color-scheme: dark) {
+  #bugreport-text { background: rgba(120,120,128,.24); }
+}
+#bugreport-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 8px;
+}
+#bugreport-note { font-size: 11.5px; color: var(--ink-dim); flex: 1; min-width: 0; }
+#bugreport-note.ok { color: var(--yes); }
+#bugreport-note.err { color: var(--no); }
+#bugreport-send {
+  flex: none; padding: 8px 16px; border: 0; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 590; cursor: pointer;
+}
+#bugreport-send:disabled { opacity: .3; cursor: default; }
 </style>
 </head>
 <body>
@@ -1772,12 +1827,27 @@ body.admin #agree-card { display: block; }
         <dt>Angle too frontal</dt> <dd><kbd>G</kbd></dd>
       </dl>
     </div>
+
+    <!-- Bug report console — every mode, not body.admin-gated. Saved to a
+         site-wide sheet shared by every labeler, not this tool's own —
+         see saveBugReport / doGetBugReport in apps_script/Code.js. -->
+    <div class="card" id="bugreport-card">
+      <button type="button" id="bugreport-btn" aria-expanded="false" aria-controls="bugreport-panel"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 4.4A2.4 2.4 0 0 1 4.4 2h5.2A2.4 2.4 0 0 1 12 4.4v3.3a2.4 2.4 0 0 1-2.4 2.4H6.3L3.6 12V9.7A2.4 2.4 0 0 1 2 7.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 4.6v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="8.5" r=".85" fill="currentColor"/></svg><span>Report a problem</span><svg id="bugreport-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div id="bugreport-panel">
+        <p id="bugreport-context"></p>
+        <textarea id="bugreport-text" maxlength="1000" placeholder="What's not working? We'll attach the frame you're on."></textarea>
+        <div id="bugreport-row">
+          <span id="bugreport-note"></span>
+          <button type="button" id="bugreport-send" disabled>Send</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="../../shared/labeler_name.js"></script>
 <!-- ?v= busts stale browser caches — bump on every deploy, and keep it in step
      with the depth_guard_queue.json version in depth_guard.js. -->
-<script src="depth_guard.js?v=6"></script>
+<script src="depth_guard.js?v=7"></script>
 </body>
 </html>

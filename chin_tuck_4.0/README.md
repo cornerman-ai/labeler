@@ -294,6 +294,30 @@ what makes "admin's edit wins" actually true in practice — a labeler who
 sees it stops racing it, rather than the two of them being arbitrated after
 the fact.
 
+**Bug report console.** A collapsible "Report a problem" pill — same
+disclosure-pill visual language as "Everyone's progress" (`#team-btn`) —
+sits as the last card in `#side`, in every mode including admin, not just
+this generation of the site. Typing and sending never touches the page's
+keyboard shortcuts: `TEXTAREA` had to be added to the global keydown
+guard's exemption list alongside `INPUT` (2026-08 — nothing on the page
+needed a multi-line field before this, so `C`/`K`/`Enter`/etc. used to fire
+while a labeler was mid-sentence describing a bug). Saved to **one
+spreadsheet shared by every labeler on the site**
+(`19oxXkwlPW9MUNVbOI8Co5_rcx842nQxrJYpjhivdHeQ`, sheet "Bug Reports"),
+deliberately NOT wired through the CS4 spec machinery — `saveBugReport` /
+`doGetBugReport` in `Code.js` are a standalone action, independent of
+`call()`'s `v4*` deploy-marker check too — so adding this to a future
+labeler outside chin-point 4.0 is an action name and a `fetch()`, nothing
+spec-shaped required. Columns: `id | ts | tool | labeler | message | video
+| round | frame | status | user_agent`. `tool` is a plain string each page
+sets once (`BUG_REPORT_TOOL`) — not an enum, so a new labeler never edits
+Code.js to start sending reports. `video`/`round`/`frame` are blank for a
+future tool with no such concept; `status` starts blank and is meant to be
+filled in **by hand** in the sheet while triaging (new / fixed / wontfix,
+whatever the team lands on) — nothing ever writes it, and the sheet is
+deliberately not header-reconciled the way the code-owned label tabs are,
+so a column added by hand for triage survives.
+
 `height_impact.html`/`depth_impact.html` are the exact same page mechanics
 as their guard counterparts (four deliberate rules above included) — only
 the frame source, the backend spec, and the action names differ. See

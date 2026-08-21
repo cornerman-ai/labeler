@@ -236,6 +236,16 @@ function doGet(e) {
     return doGetRules(p, labeler, action);
   }
 
+  // Bug reports — one shared spreadsheet across every labeler on the site,
+  // not a tab per tool, so triaging never means checking N different
+  // sheets. `tool` names which page sent it. Deliberately not wired
+  // through the spec/CS4 machinery below — see doGetBugReport at the
+  // bottom of this file for why that keeps it portable to any future
+  // labeler.
+  if (action === 'saveBugReport') {
+    return doGetBugReport(p, labeler);
+  }
+
   // Bodyshot review actions: cross-video sweep over Combined Data.
   if (action === 'listBodyshots' || action === 'reclassify') {
     return doGetBodyshots(p, action);
@@ -5414,4 +5424,79 @@ function idxOfHeader(headerRow, name) {
     if (String(headerRow[i]) === name) return i;
   }
   return -1;
+}
+
+// ── bug reports ──────────────────────────────────────────────────────────
+// One spreadsheet, one sheet, shared by every labeler on the site — not
+// wired through the spec/CS4 machinery above, deliberately: a bug report
+// isn't shaped like label data (no video/round/frame identity to overwrite
+// in place, no per-labeler tab), and keeping it independent is what makes
+// this the same handful of lines to add to any FUTURE labeler, chin-point
+// 4.0 or not — just an action name and a fetch, no spec object required.
+var BUG_REPORT_SPREADSHEET_ID = '19oxXkwlPW9MUNVbOI8Co5_rcx842nQxrJYpjhivdHeQ';
+var BUG_REPORT_SHEET_NAME = 'Bug Reports';
+// `tool` is the reporting page's own stable name (e.g. 'height_guard') —
+// free text, not an enum, so a new labeler never needs a change here to
+// start sending reports. `video`/`round`/`frame` are blank for a labeler
+// with no such concept (a pairwise-comparison tool, say) — they're the
+// common case on this site, not a requirement every caller has to satisfy.
+// `status` starts blank and is meant to be filled in BY HAND in the sheet
+// while triaging (new / fixed / wontfix, whatever the team lands on) —
+// nothing here ever writes it, so a human always has the last word on
+// where things stand. Deliberately no header-reconciliation the way
+// getOrCreateCs2Sheet does for the code-owned label sheets: THIS sheet is
+// meant to be hand-augmented (status, and whatever else triage wants), so
+// an extra column someone adds by hand must survive, not get deleted on
+// the next report.
+var BUG_REPORT_HEADERS = ['id', 'ts', 'tool', 'labeler', 'message',
+                           'video', 'round', 'frame', 'status', 'user_agent'];
+
+function getOrCreateBugReportSheet() {
+  var ss = SpreadsheetApp.openById(BUG_REPORT_SPREADSHEET_ID);
+  var sh = ss.getSheetByName(BUG_REPORT_SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(BUG_REPORT_SHEET_NAME);
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, BUG_REPORT_HEADERS.length).setValues([BUG_REPORT_HEADERS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// No spec, no marker check on the client side either (see the labeler JS —
+// this is fetched independently of call()'s v4* staleness guard, which
+// exists for label data, not this) — `tool`/`message` are the only
+// required fields, everything else is best-effort context.
+function doGetBugReport(p, labeler) {
+  var tool = String(p.tool || '').trim();
+  var message = String(p.message || '').trim();
+  if (!tool || !message) {
+    return jsonOut({ status: 'error', message: 'missing tool or message' });
+  }
+  var id = Utilities.getUuid();
+  var row = [
+    id,
+    new Date().toISOString(),
+    tool,
+    String(p.labeler || labeler || '').trim(),
+    message,
+    String(p.video || ''),
+    p.round === undefined || p.round === '' ? '' : Number(p.round),
+    p.frame === undefined || p.frame === '' ? '' : Number(p.frame),
+    '',
+    String(p.user_agent || '').slice(0, 300),
+  ];
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+  } catch (e) {
+    return jsonOut({ status: 'error', message: 'the sheet was busy — try again' });
+  }
+  try {
+    var sh = getOrCreateBugReportSheet();
+    sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  } finally {
+    lock.releaseLock();
+  }
+  return jsonOut({ status: 'ok', id: id });
 }

@@ -736,6 +736,61 @@ function renderTeamLabel() {
     : (n ? `Everyone’s progress (${n})` : 'Everyone’s progress');
 }
 
+// ── bug report console ────────────────────────────────────────────────────
+// Stable per-page identifier for the sheet's `tool` column — a plain
+// string, not derived from the URL or the page title, so it can never
+// change out from under old rows if the page gets renamed. Every other
+// chin-point 4.0 variant defines its own; see doGetBugReport in Code.js
+// for why this whole feature stays independent of the CS4 spec machinery.
+const BUG_REPORT_TOOL = 'height_impact';
+
+// Same disclosure-pill shape as setTeamOpen() above.
+function setBugReportOpen(open) {
+  $('bugreport-panel').classList.toggle('on', !!open);
+  $('bugreport-btn').setAttribute('aria-expanded', String(!!open));
+  if (open) $('bugreport-text').focus();
+}
+
+// Independent of call()/the v4* marker check that guards every OTHER
+// network call on this page: a bug report isn't label data, so it doesn't
+// need call()'s "refuse a stale deployment outright" guarantee, and
+// staying independent is what keeps this block copy-pasteable into any
+// future labeler — chin-point 4.0 or not — without dragging spec/marker
+// machinery along. Reuses api() (the URL builder) but does its own fetch.
+async function sendBugReport() {
+  const ta = $('bugreport-text');
+  const message = ta.value.trim();
+  if (!message) return;
+  const btn = $('bugreport-send');
+  const note = $('bugreport-note');
+  btn.disabled = true;
+  note.textContent = '';
+  note.className = '';
+  const f = state.frames[state.i];
+  try {
+    const res = await fetch(api({
+      action: 'saveBugReport',
+      tool: BUG_REPORT_TOOL,
+      labeler: who() || '(not signed in)',
+      message,
+      video: f ? f.stem : '',
+      round: f ? String(f.round) : '',
+      frame: f ? String(f.frame) : '',
+      user_agent: navigator.userAgent,
+    }), { redirect: 'follow' });
+    const body = await res.json();
+    if (body.status !== 'ok') throw new Error(body.message || 'unknown error');
+    ta.value = '';
+    note.textContent = 'Sent — thanks.';
+    note.className = 'ok';
+  } catch (e) {
+    note.textContent = e.message || 'Could not send — try again.';
+    note.className = 'err';
+  } finally {
+    btn.disabled = !ta.value.trim();
+  }
+}
+
 // Deliberately NOT the admin picture: name, count, a bar of WHERE in the
 // queue those frames fall. Never another labeler's actual answer — that
 // overlay (and this whole panel) was removed from 4.0 once already for
@@ -1690,6 +1745,7 @@ function render() {
   $('id-video').textContent = f.stem;
   $('id-round').textContent = f.round;
   $('id-frame').textContent = f.frame;
+  $('bugreport-context').textContent = `Attaching: "${f.stem}" · round ${f.round} · frame ${f.frame}`;
 
   const img = $('frame');
   if (img.dataset.k !== key(f)) { img.dataset.k = key(f); img.src = imgSrc(f); }
@@ -2837,6 +2893,20 @@ function bind() {
   };
   $('name-go').onclick = commitName;
   $('team-btn').onclick = () => setTeamOpen(!state.teamOpen);
+
+  // Bug report console — every mode. Local open/close only, same as
+  // #team-btn above; the send button stays disabled until there's
+  // something to send, and Enter in the textarea is a plain newline (only
+  // the button submits — see #bugreport-text's global-shortcut exemption
+  // above for why a stray keystroke here must never double as a page
+  // shortcut).
+  $('bugreport-btn').onclick = () => {
+    setBugReportOpen(!$('bugreport-panel').classList.contains('on'));
+  };
+  $('bugreport-text').oninput = () => {
+    $('bugreport-send').disabled = !$('bugreport-text').value.trim();
+  };
+  $('bugreport-send').onclick = sendBugReport;
   // Local toggle only — no save here. Saving is leaving: the flag rides
   // along on whatever save Next/Prev/Skip (or their keyboard equivalents)
   // triggers next, same as any other in-progress edit. isDirty() already
@@ -3008,7 +3078,13 @@ function bind() {
   };
 
   window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    // TEXTAREA added alongside INPUT for the bug-report box (2026-08) — it
+    // was never in this list because nothing on the page needed a
+    // multi-line field before, so typing a report used to double as every
+    // single-letter shortcut below (C placing a point, K opening the skip
+    // popover, Enter advancing the frame...) while the labeler was mid-
+    // sentence describing a bug.
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!state.ready) return;
     // The right-click menu isn't a popover — it doesn't own the rest of the
     // keyboard — but Esc dismissing it is expected regardless.
