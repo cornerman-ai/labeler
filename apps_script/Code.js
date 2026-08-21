@@ -3572,9 +3572,9 @@ function csPayload(spec, o) {
 (function deriveStatsKeys() {
   var specs = [CS2_SPEC, CS3_SPEC, CS4_SPEC, CS4D_SPEC, CS4I_SPEC, CS4DI_SPEC];
   for (var i = 0; i < specs.length; i++) specs[i].statsKey = 'cs_stats_' + specs[i].prefix;
-  // Admin-presence cache key — same derive-from-prefix reasoning as
-  // statsKey above, chin-point 4.0 only (see pingPresence/getPresence in
-  // doGetChinPoint).
+  // Admin-presence PropertiesService key — same derive-from-prefix
+  // reasoning as statsKey above, chin-point 4.0 only (see
+  // pingPresence/getPresence in doGetChinPoint).
   var chin4Specs = [CS4_SPEC, CS4D_SPEC, CS4I_SPEC, CS4DI_SPEC];
   for (var j = 0; j < chin4Specs.length; j++) chin4Specs[j].presenceKey = 'cs_presence_' + chin4Specs[j].prefix;
 })();
@@ -3862,12 +3862,15 @@ function cs4DedupeRows() {
 var CS2_STATS_TTL = 60;   // seconds
 
 // How long an admin-presence ping stays visible to everyone else without a
-// follow-up ping — see pingPresence/getPresence in doGetChinPoint. Short on
-// purpose: this is "is admin on this frame RIGHT NOW," not a schedule, and
-// a stale presence entry outliving the admin session it came from (closed
-// tab, lost connection) would leave a phantom warning nobody can clear.
-// The admin client re-pings well inside this window (see PRESENCE_PING_MS
-// in the labeler JS) so a still-open tab never visibly lapses.
+// follow-up ping — enforced by getPresence checking the entry's own age
+// (PropertiesService has no built-in expiry, unlike CacheService — see the
+// pingPresence/getPresence comment for why this ended up on Properties
+// instead). Short on purpose: this is "is admin on this frame RIGHT NOW,"
+// not a schedule, and a stale presence entry outliving the admin session it
+// came from (closed tab, lost connection) would leave a phantom warning
+// nobody can clear. The admin client re-pings well inside this window (see
+// PRESENCE_LOOP_MS in the labeler JS) so a still-open tab never visibly
+// lapses.
 var CS_PRESENCE_TTL = 20; // seconds
 
 function cs2InvalidateStats(spec, labeler) {
@@ -5120,45 +5123,47 @@ function doGetChinPoint(p, labeler, action, spec) {
 
   // === PING PRESENCE — admin broadcasts "I'm on this frame right now" so
   // any normal labeler currently on the SAME frame can back off instead of
-  // racing a concurrent edit. Cache-only, no sheet touched: a presence
-  // entry is not data, it is a fact about this instant, gone the moment
-  // nobody is refreshing it (TTL, not an explicit clear — there is no
-  // reliable "the tab closed" signal to hang a clear on). Whichever
-  // teammate admin is actually looking at on this frame doesn't matter:
-  // admin's picker shows every labeler's row for one frame at once, so the
-  // FRAME is the unit of "something might change here," not a person. ===
+  // racing a concurrent edit. PropertiesService, not CacheService: tried
+  // CacheService first (script cache, meant for exactly this) and it never
+  // round-tripped in this deployment — a put() reporting success followed
+  // seconds later by a get() on the identical key, same execution,
+  // consistently came back empty. Properties are a plain durable key/value
+  // store instead of a distributed cache layer, so there's no
+  // eventual-consistency window to fall into; the tradeoff is no built-in
+  // expiry, so getPresence checks the age itself against CS_PRESENCE_TTL —
+  // see below. No sheet touched either way: a presence entry is not data,
+  // it is a fact about this instant. Whichever teammate admin is actually
+  // looking at on this frame doesn't matter: admin's picker shows every
+  // labeler's row for one frame at once, so the FRAME is the unit of
+  // "something might change here," not a person. ===
   if (op === 'pingPresence') {
-    var pcache = null, pdebug = {};
-    try { pcache = CacheService.getScriptCache(); } catch (e) { pdebug.getErr = e.message; }
-    pdebug.hasCache = !!pcache;
-    pdebug.hasVideo = !!p.video;
-    pdebug.key = spec.presenceKey;
-    if (pcache && p.video) {
+    if (p.video) {
       try {
-        pcache.put(spec.presenceKey, JSON.stringify({
+        PropertiesService.getScriptProperties().setProperty(spec.presenceKey, JSON.stringify({
           video: String(p.video), round: Number(p.round), frame: Number(p.frame), ts: Date.now(),
-        }), CS_PRESENCE_TTL);
-        pdebug.put = 'ok';
-      } catch (e) { pdebug.putErr = e.message; }
+        }));
+      } catch (e) {}
     }
-    return csOut(spec, { debug: pdebug });
+    return csOut(spec, {});
   }
 
   // === GET PRESENCE — read-only, polled by every normal labeler session.
-  // null once the TTL lapses (CacheService's own expiry, not a flag this
-  // code checks) — admin closing the tab, or going idle for
-  // CS_PRESENCE_TTL seconds, and the notice disappearing on its own is the
-  // point, not a gap. ===
+  // null once CS_PRESENCE_TTL has passed since the last ping — checked here
+  // (Properties has no built-in expiry) rather than trusting the entry
+  // forever, so admin closing the tab, or going idle that long, makes the
+  // notice disappear on its own instead of sticking around as a phantom
+  // warning nobody can clear.
   if (op === 'getPresence') {
-    var gcache = null, gdebug = {};
-    try { gcache = CacheService.getScriptCache(); } catch (e) { gdebug.getErr = e.message; }
-    gdebug.hasCache = !!gcache;
-    gdebug.key = spec.presenceKey;
-    var praw = gcache ? gcache.get(spec.presenceKey) : null;
-    gdebug.raw = praw;
+    var praw = null;
+    try { praw = PropertiesService.getScriptProperties().getProperty(spec.presenceKey); } catch (e) {}
     var presence = null;
-    if (praw) { try { presence = JSON.parse(praw); } catch (e) { gdebug.parseErr = e.message; } }
-    return csOut(spec, { presence: presence, debug: gdebug });
+    if (praw) {
+      try {
+        var parsed = JSON.parse(praw);
+        if (Date.now() - Number(parsed.ts) <= CS_PRESENCE_TTL * 1000) presence = parsed;
+      } catch (e) {}
+    }
+    return csOut(spec, { presence: presence });
   }
 
   var who = p.labeler || labeler;

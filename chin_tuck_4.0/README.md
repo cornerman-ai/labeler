@@ -279,12 +279,17 @@ agree-pair picker, and the points list until that rebuilds too.
 polls for that and, if it's the exact frame they're looking at, shows an
 amber banner above the stage: "Admin is on this frame right now — anything
 you save may be overwritten." Admin broadcasts (`pingPresence()`, on every
-navigation and on a `PRESENCE_LOOP_MS` (7s) timer) to a Cache Service entry
-(`pingPresenceChinPoint`/`getPresenceChinPoint` and their per-variant
+navigation and on a `PRESENCE_LOOP_MS` (7s) timer) to a `PropertiesService`
+entry (`pingPresenceChinPoint`/`getPresenceChinPoint` and their per-variant
 siblings in `doGetChinPoint`, `CS_PRESENCE_TTL` = 20s in Code.js) — no
-sheet touched, nothing to clean up, the entry simply lapses if admin closes
-the tab or goes idle. This is advisory, not a lock: the backend still
-overwrites in place on whoever saves last, same as always, so the banner is
+sheet touched, nothing to clean up, `getPresence` checks the entry's own
+age against the TTL itself and treats a stale one as absent (Properties has
+no built-in expiry, unlike CacheService — see the code comment for why this
+is on Properties at all: CacheService was tried first and a `put()` in one
+request was never visible to a `get()` in the next, even seconds and
+several retries later, in this deployment). This is advisory, not a lock:
+the backend still overwrites in place on whoever saves last, same as
+always, so the banner is
 what makes "admin's edit wins" actually true in practice — a labeler who
 sees it stops racing it, rather than the two of them being arbitrated after
 the fact.
