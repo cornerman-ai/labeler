@@ -5128,16 +5128,20 @@ function doGetChinPoint(p, labeler, action, spec) {
   // admin's picker shows every labeler's row for one frame at once, so the
   // FRAME is the unit of "something might change here," not a person. ===
   if (op === 'pingPresence') {
-    var pcache = null;
-    try { pcache = CacheService.getScriptCache(); } catch (e) {}
+    var pcache = null, pdebug = {};
+    try { pcache = CacheService.getScriptCache(); } catch (e) { pdebug.getErr = e.message; }
+    pdebug.hasCache = !!pcache;
+    pdebug.hasVideo = !!p.video;
+    pdebug.key = spec.presenceKey;
     if (pcache && p.video) {
       try {
         pcache.put(spec.presenceKey, JSON.stringify({
           video: String(p.video), round: Number(p.round), frame: Number(p.frame), ts: Date.now(),
         }), CS_PRESENCE_TTL);
-      } catch (e) {}
+        pdebug.put = 'ok';
+      } catch (e) { pdebug.putErr = e.message; }
     }
-    return csOut(spec, {});
+    return csOut(spec, { debug: pdebug });
   }
 
   // === GET PRESENCE — read-only, polled by every normal labeler session.
@@ -5146,12 +5150,15 @@ function doGetChinPoint(p, labeler, action, spec) {
   // CS_PRESENCE_TTL seconds, and the notice disappearing on its own is the
   // point, not a gap. ===
   if (op === 'getPresence') {
-    var gcache = null;
-    try { gcache = CacheService.getScriptCache(); } catch (e) {}
+    var gcache = null, gdebug = {};
+    try { gcache = CacheService.getScriptCache(); } catch (e) { gdebug.getErr = e.message; }
+    gdebug.hasCache = !!gcache;
+    gdebug.key = spec.presenceKey;
     var praw = gcache ? gcache.get(spec.presenceKey) : null;
+    gdebug.raw = praw;
     var presence = null;
-    if (praw) { try { presence = JSON.parse(praw); } catch (e) {} }
-    return csOut(spec, { presence: presence });
+    if (praw) { try { presence = JSON.parse(praw); } catch (e) { gdebug.parseErr = e.message; } }
+    return csOut(spec, { presence: presence, debug: gdebug });
   }
 
   var who = p.labeler || labeler;
