@@ -5179,6 +5179,16 @@ function doGetChinPoint(p, labeler, action, spec) {
   var who = p.labeler || labeler;
   var name = cs2SheetName(who, spec);
   if (!name) return jsonOut({ status: 'error', message: 'missing labeler' });
+  // 'admin' is not a labeler identity — see the same exclusion in STATS
+  // above. The client-side guard (activeLabeler() returns null for admin)
+  // is what normally keeps this from ever being requested, but that guard
+  // lives only in the page's JS: nothing here stopped a stale cached page,
+  // a hand-built request, or a mistaken normal login of literally "admin"
+  // from writing real points into a phantom '<prefix>Admin' tab that the
+  // roster/stats filter (and therefore every progress panel) never counts.
+  if ((op === 'save' || op === 'delete') && String(who).trim().toLowerCase() === 'admin') {
+    return jsonOut({ status: 'error', message: 'admin is not a labeler identity — nothing saved' });
+  }
 
   // === LIST — this labeler's latest row per identity ===
   // Same rule as 2.0/3.0: only a save creates a tab.
