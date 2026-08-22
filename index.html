@@ -18,6 +18,11 @@
   ul.tools a:hover { background: rgba(127,127,127,.12); }
   ul.tools .name { font-weight: 600; }
   ul.tools .desc { opacity: .65; font-size: 13px; margin-left: 8px; }
+  /* Visible but inert — the page underneath still runs, it's just not
+     something to route people to from here right now. No href at all
+     rather than a disabled-looking <a>, so there's nothing to click. */
+  ul.tools li.disabled { padding: 10px 12px; opacity: .4; cursor: default; }
+  ul.tools li.disabled .name { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -39,7 +44,7 @@
   <li><a href="chin_tuck_4.0/height_guard/height_guard.html"><span class="name">Chin tuck 4.0 guard height</span></a></li>
   <li><a href="chin_tuck_4.0/depth_guard/depth_guard.html"><span class="name">Chin tuck 4.0 guard depth</span></a></li>
   <li><a href="chin_tuck_4.0/height_impact/height_impact.html"><span class="name">Chin tuck 4.0 impact height</span></a></li>
-  <li><a href="chin_tuck_4.0/depth_impact/depth_impact.html"><span class="name">Chin tuck 4.0 impact depth</span></a></li>
+  <li class="disabled"><span class="name">Chin tuck 4.0 impact depth</span></li>
   <!-- not needed for now
   <li><a href="chin_tuck_4.0/height_guard/height_guard_frames.html"><span class="name">Chin point 4.0 — all frames</span><span class="desc">contact sheet of the whole 4.0 dataset, straight from Firebase</span></a></li>
   -->
