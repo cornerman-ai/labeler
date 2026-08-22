@@ -298,7 +298,6 @@ function loadAgreeThresh(storageKey) {
   const raw = Number(localStorage.getItem(storageKey));
   return Number.isFinite(raw) && raw >= 1 && raw <= 50 ? raw / 100 : DEFAULT_AGREE_THRESH_PCT / 100;
 }
-const CONFLICT_RING = 'dconflict';   // deliberately not .cb (camera_bad) — unrelated facts
 
 const state = {
   frames: [],              // depth_impact_queue.json order (originals + planted repeats)
@@ -1054,23 +1053,20 @@ function disagreeForSlot(f, metric) {
   if (rows.length === 0) return { kind: 'none', level: null };
   if (rows.length === 1) return { kind: 'solo', level: null };
 
-  const placed = rows.filter(hasPoints);
-  const skipped = rows.filter((r) => r.skipped === 1);
+  // A skip on EITHER side means the frame can't be scored at all — one
+  // flat grey, full stop (2026-08). This USED TO split into three reads
+  // (a shared skip reason painted GREEN as "agreement," a mismatched
+  // reason as amber, one side skipping while the other placed points as
+  // red with a ring) — dropped because a skip has no coordinates to
+  // measure agreement OR disagreement from, so a colour on the same axis
+  // as a real distance overstated what "we both couldn't judge this" or
+  // "one of us couldn't" actually says.
+  if (rows.some((r) => r.skipped === 1)) return { kind: 'skip', level: null };
 
-  // A disagreement about whether the frame can be judged AT ALL is more
-  // fundamental than any numeric gap between placed points — one labeler
-  // skipping while the other placed points is red BY DEFINITION, no matter
-  // how close the points end up being to anything, on ANY metric.
-  if (placed.length && skipped.length) return { kind: 'conflict', level: 1 };
-
-  if (placed.length === 0) {
-    // Everyone skipped. Agreeing it's unlabelable IS agreement — unless they
-    // disagree about WHY, which is real information a flat "they agree"
-    // would absorb. Metric-independent — a skip has no coordinates to
-    // measure.
-    const reasons = new Set(skipped.map((r) => r.skip_reason || 'unspecified'));
-    return reasons.size <= 1 ? { kind: 'skip-agree', level: 0 } : { kind: 'skip-mixed', level: 0.4 };
-  }
+  // Both labelers have a row and neither skipped, but hasPoints() still
+  // requires the full chin+shoulder pair — a partial row (one point
+  // placed, no explicit skip) isn't scoreable yet either.
+  if (!rows.every(hasPoints)) return { kind: 'solo', level: null };
 
   // Everyone placed both points. Chin and shoulder scored SEPARATELY
   // against the same per-point PCK threshold the agreement card uses
@@ -1489,15 +1485,6 @@ function saveTeammateRow(labeler) {
     })
     .finally(() => { if (bundle.chains.get(k) === chain) bundle.chains.delete(k); });
   bundle.chains.set(k, chain);
-}
-
-// --no (#ff3b30) at level=1, --yes (#34c759) at level=0 — a direct RGB lerp,
-// not buckets, so "gradient from red to green" is literal.
-function lerpColor(level) {
-  const no = [0xff, 0x3b, 0x30], yes = [0x34, 0xc7, 0x59];
-  const t = Math.max(0, Math.min(1, level));
-  const mix = no.map((c, i) => Math.round(yes[i] + (c - yes[i]) * t));
-  return `rgb(${mix.join(',')})`;
 }
 
 // Optimistic, chained per frame — same machinery as 3.0: the local row is
@@ -2320,9 +2307,7 @@ function disagreeTitle(i, dg, metric) {
   switch (dg.kind) {
     case 'none': return `${n} — not labeled`;
     case 'solo': return `${n} — only one opinion so far`;
-    case 'conflict': return `${n} — skip conflict: someone placed points, someone else skipped`;
-    case 'skip-mixed': return `${n} — everyone skipped, but for different reasons`;
-    case 'skip-agree': return `${n} — everyone agrees: can't be labeled`;
+    case 'skip': return `${n} — someone skipped this frame`;
     default: {
       const parts = [dg.chinOk ? 'chin agrees' : 'chin disagrees', dg.shOk ? 'shoulder agrees' : 'shoulder disagrees'];
       return `${n} — ${METRIC_LABELS[metric]}: ${parts.join(', ')}`;
@@ -2437,19 +2422,19 @@ function applyAllModeFolds() {
 // disagree map — shared by the on-screen gutter (paintBatchCounts, one
 // batch at a time) and the PNG export (both per-batch and, passed the
 // whole queue, the overall totals). A PARTIAL breakdown, not a full
-// accounting: only 'scored' and the two kinds that render one of the three
-// clean colours exactly ('skip-agree' -> green, 'conflict' -> red) count.
-// 'skip-mixed' (a blended amber-ish tone) and 'solo'/'none' aren't any of
-// the three, so they're left out rather than force-fit — the three numbers
-// do NOT have to sum to the range size.
+// accounting: only 'scored' slots count at all (2026-08) — a skip on
+// either side isn't agreement OR disagreement, it's "couldn't be judged,"
+// so it's left out here the same way 'solo'/'none' always were, rather
+// than force-fit into one of the three — the three numbers do NOT have to
+// sum to the range size.
 function tallyDisagreeCounts(map, frames, start, end) {
   let g = 0, a = 0, r = 0;
   for (let i = start; i < end; i++) {
     const dg = map.get(key(frames[i]));
-    if (!dg) continue;
-    if (dg.kind === 'skip-agree' || (dg.kind === 'scored' && dg.level === 0)) g++;
-    else if (dg.kind === 'scored' && dg.level === 0.5) a++;
-    else if (dg.kind === 'conflict' || (dg.kind === 'scored' && dg.level === 1)) r++;
+    if (!dg || dg.kind !== 'scored') continue;
+    if (dg.level === 0) g++;
+    else if (dg.level === 0.5) a++;
+    else if (dg.level === 1) r++;
   }
   return { g, a, r };
 }
@@ -2488,10 +2473,12 @@ function paintOneGrid(metric) {
         // neither does) rather than a blended shade that could mean
         // several different things.
         d.style.background = dg.level === 0 ? 'var(--yes)' : dg.level === 1 ? 'var(--no)' : 'var(--maybe)';
-      } else if (dg.kind !== 'none') {
-        d.style.background = lerpColor(dg.level);
-        if (dg.kind === 'conflict') cls += ` ${CONFLICT_RING}`;
       }
+      // 'skip' and 'none' both fall through with no explicit background —
+      // the grid's own default untouched-slot grey. A skip on either side
+      // used to earn its own colour (and 'conflict' a ring on top); now it
+      // reads exactly like "not labeled," since neither is a point on the
+      // agree<->disagree spectrum.
       if (i === state.i) cls += ' cur';
       d.title = disagreeTitle(i, dg, metric);
       if (d.className !== cls) d.className = cls;
@@ -2525,12 +2512,14 @@ function paintOneGrid(metric) {
 // looked at later, by someone else, possibly printed — it should not
 // change depending on who opens it.
 function disagreeFillColor(dg) {
-  if (dg.kind === 'none') return { fill: 'rgba(120,120,128,.22)', ring: false };
-  if (dg.kind === 'solo') return { fill: 'rgba(0,113,227,.35)', ring: false };
+  if (dg.kind === 'solo') return 'rgba(0,113,227,.35)';
   if (dg.kind === 'scored') {
-    return { fill: dg.level === 0 ? '#34c759' : dg.level === 1 ? '#ff3b30' : '#ff9f0a', ring: false };
+    return dg.level === 0 ? '#34c759' : dg.level === 1 ? '#ff3b30' : '#ff9f0a';
   }
-  return { fill: lerpColor(dg.level), ring: dg.kind === 'conflict' };
+  // 'none' and 'skip' both render as the same quiet grey — a skip is not
+  // a point on the agree<->disagree spectrum, so it gets the untouched-
+  // slot colour, not one of its own.
+  return 'rgba(120,120,128,.22)';
 }
 
 // One PNG, all three metrics, every batch — not just whatever the browser
@@ -2634,20 +2623,15 @@ function exportDisagreementPNG() {
   // #legend-admin in the stylesheet.
   const legendItems = [
     ['#34c759', 'agree'], ['#ff9f0a', 'one agrees'], ['#ff3b30', 'neither agrees'],
-    ['#ff3b30', 'skip conflict', true], ['rgba(0,113,227,.35)', 'one opinion'], ['rgba(120,120,128,.22)', 'not labeled'],
+    ['rgba(0,113,227,.35)', 'one opinion'], ['rgba(120,120,128,.22)', "not labeled / skipped"],
   ];
   let lx = MARGIN;
   ctx.font = `400 11px ${FONT}`;
-  for (const [color, label, ring] of legendItems) {
+  for (const [color, label] of legendItems) {
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.roundRect(lx, legendY - 8, 8, 8, 2);
     ctx.fill();
-    if (ring) {
-      ctx.strokeStyle = 'rgba(0,0,0,.55)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(lx - 1, legendY - 9, 10, 10);
-    }
     lx += 12;
     ctx.fillStyle = '#6e6e73';
     ctx.fillText(label, lx, legendY);
@@ -2688,19 +2672,10 @@ function exportDisagreementPNG() {
         const col = local % BATCH_COLS, row = (local / BATCH_COLS) | 0;
         const x = dotsX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
         const dg = map.get(key(state.frames[i])) || { kind: 'none', level: null };
-        const { fill, ring } = disagreeFillColor(dg);
-        ctx.fillStyle = fill;
+        ctx.fillStyle = disagreeFillColor(dg);
         ctx.beginPath();
         ctx.roundRect(x, y, DOT, DOT, 2);
         ctx.fill();
-        if (ring) {
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(x - 0.75, y - 0.75, DOT + 1.5, DOT + 1.5);
-          ctx.strokeStyle = 'rgba(0,0,0,.55)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x - 1.75, y - 1.75, DOT + 3.5, DOT + 3.5);
-        }
       }
     });
   }

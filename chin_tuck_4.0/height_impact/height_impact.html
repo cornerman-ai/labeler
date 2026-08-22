@@ -771,8 +771,8 @@ body.admin #presence-banner { display: none !important; }
 /* One per grid, directly under the grid it explains. A single legend at the
    bottom of the card described the FIRST grid while sitting under the SECOND,
    which is the one place it could not mean what it said. */
-/* flex-wrap: the admin legend has six entries ("chin + shoulder agree",
-   "skip conflict", …) that don't fit one line in the sidebar's width —
+/* flex-wrap: the admin legend has five entries ("chin + shoulder agree",
+   "one of two agrees", …) that don't fit one line in the sidebar's width —
    without wrap they ran past the card edge instead of flowing to a
    second line. */
 .legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px; font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
@@ -1387,20 +1387,12 @@ body.admin #mode-card { display: block; }
   background: var(--tm-color);
 }
 
-/* ── overview grid, admin branch — a disagreement gradient replaces
-   done/skip. Fill is a continuous red<->green value set per-dot from
-   JS (a gradient can't be expressed as a fixed set of classes). .dconflict
-   layers a ring on top for the one case that ISN'T a point on that
-   gradient — a skip conflict, where the disagreement is about whether the
-   frame can be judged at all, not a distance — deliberately a different
-   ring than .cb (camera_bad): the two facts are unrelated, and a shared
-   ring would blur which one is true. .solo sits off the red-green axis
-   entirely, so "only one opinion exists yet" can never be misread as
-   either agreement or disagreement. */
-.d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.55); }
-@media (prefers-color-scheme: dark) {
-  .d4-grid .d4.dconflict { box-shadow: 0 0 0 1.5px #000, 0 0 0 2.5px rgba(255,255,255,.65); }
-}
+/* ── overview grid, admin branch — 'scored' slots get one of three
+   discrete colours from JS (see paintOneGrid()); a skip on either side
+   (2026-08) is no longer its own colour or ring — it falls through to the
+   grid's own default untouched-slot grey, same as 'none'. .solo sits off
+   the red-green axis entirely, so "only one opinion exists yet" can never
+   be misread as either agreement or disagreement. */
 .d4-grid .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
 /* ── teammate marks on canvas — every roster member, ALWAYS (admin has no
@@ -1799,9 +1791,8 @@ body.admin #mode-card { display: block; }
         <span><b style="background:var(--yes)"></b>chin + shoulder agree</span>
         <span><b style="background:var(--maybe)"></b>one of two agrees</span>
         <span><b style="background:var(--no)"></b>neither agrees</span>
-        <span><b style="box-shadow:0 0 0 1.5px #fff,0 0 0 2.5px rgba(0,0,0,.55);background:var(--no)"></b>skip conflict</span>
         <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>only one opinion</span>
-        <span><b style="background:rgba(120,120,128,.22)"></b>not labeled</span>
+        <span><b style="background:rgba(120,120,128,.22)"></b>not labeled / skipped</span>
       </div>
       <!-- Admin-only. Two independent thresholds — chin and shoulder are
            separate landmarks and don't have to share a tolerance. Each
