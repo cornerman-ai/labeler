@@ -256,6 +256,25 @@ function loadFoldedMetrics() {
     return new Set(Array.isArray(raw) ? raw.filter((m) => AGREE_METRICS.includes(m)) : []);
   } catch (e) { return new Set(); }
 }
+// ── mode agreement (the #mode-card "Alignment" panel) ──────────────────────
+// A coarser, binary sibling of AGREE_METRICS above. Those three measure HOW
+// FAR APART state.agreePair's clicks land; this measures only whether the
+// chin is on the SAME SIDE of the shoulder point for both — magnitude never
+// enters into it. 'height' = vertical relation (chin above/below the
+// shoulder point, i.e. sign of chin_y - sh_y); 'depth' = horizontal relation
+// (chin ahead of/behind it, sign of chin_x - sh_x). Both are computed from
+// the exact same four columns every variant already stores, so this reads
+// correctly on the depth variants (where the second point is the shoulder's
+// FRONTAL point) exactly as it does here (the shoulder TOP) — nothing about
+// it is height-impact-specific.
+const MODE_AXES = ['height', 'depth'];
+const MODE_FOLD_KEY = 'cs4i_mode_folded';
+function loadFoldedMode() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MODE_FOLD_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.filter((m) => MODE_AXES.includes(m)) : []);
+  } catch (e) { return new Set(); }
+}
 // Admin-adjustable, chin and shoulder independently (see #agree-thresh-chin
 // / #agree-thresh-sh in bind()) — each a fraction, e.g. 0.05 for 5%.
 // PCK-style: a point "agrees" when both raters' clicks land within its
@@ -340,6 +359,14 @@ const state = {
   disagreeByMetric: { euclid: new Map(), height: new Map(), width: new Map() },
   agreeMetric: 'euclid',   // which metric the agreement card is currently showing
   foldedMetrics: loadFoldedMetrics(), // Set of metric names folded shut — a view preference
+  // axis -> Map(slotKey -> {kind}) for the #mode-card "Alignment" panel —
+  // see modeDisagreeForSlot(). Recomputed alongside disagreeByMetric, never
+  // independently, so the two panels can never show two different pairs'
+  // worth of data.
+  modeDisagree: { height: new Map(), depth: new Map() },
+  modeOvDots: {},          // axis -> [div, ...], one per queue slot — see buildModeGrid()
+  modeOvGutters: {},       // axis -> [{g,r}, ...] per-batch tally spans
+  foldedMode: loadFoldedMode(), // Set of 'height'/'depth' folded shut — mirrors foldedMetrics
   agreeThreshChin: loadAgreeThresh(THRESH_KEY_CHIN), // fraction (e.g. 0.05) — see bind()
   agreeThreshSh: loadAgreeThresh(THRESH_KEY_SH),
   agreePair: loadAgreePair(), // [labelerA, labelerB] — see setAgreePair()
@@ -1051,6 +1078,47 @@ function disagreeForSlot(f, metric) {
   };
 }
 
+// The sign of (chin - shoulder) along one axis, for one labeler's row on
+// one frame. null when the point can't be signed at all (not placed) —
+// callers treat that as "can't compare," never as a fake third side.
+function modeSign(row, axis) {
+  const chinV = axis === 'height' ? row.chin_y : row.chin_x;
+  const shV = axis === 'height' ? row.sh_y : row.sh_x;
+  if (chinV == null || shV == null) return null;
+  const d = chinV - shV;
+  return d > 0 ? 1 : d < 0 ? -1 : 0;
+}
+
+// Binary alignment for state.agreePair on ONE frame, ONE axis — distance
+// never enters into it, only which side of the shoulder point the chin
+// lands on. 'skip' = at least one of the pair skipped this frame outright;
+// a skip says nothing about which side the chin is on, so it's grouped
+// with 'partial' (a point still missing) and 'solo'/'none' (not enough
+// opinions yet) as one calm "can't compare" grey rather than several
+// different-but-similar near-greys — see paintModeGrid()'s colour mapping.
+function modeDisagreeForSlot(f, axis) {
+  const k = key(f);
+  const [an, bn] = state.agreePair;
+  const ra = state.teamRows.get(an)?.get(k);
+  const rb = state.teamRows.get(bn)?.get(k);
+  if (!ra || !rb) return { kind: (ra || rb) ? 'solo' : 'none' };
+  if (ra.skipped === 1 || rb.skipped === 1) return { kind: 'skip' };
+  const sa = modeSign(ra, axis), sb = modeSign(rb, axis);
+  if (sa === null || sb === null) return { kind: 'partial' };
+  return { kind: sa === sb ? 'agree' : 'disagree' };
+}
+
+// Mirrors computeAllDisagree() below one-for-one — called from inside it
+// so the two panels never fall out of step with each other or with
+// state.agreePair.
+function computeAllModeDisagree() {
+  state.modeDisagree = { height: new Map(), depth: new Map() };
+  for (const f of state.frames) {
+    const k = key(f);
+    for (const axis of MODE_AXES) state.modeDisagree[axis].set(k, modeDisagreeForSlot(f, axis));
+  }
+}
+
 // All three metrics, kept live simultaneously — every grid is on screen at
 // once, not just whichever one the agreement card currently shows.
 function computeAllDisagree() {
@@ -1059,6 +1127,7 @@ function computeAllDisagree() {
     const k = key(f);
     for (const m of AGREE_METRICS) state.disagreeByMetric[m].set(k, disagreeForSlot(f, m));
   }
+  computeAllModeDisagree();
 }
 
 // Called only after a save has been CONFIRMED (save()'s success callback) —
@@ -1067,6 +1136,7 @@ function computeAllDisagree() {
 function patchDisagree(f) {
   const k = key(f);
   for (const m of AGREE_METRICS) state.disagreeByMetric[m].set(k, disagreeForSlot(f, m));
+  for (const axis of MODE_AXES) state.modeDisagree[axis].set(k, modeDisagreeForSlot(f, axis));
   renderOverview();
   renderAgreementCard();
   renderGlobalAgreement();
@@ -2118,6 +2188,59 @@ function buildOverview() {
   buildOneGrid('ov4', 'euclid', true);
   buildOneGrid('ov-height', 'height', true);
   buildOneGrid('ov-width', 'width', true);
+  buildModeGrid('ovm-height', 'height');
+  buildModeGrid('ovm-depth', 'depth');
+}
+
+// Same shape as buildOneGrid() below, kept separate rather than shoehorned
+// into it: the mode grids have no metric-card-picking click behaviour (just
+// go-to-frame) and no amber tally column (see tallyModeCounts()), so
+// sharing one function would mean threading flags through both call sites
+// for behaviour only one of them ever uses.
+function buildModeGrid(containerId, axis) {
+  const ov = $(containerId);
+  if (!ov) return;
+  ov.textContent = '';
+  const dots = [];
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < state.frames.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'd4';
+    d.title = `#${i + 1}`;
+    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
+    frag.appendChild(d);
+    dots.push(d);
+  }
+  ov.appendChild(frag);
+  state.modeOvDots[axis] = dots;
+  ov.onclick = (e) => {
+    const at = dots.indexOf(e.target);
+    if (at >= 0) go(at);
+  };
+  const gutter = ov.parentElement.querySelector('.ovn');
+  if (!gutter) return;
+  const col = document.createDocumentFragment();
+  const gutterEls = [];
+  for (let b = 0; b * BATCH < state.frames.length; b++) {
+    const count = Math.min(BATCH, state.frames.length - b * BATCH);
+    const rows = Math.ceil(count / BATCH_COLS);
+    const n = document.createElement('b');
+    const num = document.createElement('span');
+    num.textContent = b + 1;
+    const g = document.createElement('span');
+    g.className = 'ovn-g';
+    const r = document.createElement('span');
+    r.className = 'ovn-r';
+    n.append(num, g, r);
+    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+    n.style.lineHeight = '9px';
+    if (b) n.style.marginTop = '10px';
+    n.title = `frames ${b * BATCH + 1}–${b * BATCH + count}`;
+    col.appendChild(n);
+    gutterEls.push({ g, r });
+  }
+  gutter.replaceChildren(col);
+  state.modeOvGutters[axis] = gutterEls;
 }
 
 function buildOneGrid(containerId, metric, withGutter) {
@@ -2209,6 +2332,94 @@ function renderOverview() {
   paintBatchCounts('height');
   paintOneGrid('width');
   paintBatchCounts('width');
+  for (const axis of MODE_AXES) { paintModeGrid(axis); paintModeBatchCounts(axis); }
+}
+
+// Text for one mode-grid dot's tooltip — same colour-isn't-the-only-signal
+// principle as disagreeTitle() above.
+function modeTitle(i, dg, axis) {
+  const n = `#${i + 1}`;
+  const noun = axis === 'height' ? 'chin above/below the shoulder' : 'chin ahead of/behind the shoulder';
+  switch (dg.kind) {
+    case 'none': return `${n} — not labeled`;
+    case 'solo': return `${n} — only one opinion so far`;
+    case 'skip': return `${n} — someone skipped this frame`;
+    case 'partial': return `${n} — a point is still missing`;
+    case 'agree': return `${n} — ${noun}: same side`;
+    default: return `${n} — ${noun}: opposite sides`;
+  }
+}
+
+// Only agree/disagree get a colour at all — every other kind (skip,
+// partial, solo, none) falls through to the grid's own default fill (the
+// same quiet grey .d4-grid .d4 already paints an untouched slot), so
+// "can't compare" reads as one calm shade rather than a fourth colour
+// competing with green/red for attention.
+function paintModeGrid(axis) {
+  const dots = state.modeOvDots[axis];
+  if (!dots || !state.isAdmin) return;
+  const map = state.modeDisagree[axis];
+  for (let i = 0; i < state.frames.length; i++) {
+    const k = key(state.frames[i]);
+    const d = dots[i];
+    const dg = map.get(k) || { kind: 'none' };
+    let cls = 'd4';
+    d.style.background = dg.kind === 'agree' ? 'var(--yes)' : dg.kind === 'disagree' ? 'var(--no)' : '';
+    if (dg.kind === 'solo') cls += ' solo';
+    if (i === state.i) cls += ' cur';
+    d.title = modeTitle(i, dg, axis);
+    if (d.className !== cls) d.className = cls;
+  }
+}
+
+// Green/red only — no amber, there's nothing between "same side" and
+// "opposite sides" to bucket into a third count. Same "don't force-fit
+// everything into the tally" rule as tallyDisagreeCounts(): skip/partial/
+// solo/none are real slots but aren't counted here, same as that function
+// leaves 'solo'/'none' out of its own g/a/r.
+function tallyModeCounts(map, frames, start, end) {
+  let g = 0, r = 0;
+  for (let i = start; i < end; i++) {
+    const dg = map.get(key(frames[i]));
+    if (!dg) continue;
+    if (dg.kind === 'agree') g++;
+    else if (dg.kind === 'disagree') r++;
+  }
+  return { g, r };
+}
+
+function paintModeBatchCounts(axis) {
+  const gutterEls = state.modeOvGutters[axis];
+  const map = state.modeDisagree[axis];
+  if (!gutterEls || !map) return;
+  for (let b = 0; b < gutterEls.length; b++) {
+    const start = b * BATCH, end = Math.min(start + BATCH, state.frames.length);
+    const { g, r } = tallyModeCounts(map, state.frames, start, end);
+    gutterEls[b].g.textContent = g || '';
+    gutterEls[b].r.textContent = r || '';
+  }
+}
+
+// Mirrors toggleMetricFold()/applyMetricFold() below one-for-one.
+function toggleModeFold(axis) {
+  if (state.foldedMode.has(axis)) state.foldedMode.delete(axis);
+  else state.foldedMode.add(axis);
+  try { localStorage.setItem(MODE_FOLD_KEY, JSON.stringify([...state.foldedMode])); } catch (e) {}
+  applyModeFold(axis);
+}
+
+const MODE_WRAP_IDS = { height: 'ovm-height-wrap', depth: 'ovm-depth-wrap' };
+
+function applyModeFold(axis) {
+  const folded = state.foldedMode.has(axis);
+  const btn = $(`mode-label-${axis}`);
+  const wrap = $(MODE_WRAP_IDS[axis]);
+  if (btn) btn.setAttribute('aria-expanded', String(!folded));
+  if (wrap) wrap.style.display = folded ? 'none' : '';
+}
+
+function applyAllModeFolds() {
+  for (const axis of MODE_AXES) applyModeFold(axis);
 }
 
 // Green/amber/red tally over [start, end) of state.frames for one metric's
@@ -2491,6 +2702,155 @@ function exportDisagreementPNG() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `disagreement-height_impact-${(a || 'a').toLowerCase()}-${(b || 'b').toLowerCase()}-${stampFile}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+// Same fill-colour split as disagreeFillColor() above, but only two live
+// outcomes exist here — no gradient, no ring, no third amber shade —
+// because mode agreement has nothing to blend: two labelers are on the
+// same side or they aren't. Fixed to the light palette for the same reason
+// disagreeFillColor() is: an exported image is read later, by someone else,
+// possibly printed.
+function modeFillColor(dg) {
+  if (dg.kind === 'agree') return '#34c759';
+  if (dg.kind === 'disagree') return '#ff3b30';
+  if (dg.kind === 'solo') return 'rgba(0,113,227,.35)';
+  return 'rgba(120,120,128,.22)';
+}
+
+// Same layout machinery as exportDisagreementPNG() just above, cut down to
+// two columns and a green/red tally (no amber, no per-point chin/shoulder
+// stats — a mode row isn't a distance, so there's no avg/median to print).
+// A SEPARATE export rather than a third+fourth column bolted onto the
+// disagreement PNG: the two panels answer different questions (how far
+// apart vs. which side), and someone wanting one rarely wants both bundled
+// into a single wide image.
+function exportModePNG() {
+  if (!state.isAdmin || !state.frames.length) return;
+  const DOT = 9, GAP = 3, GUTTER = 30, COL_GUTTER = 18, COL_GAP = 26, MARGIN = 16;
+  const ROWS = Math.ceil(BATCH_COLS ? BATCH / BATCH_COLS : 1) || 1;
+  const colW = BATCH_COLS * DOT + (BATCH_COLS - 1) * GAP;
+  const batchH = ROWS * DOT + (ROWS - 1) * GAP;
+  const BATCH_GAP = 12;
+  const nBatches = Math.max(1, Math.ceil(state.frames.length / BATCH));
+  const colGutterX = (ci) => MARGIN + GUTTER + ci * (COL_GUTTER + colW + COL_GAP);
+  const colDotsX = (ci) => colGutterX(ci) + COL_GUTTER;
+
+  const titleY = 24, subY = 44, headY = 70, totalY = 86, legendY = 106;
+  const gridTop = legendY + 16;
+  const W = MARGIN * 2 + GUTTER + MODE_AXES.length * (COL_GUTTER + colW) + (MODE_AXES.length - 1) * COL_GAP;
+  const H = gridTop + nBatches * batchH + (nBatches - 1) * BATCH_GAP + MARGIN;
+
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+
+  ctx.fillStyle = '#f5f5f7';
+  ctx.fillRect(0, 0, W, H);
+
+  const [a, b] = state.agreePair;
+  ctx.fillStyle = '#1d1d1f';
+  ctx.font = `600 15px ${FONT}`;
+  ctx.fillText(`Alignment — ${a || '—'} × ${b || '—'}`, MARGIN, titleY);
+  ctx.font = `400 12px ${FONT}`;
+  ctx.fillStyle = '#6e6e73';
+  const stamp = new Date().toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  ctx.fillText(`${state.frames.length} frames, ${nBatches} batches — exported ${stamp}`, MARGIN, subY);
+
+  const MODE_HEAD_LABELS = { height: 'Height', depth: 'Depth' };
+  MODE_AXES.forEach((axis, ci) => {
+    const x = colDotsX(ci);
+    ctx.font = `600 12px ${FONT}`;
+    ctx.fillStyle = '#1d1d1f';
+    ctx.fillText(MODE_HEAD_LABELS[axis], x, headY);
+
+    const tot = tallyModeCounts(state.modeDisagree[axis], state.frames, 0, state.frames.length);
+    ctx.font = `700 11px ${FONT}`;
+    let tx = x;
+    [[tot.g, '#34c759'], [tot.r, '#ff3b30']].forEach(([val, color], idx, arr) => {
+      ctx.fillStyle = color;
+      const txt = String(val);
+      ctx.fillText(txt, tx, totalY);
+      tx += ctx.measureText(txt).width;
+      if (idx < arr.length - 1) {
+        ctx.fillStyle = '#6e6e73';
+        ctx.fillText(' · ', tx, totalY);
+        tx += ctx.measureText(' · ').width;
+      }
+    });
+  });
+
+  const legendItems = [
+    ['#34c759', 'same side'], ['#ff3b30', 'opposite side'],
+    ['rgba(0,113,227,.35)', 'one opinion'], ['rgba(120,120,128,.22)', "can't compare"],
+  ];
+  let lx = MARGIN;
+  ctx.font = `400 11px ${FONT}`;
+  for (const [color, label] of legendItems) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(lx, legendY - 8, 8, 8, 2);
+    ctx.fill();
+    lx += 12;
+    ctx.fillStyle = '#6e6e73';
+    ctx.fillText(label, lx, legendY);
+    lx += ctx.measureText(label).width + 14;
+  }
+
+  ctx.textBaseline = 'top';
+  for (let bi = 0; bi < nBatches; bi++) {
+    const rowTop = gridTop + bi * (batchH + BATCH_GAP);
+    const start = bi * BATCH, end = Math.min(start + BATCH, state.frames.length);
+
+    ctx.font = `600 9px ${FONT}`;
+    ctx.fillStyle = '#1d1d1f';
+    ctx.fillText(String(bi + 1), MARGIN, rowTop);
+
+    MODE_AXES.forEach((axis, ci) => {
+      const dotsX = colDotsX(ci);
+      const map = state.modeDisagree[axis];
+
+      const { g, r } = tallyModeCounts(map, state.frames, start, end);
+      ctx.font = `700 9px ${FONT}`;
+      ctx.textAlign = 'right';
+      let ty = rowTop;
+      for (const [val, color] of [[g, '#34c759'], [r, '#ff3b30']]) {
+        if (!val) continue;
+        ctx.fillStyle = color;
+        ctx.fillText(String(val), dotsX - 3, ty);
+        ty += 10;
+      }
+      ctx.textAlign = 'left';
+
+      for (let i = start; i < end; i++) {
+        const local = i - start;
+        const col = local % BATCH_COLS, row = (local / BATCH_COLS) | 0;
+        const x = dotsX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
+        const dg = map.get(key(state.frames[i])) || { kind: 'none' };
+        ctx.fillStyle = modeFillColor(dg);
+        ctx.beginPath();
+        ctx.roundRect(x, y, DOT, DOT, 2);
+        ctx.fill();
+      }
+    });
+  }
+  ctx.textBaseline = 'alphabetic';
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const stampFile = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `alignment-height_impact-${(a || 'a').toLowerCase()}-${(b || 'b').toLowerCase()}-${stampFile}.png`;
     link.click();
     URL.revokeObjectURL(url);
   }, 'image/png');
@@ -2934,6 +3294,7 @@ function bind() {
   $('agree-b').onchange = (e) => setAgreePair(1, e.target.value);
 
   $('export-png-btn').onclick = () => exportDisagreementPNG();
+  $('export-mode-png-btn').onclick = () => exportModePNG();
   $('roster-refresh-btn').onclick = () => refreshRoster();
 
   // Each of the three metric labels doubles as a fold/unfold button — see
@@ -2946,6 +3307,11 @@ function bind() {
   for (const m of AGREE_METRICS) {
     const btn = $(`metric-label-${m}`);
     if (btn) btn.onclick = () => toggleMetricFold(m);
+  }
+  // Same fold pattern, mode card — see toggleModeFold().
+  for (const axis of MODE_AXES) {
+    const btn = $(`mode-label-${axis}`);
+    if (btn) btn.onclick = () => toggleModeFold(axis);
   }
 
   $('prev').onclick = () => go(state.i - 1);
@@ -3293,6 +3659,7 @@ async function start() {
     renderGlobalAgreement();
     renderMetricLabels();
     applyAllMetricFolds();
+    applyAllModeFolds();
     startRosterPoll();
     startPresenceLoop();
     go(0, { initial: true });
