@@ -2,145 +2,350 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boxing Punch Labeler</title>
-  <link rel="stylesheet" href="../shared/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Punch &amp; Defense Labeler</title>
+  <!-- Own stylesheet, not ../shared/style.css — see the head comment in
+       punch.css for why the shared sheet had to be left alone. -->
+  <link rel="stylesheet" href="punch.css">
 </head>
 <body>
   <div id="app">
-    <!-- Top bar: compact single row -->
-    <div id="top-bar">
-      <div id="video-loader">
-        <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">Open Video File</button>
-        <input type="file" id="video-file" accept="video/*" style="display:none">
-        <span id="video-name">No video loaded</span>
-        <span id="labeler-badge" style="background:#0f3460; color:#e94560; padding:2px 10px; border-radius:10px; font-size:13px; font-weight:bold; display:none;"></span>
+
+    <!-- ── navigation bar ───────────────────────────────────────────────── -->
+    <header id="top-bar">
+      <div class="nav-lead">
+        <h1 class="nav-title">Punch &amp; Defense</h1>
+        <div id="video-loader">
+          <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
+            Open Video
+          </button>
+          <input type="file" id="video-file" accept="video/*" hidden>
+          <span id="video-name">No video loaded</span>
+        </div>
       </div>
-      <div style="font-size:12px; color:#666; margin-right:12px">
-        <a href="../callout/callout.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px">Callout labeler &rarr;</a>
-        <a href="../hip_rotation/hip_rotation_label.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Hip rotation labeler &rarr;</a>
-        <a href="../impact/impact_frame.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Impact frame labeler &rarr;</a>
-        <a href="../guard_drop/guard_drop_label.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Guard drop labeler &rarr;</a>
-        <a href="../chin_tuck_1.0/chin_tuck.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Chin tuck labeler &rarr;</a>
-        <a href="../bladedness/coach_review.html" style="color:#0f3460; text-decoration:none; padding:4px 10px; border:1px solid #0f3460; border-radius:4px; margin-left:6px">Coaching review &rarr;</a>
+
+      <div class="nav-actions">
+        <!-- The identity every save is filed under. labeler_name.js keeps this
+             input in sync across the whole suite; committing it here writes
+             through to that same store (see ui.js). -->
+        <div id="name-field">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <input id="labeler-input" placeholder="Your name" title="Your name"
+                 autocomplete="off" spellcheck="false" maxlength="40">
+        </div>
+
+        <div class="menu">
+          <button class="icon-btn" id="tools-btn" aria-haspopup="menu"
+                  aria-expanded="false" aria-controls="tools-panel"
+                  title="Other labelers">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="3" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="13" cy="8" r="1.4" fill="currentColor"/></svg>
+          </button>
+          <div class="menu-panel" id="tools-panel" role="menu" hidden>
+            <a class="menu-item" role="menuitem" href="../callout/callout.html">Callout labeler</a>
+            <a class="menu-item" role="menuitem" href="../hip_rotation/hip_rotation_label.html">Hip rotation labeler</a>
+            <a class="menu-item" role="menuitem" href="../impact/impact_frame.html">Impact frame labeler</a>
+            <a class="menu-item" role="menuitem" href="../guard_drop/guard_drop_label.html">Guard drop labeler</a>
+            <a class="menu-item" role="menuitem" href="../chin_tuck_4.0/height_guard/height_guard.html">Chin point 4.0</a>
+            <a class="menu-item" role="menuitem" href="../bladedness/coach_review.html">Coaching review</a>
+            <div class="menu-sep"></div>
+            <a class="menu-item" role="menuitem" href="../index.html">All labelers&hellip;</a>
+          </div>
+        </div>
+
+        <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
+                aria-haspopup="dialog">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+        </button>
       </div>
-      </div>
-      <!-- Hidden input to keep loadConfig working -->
+
+      <!-- app.js writes the labeler name in here and flips it visible; the
+           navigation bar's own name field already says it, so the badge is
+           kept (app.js reads it unconditionally) but never shown. -->
+      <span id="labeler-badge"></span>
+      <!-- Legacy hook kept so an older loadConfig() would still find it. -->
       <input type="hidden" id="script-url">
-    <div id="drive-link-bar" style="padding:4px 16px; background:#121a30; border-bottom:1px solid #0f3460; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <label for="drive-link" style="font-size:13px; color:#aaa; white-space:nowrap;">Drive Link:</label>
-      <input type="text" id="drive-link" placeholder="Paste Google Drive video link here" style="flex:1; min-width:200px; background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 10px; border-radius:4px; font-size:13px;">
-      <label for="training-type" style="font-size:13px; color:#aaa; white-space:nowrap;">Type:</label>
-      <select id="training-type" style="background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:13px;">
+    </header>
+
+    <!-- ── source toolbar: what this video IS ───────────────────────────── -->
+    <div id="drive-link-bar">
+      <label class="src-field" for="drive-link">
+        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <input type="text" id="drive-link" placeholder="Paste the video link">
+        <!-- Filled by ui.js from the status app.js reports as it talks to the
+             sheet: this link is the key every label is filed under, and until
+             now nothing on screen said whether it had registered. -->
+        <span id="link-status" hidden></span>
+      </label>
+
+      <span class="tdiv"></span>
+
+      <!-- No "TYPE" / "STANCE" labels: the segment names already say what they
+           are, and the hairline is what keeps the two controls from reading as
+           one five-segment control. ui.js builds each from its <select>'s
+           options and keeps the two in step, so app.js goes on reading .value
+           and hearing `change` exactly as before. -->
+      <div class="seg" id="seg-type" role="radiogroup" aria-label="Training type"></div>
+      <select id="training-type" class="sr-only" tabindex="-1" aria-hidden="true">
         <option value="shadowboxing">Shadowboxing</option>
         <option value="sparring">Sparring</option>
         <option value="bagwork">Bagwork</option>
       </select>
-      <label for="stance-select" style="font-size:13px; color:#aaa; white-space:nowrap;">Stance:</label>
-      <select id="stance-select" style="background:#1a1a2e; border:1px solid #0f3460; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:13px;">
+
+      <span class="tdiv"></span>
+
+      <div class="seg" id="seg-stance" role="radiogroup" aria-label="Stance"></div>
+      <select id="stance-select" class="sr-only" tabindex="-1" aria-hidden="true">
         <option value="Orthodox">Orthodox</option>
         <option value="Southpaw">Southpaw</option>
       </select>
     </div>
 
-    <!-- Main layout -->
+    <!-- ── main layout ──────────────────────────────────────────────────── -->
     <div id="main-layout">
-      <!-- Left sidebar: punch types -->
-      <div id="punch-panel">
-        <h3>Move Type</h3>
-        <div id="punch-buttons"></div>
-      </div>
 
-      <!-- Center: video player -->
-      <div id="video-container">
+      <!-- Left: the move catalogue -->
+      <aside id="punch-panel">
+        <p class="card-eyebrow">Move Type</p>
+        <div id="punch-buttons"></div>
+      </aside>
+
+      <!-- Centre: the video and its timeline -->
+      <main id="video-container">
         <div id="video-viewport">
           <video id="video-player" preload="auto"></video>
           <div id="video-dim-overlay"></div>
           <div id="video-overlay"></div>
-          <video id="thumb-video" preload="auto" muted style="display:none"></video>
+          <!-- Only while the picture is magnified; click to go back to 1x.
+               ui.js owns it — see setupVideoZoom(). -->
+          <button id="video-zoom-badge" type="button" hidden
+                  title="Reset zoom (or double-click the video)">1.0&times;</button>
         </div>
+
         <div id="video-controls">
           <div id="timeline-minimap" style="display:none">
             <div id="minimap-segments"></div>
             <div id="minimap-viewport"></div>
             <div id="minimap-playhead"></div>
           </div>
+
           <div id="seek-bar-wrapper">
             <div id="timeline-ticks"></div>
-            <div id="seek-bar-overlay"></div>
-            <input type="range" id="seek-bar" min="0" max="1000" value="0">
-            <div id="seek-thumbnail">
-              <canvas id="thumb-canvas" width="192" height="108"></canvas>
-              <span id="thumb-time"></span>
+            <!-- The punch strips got their own lanes above the scrubber so they
+                 can be grabbed and dragged. On the 8px scrub track they sat
+                 under the range input, which swallowed every mouse event, and
+                 were a few pixels tall besides. See setupSegmentEditing().
+                 Two lanes, not one: offense and defense punches can overlap in
+                 time (a slip thrown mid-combo), and stacked in a single row
+                 they'd hide one another. app.js's renderTimelineOverlay()
+                 routes each strip to its lane by punchBucket(); ui.js's drag
+                 handler is delegated on the #seg-lanes wrapper so it works
+                 the same in either one.
+                 This is the ZOOMED region — it and #timeline-ticks above it
+                 scale with state.zoomLevel. #scrub below deliberately does
+                 not; see setupScrubOverview() in ui.js. #round-markers is a
+                 child HERE (not a sibling spanning down into #scrub any more)
+                 so its flags zoom with the lanes they sit over; #scrub gets
+                 its own copy, #round-markers-scrub, positioned on the
+                 always-full-range track instead. -->
+            <div id="seg-lanes">
+              <div class="seg-lane" id="seg-lane-off" data-bucket="offense" aria-label="Offense punches"></div>
+              <div class="seg-lane" id="seg-lane-def" data-bucket="defense" aria-label="Defense moves"></div>
+              <div id="round-markers"></div>
+            </div>
+            <!-- The one part of the timeline that always shows the WHOLE
+                 video, start to end, no matter how far #seg-lanes above is
+                 zoomed in — the constant, always-orientable "where am I"
+                 line, the way an overview strip works in a video editor.
+                 ui.js's setupScrubOverview() overrides the native drag,
+                 click-to-seek and wheel plumbing shared/player.js would
+                 otherwise drive with the zoomed viewport, so every one of
+                 those still lands on the exact frame it points at
+                 regardless of zoom. -->
+            <div id="scrub">
+              <div id="seek-bar-overlay"></div>
+              <input type="range" id="seek-bar" min="0" max="1000" value="0" aria-label="Seek">
+              <div id="round-markers-scrub"></div>
+            </div>
+            <div id="seg-tip" hidden></div>
+            <!-- Right-click a chip in #seg-lanes to open this — see
+                 ui.js's setupSegmentContextMenu(). position:fixed and placed
+                 by JS at the click point, so where it lives in the DOM
+                 doesn't matter; kept here, next to the tip it's a sibling
+                 of. -->
+            <div id="seg-context-menu" class="ctx-menu" role="menu" hidden>
+              <button type="button" class="menu-item" role="menuitem" data-action="highlight">Highlight in Labels panel</button>
+              <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete">Delete</button>
             </div>
           </div>
+
           <div id="controls-row">
-            <button id="btn-play" onclick="togglePlay()">Play</button>
-            <button id="btn-mute" onclick="toggleMute()">&#128266;</button>
-            <button onclick="stepFrames(-2)" title="Back 2 frames">&laquo;</button>
-            <button onclick="stepFrames(-1)" title="Back 1 frame">&lsaquo;</button>
-            <button onclick="stepFrames(1)" title="Forward 1 frame">&rsaquo;</button>
-            <button onclick="stepFrames(2)" title="Forward 2 frames">&raquo;</button>
+            <!-- Transport. #btn-play and #btn-mute are left empty here: ui.js
+                 paints their SVG on load and after every toggle, because
+                 player.js writes the words "Play"/"Pause" and a speaker emoji
+                 into them and would otherwise wipe any markup put here. -->
+            <div class="tgroup">
+              <button id="btn-play" class="tbtn" onclick="togglePlay()"
+                      title="Play / pause (Space)" aria-label="Play"></button>
+              <div class="seg-static" role="group" aria-label="Step frames">
+                <button onclick="stepFrames(-2)" title="Back 2 frames" aria-label="Back 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 3 7 7l4 4M7 3 3 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame" aria-label="Back 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 3 5 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame" aria-label="Forward 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(2)" title="Forward 2 frames" aria-label="Forward 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l4 4-4 4M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+              <!-- Volume. The slider floats above the button on hover/focus
+                   rather than sitting in the row, which is already within
+                   15px of wrapping; on touch it drops inline instead, since
+                   there is no hover to reveal it. -->
+              <div id="volume">
+                <button id="btn-mute" class="tbtn" onclick="toggleMute()"
+                        title="Mute" aria-label="Mute"></button>
+                <div id="vol-pop">
+                  <input type="range" id="vol-range" min="0" max="100" step="1"
+                         value="100" aria-label="Volume">
+                  <span id="vol-val">100</span>
+                </div>
+              </div>
+            </div>
+
+            <span class="tdiv"></span>
+
+            <!-- Click to type an exact time and jump to it — ui.js owns the
+                 swap (setupTimeEdit()). #time-display keeps its id and its
+                 textContent contract with player.js's updateTimeDisplay():
+                 while editing, ui.js strips the id off this span so that
+                 function's `if (display) …` guard skips it instead of
+                 overwriting the input mid-keystroke. -->
+            <span id="time-wrap" title="Click to jump to a time">
+              <span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span>
+              <input id="time-edit" type="text" inputmode="decimal" spellcheck="false"
+                     autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
+            </span>
+
+            <span class="tdiv"></span>
+
+            <!-- Speed. ui.js fills the menu from its own rate list and wraps
+                 player.js's setSpeed(), so the keyboard shortcut, the menu and
+                 this label can never disagree. -->
             <div id="speed-controls">
-              <label>Speed:</label>
-              <button onclick="setSpeed(0.25)">0.25x</button>
-              <button onclick="setSpeed(0.5)">0.5x</button>
-              <button onclick="setSpeed(1)" class="speed-active">1x</button>
-              <button onclick="setSpeed(2)">2x</button>
+              <button id="speed-btn" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="speed-menu" title="Playback speed">
+                <span id="speed-val">1&times;</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="speed-menu" role="menu" hidden></div>
             </div>
-            <span id="time-display">0:00.000 / 0:00.000</span>
-            <button id="btn-overlay" onclick="toggleOverlay()" title="Toggle label overlays (L)">Labels: ON</button>
-            <button id="btn-defense-filter" class="overlay-off" onclick="toggleDefenseFilter()" title="Show only defense labels">Defense only: OFF</button>
-            <div id="zoom-controls">
-              <button id="btn-zoom-out" onclick="zoomOut()" title="Zoom out (Ctrl+-)">&#8722;</button>
-              <span id="zoom-level-display">1x</span>
-              <button id="btn-zoom-in" onclick="zoomIn()" title="Zoom in (Ctrl+=)">+</button>
-              <button id="btn-zoom-fit" onclick="zoomFit()" title="Fit all (Ctrl+0)">Fit</button>
-            </div>
+
           </div>
         </div>
-      </div>
+      </main>
 
-      <!-- Right sidebar: labeling workflow + log -->
-      <div id="label-panel">
-        <div id="round-indicator" class="round-idle" onclick="">Press S to start round</div>
-        <h3>Label Punch</h3>
-        <div id="selected-punch">Select a punch type first</div>
-        <button id="btn-timestamp" onclick="captureTimestamp()" disabled>
-          Select a punch type first
-        </button>
-        <div id="pending-label"></div>
+      <!-- Right: the labeling workflow -->
+      <aside id="label-panel">
+        <div id="round-indicator" class="round-idle">Press S to start round</div>
 
-        <h3>Labels <span id="label-count">(0)</span><button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none; margin-left:8px; font-size:11px; font-weight:normal; padding:3px 8px; cursor:pointer; background:#0f3460; color:#e0e0e0; border:1px solid #533483; border-radius:3px;">Unsure only: OFF</button></h3>
-        <div id="label-log"></div>
-      </div>
-    </div>
+        <section class="card" id="cap">
+          <p class="card-eyebrow">Label a move</p>
+          <!-- A connected tracker, not three status pills: a line runs through
+               all three dots and fills in behind you as you clear each step,
+               the current dot is filled and ringed, a finished one swaps its
+               number for a check. Same trick as before — lit entirely by the
+               class app.js puts on #btn-timestamp via the :has() rules in
+               punch.css, no new state, no new JavaScript. The button below is
+               the only place the current pick or the "do this first" nudge
+               needs to live; a second readout saying the same thing was
+               redundant with both the button and the highlighted catalogue
+               entry, so there's no #selected-punch here any more. -->
+          <ol class="steps">
+            <li class="step" data-s="1"><span class="step-dot"><b>1</b></span>Start</li>
+            <li class="step" data-s="2"><span class="step-dot"><b>2</b></span>Type</li>
+            <li class="step" data-s="3"><span class="step-dot"><b>3</b></span>End</li>
+          </ol>
+          <button id="btn-timestamp" onclick="captureTimestamp()" disabled>
+            Select a punch type first
+          </button>
+          <div id="pending-label"></div>
+          <button id="btn-cancel" type="button">Cancel this move &nbsp;esc</button>
+        </section>
 
-    <!-- Keyboard shortcuts help -->
-    <div id="shortcuts-bar">
-      <strong>Shortcuts:</strong>
-      Space = Play/Pause &nbsp;|&nbsp;
-      &larr;/&rarr; = &plusmn;1 frame &nbsp;|&nbsp;
-      Shift+&larr;/&rarr; = Prev/Next punch &nbsp;|&nbsp;
-      1-6 = Head punch &nbsp;|&nbsp;
-      Shift+1-6 = Body punch &nbsp;|&nbsp;
-      Q/W/A/D/R/C = Defense &nbsp;|&nbsp;
-      Enter = Capture time &nbsp;|&nbsp;
-      Z = Undo last label &nbsp;|&nbsp;
-      Esc = Cancel punch &nbsp;|&nbsp;
-      S = Round Start &nbsp;|&nbsp;
-      E = Round End &nbsp;|&nbsp;
-      L = Toggle Labels &nbsp;|&nbsp;
-      Shift+&lt;/&gt; = Speed &minus;/+ &nbsp;|&nbsp;
-      Alt+Scroll = Zoom &nbsp;|&nbsp;
-      Scroll = Pan (when zoomed) &nbsp;|&nbsp;
-      Ctrl+/- = Zoom In/Out &nbsp;|&nbsp;
-      Ctrl+0 = Fit
+        <section class="card labels-card">
+          <p class="card-eyebrow">
+            Labels <span id="label-count">(0)</span>
+            <button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none">Unsure only: off</button>
+          </p>
+          <!-- Offense / defense punches sorted by time in one list used to mean
+               scrolling past six jabs to find the one slip among them.
+               app.js's setLabelTab() drives both the selected state and what
+               #label-log renders — see shouldHideByTab(). -->
+          <div class="seg" id="label-tabs" role="tablist" aria-label="Label type">
+            <button type="button" role="tab" data-tab="combined" aria-selected="false"
+                    onclick="setLabelTab('combined')">Combined</button>
+            <button type="button" role="tab" data-tab="offense" aria-selected="true"
+                    onclick="setLabelTab('offense')">Offense</button>
+            <button type="button" role="tab" data-tab="defense" aria-selected="false"
+                    onclick="setLabelTab('defense')">Defense</button>
+          </div>
+          <div id="label-log" role="tabpanel"></div>
+        </section>
+      </aside>
     </div>
   </div>
 
+  <!-- ── keyboard shortcuts sheet ───────────────────────────────────────── -->
+  <dialog id="sc-dialog">
+    <div class="sc-head">
+      <h2>Keyboard Shortcuts</h2>
+      <button class="icon-btn" id="sc-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body">
+      <p class="sc-sec">Playback</p>
+      <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>Jump to an exact time</span><span class="sc-keys"><kbd>Click the timecode</kbd></span></div>
+      <div class="sc-row"><span>Step one frame</span><span class="sc-keys"><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
+      <div class="sc-row"><span>Jump to previous / next label</span><span class="sc-keys"><kbd>&#8679;&larr;</kbd><kbd>&#8679;&rarr;</kbd></span></div>
+      <div class="sc-row"><span>Playback speed down / up</span><span class="sc-keys"><kbd>&#8679;&lt;</kbd><kbd>&#8679;&gt;</kbd></span></div>
+      <div class="sc-row"><span>Volume up / down</span><span class="sc-keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd></span></div>
+
+      <p class="sc-sec">Labeling</p>
+      <div class="sc-row"><span>Set start time, then end time</span><span class="sc-keys"><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>Head punches &mdash; jab, cross, hooks, uppercuts</span><span class="sc-keys"><kbd>1</kbd>&ndash;<kbd>6</kbd></span></div>
+      <div class="sc-row"><span>Body punches</span><span class="sc-keys"><kbd>&#8679;1</kbd>&ndash;<kbd>&#8679;6</kbd></span></div>
+      <div class="sc-row"><span>Slips</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd></span></div>
+      <div class="sc-row"><span>Rolls</span><span class="sc-keys"><kbd>A</kbd><kbd>D</kbd></span></div>
+      <div class="sc-row"><span>Pull back / duck</span><span class="sc-keys"><kbd>R</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>Unsure</span><span class="sc-keys"><kbd>U</kbd></span></div>
+      <div class="sc-row"><span>Cancel the move being built</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <div class="sc-row"><span>Undo last label</span><span class="sc-keys"><kbd>Z</kbd></span></div>
+
+      <p class="sc-sec">Fixing a label</p>
+      <div class="sc-row"><span>Slide a punch along the timeline</span><span class="sc-keys"><kbd>Drag its strip</kbd></span></div>
+      <div class="sc-row"><span>Stretch its start or end</span><span class="sc-keys"><kbd>Drag the strip&rsquo;s edge</kbd></span></div>
+      <div class="sc-row"><span>Abandon a drag</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <div class="sc-row"><span>Edit the type and times by hand</span><span class="sc-keys"><kbd>Click the row</kbd></span></div>
+
+      <p class="sc-sec">Zooming the picture</p>
+      <div class="sc-row"><span>Zoom in / out at the pointer</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <div class="sc-row"><span>Pan while zoomed in</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
+      <div class="sc-row"><span>Back to actual size</span><span class="sc-keys"><kbd>Double-click</kbd></span></div>
+
+      <p class="sc-sec">Rounds &amp; view</p>
+      <div class="sc-row"><span>Round start / round end</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
+      <div class="sc-row"><span>Zoom timeline in / out</span><span class="sc-keys"><kbd>&#8984;+</kbd><kbd>&#8984;&minus;</kbd></span></div>
+      <div class="sc-row"><span>Fit whole timeline</span><span class="sc-keys"><kbd>&#8984;0</kbd></span></div>
+      <div class="sc-row"><span>Zoom the timeline at the pointer</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <div class="sc-row"><span>Pan the timeline once zoomed in</span><span class="sc-keys"><kbd>&#8679;Scroll</kbd></span></div>
+    </div>
+  </dialog>
+
   <script src="../shared/labeler_name.js"></script>
-<script src="../shared/player.js"></script>
+  <script src="../shared/player.js"></script>
   <script src="app.js"></script>
+  <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
+       training type / stance into the <select>s, and ui.js has to read them
+       back out to light the right segment. -->
+  <script src="ui.js"></script>
 </body>
 </html>

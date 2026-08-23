@@ -82,13 +82,23 @@ Object.assign(state, {
   labels: [],
   roundActive: false,
   unsureFilter: false,
-  defenseFilter: false,
+  // Which bucket the Labels panel is showing.
+  labelTab: 'offense',
 });
 
 // ============================================================
 // Init
 // ============================================================
-window.addEventListener('DOMContentLoaded', () => {
+// document, not window: 'DOMContentLoaded' targets document and bubbles to
+// window, so a window-registered listener fires in the BUBBLE phase — after
+// every document-registered one, regardless of script order. ui.js listens
+// on document; with this on window, ui.js's setup ran BEFORE this one no
+// matter what order the two <script> tags loaded in, which silently broke
+// anything in ui.js that has to attach an override AFTER player.js's own
+// setupSeekBar() (called from this handler) — its listener would always be
+// registered second and win. document keeps this in the natural
+// script-execution order both files were written assuming.
+document.addEventListener('DOMContentLoaded', () => {
   buildPunchButtons();
   setupPlayer();                 // video loader, seek bar, minimap — from player.js
   setupKeyboardShortcuts();
@@ -115,10 +125,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     updateUnsureFilterButton();
   }
-  if (localStorage.getItem('defenseFilter') === 'true') {
-    state.defenseFilter = true;
+  const savedTab = localStorage.getItem('labelTab');
+  if (savedTab === 'defense' || savedTab === 'combined') {
+    state.labelTab = savedTab;
   }
-  updateDefenseFilterButton();
+  updateLabelTabButtons();
 });
 
 function toggleUnsureFilter() {
@@ -132,69 +143,170 @@ function toggleUnsureFilter() {
 function updateUnsureFilterButton() {
   const btn = document.getElementById('btn-unsure-filter');
   if (!btn) return;
-  if (state.unsureFilter) {
-    btn.textContent = 'Unsure only: ON';
-    btn.style.background = '#533483';
-  } else {
-    btn.textContent = 'Unsure only: OFF';
-    btn.style.background = '#0f3460';
-  }
+  // Class, not an inline colour: the on/off look belongs to the stylesheet,
+  // which is the only thing that knows the current appearance.
+  btn.textContent = state.unsureFilter ? 'Unsure only: on' : 'Unsure only: off';
+  btn.classList.toggle('on', state.unsureFilter);
 }
 
-function toggleDefenseFilter() {
-  state.defenseFilter = !state.defenseFilter;
-  localStorage.setItem('defenseFilter', String(state.defenseFilter));
-  updateDefenseFilterButton();
-  renderLabels();
-  updateVideoOverlay();
+// The one gate every mutation of a label passes through. `foreign` is set
+// only in mergeForeignRoundMarkers() — a round marker pulled read-only from
+// ANOTHER labeler's sheet so this page can show the video's round structure
+// without letting a second labeler edit, retime, or delete someone else's
+// row. Today that is the only kind of label that can carry the flag (the
+// `list` action only ever returns the caller's OWN punch rows — see doGet in
+// apps_script/Code.js), so every check below is currently redundant with the
+// render layer simply never wiring a foreign row to a pencil, a delete
+// button, or a draggable timeline strip. It is enforced again HERE, at each
+// function that actually mutates or saves a label, so that guarantee does
+// not depend on every future call site remembering to check first — a
+// console call, a keyboard shortcut, a future feature that lists more than
+// one labeler's punches, all hit the same wall.
+function isForeignLabel(label) {
+  return !!(label && label.foreign);
+}
+function refuseForeign(label) {
+  if (!isForeignLabel(label)) return false;
+  showToast('Read-only — added by another labeler', 'error');
+  return true;
 }
 
-function updateDefenseFilterButton() {
-  const btn = document.getElementById('btn-defense-filter');
-  if (!btn) return;
-  if (state.defenseFilter) {
-    btn.textContent = 'Defense only: ON';
-    btn.classList.remove('overlay-off');
-  } else {
-    btn.textContent = 'Defense only: OFF';
-    btn.classList.add('overlay-off');
-  }
-}
-
-function shouldHideByFilter(label) {
+// The "Unsure only" filter (review labeler only) — governs the tags floating
+// over the video during playback and Shift+Arrow nav. The lanes and the
+// minimap use shouldHideByTab()'s own copy of this same check instead, so
+// that both stay in sync without sharing a function neither owns.
+function shouldHideByUnsure(label) {
   if (label.isRoundMarker) return false;
-  if (state.defenseFilter) {
-    const type = PUNCH_TYPES.find(p => p.id === label.punch);
-    if (!type || type.group !== 'defense') return true;
-  }
   if (!state.unsureFilter) return false;
   return label.punch !== 'unsure';
+}
+
+// Which of the two Labels-panel tabs (and, since the same split now runs the
+// timeline lanes, which of the two seg-lanes) a punch belongs in. 'unsure'
+// (PUNCH_TYPES group 'other') falls into the offense bucket by default —
+// there's no third lane or tab for it, and it's the one PUNCH_TYPES.group
+// that isn't 'defense'.
+function punchBucket(punchId) {
+  const type = PUNCH_TYPES.find(p => p.id === punchId);
+  return type && type.group === 'defense' ? 'defense' : 'offense';
+}
+
+// The Labels-panel list's own filter — bucketed by tab. Kept separate from
+// shouldHideByUnsure() on purpose: that one still governs the timeline's
+// video-side surfaces (the tags over the video, jumpToAdjacentLabel) exactly
+// as before. The tabs are the one thing that decides what the list shows,
+// and the Unsure-only filter is the one thing that decides what the video
+// shows.
+function shouldHideByTab(label) {
+  if (label.isRoundMarker) return false;
+  // 'combined' skips the bucket check entirely — every punch shows, same as
+  // before the tabs existed. 'offense'/'defense' still filter by bucket.
+  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
+  if (!state.unsureFilter) return false;
+  return label.punch !== 'unsure';
+}
+
+function setLabelTab(tab) {
+  if (state.labelTab === tab) return;
+  state.labelTab = tab;
+  localStorage.setItem('labelTab', tab);
+  updateLabelTabButtons();
+  renderLabels();
+}
+
+function updateLabelTabButtons() {
+  document.querySelectorAll('#label-tabs button').forEach((b) => {
+    const on = b.dataset.tab === state.labelTab;
+    b.classList.toggle('selected', on);
+    b.setAttribute('aria-selected', String(on));
+  });
 }
 
 // ============================================================
 // Punch Buttons
 // ============================================================
+// Presentation only — the buttons this builds are the same buttons as before
+// (`.punch-btn` + `data-punch-id`, click → selectPunch), just laid out as the
+// keyboard already describes them.
+//
+// The twelve offense entries are really SIX punches asked twice, head or body,
+// which is exactly what 1–6 vs Shift+1–6 means. A flat list of twelve made you
+// read every label to find one; a grid lets you read down for the punch and
+// across for the target, and puts the shortcut in the cell you are already
+// pointing at. Defense pairs off lead/rear the same way, so it gets the same
+// two columns.
 function buildPunchButtons() {
   const container = document.getElementById('punch-buttons');
-  let currentGroup = null;
-  PUNCH_TYPES.forEach((punch) => {
-    if (punch.retired) return;
-    if (punch.group !== currentGroup) {
-      currentGroup = punch.group;
-      const header = document.createElement('div');
-      header.className = 'punch-group-header';
-      header.textContent = currentGroup === 'offense' ? 'Offense' : currentGroup === 'defense' ? 'Defense' : 'Other';
-      container.appendChild(header);
-    }
+  const live = PUNCH_TYPES.filter(p => !p.retired);
+
+  const header = (text) => {
+    const h = document.createElement('div');
+    h.className = 'punch-group-header';
+    h.textContent = text;
+    container.appendChild(h);
+  };
+
+  const dot = (id) =>
+    `<span class="dot" style="background:${getPunchColor(id)}"></span>`;
+  const keycap = (punch) =>
+    `<kbd class="shortcut">${punch.key.toUpperCase()}</kbd>`;
+
+  // `named` carries the punch's own label; the matrix cells drop it because
+  // the row name to their left already says it.
+  const button = (punch, named) => {
     const btn = document.createElement('button');
-    btn.className = 'punch-btn';
+    btn.className = named ? 'punch-btn' : 'punch-btn cell';
     btn.dataset.punchId = punch.id;
-    btn.style.borderLeftColor = getPunchColor(punch.id);
-    btn.style.borderLeftWidth = '4px';
-    btn.innerHTML = `${punch.label} <span class="shortcut">${punch.key.toUpperCase()}</span>`;
+    btn.type = 'button';
+    btn.title = punch.label;
+    btn.setAttribute('aria-label', punch.label);
+    btn.innerHTML = named
+      ? `${dot(punch.id)}<span class="pname">${punch.label}</span>${keycap(punch)}`
+      : `${dot(punch.id)}${keycap(punch)}`;
     btn.onclick = () => selectPunch(punch.id);
-    container.appendChild(btn);
-  });
+    return btn;
+  };
+
+  // --- Offense: name | head | body -------------------------------------
+  const heads = live.filter(p => p.group === 'offense' && p.id.endsWith('_head'));
+  if (heads.length) {
+    header('Offense');
+    const grid = document.createElement('div');
+    grid.className = 'pmatrix';
+    grid.innerHTML =
+      '<span></span><span class="pmh">Head</span><span class="pmh">Body</span>';
+    for (const head of heads) {
+      const body = live.find(p => p.id === head.id.replace(/_head$/, '_body'));
+      const name = document.createElement('span');
+      name.className = 'prow-name';
+      name.textContent = head.label.replace(/\s*\(Head\)$/, '');
+      grid.appendChild(name);
+      grid.appendChild(button(head, false));
+      if (body) grid.appendChild(button(body, false));
+      else grid.appendChild(document.createElement('span'));
+    }
+    container.appendChild(grid);
+  }
+
+  // --- Defense: two per row, lead beside rear ---------------------------
+  const defense = live.filter(p => p.group === 'defense');
+  if (defense.length) {
+    header('Defense');
+    const grid = document.createElement('div');
+    grid.className = 'pgrid2';
+    defense.forEach(p => grid.appendChild(button(p, true)));
+    container.appendChild(grid);
+  }
+
+  // --- Anything else (currently just Unsure) ----------------------------
+  const other = live.filter(p => p.group !== 'offense' && p.group !== 'defense');
+  if (other.length) {
+    header('Other');
+    const grid = document.createElement('div');
+    grid.className = 'pgrid1';
+    other.forEach(p => grid.appendChild(button(p, true)));
+    container.appendChild(grid);
+  }
 }
 
 function selectPunch(punchId) {
@@ -205,12 +317,11 @@ function selectPunch(punchId) {
   });
 
   const punch = PUNCH_TYPES.find(p => p.id === punchId);
-  document.getElementById('selected-punch').textContent = punch.label;
 
   if (state.mode === 'punch') {
     state.mode = 'end';
     document.getElementById('pending-label').textContent =
-      `Start: ${formatTime(state.pendingStart)} | ${punch.label} -- now set the END time`;
+      `${punch.label} from ${formatTime(state.pendingStart)} — now set the end time`;
   }
   updateTimestampButton();
 }
@@ -222,22 +333,24 @@ function selectPunch(punchId) {
 function updateTimestampButton() {
   const btn = document.getElementById('btn-timestamp');
 
+  // The class on this button is also what the step pips in punch.css read
+  // (via :has()) to show where you are in start → type → end. Keep 'ready' /
+  // '' / 'end-mode' as the three states.
   if (state.mode === 'start') {
-    btn.textContent = '[ Set START time ]  (Enter)';
+    btn.textContent = 'Set Start Time  ⏎';
     btn.className = 'ready';
     btn.disabled = false;
-    document.getElementById('selected-punch').textContent = 'Select after setting start';
   } else if (state.mode === 'punch') {
-    btn.textContent = 'Select a punch type above';
+    btn.textContent = 'Choose a move type';
     btn.className = '';
     btn.disabled = true;
   } else {
     if (!state.selectedPunch) {
-      btn.textContent = 'Select a punch type first';
+      btn.textContent = 'Choose a move type';
       btn.className = '';
       btn.disabled = true;
     } else {
-      btn.textContent = '[ Set END time ]  (Enter)';
+      btn.textContent = 'Set End Time  ⏎';
       btn.className = 'end-mode';
       btn.disabled = false;
     }
@@ -254,7 +367,7 @@ function captureTimestamp() {
     state.selectedPunch = null;
     document.querySelectorAll('.punch-btn').forEach(btn => btn.classList.remove('selected'));
     document.getElementById('pending-label').textContent =
-      `Start: ${formatTime(time)} -- now select the punch type`;
+      `Started at ${formatTime(time)} — now choose the move type`;
     updateTimestampButton();
   } else if (state.mode === 'end' && state.selectedPunch) {
     const label = {
@@ -410,11 +523,24 @@ function setupDriveLink() {
 // ============================================================
 // Fetch existing labels from Google Sheet
 // ============================================================
+// The drive link's own status chip. ui.js owns the rendering; this is the only
+// place that knows whether the sheet actually answered for that link, so it is
+// the only place that can say so. Guarded, so app.js still runs without ui.js.
+function linkStatus(kind, detail) {
+  if (typeof window.setLinkStatus === 'function') window.setLinkStatus(kind, detail);
+}
+
 async function fetchLabelsFromSheet() {
   if (_pendingDeletes > 0) return;
   const driveLink = normalizeDriveUrl(document.getElementById('drive-link').value.trim());
-  if (!state.scriptUrl || !driveLink) return;
+  // Returns before any request goes out, so the chip must not be put into
+  // 'syncing' above this — it would sit there spinning forever. It is cleared
+  // instead: with no link there is nothing being filed, and leaving the last
+  // "Saved" up would claim otherwise. (The _pendingDeletes guard above is
+  // different — that link is still live, the lookup is just deferred.)
+  if (!state.scriptUrl || !driveLink) { linkStatus('idle'); return; }
 
+  linkStatus('syncing');
   try {
     const url = sheetUrl({ action: 'list', video: driveLink });
     const response = await fetch(url);
@@ -423,6 +549,7 @@ async function fetchLabelsFromSheet() {
     if (result.status === 'error') {
       console.error('Sheet fetch error:', result.message);
       showToast('Sheet error: ' + result.message, 'error');
+      linkStatus('error', 'Sheet error');
       return;
     }
 
@@ -462,15 +589,21 @@ async function fetchLabelsFromSheet() {
       syncRoundActiveFromLabels();
       renderLabels();
       showToast(`Loaded ${result.labels.length} existing labels from sheet`, 'info');
+      // Both branches say the same thing, because the only question the chip
+      // answers is "did this link register" — and it did either way. How much
+      // is filed under it is the label list's job, one panel over.
+      linkStatus('ok');
     } else {
       mergeForeignRoundMarkers(result);
       syncRoundActiveFromLabels();
       showToast('No existing labels for this video', 'info');
       renderLabels();
+      linkStatus('ok');
     }
   } catch (e) {
     console.error('Failed to fetch labels:', e);
     showToast('Failed to load labels from sheet', 'error');
+    linkStatus('error', 'Not reaching sheet');
   }
 }
 
@@ -549,7 +682,7 @@ function parseSheetTime(timeStr) {
 function renderLabels() {
   const log = document.getElementById('label-log');
   const count = document.getElementById('label-count');
-  const punchCount = state.labels.filter(l => !l.isRoundMarker && !shouldHideByFilter(l)).length;
+  const punchCount = state.labels.filter(l => !l.isRoundMarker && !shouldHideByTab(l)).length;
   count.textContent = `(${punchCount})`;
 
   // Capture open editors before wiping (keyed by array index —
@@ -579,22 +712,27 @@ function renderLabels() {
   const sorted = state.labels.map((label, idx) => ({ label, idx }));
   sorted.sort((a, b) => b.label.start - a.label.start);
   sorted.forEach(({ label, idx }) => {
-    if (shouldHideByFilter(label)) return;
+    if (shouldHideByTab(label)) return;
     const entry = document.createElement('div');
 
     if (label.isRoundMarker) {
-      entry.className = 'label-entry round-marker';
-      const icon = label.punch === 'round_start' ? '\u25B6' : '\u25A0';
-      const text = label.punch === 'round_start' ? 'Round Start' : 'Round End';
+      // rm-start/rm-end colour-code the row (green/blue, matching the
+      // timeline's own round flags \u2014 see .round-mark in punch.css);
+      // rm-foreign keeps it at the old muted, colourless look, since the
+      // tint is reserved for a boundary this labeler can actually act on.
+      const isStart = label.punch === 'round_start';
+      entry.className = 'label-entry round-marker ' + (isStart ? 'rm-start' : 'rm-end') +
+        (label.foreign ? ' rm-foreign' : '');
+      const icon = isStart ? '\u25B6' : '\u25A0';
+      const text = isStart ? 'Round Start' : 'Round End';
       if (label.foreign) {
         const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
         entry.innerHTML = `
           <span class="label-text">
-            ${icon} <span style="color:#666">${text}</span>
-            <small style="color:#555">${formatTime(label.start)} &middot; ${who} (read-only)</small>
+            <strong>${icon} ${text}</strong>
+            <small>${formatTime(label.start)} &middot; ${who} (read-only)</small>
           </span>
         `;
-        entry.style.opacity = '0.65';
         entry.querySelector('.label-text').style.cursor = 'pointer';
         entry.querySelector('.label-text').onclick = () => {
           document.getElementById('video-player').currentTime = label.start;
@@ -602,8 +740,8 @@ function renderLabels() {
       } else {
         entry.innerHTML = `
           <span class="label-text">
-            <small style="color:#555">#${label.id || '...'}</small> ${icon} <span style="color:#888">${text}</span>
-            <small style="color:#666">${formatTime(label.start)}</small>
+            <small>#${label.id || '...'}</small> <strong>${icon} ${text}</strong>
+            <small>${formatTime(label.start)}</small>
           </span>
           <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
         `;
@@ -614,11 +752,15 @@ function renderLabels() {
       const punch = PUNCH_TYPES.find(p => p.id === label.punch);
       entry.className = 'label-entry';
       entry.style.borderLeftColor = getPunchColor(label.punch);
+      // The pencil is the only thing that ever said these rows are editable.
+      // Clicking anywhere on the row has always opened the editor; nothing on
+      // screen admitted it, so the type and the times looked like a receipt.
       entry.innerHTML = `
         <span class="label-text">
           <small style="color:#555">#${label.id || '...'}</small> <strong>${punch?.label || label.punch}</strong><br>
           ${formatTime(label.start)} &rarr; ${formatTime(label.end)}
         </span>
+        <button class="label-edit" onclick="event.stopPropagation(); openEditLabel(${idx})" title="Edit type and times" aria-label="Edit"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.1 2.4 11.6 4.9M2.2 11.8l.5-2.2 6.1-6.1 2.5 2.5-6.1 6.1-2.2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
         <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
@@ -655,6 +797,7 @@ function renderLabels() {
 
 function openEditLabel(idx) {
   const label = state.labels[idx];
+  if (refuseForeign(label)) return;
   const log = document.getElementById('label-log');
 
   const entry = log.querySelector(`[data-label-idx="${idx}"]`);
@@ -662,25 +805,39 @@ function openEditLabel(idx) {
 
   entry.classList.add('editing');
 
-  const punchOpts = PUNCH_TYPES.map(p =>
-    `<option value="${p.id}" ${p.id === label.punch ? 'selected' : ''}>${p.label}</option>`
-  ).join('');
+  // Grouped, so a nineteen-item flat list stops being something to hunt
+  // through. A retired type still shows if it is the row's current value —
+  // otherwise reopening an old `step_back` row would silently retype it.
+  const opt = (p) =>
+    `<option value="${p.id}" ${p.id === label.punch ? 'selected' : ''}>${p.label}</option>`;
+  const group = (name, ps) => {
+    const live = ps.filter(p => !p.retired || p.id === label.punch);
+    return live.length ? `<optgroup label="${name}">${live.map(opt).join('')}</optgroup>` : '';
+  };
+  const inGroup = (g) => PUNCH_TYPES.filter(p => p.group === g);
+  const punchOpts =
+    group('Offense — head', inGroup('offense').filter(p => p.id.endsWith('_head'))) +
+    group('Offense — body', inGroup('offense').filter(p => p.id.endsWith('_body'))) +
+    group('Defense', inGroup('defense')) +
+    group('Other', PUNCH_TYPES.filter(p => p.group !== 'offense' && p.group !== 'defense'));
 
   entry.innerHTML = `
     <div class="edit-form">
       <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
+      <label class="edit-lbl">Move</label>
       <div class="edit-row">
         <select class="edit-punch">${punchOpts}</select>
       </div>
+      <label class="edit-lbl">Start &rarr; end</label>
       <div class="edit-row">
-        <input type="text" class="edit-start" value="${formatTime(label.start)}" title="Start">
-        <span style="color:#666">&rarr;</span>
-        <input type="text" class="edit-end" value="${formatTime(label.end)}" title="End">
+        <input type="text" class="edit-start" value="${formatTime(label.start)}" title="Start" spellcheck="false">
+        <span class="edit-arrow">&rarr;</span>
+        <input type="text" class="edit-end" value="${formatTime(label.end)}" title="End" spellcheck="false">
       </div>
-      <div class="edit-row">
-        <button class="edit-save" onclick="saveEditLabel(${idx})">Save</button>
-        <button class="edit-cancel" onclick="cancelEdit(${idx})">Cancel</button>
+      <div class="edit-row edit-actions">
         <button class="edit-seek" onclick="document.getElementById('video-player').currentTime=${label.start}">Seek</button>
+        <button class="edit-cancel" onclick="cancelEdit(${idx})">Cancel</button>
+        <button class="edit-save" onclick="saveEditLabel(${idx})">Save</button>
       </div>
     </div>
   `;
@@ -688,6 +845,7 @@ function openEditLabel(idx) {
 
 function openEditRoundMarker(idx) {
   const label = state.labels[idx];
+  if (refuseForeign(label)) return;
   const log = document.getElementById('label-log');
 
   const entry = log.querySelector(`[data-label-idx="${idx}"]`);
@@ -717,6 +875,8 @@ function openEditRoundMarker(idx) {
 }
 
 function saveEditRoundMarker(idx) {
+  const label = state.labels[idx];
+  if (refuseForeign(label)) return;
   const log = document.getElementById('label-log');
   const entry = log.querySelector(`[data-label-idx="${idx}"]`);
 
@@ -727,7 +887,6 @@ function saveEditRoundMarker(idx) {
     return;
   }
 
-  const label = state.labels[idx];
   label.start = start;
 
   entry.classList.remove('editing');
@@ -739,6 +898,8 @@ function saveEditRoundMarker(idx) {
 }
 
 function saveEditLabel(idx) {
+  const label = state.labels[idx];
+  if (refuseForeign(label)) return;
   const log = document.getElementById('label-log');
   const entry = log.querySelector(`[data-label-idx="${idx}"]`);
 
@@ -751,7 +912,6 @@ function saveEditLabel(idx) {
     return;
   }
 
-  const label = state.labels[idx];
   label.punch = punch;
   label.start = start;
   label.end = end;
@@ -772,14 +932,33 @@ function cancelEdit(idx) {
 
 function deleteLabel(idx) {
   const label = state.labels[idx];
+  if (refuseForeign(label)) return;
   state.labels.splice(idx, 1);
   renderLabels();
   deleteLabelFromSheet(label);
 }
 
+// The right-click "Highlight" action on a timeline chip (ui.js's
+// setupSegmentContextMenu) lands here: switch the Labels-panel tab if this
+// punch's bucket is currently hidden, then scroll its row into view and
+// flash it, so "which one did I just right-click" has an answer.
+function highlightLabelInPanel(idx) {
+  const label = state.labels[idx];
+  if (!label || label.isRoundMarker) return;
+  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
+    setLabelTab(punchBucket(label.punch));
+  }
+  const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);
+  if (!entry) return;
+  entry.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  entry.classList.remove('label-flash');
+  void entry.offsetWidth;   // restart the animation if it's already mid-flash
+  entry.classList.add('label-flash');
+}
+
 function undoLastLabel() {
   for (let i = state.labels.length - 1; i >= 0; i--) {
-    if (state.labels[i].foreign) continue;   // other labelers' round markers are read-only
+    if (isForeignLabel(state.labels[i])) continue;   // see refuseForeign() above
     const label = state.labels.splice(i, 1)[0];
     renderLabels();
     deleteLabelFromSheet(label);
@@ -854,7 +1033,7 @@ function jumpToAdjacentLabel(dir) {
   const EPS = 0.05;
 
   const times = state.labels
-    .filter(l => !l.isRoundMarker && !shouldHideByFilter(l))
+    .filter(l => !l.isRoundMarker && !shouldHideByUnsure(l))
     .map(l => l.start)
     .sort((a, b) => a - b);
 
@@ -951,23 +1130,28 @@ function setupKeyboardShortcuts() {
         }
         break;
 
-      case 'KeyL':
-        e.preventDefault();
-        toggleOverlay();
-        break;
-
       case 'Period':
       case 'Comma':
         if (e.shiftKey) {
           e.preventDefault();
-          const speeds = [0.25, 0.5, 1, 2];
+          // ui.js owns the rate list (it builds the speed menu from it) and
+          // publishes it here, so the keyboard steps through exactly the rates
+          // the menu offers. The literal is the fallback for a page load where
+          // ui.js has not run.
+          const speeds = window.PUNCH_SPEEDS || [0.25, 0.5, 1, 2];
           const video = document.getElementById('video-player');
-          const cur = speeds.indexOf(video.playbackRate);
+          // indexOf is exact-match on a float; nearest-rate keeps the cycle
+          // working from a rate that is not on the list.
+          let cur = 0, best = Infinity;
+          speeds.forEach((s, i) => {
+            const d = Math.abs(s - video.playbackRate);
+            if (d < best) { best = d; cur = i; }
+          });
           const next = e.code === 'Period'
             ? Math.min(cur + 1, speeds.length - 1)
             : Math.max(cur - 1, 0);
           setSpeed(speeds[next]);
-          showToast(`Speed: ${speeds[next]}x`, 'info');
+          showToast(`Speed: ${speeds[next]}×`, 'info');
         }
         break;
 
@@ -1068,11 +1252,37 @@ function updateRoundIndicator() {
 // Timeline overlay — punch segments + round shading on seek bar,
 // colored segments on minimap. Hook called by player.js.
 // ============================================================
+// The scrub track (#seek-bar-overlay + #seek-bar itself) is the one piece of
+// the timeline that ui.js deliberately keeps UNZOOMED — see setupScrubOverview()
+// there for why: it's the always-there "where am I in the whole video" line,
+// and it stops being that the moment it can also show a five-second window.
+// Every OTHER surface (ticks, both punch lanes, the round flags over them)
+// keeps using timeToViewportPct()/state.zoomLevel as before. This is the
+// plain, duration-only equivalent for anything drawn onto the scrub track.
+function timeToScrubPct(time, duration) {
+  return (time / duration) * 100;
+}
+
 function renderTimelineOverlay() {
   const overlay = document.getElementById('seek-bar-overlay');
+  // Punch strips live in two lanes above the scrubber, offense over defense —
+  // see the comment on #seg-lanes in index.html for why two. Falls back to
+  // the overlay if a lane is missing, so an older page still renders.
+  const laneOff = document.getElementById('seg-lane-off') || overlay;
+  const laneDef = document.getElementById('seg-lane-def') || overlay;
+  // Round-boundary flags are TWO layers, not one: #round-markers sits inside
+  // #seg-lanes and zooms with it; #round-markers-scrub sits inside #scrub and
+  // stays fixed to the always-full-range track. Same data, two coordinate
+  // systems — see the timeToScrubPct() comment above.
+  const markersLayer = document.getElementById('round-markers');
+  const markersScrub = document.getElementById('round-markers-scrub');
   const video = document.getElementById('video-player');
   const duration = video.duration;
   overlay.innerHTML = '';
+  if (laneOff !== overlay) laneOff.innerHTML = '';
+  if (laneDef !== overlay && laneDef !== laneOff) laneDef.innerHTML = '';
+  if (markersLayer) markersLayer.innerHTML = '';
+  if (markersScrub) markersScrub.innerHTML = '';
   if (!duration || duration <= 0) return;
 
   const roundStarts = state.labels
@@ -1091,50 +1301,97 @@ function renderTimelineOverlay() {
     rounds.push({ start: rStart, end: rEnd !== undefined ? rEnd : duration });
   }
 
-  // Shade areas outside rounds
+  // Shade areas outside rounds — on the SCRUB track, which no longer zooms,
+  // so this is plain duration math (timeToScrubPct), not the viewport-aware
+  // timeToViewportPct the rest of the timeline still uses.
   if (rounds.length > 0) {
     let pos = 0;
     for (const r of rounds) {
       if (r.start > pos) {
-        const lPct = timeToViewportPct(pos, duration);
-        const rPct = timeToViewportPct(r.start, duration);
-        if (rPct > 0 && lPct < 100) {
-          const seg = document.createElement('div');
-          seg.className = 'seek-segment outside-round';
-          seg.style.left = Math.max(0, lPct) + '%';
-          seg.style.width = (Math.min(100, rPct) - Math.max(0, lPct)) + '%';
-          overlay.appendChild(seg);
-        }
+        const seg = document.createElement('div');
+        seg.className = 'seek-segment outside-round';
+        seg.style.left = timeToScrubPct(pos, duration) + '%';
+        seg.style.width = (timeToScrubPct(r.start, duration) - timeToScrubPct(pos, duration)) + '%';
+        overlay.appendChild(seg);
       }
       pos = r.end;
     }
     if (pos < duration) {
-      const lPct = timeToViewportPct(pos, duration);
-      const rPct = timeToViewportPct(duration, duration);
-      if (rPct > 0 && lPct < 100) {
-        const seg = document.createElement('div');
-        seg.className = 'seek-segment outside-round';
-        seg.style.left = Math.max(0, lPct) + '%';
-        seg.style.width = (Math.min(100, rPct) - Math.max(0, lPct)) + '%';
-        overlay.appendChild(seg);
-      }
+      const seg = document.createElement('div');
+      seg.className = 'seek-segment outside-round';
+      seg.style.left = timeToScrubPct(pos, duration) + '%';
+      seg.style.width = (100 - timeToScrubPct(pos, duration)) + '%';
+      overlay.appendChild(seg);
     }
   }
 
-  // Punch segments
-  for (const label of state.labels) {
-    if (label.isRoundMarker) continue;
-    if (shouldHideByFilter(label)) continue;
+  // Round-boundary flags — one per marker, own or foreign, independent of the
+  // `rounds` pairing above: that array exists only to shade "outside round"
+  // spans and drops which marker is whose. This walks state.labels directly
+  // so every round_start/round_end gets a flag, each with its own seek
+  // target and ownership. Built onto BOTH marker layers — the zoomed one over
+  // the lanes and the always-full-range one over the scrub track — from the
+  // same label, just two different left% calculations.
+  if (markersLayer || markersScrub) {
+    const seekFn = (label) => (e) => { e.stopPropagation(); video.currentTime = label.start; };
+    state.labels.forEach((label) => {
+      if (!label.isRoundMarker) return;
+      const isStart = label.punch === 'round_start' || label.punch?.includes?.('start');
+      const cls = 'round-mark ' + (isStart ? 'rm-start' : 'rm-end') + (label.foreign ? ' rm-foreign' : '');
+      const title = (isStart ? 'Round start' : 'Round end') + ' — ' + formatTime(label.start) +
+        (label.foreign ? ' (read-only, another labeler)' : '');
+
+      if (markersLayer) {
+        const pct = timeToViewportPct(label.start, duration);
+        if (pct >= -1 && pct <= 101) {
+          const mark = document.createElement('div');
+          mark.className = cls;
+          mark.style.left = Math.max(0, Math.min(100, pct)) + '%';
+          mark.title = title;
+          // stopPropagation matters here, not just tidiness: #seek-bar-wrapper
+          // has its own click-to-seek listener (player.js), and without this
+          // the click bubbles up to it and re-seeks from the click's pixel
+          // position — approximately label.start, but not exactly, which
+          // defeats the one thing this marker exists to give you.
+          mark.addEventListener('click', seekFn(label));
+          markersLayer.appendChild(mark);
+        }
+      }
+      if (markersScrub) {
+        const mark = document.createElement('div');
+        mark.className = cls;
+        mark.style.left = timeToScrubPct(label.start, duration) + '%';
+        mark.title = title;
+        mark.addEventListener('click', seekFn(label));
+        markersScrub.appendChild(mark);
+      }
+    });
+  }
+
+  // Punch segments. Each strip carries the index of the label it draws, which
+  // is what lets ui.js drag it: the lane is rebuilt on every render, so the
+  // handler cannot hold a reference to the element — it looks the label back
+  // up by index on each mousemove.
+  state.labels.forEach((label, idx) => {
+    if (label.isRoundMarker) return;
+    // Inlined rather than calling shouldHideByUnsure() — this loop runs
+    // per-frame during drag, and only the unsure-filter half applies here;
+    // offense/defense already have their own separate lanes.
+    if (state.unsureFilter && label.punch !== 'unsure') return;
     const lPct = timeToViewportPct(label.start, duration);
     const rPct = timeToViewportPct(label.end, duration);
-    if (rPct < 0 || lPct > 100) continue;
+    if (rPct < 0 || lPct > 100) return;
     const seg = document.createElement('div');
     seg.className = 'seek-segment';
+    seg.dataset.labelIdx = idx;
+    // Clipped at the viewport edges for DRAWING, but the untruncated times go
+    // on the element too: a strip half off-screen at high zoom still has to
+    // drag from its real start, not from where the paint happened to begin.
     seg.style.left = Math.max(0, lPct) + '%';
     seg.style.width = Math.max(Math.min(100, rPct) - Math.max(0, lPct), 0.15) + '%';
     seg.style.backgroundColor = getPunchColor(label.punch);
-    overlay.appendChild(seg);
-  }
+    (punchBucket(label.punch) === 'defense' ? laneDef : laneOff).appendChild(seg);
+  });
 
   renderMinimap();
   updateMinimapChrome();
@@ -1151,7 +1408,10 @@ function renderMinimap() {
 
   for (const label of state.labels) {
     if (label.isRoundMarker) continue;
-    if (shouldHideByFilter(label)) continue;
+    // Same reasoning as the lane loop above: this overview strip should show
+    // exactly what the lanes show, not fewer segments because of a toggle
+    // that used to matter for a single combined lane and no longer does.
+    if (state.unsureFilter && label.punch !== 'unsure') continue;
     const seg = document.createElement('div');
     seg.style.position = 'absolute';
     seg.style.top = '0';
@@ -1200,11 +1460,11 @@ function updateVideoOverlay() {
   }
 
   const activeLabels = state.labels.filter(l =>
-    !l.isRoundMarker && t >= l.start && t <= l.end && !shouldHideByFilter(l)
+    !l.isRoundMarker && t >= l.start && t <= l.end && !shouldHideByUnsure(l)
   );
 
   const roundKey = currentRound ? 'R' + currentRound : 'out';
-  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.defenseFilter;
+  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter;
   if (overlay.dataset.activeKey === key) return;
   overlay.dataset.activeKey = key;
 
@@ -1223,15 +1483,11 @@ function updateVideoOverlay() {
 
   if (roundStarts.length > 0) {
     const tag = document.createElement('div');
-    tag.className = 'video-overlay-tag';
-    if (insideRound) {
-      tag.style.borderLeftColor = '#28a745';
-      tag.textContent = 'Round ' + currentRound;
-    } else {
-      tag.style.borderLeftColor = '#e94560';
-      tag.style.background = 'rgba(233, 69, 96, 0.3)';
-      tag.textContent = 'Outside Round';
-    }
+    // Classes, not the two hardcoded hex values (#28a745, #e94560) this used
+    // to carry — leftovers from the page's pre-redesign palette that no
+    // longer matched anything else on screen. See .round-in/.round-out.
+    tag.className = 'video-overlay-tag ' + (insideRound ? 'round-in' : 'round-out');
+    tag.textContent = insideRound ? 'Round ' + currentRound : 'Outside Round';
     overlay.appendChild(tag);
   }
 

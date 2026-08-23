@@ -1,0 +1,1439 @@
+/* ── punch.css ─────────────────────────────────────────────────────────────
+   The punch / defense labeler owns its styling, the way chin_tuck 2.0–4.0 do.
+
+   Deliberately NOT ../shared/style.css: that sheet still dresses eight other
+   pages (rules, callout, impact, guard_drop, bodyshot, hip_rotation,
+   bladedness, punch_directions, chin_tuck 0.0/1.0), and every one of them
+   leans on its ids — #top-bar, #video-container, #shortcuts-bar, .punch-btn.
+   Restyling it in place would silently redesign all of them. So this is a
+   COPY-AND-DIVERGE, same call 2.0 made: shared/style.css is untouched and the
+   punch page stops linking it.
+
+   The token set, type scale, card/eyebrow pattern and segmented-control
+   recipe below are lifted verbatim from chin_tuck_4.0 so the two tools read
+   as one product rather than two eras of one.
+
+   Apple's system palette in both schemes, an 8pt rhythm, and the video as the
+   only saturated thing on screen — everything else is grey so the footage and
+   the punch colours are the two things the eye can land on.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --line: rgba(0,0,0,.10);
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  /* Two blues and two greens, because a colour that reads well AS TEXT and a
+     colour that white text can sit ON are not the same colour. The plain
+     token is the text/stroke one and follows the scheme; the -solid token is
+     a fill that always carries white, so it is pinned in both schemes to a
+     value that clears 4.5:1 against white.
+     Apple's own systemGreen (#34c759) is only 2.2:1 under white and systemBlue
+     dark (#0a84ff) only 3.65:1 — both fine for a glyph, neither legal for the
+     label on a primary button, which is exactly what this page puts on them. */
+  --accent: #0071e3;        /* accent text and washes            */
+  --accent-solid: #0071e3;  /* fills that carry white — 4.70:1   */
+  --yes: #1c7c33;           /* green text on a light background  */
+  --yes-solid: #1c7c33;     /* fills that carry white — 5.21:1   */
+  --no: #ff3b30;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+  /* The one recessed fill on the page — segmented-control tracks, filled
+     fields, skip-shaped buttons. Apple's own `systemFill`, which is a grey
+     defined in the same way for both schemes rather than two hand-picked
+     colours that drift apart. */
+  --fill: rgba(120,120,128,.12);
+  --fill-2: rgba(120,120,128,.20);
+  /* Secondary ink for a label sitting ON one of those fills rather than on the
+     card. --ink-dim outright lands at 4.44:1 there — just under the 4.5 a body
+     label needs, because the fill lifts the background toward the text. Mixed
+     back toward --ink it clears 6:1 in both schemes and still reads demoted.
+     (chin_tuck_4.0 hit the identical 4.3:1 on its skip button; same fix.) */
+  --ink-on-fill: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
+  /* Same trap one step further: an accent-tinted wash pulls the background
+     toward the very hue of the label on it, so plain --accent lands at 3.95:1
+     there. Darkened in light, lightened in dark — 5.3:1 and 7.1:1. (4.0 calls
+     the same colour --open-ink, for the same three disclosure pills.) */
+  --accent-on-wash: color-mix(in srgb, var(--accent) 82%, black);
+  /* The wash itself, named once so the tint and its ink cannot drift apart. */
+  --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
+  /* Green and red washes for the drive link's status, with their own inks for
+     the same reason --accent-on-wash exists: a tinted background pulls toward
+     the hue of the label on it. Plain --yes on its wash is 4.01:1 in light and
+     plain --no is 2.90:1, both under the bar; darkened they clear it. */
+  --yes-wash: color-mix(in srgb, var(--yes) 15%, transparent);
+  --no-wash:  color-mix(in srgb, var(--no) 15%, transparent);
+  --yes-on-wash: color-mix(in srgb, var(--yes) 85%, black);
+  --no-on-wash:  color-mix(in srgb, var(--no) 62%, black);
+  /* Chrome that floats over content (nav bar, popover, toast) is a material,
+     not a colour: mostly the background, blurred, so what is behind it still
+     shows through as a hint of depth. */
+  --chrome: rgba(255,255,255,.72);
+  /* The timeline's "you are outside a round" hatching, and the seek track. */
+  --stripe: rgba(0,0,0,.10);
+  --track: rgba(120,120,128,.22);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1c1c1e; --line: rgba(255,255,255,.14);
+    --ink: #f5f5f7; --ink-dim: #98989d;
+    /* Text/wash colours come UP off a near-black card; the two -solid fills
+       stay where they are, because what has to stay readable on them is the
+       white label, not the page behind them. */
+    --accent: #0a84ff; --yes: #30d158;
+    --accent-on-wash: color-mix(in srgb, var(--accent) 55%, white);
+    /* Off the background rather than into it, the opposite direction from
+       light. Green already clears the bar at full strength (6.4:1); red does
+       not — #ff3b30 on its own wash is 4.11:1 here — so it is lifted toward
+       white until it does. */
+    --yes-on-wash: var(--yes);
+    --no-on-wash: color-mix(in srgb, var(--no) 78%, white);
+    --shadow: 0 1px 2px rgba(0,0,0,.5);
+    --fill: rgba(120,120,128,.24);
+    --fill-2: rgba(120,120,128,.34);
+    --chrome: rgba(28,28,30,.72);
+    --stripe: rgba(255,255,255,.10);
+    --track: rgba(120,120,128,.30);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+        system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* Safe area: harmless on a Mac, load-bearing on an iPad in landscape where
+     the home indicator otherwise sits on top of the transport row. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+/* One tactile press for every button on the page rather than each rule
+   reinventing it — the platform's controls all give the same small, quick
+   "I felt that". Outline (not box-shadow) for focus, because several buttons
+   already carry a shadow of their own and outline layers cleanly on either. */
+button { transition: transform .1s ease; }
+button:active:not(:disabled) { transform: scale(.96); }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
+
+/* labeler_name.js prepends a full-width identity strip to every page. Here the
+   name has a real home in the navigation bar (#labeler-input below, which that
+   same script keeps in sync), so the strip would be a second copy of one short
+   word above a tool whose whole point is the video. Page-scoped — every other
+   labeler keeps the shared bar.
+   #labeler-badge is app.js's own copy of the name; hidden for the same reason,
+   and with !important because app.js sets `display:inline` inline. */
+#cm-labeler-chip { display: none !important; }
+#labeler-badge   { display: none !important; }
+
+/* Visually hidden but still real: the two <select>s stay in the DOM because
+   app.js reads and writes their .value and listens for `change` on them. The
+   segmented controls beside them are the UI; the selects are the model. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+#app { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── navigation bar ──────────────────────────────────────────────────────── */
+/* Title on the left, actions on the right, one hairline underneath: the
+   platform's own top-level chrome. Translucent over --bg so it reads as a
+   layer above the content rather than another block of the same page. */
+#top-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px; height: 56px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+  position: relative; z-index: 30;
+}
+.nav-lead { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1; }
+.nav-title {
+  font-size: 17px; font-weight: 640; letter-spacing: -.02em;
+  white-space: nowrap; flex: none;
+}
+#video-loader { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* Secondary button: the file picker is how you get started, but the Drive link
+   below it is what the sheet actually keys on, so neither outranks the other
+   enough to be filled accent. */
+#btn-pick-file {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card);
+  font-size: 13px; font-weight: 510; white-space: nowrap;
+}
+#btn-pick-file:hover { border-color: var(--ink-dim); }
+#btn-pick-file svg { width: 14px; height: 14px; flex: none; }
+
+/* Dim while it still reads "No video loaded", green once a file has actually
+   decoded — the difference between a placeholder and a fact. ui.js adds the
+   class on `loadedmetadata`; player.js writes the text. */
+#video-name {
+  font-size: 12.5px; color: var(--ink-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 260px;
+}
+#video-name.loaded { color: var(--yes); font-weight: 510; }
+
+.nav-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* Your name. A filled field with a person glyph, the way a system settings
+   row looks — no border, no label, because the glyph is the label.
+   `display:flex !important` is load-bearing: labeler_name.js hides inputs
+   with this id by inline style on load, assuming its own bar is the name UI,
+   and an inline style only loses to !important. */
+#name-field {
+  display: flex !important; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px; border-radius: 8px;
+  background: var(--fill); color: var(--ink-on-fill);
+}
+#name-field svg { width: 13px; height: 13px; flex: none; }
+#labeler-input {
+  display: block !important;
+  width: 96px; border: 0; background: none; color: var(--ink);
+  font-size: 13px; font-weight: 510;
+}
+#labeler-input::placeholder { color: var(--ink-on-fill); font-weight: 400; }
+#labeler-input:focus { outline: none; }
+#name-field:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Committed — the name in the box is the name every save is filed under.
+   Same green-field confirmation 4.0 uses, for the same reason: until now the
+   only sign it had taken was that saves stopped going to "Labeler 1". */
+#name-field.saved { background: color-mix(in srgb, var(--yes) 14%, transparent); }
+#name-field.saved svg { color: var(--yes); }
+
+/* 32x32 is below the 44pt touch minimum on purpose: these two are pointer-only
+   chrome on a desktop tool, and the hit area is padded out to 44 by the
+   ::before below so a stylus or a touchscreen still lands them. */
+.icon-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  color: var(--ink-dim); border: 1px solid transparent;
+}
+.icon-btn::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%);
+}
+.icon-btn:hover { background: var(--fill); color: var(--ink); }
+.icon-btn[aria-expanded="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* Pull-down menu — the other labelers in the suite. A menu rather than the
+   old row of six bordered links: they are navigation away from this tool, and
+   six of them across the top competed with the tool's own controls. */
+.menu { position: relative; }
+.menu-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  min-width: 232px; padding: 6px; border-radius: 12px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+.menu-panel[hidden] { display: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 7px;
+  font-size: 13px; color: var(--ink); text-decoration: none;
+}
+.menu-item:hover { background: var(--fill); }
+.menu-sep { height: 1px; margin: 5px 10px; background: var(--line); }
+.menu-item svg { width: 13px; height: 13px; color: var(--ink-dim); flex: none; }
+
+/* Right-click menu on a timeline chip — same chrome as .menu-panel above, but
+   position:fixed and placed by JS at the cursor instead of anchored under a
+   button (see setupSegmentContextMenu() in ui.js). .menu-item is reused for
+   the rows; the two overrides below turn it from an <a> back into a real
+   <button> (no default border/background/font) without touching the shared
+   class other menus rely on. */
+.ctx-menu {
+  position: fixed; z-index: 100; min-width: 200px; padding: 6px;
+  border-radius: 12px; background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-menu .menu-item {
+  width: 100%; border: none; background: none; cursor: pointer;
+  font: inherit; text-align: left;
+}
+.ctx-menu .menu-item-danger:hover { color: var(--no); background: var(--fill-2); }
+
+/* ── source toolbar ──────────────────────────────────────────────────────── */
+/* What this video IS — its link, how it was shot, which stance.
+   LEFT-GROUPED, and that is the whole point of this block. The link field used
+   to be `flex: 1` across the full window, which made a 60-character URL sit in
+   a 1350px trough and shoved Type and Stance against the opposite edge — three
+   related fields as far apart as the screen allows, with the eye crossing an
+   empty metre between them. Capped at 520 and followed immediately by the two
+   controls, they read as one group; the leftover space stays empty, which is
+   what a Mac toolbar does with space it has no use for. */
+#drive-link-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; height: 48px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  position: relative; z-index: 20;
+}
+.src-field {
+  flex: 0 1 520px; min-width: 180px;
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  background: var(--fill); color: var(--ink-on-fill);
+}
+.src-field svg { width: 13px; height: 13px; flex: none; }
+.src-field:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+#drive-link {
+  flex: 1; min-width: 0; border: 0; background: none; color: var(--ink);
+  font-size: 13px;
+}
+#drive-link:focus { outline: none; }
+#drive-link::placeholder { color: var(--ink-on-fill); }
+
+/* Whether this link has registered. The field itself carries the state — the
+   whole control tints, leading icon included — because the question being
+   answered is about the field, not about a badge next to it.
+   Unlike the name field's 1.8s green flash this one PERSISTS: "are my labels
+   being filed under this link" is a question asked at any moment, so the answer
+   has to still be there when you look up. */
+#link-status {
+  flex: none; display: flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 590; white-space: nowrap;
+}
+#link-status[hidden] { display: none; }
+#link-status svg { width: 12px; height: 12px; flex: none; }
+.src-field.ok      { background: var(--yes-wash); color: var(--yes-on-wash); }
+.src-field.err     { background: var(--no-wash);  color: var(--no-on-wash); }
+.src-field.syncing { color: var(--ink-on-fill); }
+.spin { animation: spin 900ms linear infinite; transform-origin: 50% 50%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* A hairline between clusters of controls, in both toolbars and the transport
+   row. This is what replaced the TYPE / STANCE micro-caps: two segmented
+   controls side by side read as one five-segment control, so SOMETHING has to
+   separate them — but "Shadowboxing | Sparring | Bagwork" already says what it
+   is, and a label spelling that out was noise standing in for a rule. */
+.tdiv { flex: none; width: 1px; height: 22px; background: var(--line); }
+
+/* Segmented control — three or fewer mutually exclusive options, which is
+   exactly what the platform's segmented control is for. Recessed track, the
+   selected segment raised out of it on a card-coloured chip. */
+.seg {
+  display: flex; gap: 3px; padding: 2px; border-radius: 9px; background: var(--fill);
+}
+.seg button {
+  padding: 5px 12px; border-radius: 7px; border: 0;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-on-fill);
+  white-space: nowrap;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease,
+              transform .1s ease;
+}
+/* Two attribute names, one look: aria-checked is right for the radiogroup
+   controls (Type, Stance) above, aria-selected is the correct one for an
+   actual tablist (#label-tabs below) — the segmented-control APPEARANCE
+   doesn't care which ARIA pattern earned it. */
+.seg button[aria-checked="true"], .seg button[aria-selected="true"] {
+  background: var(--card); color: var(--ink); font-weight: 590;
+  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  .seg button[aria-checked="true"], .seg button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--ink) 22%, var(--card));
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) { .seg button { transition: none; } }
+
+/* The Labels panel's own tablist — same segmented-control look as Type/Stance
+   above, sized to the sidebar instead of hugging its label text: both tabs
+   split the card's width evenly, which the toolbar's controls never needed
+   because their two segments name different-length things. */
+#label-tabs { width: 100%; margin: 8px 0 10px; }
+#label-tabs button { flex: 1; text-align: center; }
+
+/* ── main layout ─────────────────────────────────────────────────────────── */
+#main-layout {
+  flex: 1; min-height: 0;
+  display: flex; gap: 12px; padding: 12px;
+  align-items: stretch;
+}
+
+.card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px;
+}
+/* Settings.app's grouped-list pattern: a small caps label names the section,
+   so a card never has to be read to find out what it is. */
+.card-eyebrow {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim); margin: 0 0 10px;
+}
+
+/* ── left sidebar: the move catalogue ────────────────────────────────────── */
+#punch-panel {
+  width: 272px; flex: none;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 16px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+}
+#punch-panel::-webkit-scrollbar { width: 8px; }
+#punch-panel::-webkit-scrollbar-thumb { background: var(--track); border-radius: 4px; }
+#punch-buttons { display: flex; flex-direction: column; }
+
+.punch-group-header {
+  font-size: 11px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim);
+  margin: 18px 0 8px;
+}
+.punch-group-header:first-child { margin-top: 0; }
+
+/* The offense matrix. Twelve punches used to be twelve rows in a flat list;
+   they are really SIX punches asked twice — head or body — which is exactly
+   how the keyboard already spelled it (1–6 vs Shift+1–6). Laid out as a grid
+   the shortcut map becomes the picture: read down for the punch, across for
+   the target, and the keycap in each cell teaches the binding by sitting
+   where the mouse already is. */
+.pmatrix {
+  display: grid; grid-template-columns: 1fr 48px 48px; gap: 6px;
+  align-items: center;
+}
+.pmh {
+  font-size: 10.5px; font-weight: 590; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--ink-dim); text-align: center;
+  padding-bottom: 2px;
+}
+.prow-name {
+  font-size: 13px; font-weight: 500; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Defense pairs off lead/rear the same way, so it gets the same two columns —
+   with the names in the cells, because there is no shared row noun to hoist. */
+.pgrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pgrid1 { display: grid; grid-template-columns: 1fr; gap: 6px; }
+
+.punch-btn {
+  display: flex; align-items: center; gap: 7px;
+  min-height: 38px; padding: 0 9px; border-radius: 9px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 12.5px; font-weight: 500; text-align: left;
+  transition: background .12s ease, border-color .12s ease, transform .1s ease;
+}
+.punch-btn:hover { border-color: var(--ink-dim); }
+/* Matrix cells hold a dot and a keycap only — the punch's name is the row
+   label to their left, and repeating it twice per row was the thing that made
+   twelve buttons unreadable in the first place. Centred, since there is no
+   text to align to. */
+.punch-btn.cell { justify-content: center; gap: 6px; padding: 0 4px; }
+.punch-btn .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                    white-space: nowrap; }
+/* The colour that this punch will be on the timeline and on the video overlay.
+   A dot, never text: the catalogue's palette is tuned for 6px segments on a
+   black seek bar and several of them (#ffdd00, #88ff00) fall far below 4.5:1
+   as a foreground colour on --card. */
+.punch-btn .dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+.punch-btn .shortcut {
+  flex: none; min-width: 20px; padding: 2px 5px; border-radius: 5px;
+  background: var(--fill); color: var(--ink-on-fill);
+  font: 500 10.5px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+}
+.punch-btn.selected {
+  background: var(--accent-solid); border-color: transparent; color: #fff;
+  font-weight: 590;
+}
+.punch-btn.selected .shortcut { background: rgba(0,0,0,.25); color: #fff; }
+.punch-btn.selected .dot { box-shadow: 0 0 0 1.5px rgba(255,255,255,.85); }
+@media (prefers-reduced-motion: reduce) { .punch-btn { transition: none; } }
+
+/* ── centre: the video stage ─────────────────────────────────────────────── */
+#video-container {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* Always black, in both schemes. The footage is the content and the content is
+   the star: a light-grey mat around a dark frame is the one place where
+   following the system appearance would work against the picture. */
+#video-viewport {
+  flex: 1; min-height: 0; position: relative; overflow: hidden;
+  border-radius: var(--radius); background: #000;
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; justify-content: center;
+}
+/* transform-origin 0 0 is what makes zoom-at-cursor solvable in closed form:
+   the offset that keeps a point under the pointer is then a plain subtraction
+   in the element's own coordinates. Same reason chin_tuck_4.0's stage uses it.
+   A transform does not affect layout, so the centring above still holds and
+   the overlays — which are siblings pinned to the viewport, not the video —
+   stay put while the picture moves under them. */
+#video-player {
+  display: block; max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  transform-origin: 0 0;
+}
+/* Click = play/pause, at rest zoom only — scoped so it doesn't outrank the
+   grab/grabbing cursors #video-viewport.zoomed/.panning already set. An
+   unscoped rule directly on #video-player would win over those by
+   specificity even though they're declared for the click-to-pan state. */
+#video-viewport:not(.zoomed) #video-player { cursor: pointer; }
+/* Past this magnification the browser's smoothing is inventing pixels between
+   the real ones and a glove edge becomes a smear. Pixelated shows the actual
+   grid the frame is made of — no more information, but the edge is where the
+   pixels say it is. */
+#video-player.sharp { image-rendering: pixelated; }
+
+#video-viewport.zoomed  { cursor: grab; }
+#video-viewport.panning { cursor: grabbing; }
+
+/* Sits opposite #video-overlay's tags (top-left) so the two never collide. */
+#video-zoom-badge {
+  position: absolute; top: 12px; right: 12px; z-index: 11;
+  padding: 5px 10px; border-radius: 8px;
+  background: rgba(0,0,0,.55); color: #fff;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  font: 590 12px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+#video-zoom-badge[hidden] { display: none; }
+#video-zoom-badge:hover { background: rgba(0,0,0,.78); }
+
+#video-dim-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 9;
+  transition: opacity .3s; display: none;
+}
+#video-dim-overlay.active {
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+#video-dim-overlay .dim-label {
+  font-size: 15px; font-weight: 590; letter-spacing: .02em;
+  color: #fff; background: rgba(0,0,0,.55);
+  padding: 8px 16px; border-radius: 999px;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+
+#video-overlay {
+  position: absolute; top: 12px; left: 12px; z-index: 10;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  pointer-events: none;
+}
+#video-overlay:empty { display: none; }
+/* Over the picture, so it is its own material regardless of the page scheme —
+   white text on a dark blur, the way a video HUD reads on any footage. */
+.video-overlay-tag {
+  padding: 6px 13px; border-radius: 9px;
+  font-size: 14px; font-weight: 590; letter-spacing: -.01em; color: #fff;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-left: 3px solid; white-space: nowrap;
+  pointer-events: auto; cursor: pointer;
+  transition: background .15s;
+}
+.video-overlay-tag:hover { background: rgba(0,0,0,.75); }
+/* The round-status tag, replacing two hardcoded hex values (#28a745, #e94560)
+   left over from the page's pre-redesign palette — they read as a jarring
+   mismatch against the token system everywhere else on the page. Inside a
+   round tints the border only, matching the plain dark HUD every other tag
+   uses; outside a round tints the FILL too, because a punch thrown out here
+   is one the pipeline discards — that is worth more than a border's worth of
+   colour, on the one tag whose whole job is to say "this doesn't count". */
+.video-overlay-tag.round-in  { border-left-color: var(--yes-solid); }
+.video-overlay-tag.round-out {
+  border-left-color: var(--no);
+  background: color-mix(in srgb, var(--no) 32%, rgba(0,0,0,.55));
+}
+.video-overlay-tag.round-out:hover { background: color-mix(in srgb, var(--no) 40%, rgba(0,0,0,.75)); }
+
+/* ── timeline ────────────────────────────────────────────────────────────── */
+#video-controls {
+  flex: none; display: flex; flex-direction: column; gap: 8px;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px 12px;
+}
+
+#timeline-minimap {
+  position: relative; width: 100%; height: 10px;
+  background: var(--fill); border-radius: 3px; cursor: pointer;
+}
+#minimap-segments { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#minimap-viewport {
+  position: absolute; top: 0; height: 100%; z-index: 1; cursor: grab;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 3px;
+}
+#minimap-viewport:active { cursor: grabbing; }
+#minimap-playhead {
+  position: absolute; top: 0; width: 2px; height: 100%; z-index: 2;
+  background: var(--ink); border-radius: 1px; pointer-events: none;
+}
+
+#seek-bar-wrapper { position: relative; width: 100%; margin-top: 18px; }
+
+#timeline-ticks {
+  position: absolute; top: -17px; left: 0; right: 0; height: 17px;
+  /* auto, not none: clicking a tick seeks to the time it names — see
+     setupZoomedClickToSeek() in ui.js. The ticks/labels themselves stay
+     pointer-events:none (below) since they're not the target, the ROW is;
+     hit-testing a 1px tick mark or the gap between two labels would make
+     most of the ruler dead space. */
+  pointer-events: auto; cursor: pointer;
+  overflow: hidden; z-index: 2;
+}
+.timeline-tick, .timeline-tick-label { pointer-events: none; }
+.timeline-tick { position: absolute; bottom: 0; width: 1px; height: 4px; background: var(--track); }
+.timeline-tick.major { height: 7px; background: var(--ink-dim); }
+.timeline-tick-label {
+  position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap;
+  font: 500 9.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink-dim); font-variant-numeric: tabular-nums;
+}
+
+/* The punch strips, in two lanes of their own above the scrubber — offense on
+   top, defense underneath, so a slip thrown mid-combo doesn't have to hide
+   behind the jab it answers. They used to be painted onto the 8px scrub
+   track, underneath the range input — which meant they were 8px tall, often
+   3px wide, and sat below a control that swallows every mouse event that
+   reaches it. Nothing about that could be dragged. Up here each is 14px of
+   grabbable chip, the scrub thumb never rides over them, and "where the
+   punches are" reads as a separate thing from "where the playhead is" —
+   which is what it is. */
+/* position:relative because #round-markers is now a CHILD (not a sibling
+   spanning down into #scrub) — see the comment on #seg-lanes in index.html. */
+#seg-lanes { position: relative; display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.seg-lane {
+  position: relative; height: 14px;
+  border-radius: 5px; background: var(--fill); overflow: hidden;
+}
+/* Which lane is which — as ::before content, not a real DOM child: app.js's
+   renderTimelineOverlay() does `lane.innerHTML = ''` on every repaint (every
+   frame while dragging), which would wipe a real label element right along
+   with the chips it's clearing. A pseudo-element isn't part of innerHTML at
+   all, so it survives every one of those repaints for free, no JS change
+   needed. z-index above the chips, with a halo instead of a solid backing —
+   a filled pill would be one more opaque thing over a lane that is already
+   only 14px tall; the halo keeps the tiny caption readable over a bright
+   chip without adding a second visual layer to the lane. */
+.seg-lane::before {
+  position: absolute; top: 0; bottom: 0; left: 5px; z-index: 2;
+  display: flex; align-items: center;
+  font-size: 8px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--ink-dim);
+  text-shadow: 0 0 3px var(--fill), 0 0 3px var(--fill), 0 0 3px var(--fill);
+  pointer-events: none;
+}
+#seg-lane-off::before { content: 'Offense'; }
+#seg-lane-def::before { content: 'Defense'; }
+.seg-lane .seek-segment {
+  position: absolute; top: 2px; height: 10px; border-radius: 3px;
+  /* A real punch (0.3-0.9s) against a multi-minute video is under 0.3% of
+     the lane's width — 3px used to be the actual floor here (the JS side's
+     own 0.15% floor computes even smaller and never wins), which on an
+     856px lane is a barely-there fleck. 7px is still a mark, not a bar, but
+     it is a mark you can actually see and aim a cursor at without zooming
+     in first. */
+  min-width: 7px; opacity: .9; pointer-events: auto; cursor: grab;
+  transition: opacity .12s ease, top .12s ease, height .12s ease;
+}
+.seg-lane .seek-segment:hover { opacity: 1; top: 0; height: 14px; }
+/* Set from JS while a drag is live, and while hovering an edge — the pointer
+   is the only thing that says whether this drag will move the punch or stretch
+   one end of it. */
+.seg-lane .seek-segment.dragging { opacity: 1; top: 0; height: 14px;
+                                   cursor: grabbing; box-shadow: 0 0 0 1.5px var(--ink); }
+@media (prefers-reduced-motion: reduce) { .seg-lane .seek-segment { transition: none; } }
+
+/* What you are about to drag, named. Follows the pointer along the lane and
+   is the only place the punch's exact times appear next to the picture. */
+#seg-tip {
+  position: absolute; bottom: calc(100% + 6px); z-index: 30;
+  padding: 5px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  font-size: 11.5px; color: var(--ink);
+}
+#seg-tip[hidden] { display: none; }
+#seg-tip b { font-weight: 590; }
+#seg-tip span {
+  color: var(--ink-dim); margin-left: 6px;
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Exactly where a round starts or ends — a vertical line + flag, built by
+   renderTimelineOverlay(). The hatched "outside round" shading on the scrub
+   track says roughly where you are RELATIVE to a round; this says exactly
+   where the boundary itself falls, to the pixel.
+   TWO layers sharing this same rule: #round-markers lives inside #seg-lanes
+   and zooms with it (positioned by timeToViewportPct); #round-markers-scrub
+   lives inside #scrub, which never zooms (positioned by timeToScrubPct) —
+   see setupScrubOverview() in ui.js for why the scrub track is the one part
+   of the timeline that always shows the whole video. Sized top:0/bottom:0
+   against each one's OWN parent rather than a fixed height, so it tracks
+   whatever that box's height happens to be (touch sizing, a future third
+   lane) without a number to keep in sync here. */
+#round-markers, #round-markers-scrub {
+  position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+  pointer-events: none; z-index: 15;
+}
+.round-mark {
+  position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
+  background: var(--yes-solid);
+}
+/* Start is green — the same colour #round-indicator turns when a round is
+   live. End is the accent blue, not red: this is a neutral boundary marker,
+   not a warning, and red on this page is reserved for delete/destructive. */
+.round-mark.rm-end { background: var(--accent-solid); }
+/* The actual click target is the dot at the top, not the hairline running the
+   full height — the LINE stays pointer-events:none so it can pass through the
+   lane's own drag surface underneath rather than shadowing a punch strip that
+   happens to start at the same instant. Ringed in --card so it pops off
+   whatever colour of strip happens to sit behind it in either lane. */
+.round-mark::before {
+  content: ''; position: absolute; top: -3px; left: 50%;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: inherit; box-shadow: 0 0 0 2px var(--card);
+  transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer;
+}
+/* A wider, invisible hit box around that 8px dot — clicking anywhere in it
+   still resolves to .round-mark (pseudo-elements aren't separate DOM nodes,
+   so the click listener on the real element fires either way). Not the full
+   44pt minimum: on a 2px-wide flag, that would overlap its neighbour on a
+   short round and eat into the drag lane's own hit-testing underneath. This
+   is a precision affordance for a pointer, not the touch-primary way to jump
+   to a boundary — the side-panel row is, and that one is sized properly. */
+.round-mark::after {
+  content: ''; position: absolute; top: -11px; left: 50%;
+  width: 20px; height: 20px; transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer;
+}
+/* Someone else's round marker: present, because the round structure is real
+   whoever set it, but dimmed — the tint is reserved for the boundaries this
+   labeler can act on. Matches the read-only weight already used for a
+   foreign round-marker row in the side panel. */
+.round-mark.rm-foreign { opacity: .45; }
+
+#scrub { position: relative; }
+#seek-bar-overlay {
+  position: absolute; top: 50%; left: 0; right: 0; height: 8px;
+  transform: translateY(-50%);
+  pointer-events: none; z-index: 0; overflow: hidden; border-radius: 4px;
+}
+.seek-segment {
+  position: absolute; top: 0; height: 100%; border-radius: 2px;
+  opacity: .85; pointer-events: none;
+}
+/* Outside a round: hatched rather than tinted, so it reads as "not part of the
+   take" on a track that is already carrying twenty punch colours. */
+.seek-segment.outside-round {
+  opacity: 1; border-radius: 0; background: var(--fill);
+  background-image: repeating-linear-gradient(45deg,
+    transparent 0 3px, var(--stripe) 3px 6px);
+}
+
+#seek-bar {
+  position: relative; z-index: 1; width: 100%; height: 18px;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  cursor: pointer; margin: 0;
+}
+#seek-bar::-webkit-slider-runnable-track {
+  background: var(--track); height: 8px; border-radius: 4px;
+}
+#seek-bar::-moz-range-track { background: var(--track); height: 8px; border-radius: 4px; }
+#seek-bar::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%; margin-top: -4px;
+  background: #fff; border: .5px solid rgba(0,0,0,.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,.30), 0 3px 8px rgba(0,0,0,.15);
+  cursor: pointer;
+}
+#seek-bar::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; border: .5px solid rgba(0,0,0,.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,.30); cursor: pointer;
+}
+
+/* ── transport row ───────────────────────────────────────────────────────── */
+/* Five clusters, hairline-separated, every control the same 32px tall and from
+   the same shape family: transport | timecode | speed | overlays | zoom.
+   Before this it was nine loose pills of five different widths in one
+   undifferentiated row, headed by a big filled blue Play — the loudest object
+   on a page whose actual primary action ("Set End Time") lives in the side
+   panel. Nothing here is filled accent any more: the row is chrome, and chrome
+   does not outrank the work.
+   Wrapping is left-aligned (no margin-left:auto): the clusters need ~840px and
+   the video column is 890 at 1512, so it is one row on a laptop and two
+   left-flowing rows below that. */
+#controls-row {
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+}
+.tgroup { display: flex; align-items: center; gap: 6px; }
+
+/* Icon buttons — play/pause and mute. Square, so they keep the rhythm of the
+   joined stepper between them; Play is the only tinted one, which is all the
+   emphasis a transport control needs. Their glyphs are OWNED BY ui.js:
+   player.js writes the words "Play"/"Pause" and a speaker emoji into them, so
+   ui.js repaints an SVG over the top — see paintPlay()/paintMute(). */
+.tbtn {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--ink);
+}
+.tbtn:hover { border-color: var(--ink-dim); }
+.tbtn svg { width: 15px; height: 15px; display: block; }
+#btn-play {
+  background: var(--accent-wash); border-color: transparent;
+  color: var(--accent-on-wash);
+}
+#btn-play:hover { border-color: transparent;
+                  background: color-mix(in srgb, var(--accent) 22%, transparent); }
+#btn-play svg { width: 16px; height: 16px; }
+
+/* Joined group for the frame steppers — the chevrons ARE the labels, and four
+   separate bordered buttons read as four unrelated actions instead of one
+   nudge control with two magnitudes each way. Double chevron = two frames. */
+.seg-static { display: flex; }
+.seg-static button {
+  display: grid; place-items: center;
+  height: 32px; min-width: 32px; padding: 0 8px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; line-height: 1; color: var(--ink);
+}
+.seg-static button:first-child { border-radius: 8px 0 0 8px; }
+.seg-static button:last-child  { border-radius: 0 8px 8px 0; }
+.seg-static button + button { margin-left: -1px; }
+.seg-static button:hover { border-color: var(--ink-dim); z-index: 1; }
+.seg-static button:active { background: var(--fill); }
+.seg-static svg { width: 13px; height: 13px; display: block; }
+
+/* Volume, 0–100. The slider does not live in the row — that row is 15px from
+   wrapping — it floats above the mute button on hover or keyboard focus, the
+   way a player's volume control has worked since forever. Absolutely
+   positioned, so revealing it costs the layout nothing and pushes nothing
+   sideways. The button underneath still mutes on a single click. */
+#volume { position: relative; display: flex; }
+#vol-pop {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  z-index: 40; display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px; border-radius: 11px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  opacity: 0; visibility: hidden;
+  transition: opacity .14s ease, visibility .14s;
+}
+/* :focus-within is what makes it reachable without a mouse — tabbing to the
+   slider reveals the thing being adjusted. */
+#volume:hover #vol-pop, #volume:focus-within #vol-pop { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { #vol-pop { transition: none; } }
+
+/* Filled up to the thumb, empty past it — the fill IS the reading, which is
+   why the number beside it can stay this quiet. */
+#vol-range {
+  -webkit-appearance: none; appearance: none;
+  width: 92px; height: 14px; background: transparent; cursor: pointer; margin: 0;
+}
+#vol-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right,
+    var(--accent) var(--pct, 100%), var(--track) var(--pct, 100%));
+}
+#vol-range::-moz-range-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right,
+    var(--accent) var(--pct, 100%), var(--track) var(--pct, 100%));
+}
+#vol-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 12px; height: 12px; border-radius: 50%; margin-top: -4px;
+  background: #fff; border: .5px solid rgba(0,0,0,.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+#vol-range::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; border: .5px solid rgba(0,0,0,.15);
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+#vol-val {
+  min-width: 24px; text-align: right;
+  font: 500 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+
+/* A READOUT that is ALSO a control — bare text next to eight buttons said
+   neither. Recessed into the same fill the segmented tracks use, so the row
+   reads "controls, then a display, then controls". Fixed width because the
+   string is monospaced and must not twitch the row every frame — held on the
+   WRAPPER now, so swapping the span for the input on click keeps the same
+   footprint instead of the pill shrinking to fit "0:08.250" alone. */
+#time-wrap {
+  position: relative; flex: none; cursor: pointer;
+  display: grid; place-items: center;
+  height: 32px; min-width: 156px; padding: 0 12px; border-radius: 8px;
+  background: var(--fill);
+  transition: background .12s ease;
+}
+#time-wrap:hover { background: var(--fill-2); }
+/* The ring belongs to the pill, not the bare input sitting inside it — same
+   convention as .src-field / #name-field. */
+#time-wrap:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { #time-wrap { transition: none; } }
+
+#time-display, #time-edit {
+  font: 500 12.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+/* `hidden` toggles which of the two is present. Restated with !important:
+   an ID selector elsewhere setting `display` would otherwise outrank the
+   UA stylesheet's `[hidden]{display:none}` on specificity alone. */
+#time-display[hidden], #time-edit[hidden] { display: none !important; }
+
+#time-edit {
+  width: 100%; border: 0; background: none; text-align: center; padding: 0;
+}
+#time-edit:focus { outline: none; }
+
+/* Speed: a pop-up menu, not four permanent buttons.
+   0.25/0.5/1/2 as an always-visible segmented control spent ~200px of the row
+   on a setting touched a few times an hour, and pinned the choice to whatever
+   four values happened to fit. A pull-down showing the CURRENT rate costs
+   62px, offers six, and is how the platform presents a value with a small
+   closed set of options. Opens UPWARD — this row sits at the window's foot. */
+#speed-controls { position: relative; display: flex; align-items: center; }
+#speed-btn {
+  display: flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 9px 0 11px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--ink);
+  font: 500 12.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+#speed-btn:hover { border-color: var(--ink-dim); }
+/* Anything but 1× is a state worth seeing without reading the number: a 2×
+   pass left running is a real way to mislabel a start frame. */
+#speed-btn[aria-expanded="true"], #speed-btn.off-normal {
+  background: var(--accent-wash); border-color: transparent; color: var(--accent-on-wash);
+}
+#speed-val { min-width: 38px; text-align: right; }
+#speed-btn svg { width: 9px; height: 9px; flex: none; opacity: .6;
+                 transition: transform .2s ease; }
+#speed-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* Nine rates open upward from a row at the foot of the window: 253px normally,
+   410px once coarse-pointer sizing kicks in, which on an 812px-tall phone
+   leaves 22px of headroom and on anything shorter runs off the top.
+   A pop-up that scrolls when it cannot fit is what the platform does — but the
+   ceiling is the space ABOVE THE BUTTON, not the window height, so ui.js sets
+   max-height when it opens the menu (a `calc(100vh - …)` here is wrong by
+   exactly however far up the page the transport row happens to sit). */
+#speed-menu {
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  overflow-y: auto; overscroll-behavior: contain;
+  z-index: 40; min-width: 104px; padding: 6px; border-radius: 12px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+#speed-menu[hidden] { display: none; }
+/* The tick sits in a fixed gutter so the rates stay in one column whether or
+   not they are the current one — the platform's own pop-up menu behaviour. */
+#speed-menu button {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 10px; border-radius: 7px; border: 0;
+  font: 500 12.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+#speed-menu button:hover { background: var(--fill); }
+#speed-menu button::before {
+  content: '\2713'; width: 11px; flex: none; font-size: 11px;
+  color: var(--accent); opacity: 0;
+}
+#speed-menu button[aria-checked="true"]::before { opacity: 1; }
+#speed-menu button[aria-checked="true"] { font-weight: 700; }
+
+
+/* ── right sidebar: the labeling workflow ────────────────────────────────── */
+#label-panel {
+  width: 304px; flex: none;
+  display: flex; flex-direction: column; gap: 12px;
+  min-height: 0; overflow: hidden;
+}
+
+/* Round state. Not decoration — every punch outside a round is a punch the
+   pipeline will ignore, so this is the one status on the page that has to be
+   readable without being looked for. It is also the button that changes it. */
+#round-indicator {
+  flex: none;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 14px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 590; text-align: center;
+  transition: background .15s ease, color .15s ease, transform .1s ease;
+  box-shadow: var(--shadow);
+}
+#round-indicator.round-idle { background: var(--card); color: var(--ink-dim); }
+#round-indicator.round-idle:hover { color: var(--ink); }
+#round-indicator.round-active {
+  background: var(--yes-solid); color: #fff;
+  box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--yes) 22%, transparent);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  #round-indicator.round-active { animation: none; }
+  #round-indicator { transition: none; }
+}
+
+/* The three-step capture flow, drawn from the ONE piece of state the page
+   already publishes: the class on #btn-timestamp. app.js sets `.ready` in
+   start mode, `.end-mode` once a type is picked, and neither while it is
+   waiting for that pick — so :has() can read the mode off the button and light
+   the matching step without a line of new JavaScript.
+   A connected tracker, not three separate status pills: a line runs through
+   the row of dots and fills in green behind you as each step clears, the
+   current dot is filled and ringed, a finished one swaps its number for a
+   check — the standard shape of a multi-step flow (Setup Assistant, Apple ID
+   two-factor, any "step 2 of 3" screen), rather than three buttons that
+   happened to sit next to each other. */
+.steps {
+  display: flex; margin: 0 0 14px; padding: 0 2px; list-style: none;
+}
+.step {
+  flex: 1; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 590; color: var(--ink-dim);
+  transition: color .18s ease;
+}
+/* The connector: drawn on every step EXCEPT the first, running from THIS
+   step's own dot-centre back to the PREVIOUS one's. Three equal-width flex
+   items with no gap between them makes that span exactly right:50%/width:100%
+   of the item's own box — the previous dot's centre is, by construction, one
+   full item-width to the left of this one's. Sits behind the dot (z-index 0
+   vs. the dot's 1) so the dot visually breaks the line at each stop, the way
+   a stop breaks a train line on a transit map. */
+.step:not(:first-child)::before {
+  content: ''; position: absolute; top: 9px; right: 50%; width: 100%; height: 2px;
+  background: var(--track); z-index: 0;
+}
+.step-dot {
+  position: relative; z-index: 1;
+  display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--card); border: 1.5px solid var(--track);
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+/* A step you have not reached is a bare numeral in an outlined, unfilled
+   dot — reaching it fills the dot in; clearing it swaps the numeral for a
+   check (below). Nothing is painted behind an unreached numeral until there
+   is a filled state to paint, so it inherits the dot's own contrast instead
+   of risking white-on-light-grey. */
+.step-dot b {
+  font-size: 10px; font-weight: 700; color: var(--ink-dim);
+  transition: opacity .12s ease;
+}
+/* The check that replaces it once a step is done — see the .step-dot b
+   { opacity: 0 } pairing below each "done" rule. One glyph, not an SVG: at
+   10px a checkmark character is as crisp as a path would be. */
+.step-dot::after {
+  content: '\2713'; position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 10px; font-weight: 700; color: #fff; opacity: 0;
+  transition: opacity .12s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .step, .step-dot, .step-dot b, .step-dot::after { transition: none; }
+}
+/* No .on / .done classes: nothing on the page adds them. Every state below is
+   read straight off #btn-timestamp by :has(), which is the whole point — the
+   tracker lights up without app.js knowing it exists. */
+
+/* ── current step ─────────────────────────────────────────────────────────
+   Filled dot, white numeral, a soft ring — the one visual language for
+   "you are here" already used on this page (#round-indicator's active glow
+   is the same box-shadow trick). */
+#cap:has(#btn-timestamp.ready) .step[data-s="1"],
+#cap:not(:has(#btn-timestamp.ready)):not(:has(#btn-timestamp.end-mode)) .step[data-s="2"],
+#cap:has(#btn-timestamp.end-mode) .step[data-s="3"] { color: var(--ink); }
+
+#cap:has(#btn-timestamp.ready) .step[data-s="1"] .step-dot,
+#cap:not(:has(#btn-timestamp.ready)):not(:has(#btn-timestamp.end-mode)) .step[data-s="2"] .step-dot,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="3"] .step-dot {
+  background: var(--accent-solid); border-color: transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+#cap:has(#btn-timestamp.ready) .step[data-s="1"] .step-dot b,
+#cap:not(:has(#btn-timestamp.ready)):not(:has(#btn-timestamp.end-mode)) .step[data-s="2"] .step-dot b,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="3"] .step-dot b { color: #fff; }
+
+/* ── done steps ──────────────────────────────────────────────────────────
+   Green fill, numeral swapped for a check, and the connector immediately
+   BEFORE this step turns the same green — the line itself is the record of
+   what has already happened, not just the dots. */
+#cap:not(:has(#btn-timestamp.ready)) .step[data-s="1"],
+#cap:has(#btn-timestamp.end-mode) .step[data-s="2"] { color: var(--yes); }
+
+#cap:not(:has(#btn-timestamp.ready)) .step[data-s="1"] .step-dot,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="2"] .step-dot {
+  background: var(--yes-solid); border-color: transparent; box-shadow: none;
+}
+#cap:not(:has(#btn-timestamp.ready)) .step[data-s="1"] .step-dot b,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="2"] .step-dot b { opacity: 0; }
+#cap:not(:has(#btn-timestamp.ready)) .step[data-s="1"] .step-dot::after,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="2"] .step-dot::after { opacity: 1; }
+
+#cap:not(:has(#btn-timestamp.ready)) .step[data-s="2"]::before,
+#cap:has(#btn-timestamp.end-mode) .step[data-s="3"]::before { background: var(--yes-solid); }
+
+/* The primary action, and the only full-width filled control in the panel.
+   Blue to open a segment, green to close one: green is the platform's
+   "this completes the thing", and the old red read as a warning on the very
+   keystroke that saves the label. */
+#btn-timestamp {
+  width: 100%; min-height: 44px; margin-top: 10px; padding: 12px;
+  border-radius: 10px; border: none;
+  background: var(--fill); color: var(--ink-on-fill);
+  font-size: 14px; font-weight: 590;
+  transition: background .15s ease, color .15s ease, transform .1s ease;
+}
+#btn-timestamp:disabled { cursor: default; }
+#btn-timestamp.ready { background: var(--accent-solid); color: #fff; }
+#btn-timestamp.end-mode { background: var(--yes-solid); color: #fff; }
+@media (prefers-reduced-motion: reduce) { #btn-timestamp { transition: none; } }
+
+#pending-label {
+  margin-top: 8px; font-size: 11.5px; line-height: 1.4; color: var(--ink-dim);
+  text-align: center;
+}
+#pending-label:empty { display: none; }
+
+/* Escape already cancelled a half-built label; nothing on screen said so.
+   Shown only in the two states where there is something to cancel — same
+   :has() read of #btn-timestamp's class as the step pips above. */
+#btn-cancel {
+  display: none;
+  width: 100%; margin-top: 8px; padding: 7px; border-radius: 8px;
+  font-size: 12px; font-weight: 510; color: var(--ink-dim);
+}
+#btn-cancel:hover { background: var(--fill); color: var(--ink); }
+#cap:not(:has(#btn-timestamp.ready)) #btn-cancel { display: block; }
+
+/* The list. It is the longest-lived thing in the panel, so it gets the
+   remaining height and scrolls inside its own card. */
+.labels-card {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  padding-bottom: 8px;
+}
+#label-count { color: var(--ink); font-variant-numeric: tabular-nums; }
+#btn-unsure-filter {
+  margin-left: auto; padding: 3px 8px; border-radius: 6px; border: none;
+  background: var(--fill); color: var(--ink-on-fill);
+  font-size: 10.5px; font-weight: 590; letter-spacing: 0; text-transform: none;
+}
+#btn-unsure-filter.on {
+  background: var(--accent-wash); color: var(--accent-on-wash);
+}
+
+#label-log {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 5px;
+  margin-right: -6px; padding-right: 6px;
+  scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+}
+#label-log::-webkit-scrollbar { width: 8px; }
+#label-log::-webkit-scrollbar-thumb { background: var(--track); border-radius: 4px; }
+#label-log:empty::after {
+  content: 'No labels yet — set a start time to begin.';
+  display: block; padding: 24px 8px; text-align: center;
+  font-size: 12px; color: var(--ink-dim);
+}
+
+.label-entry {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 9px; border-radius: 9px; background: var(--fill);
+  border-left: 3px solid var(--line);
+  font-size: 12px;
+}
+.label-entry .label-text { flex: 1; min-width: 0; color: var(--ink-on-fill);
+                           font-variant-numeric: tabular-nums; }
+.label-entry strong { color: var(--ink); font-size: 13px; font-weight: 590;
+                      letter-spacing: -.01em; }
+/* renderLabels() writes the row ids and times with hard-coded #555 / #666 —
+   fine on the old near-black panel, 3:1 on --card in light mode. Re-point them
+   at the semantic dim ink rather than editing the strings, which keeps the
+   render path untouched. .label-text is excluded because JS also sets
+   `style.cursor` on it, which would otherwise match [style]. */
+.label-entry small[style],
+.label-entry span[style]:not(.label-text) { color: var(--ink-on-fill) !important; }
+.label-entry .label-edit,
+.label-entry .label-delete {
+  flex: none; display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 6px; border: none;
+  color: var(--ink-dim); font-size: 15px; line-height: 1; opacity: .5;
+  transition: opacity .12s ease, color .12s ease, background .12s ease;
+}
+.label-entry .label-edit svg { width: 12px; height: 12px; }
+/* Faint until the row is under the pointer — twenty rows each with two lit
+   glyphs would be a wall of chrome — but never invisible, because the pencil
+   is the only sign these rows can be edited at all. */
+.label-entry:hover .label-edit,
+.label-entry:hover .label-delete { opacity: .8; }
+.label-entry .label-edit:hover { opacity: 1; color: var(--accent); background: var(--fill-2); }
+.label-entry .label-delete:hover { opacity: 1; color: var(--no); background: var(--fill-2); }
+@media (prefers-reduced-motion: reduce) {
+  .label-entry .label-edit, .label-entry .label-delete { transition: none; }
+}
+/* Round markers used to be the least visible thing on the page — transparent
+   background, no border, small grey text that blended into the card behind
+   it. They mark the boundary every punch gets judged against (one outside a
+   round is one the pipeline discards), so they now get the same weight a
+   punch row gets: a tinted background and a coloured left border, colour-
+   coded start vs end so the two read apart at a glance. Same green/blue pair
+   the timeline's own round flags use (see .round-mark above) — same story,
+   two places. */
+.label-entry.round-marker {
+  padding: 7px 9px; font-size: 12.5px; border-left-width: 3px;
+}
+.label-entry.round-marker.rm-start { background: var(--yes-wash); border-left-color: var(--yes-solid); }
+.label-entry.round-marker.rm-end   { background: var(--accent-wash); border-left-color: var(--accent-solid); }
+.label-entry.round-marker .label-text strong { font-weight: 590; }
+.label-entry.round-marker.rm-start .label-text strong { color: var(--yes-on-wash); }
+.label-entry.round-marker.rm-end   .label-text strong { color: var(--accent-on-wash); }
+/* --ink-on-fill, not plain --ink-dim: the wash backgrounds above pull it to
+   4.1–4.2:1, just under the bar — same trap --ink-on-fill already exists to
+   fix everywhere else a dim label sits on a tint instead of bare --card. */
+.label-entry.round-marker .label-text small { color: var(--ink-on-fill); font-weight: 500; }
+/* Someone else's round marker: read-only context, so it keeps the muted,
+   colourless look every round marker used to have — the tint above is
+   reserved for a boundary this labeler can actually act on. */
+.label-entry.round-marker.rm-foreign {
+  background: transparent; border-left-color: transparent; opacity: .6;
+}
+.label-entry.round-marker.rm-foreign .label-text strong { color: var(--ink-dim); font-weight: 500; }
+.label-entry.editing { background: var(--card); border-left-color: var(--accent);
+                       box-shadow: 0 0 0 1px var(--accent); padding: 10px; }
+
+/* Right-click a chip → Highlight scrolls the row into view — a one-shot
+   pulse says "this one", the way a jump-to-match briefly bolds its target,
+   rather than leaving the scroll itself to do all the explaining. */
+@keyframes label-flash {
+  0% { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-wash); }
+  100% { box-shadow: 0 0 0 2px transparent; background: var(--fill); }
+}
+.label-entry.label-flash { animation: label-flash 1.1s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .label-entry.label-flash { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+}
+
+.edit-form { width: 100%; display: flex; flex-direction: column; gap: 4px;
+             position: relative; }
+.edit-form > .label-delete { position: absolute; top: -3px; right: -3px; }
+.edit-row { display: flex; align-items: center; gap: 6px; }
+/* A field caption, so "0:08.200 → 0:08.600" is labelled rather than guessed at.
+   Same small-caps eyebrow the cards use, one size down. */
+.edit-lbl {
+  font-size: 10px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim); margin-top: 3px;
+}
+.edit-arrow { color: var(--ink-dim); flex: none; }
+.edit-form select, .edit-form input {
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--card); color: var(--ink);
+  padding: 6px 8px; font-size: 12px; min-height: 30px;
+}
+.edit-form select:focus, .edit-form input:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px;
+}
+.edit-form select { flex: 1; min-width: 0; }
+.edit-form input[type="text"] {
+  flex: 1; min-width: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.edit-actions { margin-top: 5px; }
+.edit-row button {
+  flex: 1; min-height: 30px; padding: 6px 8px; border: none; border-radius: 7px;
+  font-size: 12px; font-weight: 510;
+}
+/* Save is the committing action and sits last, where the platform puts it. */
+.edit-save   { background: var(--accent-solid); color: #fff; font-weight: 590; }
+.edit-cancel { background: var(--fill); color: var(--ink); }
+.edit-seek   { background: var(--fill); color: var(--ink); flex: 0 0 auto; padding: 6px 10px; }
+
+/* ── shortcuts sheet ─────────────────────────────────────────────────────── */
+/* The old page carried all nineteen bindings as a permanent strip of grey text
+   across the bottom — 32px of vertical space, every session, spent on
+   something read twice in a career. A sheet gives it back to the video and
+   makes the reference legible when it IS wanted. */
+#sc-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#sc-dialog::backdrop {
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.sc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--line);
+}
+.sc-head h2 { font-size: 17px; font-weight: 640; letter-spacing: -.02em; }
+.sc-body { padding: 8px 20px 20px; max-height: 65vh; overflow-y: auto; }
+.sc-sec {
+  font-size: 11px; font-weight: 590; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim); margin: 16px 0 6px;
+}
+.sc-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.sc-sec + .sc-row { border-top: none; }
+.sc-row span { flex: 1; }
+.sc-keys { flex: none; display: flex; gap: 4px; }
+kbd {
+  padding: 3px 7px; border-radius: 6px;
+  background: var(--fill); color: var(--ink);
+  font: 500 11.5px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ── toast ───────────────────────────────────────────────────────────────── */
+/* showToast() in player.js hard-codes the three classes below, so the names
+   stay; only the look changes — one floating capsule of material with a
+   coloured dot, rather than three differently-coloured slabs. */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  display: flex; align-items: center; gap: 8px;
+  max-width: 380px; padding: 11px 16px; border-radius: 12px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.20);
+  font-size: 13px; font-weight: 500; color: var(--ink);
+  opacity: 0; animation: fadeIn .2s, fadeOut .3s 2.7s; animation-fill-mode: forwards;
+}
+.toast::before {
+  content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-dim);
+}
+.toast.success::before { background: var(--yes); }
+.toast.error::before   { background: var(--no); }
+.toast.info::before    { background: var(--accent); }
+
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(8px); }
+                     to   { opacity: 1; transform: translateY(0); } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pulse   { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; opacity: 1; }
+}
+
+/* ── touch ───────────────────────────────────────────────────────────────── */
+/* The 44pt minimum is a TOUCH rule, and this is a desktop tool driven by a
+   mouse and the number row — sized for touch throughout, the transport row
+   alone would be 44px of button per control and the video would lose a third
+   of its height to chrome nobody taps. So the density adapts to the input
+   instead: fine pointers keep the compact sizes above, and anything coarse
+   (iPad, a touchscreen laptop) gets every control grown past 44.
+   The one exception is .icon-btn, which pads its hit area out to 44 with a
+   ::before on every device — it is small enough that a stylus would miss it. */
+@media (pointer: coarse) {
+  #btn-pick-file, #name-field, .src-field,
+  .tbtn, .seg-static button, #speed-btn, #time-wrap { height: 44px; }
+  /* Width matters as much as height for the glyph-only controls — play, mute,
+     the frame steppers and the zoom pair are all 32px wide by default. */
+  .tbtn { width: 44px; }
+  .seg-static button { min-width: 44px; }
+  /* Pop-up menu rows are targets too, and 27px was the tightest thing left.
+     min-height rather than padding: the row's line-height is 1, so padding
+     alone lands at 39 and would need re-deriving if the type size ever moves. */
+  #speed-menu button { min-height: 44px; padding: 0 12px; }
+  /* The zoom badge is a reset button, not just a readout. */
+  #video-zoom-badge { min-width: 56px; min-height: 44px; }
+  /* No hover on a touch screen, so the volume slider cannot be something you
+     reveal — it sits inline in the row, which wraps at these widths anyway. */
+  #vol-pop {
+    position: static; transform: none; opacity: 1; visibility: visible;
+    background: none; border: 0; box-shadow: none; backdrop-filter: none;
+    -webkit-backdrop-filter: none; padding: 0 0 0 10px;
+  }
+  #vol-range { height: 44px; }
+  #vol-range::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; }
+  #vol-range::-moz-range-thumb { width: 18px; height: 18px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .seg button { padding-top: 13px; padding-bottom: 13px; }
+  .punch-btn { min-height: 44px; }
+  .pmatrix { grid-template-columns: 1fr 54px 54px; }
+  .menu-item { padding: 12px 10px; }
+  #btn-unsure-filter { padding: 10px 12px; }
+  #btn-cancel { padding: 12px; }
+  .label-entry .label-edit,
+  .label-entry .label-delete { width: 44px; height: 44px; opacity: .8; }
+  .edit-row button { padding: 12px 8px; }
+  #seek-bar { height: 44px; }
+  #seek-bar::-webkit-slider-thumb { margin-top: -6px; width: 20px; height: 20px; }
+  #seek-bar::-moz-range-thumb { width: 20px; height: 20px; }
+  #timeline-minimap { height: 16px; }
+}
+
+/* ── adaptive layout ─────────────────────────────────────────────────────── */
+/* Regular width (desktop / iPad landscape) is the three-column layout above.
+   Below that the two sidebars narrow, and below ~1000px they stop being
+   sidebars: the video takes the full width and the catalogue and the label
+   list stack under it, which is the compact size class this tool can
+   actually be used in. */
+@media (max-width: 1240px) {
+  #punch-panel { width: 244px; }
+  #label-panel { width: 276px; }
+  #time-wrap { min-width: 0; }
+}
+@media (max-width: 1000px) {
+  #main-layout { flex-direction: column; overflow-y: auto; }
+  #punch-panel, #label-panel { width: auto; order: 2; overflow: visible; }
+  #video-container { order: 1; }
+  #video-viewport { min-height: 46vh; }
+  #label-panel { min-height: 0; }
+  #label-log { max-height: 320px; }
+  .pmatrix { grid-template-columns: 1fr 56px 56px; }
+}
+@media (max-width: 720px) {
+  #top-bar { height: auto; flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  #drive-link-bar { flex-wrap: wrap; gap: 10px; }
+  .nav-title { font-size: 15px; }
+}
