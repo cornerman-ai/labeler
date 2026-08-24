@@ -119,23 +119,30 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
   relative there, camera-relative here.
 - **The stage** — full zoom/pan: wheel zooms at the cursor, double-click or
   `0` resets, `image-rendering: pixelated` past the magnification
-  threshold. **Panning is on the right mouse button** — left-drag draws the
-  assistant line instead, and giving pan its own button avoids any
-  ambiguity between the two gestures at any zoom level.
-- **Drawing the line (assistant)** — one continuous press-drag-release:
-  mousedown places the **base** point and starts a live rotate-drag;
-  mousemove rotates a preview line through the cursor, live-updating both
-  the line's own angle readout AND the dial's suggested-wedge highlight;
-  mouseup locks the **end** point in. A drag shorter than `MIN_LINE_PX`
-  (16px) is a misclick, not a degenerate line, and is discarded. Afterward,
-  two small handles stay grabbable (`GRAB_PX` = 12px, checked against their
-  current SCREEN position so the threshold means the same thing at any
-  zoom) — dragging the **base** handle translates the whole line, dragging
-  the **end** handle rotates it around the base. Handles are counter-scaled
-  by `--inv` exactly like chin_tuck's `.hp` dots; round = base, square =
-  end, same "shape says which point" convention. None of this saves
-  anything by itself — see `applyLabel()`, which is what does, once a wedge
-  or the skip hole is actually clicked.
+  threshold. One button does everything else, resolved by what the
+  mousedown hits and how far the mouse actually moves (`CLICK_SLOP_PX` = 4,
+  same distinction height_guard's own click-vs-drag uses): mousedown on an
+  existing handle adjusts it; mousedown on empty space tentatively arms a
+  pan (only possible once zoomed in — at fit there's nowhere to pan to);
+  mouseup then checks whether the mouse actually travelled — real movement
+  means it was a pan, no movement means it was a stationary CLICK, which
+  places a brand-new line if this frame doesn't have one yet and otherwise
+  does **nothing** (a stray click must never overwrite a line already
+  placed).
+- **Placing the line (assistant)** — a single stationary click, not a
+  drag, since a plain drag is reserved for panning. Defaults to pointing
+  straight down (0°, squared to the camera) at a fixed on-screen length
+  (`DEFAULT_LINE_PX` = 80px; falls back to pointing up if clicked too close
+  to the stage's bottom edge for the default to fit). From there, two small
+  handles stay grabbable (`GRAB_PX` = 12px, checked against their current
+  SCREEN position so the threshold means the same thing at any zoom) —
+  dragging the **base** handle translates the whole line, dragging the
+  **end** handle rotates it around the base, both equally editable from
+  the moment the line exists. Handles are counter-scaled by `--inv` exactly
+  like chin_tuck's `.hp` dots; round = base, square = end, same "shape says
+  which point" convention. None of this saves anything by itself — see
+  `applyLabel()`, which is what does, once a wedge or the skip hole is
+  actually clicked.
 - **Rendering** — the interactive segment (base→end) is solid; a dashed
   continuation runs from the end point to the frame edge in the same
   direction, visual only — adapted from
@@ -162,15 +169,21 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
   `state.labels`, "everyone" from `statsFacingAngle`'s per-labeler
   `buckets`, summed client-side).
 - **Agreement** — new card. Two `<select>` pickers over the roster
-  (`state.agreePair`, persisted the same way chin_tuck_4.0 persists its own
-  `agreePair`), fetched **on demand** — two `listFacingAngle` calls, one per
-  picked name — not chin_tuck's admin-only `loadTeamRows()` fan-out over
-  the whole roster (this tool has no admin mode). Agreement compares the
-  **stored bucket directly** — exact match, nothing derived from a line —
-  so a labeler who never draws one is compared exactly the same way as one
-  who always does. Reuses the `.d4-grid`/`.ovn` overview machinery, painted
-  green/red/grey, plus an overall "N% agree" line. No kappa panel, no PNG
-  export, no admin gating.
+  (`state.agreePair`, defaulting to `['Arianne', 'John']` — chin_tuck_4.0's
+  own default pair — until a different pair is picked, which persists the
+  same way chin_tuck's own `agreePair` does), fetched **on demand** — two
+  `listFacingAngle` calls, one per picked name — not chin_tuck's admin-only
+  `loadTeamRows()` fan-out over the whole roster (this tool has no admin
+  mode). Agreement compares the **stored bucket directly** — exact match,
+  nothing derived from a line — so a labeler who never draws one is
+  compared exactly the same way as one who always does. Reuses the
+  `.d4-grid`/`.ovn` overview machinery. Four states, deliberately no more:
+  **green** = both gave a bucket and it matches, **red** = both gave a
+  bucket and it differs, **light blue** (`.solo`, the same faded-accent
+  chin_tuck_4.0 uses for its own solo dots) = exactly one of the two has a
+  bucket, **grey** = neither does. A skip is not a bucket, so it counts the
+  same as "hasn't answered" — it folds into light-blue or grey, never a
+  category of its own. No kappa panel, no PNG export, no admin gating.
 - **Optimistic saves** — a wedge (or skip) lands and the page advances
   immediately, the write drains behind it, a failure rolls the row back.
 

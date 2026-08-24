@@ -7,7 +7,7 @@
 // continuous angle rating on this kind of rotation records the labeler's
 // visual compression rather than the true angle.
 //
-// Drawing a line on the frame (drag from the boxer's stance toward their
+// Drawing a line on the frame (from the boxer's stance toward their
 // opponent) is an ASSISTANT, not the label: it computes an angle and lights
 // up the nearest wedge as a light-tinted SUGGESTION (renderDial()'s
 // `.suggested` class), distinct from the full-strength `.on` a click
@@ -15,12 +15,21 @@
 // saved ALONGSIDE whichever wedge gets clicked (for audit — nobody derives
 // the saved bucket from them), never in place of it.
 //
+// A STATIONARY CLICK on empty space places a new line (default straight
+// down, 0°); its two points are then independently draggable — the base
+// dot translates the whole line, the end dot rotates it — same "shape
+// says which point" idea as chin_tuck's own round/square dots. A DRAG that
+// doesn't grab either dot pans instead (only possible once zoomed in —
+// at fit there's nowhere to pan to). One button does both, resolved by
+// what the mousedown hit and how far the mouse actually moved — see the
+// stage wiring at the bottom of this file.
+//
 // 0° = squared to the camera, 180° = back to it, + = toward the CAMERA's
 // right — an image-plane convention, not the boxer's own left/right, never
 // mirrored for stance: recorded as-shown, same reasoning as Guard Drops'
 // guard_hand.
 //
-// Frames are a PLACEHOLDER sample — 50 borrowed from chin_tuck_4.0's
+// Frames are a PLACEHOLDER sample — 500 borrowed from chin_tuck_4.0's
 // height_guard queue (boxer_facing_angle_frames.json), served from the same
 // Firebase Storage objects. This tool's own sampler doesn't exist yet.
 //
@@ -29,8 +38,8 @@
 // (facing_angle_labels_{Name}, header-reconciled on every save), the same
 // shape as chin_shoulder_labels_{Name}.
 //
-// Line-placement mechanics (coordinate math, --inv counter-scale, the
-// click-vs-drag distinction) are ported from chin_tuck_4.0/height_guard;
+// Handle coordinate math (stageNorm/screenPxOf, the --inv counter-scale,
+// the click-vs-drag distinction) is ported from chin_tuck_4.0/height_guard;
 // the dashed-continuation rendering is adapted from cornerman-debug-
 // viewer's bladedness.js tightrope line (there read-only, here interactive
 // but purely advisory).
@@ -52,10 +61,13 @@ const MAX_ZOOM = 12;
 const ZOOM_SPEED = 0.0018;
 const SHARP_MAG = 1.5;
 const SHARP_MIN_SOURCE = 720;
-// A mousedown-mouseup shorter than this, with no handle grabbed, is a
-// misclick, not a line — a zero/near-zero-length segment has no defined
-// angle. Handle DRAGS (adjusting an existing line) have no such floor.
-const MIN_LINE_PX = 16;
+// A mousedown-mouseup pair moving less than this many screen px is a CLICK,
+// not a drag — the same distinction height_guard's CLICK_SLOP_PX makes.
+// On the stage, that's what tells a stationary click (place a new line, or
+// nothing if one already exists) apart from a real drag (pan, when
+// zoomed — or adjust a handle, which is grabbed on mousedown already and
+// never reaches this check at all).
+const CLICK_SLOP_PX = 4;
 // A handle is grabbed if the mousedown lands within this many screen px of
 // its current on-screen position (handles are counter-scaled to a constant
 // screen size, so this threshold means the same thing at any zoom).
@@ -481,14 +493,14 @@ function grabHandle(clientX, clientY) {
   return null;
 }
 
+// Only ever called with a handle actually grabbed — placing a BRAND NEW
+// line is a stationary click, not a drag (see placeDefaultLine()), so
+// there's no 'new' mode here: dragging on the stage always means adjusting
+// one of an EXISTING line's two points, or (if nothing is grabbed) panning.
 function startDraw(clientX, clientY) {
-  if (!state.ready) return false;
   const grab = grabHandle(clientX, clientY);
-  if (grab) {
-    state.draw = { mode: grab, orig: { base: state.line.base.slice(), end: state.line.end.slice() } };
-  } else {
-    state.draw = { mode: 'new', base: stageNorm(clientX, clientY) };
-  }
+  if (!grab) return false;
+  state.draw = { mode: grab, orig: { base: state.line.base.slice(), end: state.line.end.slice() } };
   return true;
 }
 
@@ -510,10 +522,7 @@ function moveDraw(clientX, clientY) {
   const d = state.draw;
   if (!d) return;
   const p = stageNorm(clientX, clientY);
-  if (d.mode === 'new') {
-    renderLine(d.base, p);
-    updateSuggestionFrom(d.base, p);
-  } else if (d.mode === 'base') {
+  if (d.mode === 'base') {
     const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
     renderLine(p, [d.orig.end[0] + dx, d.orig.end[1] + dy]);
   } else if (d.mode === 'end') {
@@ -522,26 +531,42 @@ function moveDraw(clientX, clientY) {
   }
 }
 
-function finishDraw(clientX, clientY, downX, downY) {
+function finishDraw(clientX, clientY) {
   const d = state.draw;
   state.draw = null;
   if (!d) return;
   const p = stageNorm(clientX, clientY);
-  if (d.mode === 'new') {
-    const distPx = Math.hypot(clientX - downX, clientY - downY);
-    if (distPx < MIN_LINE_PX) { renderDial(); renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null); return; }
-    state.line = { base: d.base, end: p };
-  } else if (d.mode === 'base') {
+  if (d.mode === 'base') {
     const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
     state.line = { base: p, end: [d.orig.end[0] + dx, d.orig.end[1] + dy] };
-  } else if (d.mode === 'end') {
-    if (Math.hypot(p[0] - d.orig.base[0], p[1] - d.orig.base[1]) < 0.002) {
-      state.line = { base: d.orig.base, end: d.orig.end };
-    } else {
-      state.line = { base: d.orig.base, end: p };
-    }
+  } else {
+    // A near-zero-length drag on the end handle would make the angle
+    // undefined — treat it as no change rather than a degenerate line.
+    state.line = Math.hypot(p[0] - d.orig.base[0], p[1] - d.orig.base[1]) < 0.002
+      ? { base: d.orig.base, end: d.orig.end }
+      : { base: d.orig.base, end: p };
   }
   renderLine(state.line.base, state.line.end);
+  renderDial();
+}
+
+// A brand new line, from a single STATIONARY click on empty space (never
+// a drag — plain drag is reserved for panning, see the wiring below).
+// Defaults to pointing straight down (0°, squared to the camera) at a
+// fixed on-screen length; the labeler drags the end handle to set the
+// real direction from there, and the base handle to reposition it — both
+// equally editable from the moment the line exists.
+const DEFAULT_LINE_PX = 80;
+function placeDefaultLine(clientX, clientY) {
+  const base = stageNorm(clientX, clientY);
+  let end = stageNorm(clientX, clientY + DEFAULT_LINE_PX);
+  // Clicked too close to the stage's bottom edge for a downward default
+  // (base and end would clamp to the same point) — try upward instead.
+  if (Math.hypot(end[0] - base[0], end[1] - base[1]) < 1e-4) {
+    end = stageNorm(clientX, clientY - DEFAULT_LINE_PX);
+  }
+  state.line = { base, end };
+  renderLine(base, end);
   renderDial();
 }
 
@@ -1110,12 +1135,15 @@ function renderTeamPanel() {
 // STORED bucket directly (the actual label), not anything derived from a
 // line — a labeler who never draws one is compared exactly the same way
 // as one who always does.
+// Same default pair chin_tuck_4.0 uses on a device that's never picked one
+// — a sensible starting comparison, not a fixed one: picking a different
+// pair below persists it here for next time, same as chin_tuck's own.
 function loadAgreePair() {
   try {
     const raw = JSON.parse(localStorage.getItem(AGREE_KEY) || 'null');
     if (Array.isArray(raw) && raw.length === 2) return raw;
   } catch (e) {}
-  return ['', ''];
+  return ['Arianne', 'John'];
 }
 function saveAgreePair() {
   try { localStorage.setItem(AGREE_KEY, JSON.stringify(state.agreePair)); } catch (e) {}
@@ -1164,14 +1192,18 @@ async function refreshAgreement() {
   renderAgreement();
 }
 
+// Four states only, by design: green/red need a real bucket from BOTH
+// labelers; a skip is not a bucket, so it counts the same as "hasn't
+// answered" here — it folds into 'solo' or 'none' exactly like a frame
+// neither has touched, never its own category.
 function agreeForSlot(f) {
   const k = key(f);
   const [ra, rb] = state.agreeRows.map((m) => m && m.get(k));
-  if (!ra && !rb) return { kind: 'none' };
-  if (!ra || !rb) return { kind: 'solo' };
-  if (ra.skip_reason || rb.skip_reason) return { kind: 'skip' };
-  if (ra.bucket === null || rb.bucket === null) return { kind: 'none' };
-  return { kind: ra.bucket === rb.bucket ? 'agree' : 'disagree' };
+  const aHas = !!ra && ra.bucket !== null && ra.bucket !== undefined;
+  const bHas = !!rb && rb.bucket !== null && rb.bucket !== undefined;
+  if (aHas && bHas) return { kind: ra.bucket === rb.bucket ? 'agree' : 'disagree' };
+  if (aHas || bHas) return { kind: 'solo' };
+  return { kind: 'none' };
 }
 
 function buildAgreeGrid() {
@@ -1217,6 +1249,7 @@ function renderAgreement() {
     let cls = 'd4';
     if (r.kind === 'agree') { cls += ' agree'; agree++; compared++; }
     else if (r.kind === 'disagree') { cls += ' disagree'; disagree++; compared++; }
+    else if (r.kind === 'solo') { cls += ' solo'; }
     if (i === state.i) cls += ' cur';
     state.agreeDots[i].className = cls;
     state.agreeDots[i].title = `#${i + 1} — ${r.kind}`;
@@ -1356,21 +1389,26 @@ window.addEventListener('DOMContentLoaded', async () => {
   populateAgreeSelects();
   refreshAgreement();
 
-  // ── stage: draw the assistant line, pan, zoom ─────────────────────────
+  // ── stage: draw/adjust the assistant line, pan, zoom ──────────────────
+  // One button does everything, resolved by what the mousedown actually
+  // hit and how far it moves — same shape as height_guard's own
+  // grab-vs-pan split: mousedown on an existing handle adjusts it; on
+  // empty space it tentatively arms a pan (only possible once zoomed in —
+  // at fit there's nowhere to pan to); mouseup then looks at how far the
+  // mouse actually travelled: real movement means it WAS a pan, no
+  // movement means it was a stationary CLICK, which places a brand new
+  // line if this frame doesn't have one yet (see placeDefaultLine()) and
+  // otherwise does nothing (a stray click must never overwrite an
+  // existing line the labeler already placed).
   const stage = $('stage');
-  stage.addEventListener('contextmenu', (e) => e.preventDefault());
   stage.addEventListener('mousedown', (e) => {
-    if (e.button === 2) {
-      if (!isFitted()) {
-        state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
-        stage.classList.add('panning');
-      }
-      e.preventDefault();
-      return;
-    }
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !state.ready) return;
     state.down = { x: e.clientX, y: e.clientY };
-    if (startDraw(e.clientX, e.clientY)) e.preventDefault();
+    if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
+    if (!isFitted()) {
+      state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
+    }
+    e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
     if (state.draw) { moveDraw(e.clientX, e.clientY); return; }
@@ -1378,13 +1416,20 @@ window.addEventListener('DOMContentLoaded', async () => {
       state.panX = state.drag.px + (e.clientX - state.drag.x);
       state.panY = state.drag.py + (e.clientY - state.drag.y);
       applyTransform();
+      stage.classList.add('panning');
     }
   });
   window.addEventListener('mouseup', (e) => {
-    if (state.draw) { finishDraw(e.clientX, e.clientY, state.down.x, state.down.y); state.down = null; return; }
+    if (state.draw) { finishDraw(e.clientX, e.clientY); state.down = null; return; }
+    const wasPanning = !!state.drag;
     state.drag = null;
-    state.down = null;
     stage.classList.remove('panning');
+    const moved = wasPanning && state.down
+      && Math.hypot(e.clientX - state.down.x, e.clientY - state.down.y) > CLICK_SLOP_PX;
+    if (!moved && state.ready && !state.line && state.down) {
+      placeDefaultLine(state.down.x, state.down.y);
+    }
+    state.down = null;
   });
   stage.addEventListener('dblclick', resetZoom);
   const DELTA_PX = { 0: 1, 1: 16, 2: 400 };
