@@ -6,7 +6,15 @@
 <title>Cornerman Labelers</title>
 <link rel="stylesheet" href="shared/style.css">
 <style>
-  body { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  /* shared/style.css is written for the APP pages: a fixed 100vh flex column
+     with overflow:hidden, which they undo internally with their own
+     scrollers. This page is a plain document and has none, so it has to opt
+     back out — body's overflow propagates to the viewport, so inheriting
+     hidden clips everything past the fold with no way to scroll to it.
+     Overridden here rather than in the shared sheet, which every labeler
+     page depends on for exactly that behaviour. */
+  body { max-width: 760px; margin: 0 auto; padding: 24px 16px;
+         display: block; height: auto; min-height: 100vh; overflow: visible; }
   h1 { margin: 0 0 4px; }
   .sub { opacity: .7; margin: 0 0 24px; }
   h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em;
