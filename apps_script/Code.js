@@ -421,7 +421,7 @@ function doGet(e) {
     sheetName = 'Labeled Data ' + labeler.charAt(0).toUpperCase() + labeler.slice(1).toLowerCase();
   }
 
-  var pss = SpreadsheetApp.getActiveSpreadsheet();
+  var pss = punchSpreadsheet();
   var sheet = pss.getSheetByName(sheetName);
   if (!sheet) {
     if (labelerLc === 'combined' || labelerLc === 'archive') {
@@ -778,7 +778,7 @@ var BODYSHOT_RECLASSIFY_TARGETS = [
 ];
 
 function doGetBodyshots(p, action) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = punchSpreadsheet();
   var combined = ss.getSheetByName(COMBINED_NAME);
   if (!combined) return jsonOut({ status: 'error', message: 'Combined Data sheet not found' });
 
@@ -944,6 +944,24 @@ var COMBINED_BACKUP_NAME = 'Combined Data Backup';
 // reviewed canonical data and merge it in verbatim on every rebuild.
 var COMBINED_ARCHIVE_NAME = 'Combined Data Archive';
 
+// The punch/defense tabs (every 'Labeled Data Software N', Combined Data,
+// Combined Data Backup, Combined Data Archive) moved out of Box Labeled Data
+// (the script's bound spreadsheet) into their own workbook, 2026-08 — same
+// reorg as the chin generations (see CHIN_SHOULDER_SPREADSHEET_ID below).
+// openById, not getActiveSpreadsheet(): the latter would silently create a
+// fresh, empty 'Combined Data' (and empty 'Labeled Data Software N' tabs on
+// the next save) back in Box Labeled Data, orphaned from every row that
+// actually lives here now. Every other labeler's sheets (Form Labels,
+// Orientation Labels, Punch Directions, Hip Rotation Rubric, Impact Frames,
+// Guard Drops, Chin Coaching Feedback, Callout Events, Bladed Pairs, ...)
+// did NOT move and still read Box Labeled Data via getActiveSpreadsheet()
+// as before — only the functions that touch a 'Labeled Data ...' sheet or
+// Combined Data/Archive itself call punchSpreadsheet() below.
+var PUNCH_SPREADSHEET_ID = '1HkKOx4UBcybaDpvQBiUeDO72KbNDiUux4O_KubhTmPk';
+function punchSpreadsheet() {
+  return SpreadsheetApp.openById(PUNCH_SPREADSHEET_ID);
+}
+
 // Column order written to Combined Data. Matches the spec in CLAUDE.md:
 // downstream notebooks read `video_name` (filename) and `label` (punch type),
 // so the rebuild translates the labeler-side schema (`video_file` URL +
@@ -1053,7 +1071,7 @@ function extractFileId(url) {
 }
 
 function rebuildCombinedData() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = punchSpreadsheet();
 
   // Snapshot old Combined Data → Combined Data Backup. One step back is
   // enough: the labeler sheets are the real source of truth, so piling
@@ -1366,7 +1384,7 @@ function doGetOrientation(p, labeler, action) {
   // Lets the orientation labeler's dropdown show every video already in
   // the punch-labels system, including ones without glove caches.
   if (action === 'listCombinedVideos') {
-    var cd = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Combined Data');
+    var cd = punchSpreadsheet().getSheetByName('Combined Data');
     if (!cd) return jsonOut({ status: 'ok', videos: [] });
     var cdData = cd.getDataRange().getValues();
     if (cdData.length <= 1) return jsonOut({ status: 'ok', videos: [] });
@@ -1523,7 +1541,7 @@ var NON_PUNCH_LABELS = ['round_start', 'round_end', 'rest_start', 'rest_end'];
 // labeler's read-only round display — rounds are shared context, punches
 // are per-labeler.
 function collectForeignRoundMarkers(video, ownSheetName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = punchSpreadsheet();
   var target = normalizeDriveUrl(video);
   var out = [];
   var sheets = ss.getSheets();
@@ -1568,7 +1586,7 @@ function doGetPunchDirections(p, labeler, action) {
   if (action === 'listPunchesForVideo') {
     var vid = String(p.video || '').trim();
     if (!vid) return jsonOut({ status: 'error', message: 'video required' });
-    var cd = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Combined Data');
+    var cd = punchSpreadsheet().getSheetByName('Combined Data');
     if (!cd) return jsonOut({ status: 'ok', punches: [] });
     var cdData = cd.getDataRange().getValues();
     if (cdData.length <= 1) return jsonOut({ status: 'ok', punches: [] });
