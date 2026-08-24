@@ -307,6 +307,14 @@ function doGet(e) {
     return doGetChinLabels(p, labeler, action);
   }
 
+  // Torso-angle labeler — separate sheet, one 45°-bucket verdict per
+  // sampled frame (torso rotation relative to the camera). See
+  // torso_angle/README.md.
+  if (action === 'listTorsoAngle' || action === 'saveTorsoAngle' ||
+      action === 'deleteTorsoAngle' || action === 'statsTorsoAngle') {
+    return doGetTorsoAngle(p, labeler, action);
+  }
+
   // Chin-shoulder labeler — the 3-question chin-vs-lead-shoulder version of
   // the chin page (chin_tuck_1.0/chin_tuck.html). The original single-verdict
   // page lives on as chin_tuck_0.0/chin_tuck_john.html against the Chin
@@ -2388,6 +2396,205 @@ function doGetChinLabels(p, labeler, action) {
   }
 
   return jsonOut({ status: 'error', message: 'unknown chin action: ' + action });
+}
+
+// ============================================================
+// Torso-angle labeler (torso_angle/torso_angle.html) — ONE bucketed verdict
+// per sampled frame: torso rotation relative to the camera, in 45° buckets
+// centered on the 8 compass values (0/45/90/135/180/-135/-90/-45), positive
+// = rotated toward the CAMERA's right (an image-plane convention — NOT
+// stance-relative, deliberately unlike punch_dir_16's "boxer's own right").
+// Recorded as-shown: no stance-mirroring at label time, same reasoning as
+// Guard Drops' guard_hand (raw + auditable beats normalized + unfixable).
+//
+// Frames are currently borrowed from chin_tuck_4.0's height_guard sample as
+// a placeholder dataset — this tool's own sampler doesn't exist yet, see
+// torso_angle/README.md.
+//
+// Keyed by (labeler, video, round, frame); a re-save supersedes the prior
+// row (soft deleted=1) — same contract as Chin Labels above, which this
+// handler mirrors almost verbatim.
+// ============================================================
+var TORSO_SHEET_NAME = 'Torso Angle Labels';
+var TORSO_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
+                     'bucket', 'skip_reason', 'deleted'];
+var TORSO_BUCKETS = ['0', '45', '90', '135', '180', '-135', '-90', '-45'];
+var TORSO_SKIP_REASONS = ['hard_to_tell'];
+// Its own standalone workbook, not the script's bound spreadsheet — same
+// arrangement as the chin generations. openById, not getActiveSpreadsheet():
+// the latter would silently create a fresh, empty 'Torso Angle Labels' tab
+// back in Box Labeled Data, orphaned from every row that lives here.
+var TORSO_SPREADSHEET_ID = '1tRcQeoqr98yvoHldY7B8o2HmuXdisDGSHi20uyYjwyI';
+
+function torsoSpreadsheet() {
+  return SpreadsheetApp.openById(TORSO_SPREADSHEET_ID);
+}
+
+function getOrCreateTorsoSheet() {
+  var ss = torsoSpreadsheet();
+  var sh = ss.getSheetByName(TORSO_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(TORSO_SHEET_NAME);
+    sh.appendRow(TORSO_HEADERS);
+    sh.setFrozenRows(1);
+    ensureTextColumn(sh, 'video');
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(TORSO_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  // Video stems are free text and some of them parse as dates or numbers if
+  // Sheets is left to guess — force the column to plain text, same as the
+  // chin sheets do.
+  ensureTextColumn(sh, 'video');
+  return sh;
+}
+
+function torsoRowMatches(row, idx, p) {
+  return row[idx.labeler] === p.labeler &&
+         row[idx.video] === p.video &&
+         String(row[idx.round]) === String(p.round) &&
+         String(row[idx.frame]) === String(p.frame);
+}
+
+function doGetTorsoAngle(p, labeler, action) {
+  // A READ must never create the tab — see doGetChinLabels above for why.
+  // statsTorsoAngle is a read too: opening the page must not add a sheet.
+  var sh = torsoSpreadsheet().getSheetByName(TORSO_SHEET_NAME);
+  if (!sh && action !== 'saveTorsoAngle') {
+    if (action === 'deleteTorsoAngle') return jsonOut({ status: 'ok', deleted: 0 });
+    if (action === 'statsTorsoAngle') return jsonOut({ status: 'ok', labelers: [] });
+    return jsonOut({ status: 'ok', rows: [] });
+  }
+  sh = getOrCreateTorsoSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  // === LIST torso-angle labels (optionally filtered by labeler / video) ===
+  if (action === 'listTorsoAngle') {
+    var video = p.video || '';
+    var filterLabeler = p.labeler || '';
+    var rows = [];
+    for (var li = 1; li < data.length; li++) {
+      var lr = data[li];
+      if (String(lr[idx.deleted]) === '1') continue;
+      if (video && lr[idx.video] !== video) continue;
+      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
+      rows.push({
+        ts: lr[idx.ts],
+        labeler: lr[idx.labeler],
+        video: lr[idx.video],
+        round: Number(lr[idx.round]),
+        frame: Number(lr[idx.frame]),
+        pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
+        bucket: lr[idx.bucket] === '' ? null : String(lr[idx.bucket]),
+        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
+      });
+    }
+    return jsonOut({ status: 'ok', rows: rows });
+  }
+
+  // === SAVE a label keyed by (labeler, video, round, frame). Supersedes. ===
+  // Exactly one of bucket / skip_reason must be set.
+  if (action === 'saveTorsoAngle') {
+    var required = ['labeler', 'video', 'round', 'frame'];
+    for (var k = 0; k < required.length; k++) {
+      if (p[required[k]] === undefined || p[required[k]] === '') {
+        return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+      }
+    }
+    var hasBucket = p.bucket !== undefined && p.bucket !== '';
+    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
+    if (hasBucket === hasSkip) {
+      return jsonOut({ status: 'error', message: 'need exactly one of bucket / skip_reason' });
+    }
+    var bucketVal = '';
+    var skipVal = '';
+    if (hasBucket) {
+      if (TORSO_BUCKETS.indexOf(String(p.bucket)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid bucket: ' + p.bucket });
+      }
+      bucketVal = String(p.bucket);
+    } else {
+      if (TORSO_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+        return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+      }
+      skipVal = String(p.skip_reason);
+    }
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      if (String(data[i2][idx.deleted]) === '1') continue;
+      if (!torsoRowMatches(data[i2], idx, p)) continue;
+      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+    }
+    var newRow = [];
+    var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(p.labeler);
+      else if (col === 'video') newRow.push(p.video);
+      else if (col === 'round') newRow.push(Number(p.round));
+      else if (col === 'frame') newRow.push(Number(p.frame));
+      else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
+      else if (col === 'bucket') newRow.push(bucketVal);
+      else if (col === 'skip_reason') newRow.push(skipVal);
+      else if (col === 'deleted') newRow.push('');
+      else newRow.push('');
+    }
+    sh.appendRow(newRow);
+    return jsonOut({ status: 'ok' });
+  }
+
+  // === DELETE: mark every current row for (labeler, video, round, frame) ===
+  if (action === 'deleteTorsoAngle') {
+    var found = 0;
+    for (var i3 = 1; i3 < data.length; i3++) {
+      if (String(data[i3][idx.deleted]) === '1') continue;
+      if (!torsoRowMatches(data[i3], idx, p)) continue;
+      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
+      found++;
+    }
+    return jsonOut({ status: 'ok', deleted: found });
+  }
+
+  // === STATS: the roster behind the page's "Everyone's progress" panel ===
+  // One entry per labeler who has ever saved a live row: how many frames
+  // they have resolved (a bucket OR a skip both count — the frame is dealt
+  // with either way), how many of those were skips, when they last saved,
+  // and which frame that was. The page turns `last` into a queue position
+  // itself; this handler has never seen the queue.
+  //
+  // Unlike doGetChinPoint's stats, this reads ONE flat sheet rather than a
+  // tab per labeler, so there is nothing to fan out over and no cache: the
+  // whole answer is one pass over the rows already in hand.
+  if (action === 'statsTorsoAngle') {
+    var byName = {};
+    for (var i4 = 1; i4 < data.length; i4++) {
+      var sr = data[i4];
+      if (String(sr[idx.deleted]) === '1') continue;
+      var nm = String(sr[idx.labeler] || '');
+      if (!nm) continue;
+      var e = byName[nm];
+      if (!e) { e = byName[nm] = { labeler: nm, n: 0, skipped: 0, last_ts: '', last: null }; }
+      e.n++;
+      if (String(sr[idx.skip_reason] || '') !== '') e.skipped++;
+      var ts = String(sr[idx.ts] || '');
+      // Rows are appended in save order, but a re-save supersedes an older
+      // row further UP the sheet — so compare rather than trusting position.
+      if (ts >= e.last_ts) {
+        e.last_ts = ts;
+        e.last = { video: sr[idx.video], round: Number(sr[idx.round]), frame: Number(sr[idx.frame]) };
+      }
+    }
+    var out = [];
+    for (var nm2 in byName) out.push(byName[nm2]);
+    out.sort(function (a, b) { return b.n - a.n; });
+    return jsonOut({ status: 'ok', labelers: out });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown torso action: ' + action });
 }
 
 // ============================================================
