@@ -111,7 +111,11 @@ const KEY_BINS = {};
 for (const b of BINS) KEY_BINS[b.key] = { store: String(b.c), skip: false };
 KEY_BINS['2'] = { store: null, skip: true };
 
-const SKIP_REASON = 'hard_to_tell';
+// 'skip' is stored as the bucket value itself — one more valid answer
+// alongside the eight compass buckets, not a separate reason column. There
+// was only ever one possible reason ('hard_to_tell'), so the column never
+// carried anything past "was this a skip", which 'skip' already says.
+const SKIP_BUCKET = 'skip';
 
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -120,7 +124,7 @@ const state = {
   frames: [],
   index: new Map(),        // frame key -> queue position
   i: 0,
-  labels: new Map(),       // frame key -> { bucket, base:[x,y]|null, end:[x,y]|null, skip_reason }
+  labels: new Map(),       // frame key -> { bucket, base:[x,y]|null, end:[x,y]|null } — bucket is one of the 8 compass strings or SKIP_BUCKET
   line: null,              // { base, end } | null — the CURRENT frame's drawn line, an assistant
   ready: false,
   starting: false,
@@ -271,7 +275,6 @@ function rowToLabel(r) {
     bucket: r.bucket === '' || r.bucket === undefined || r.bucket === null ? null : String(r.bucket),
     base: has('base_x', 'base_y') ? [Number(r.base_x), Number(r.base_y)] : null,
     end: has('end_x', 'end_y') ? [Number(r.end_x), Number(r.end_y)] : null,
-    skip_reason: r.skip_reason || null,
   };
 }
 
@@ -431,22 +434,22 @@ function buildDial() {
 // to. A wedge can carry both — CSS makes `.on` win when it does.
 function renderDial() {
   const row = state.labels.get(key(state.frames[state.i]));
-  const picked = row ? (row.skip_reason ? 'skip' : row.bucket) : null;
+  const picked = row ? row.bucket : null;
   const lineAngle = angleOf(state.line);
   const suggested = lineAngle === null ? null : String(angleBucket(lineAngle));
 
   for (const el of $('dial').querySelectorAll('.wedge, .wlabel, .wkey')) {
     const store = el.dataset.store;
-    el.classList.toggle('on', picked !== null && picked !== 'skip' && store === picked);
+    el.classList.toggle('on', picked !== null && picked !== SKIP_BUCKET && store === picked);
     el.classList.toggle('suggested', suggested !== null && store === suggested);
   }
   for (const el of $('dial').querySelectorAll('.skipw, .skipt, .skipk')) {
-    el.classList.toggle('on', picked === 'skip');
+    el.classList.toggle('on', picked === SKIP_BUCKET);
   }
 
   const read = $('dial-read');
   if (picked === null) read.innerHTML = '&mdash;';
-  else if (picked === 'skip') read.innerHTML = '<b>Skipped</b> &mdash; angle not readable';
+  else if (picked === SKIP_BUCKET) read.innerHTML = '<b>Skipped</b> &mdash; angle not readable';
   else read.innerHTML = `<b>${signed(picked)}</b> &mdash; ${intervalText(Number(picked))}`;
 
   const lineRead = $('line-read');
@@ -617,10 +620,9 @@ function applyLabel(store, isSkip) {
   const prev = state.labels.get(k);
   const line = isSkip ? null : state.line;
   const row = {
-    bucket: isSkip ? null : store,
+    bucket: isSkip ? SKIP_BUCKET : store,
     base: line ? line.base : null,
     end: line ? line.end : null,
-    skip_reason: isSkip ? SKIP_REASON : null,
   };
   if (isSkip) state.line = null;
 
@@ -637,10 +639,10 @@ function applyLabel(store, isSkip) {
   call({
     action: 'saveFacingAngle', labeler, video: f.stem,
     round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
-    bucket: isSkip ? '' : String(store),
+    stance: f.stance || '',
+    bucket: isSkip ? SKIP_BUCKET : String(store),
     base_x: row.base ? String(row.base[0]) : '', base_y: row.base ? String(row.base[1]) : '',
     end_x: row.end ? String(row.end[0]) : '', end_y: row.end ? String(row.end[1]) : '',
-    skip_reason: isSkip ? SKIP_REASON : '',
   }, 'save').then(() => {
     state.pendingSaves = Math.max(0, state.pendingSaves - 1);
     status(state.pendingSaves ? `${state.pendingSaves} save(s) pending…` : 'Saved.',
@@ -753,7 +755,7 @@ function paintBatchCounts() {
     for (let i = gu.start; i < gu.end; i++) {
       const row = state.labels.get(key(state.frames[i]));
       if (!row) continue;
-      if (row.skip_reason) s++; else if (row.bucket !== null) g++;
+      if (row.bucket === SKIP_BUCKET) s++; else if (row.bucket !== null) g++;
     }
     gu.g.textContent = g || '';
     gu.s.textContent = s || '';
@@ -768,7 +770,7 @@ function renderOverview() {
     const row = state.labels.get(key(state.frames[i]));
     let cls = 'd4';
     let what = 'not labelled';
-    if (row && row.skip_reason) { cls += ' sk'; what = "can't tell"; }
+    if (row && row.bucket === SKIP_BUCKET) { cls += ' sk'; what = "can't tell"; }
     else if (row && row.bucket !== null) { cls += ' dn'; what = signed(row.bucket); }
     if (i === state.i) cls += ' cur';
     const t = `#${i + 1} — ${what}`;
@@ -816,7 +818,6 @@ function buildDist() {
 function bucketCounts(rows) {
   const count = {};
   for (const row of rows) {
-    if (row.skip_reason) { count.skip = (count.skip || 0) + 1; continue; }
     if (row.bucket === null || row.bucket === undefined) continue;
     count[row.bucket] = (count[row.bucket] || 0) + 1;
   }
@@ -923,7 +924,7 @@ function bumpMyTeamRow() {
   let mine = state.roster.find((r) => r.labeler.toLowerCase() === me.toLowerCase());
   if (!mine) { mine = { labeler: me, n: 0, skipped: 0, last_ts: '', last: null }; state.roster.push(mine); }
   mine.n = state.labels.size;
-  mine.skipped = [...state.labels.values()].filter((v) => v.skip_reason).length;
+  mine.skipped = [...state.labels.values()].filter((v) => v.bucket === SKIP_BUCKET).length;
   mine.last_ts = new Date().toISOString();
   const f = state.frames[state.i];
   if (f) mine.last = { video: f.stem, round: f.round, frame: f.frame };
@@ -1244,10 +1245,9 @@ async function refreshAgreement() {
 function agreeForSlot(f) {
   const k = key(f);
   const [ra, rb] = state.agreeRows.map((m) => m && m.get(k));
-  // 'skip' for a can't-tell row, the bucket string for a real pick, null
-  // for not yet answered at all.
-  const answerOf = (r) => !r ? null : r.skip_reason ? 'skip'
-    : (r.bucket !== null && r.bucket !== undefined ? r.bucket : null);
+  // SKIP_BUCKET for a can't-tell row, the bucket string for a real pick,
+  // null for not yet answered at all.
+  const answerOf = (r) => !r || r.bucket === null || r.bucket === undefined ? null : r.bucket;
   const aAns = answerOf(ra), bAns = answerOf(rb);
   if (aAns !== null && bAns !== null) return { kind: aAns === bAns ? 'agree' : 'disagree' };
   if (aAns !== null || bAns !== null) return { kind: 'solo' };

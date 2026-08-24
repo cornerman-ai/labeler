@@ -44,8 +44,8 @@ Nothing was re-exported or re-uploaded.
 
 This tool has no sampler of its own yet — the real plan is guard / punched /
 impact phases, ~2-3k frames. Swap `boxer_facing_angle_frames.json` for a
-real manifest (same shape: `{stem, round, frame, pts}[]`) when that exists
-and bump the `?v=` on the script tag.
+real manifest (same shape: `{stem, round, frame, pts, stance}[]`) when that
+exists and bump the `?v=` on the script tag.
 
 ⚠ The queue's LENGTH is the version stamp for the cached team ranges
 (`fa_range_cache`) — a rebuilt queue of a different size drops the cache by
@@ -75,7 +75,7 @@ access to that workbook.
 Each tab:
 
 ```
-ts | video | round | frame | pts_sec | bucket | base_x | base_y | end_x | end_y | skip_reason
+ts | video | round | frame | pts_sec | stance | bucket | base_x | base_y | end_x | end_y
 ```
 
 No `labeler` column — the tab itself carries that now. No `deleted` column
@@ -85,12 +85,26 @@ cross-labeler row left to preserve once the tab is the labeler.
 `deleteFacingAngle` removes a row entirely, same no-soft-delete contract as
 chin-point 4.0.
 
-`bucket` ∈ `0 / 45 / 90 / 135 / 180 / -135 / -90 / -45` — the actual saved
-label, required unless `skip_reason` is set (exactly one of the two, never
-both, never neither). `base_x`/`base_y`/`end_x`/`end_y` are OPTIONAL and
-independent of that choice: normalized `0..1` image coordinates for the
-drawn line, present only when one was drawn, never validated against
-`bucket` server-side. `skip_reason` has one value, `hard_to_tell`.
+`stance` (`Orthodox` / `Southpaw`) is carried over UNCHANGED from the frame
+manifest — never asked about, never validated server-side, same "free
+string" convention chin_tuck 2.0/3.0 use for the same field
+(`CS2_HEADERS`/`CS3_HEADERS` in `Code.js`): it says which fighter a row is
+judging, without which a two-person frame isn't interpretable later.
+`boxer_facing_angle_frames.json`'s 500 placeholder frames carry it because
+it was already sitting in `height_guard_queue.json`, the source they were
+sampled from — nothing new had to be computed.
+
+`bucket` ∈ `0 / 45 / 90 / 135 / 180 / -135 / -90 / -45 / skip` — always
+required, the actual saved answer. There is **no separate skip-reason
+column**: `skip` is just one more valid bucket value, not a reason layered
+on top of an empty one — there was only ever one possible reason
+(`hard_to_tell`), so the column never carried anything past "was this a
+skip," which `skip` itself already says. (An earlier version of this tool
+did have a `skip_reason` column; it's gone from the schema going forward —
+any leftover values in already-labeled sheets are being cleaned up by
+hand.) `base_x`/`base_y`/`end_x`/`end_y` are OPTIONAL and independent of
+`bucket`: normalized `0..1` image coordinates for the drawn line, present
+only when one was drawn, never validated against `bucket` server-side.
 
 `statsFacingAngle` powers both "Everyone's progress" and the "everyone"
 half of the Distribution chart: one entry per labeler tab (`n`, `skipped`,

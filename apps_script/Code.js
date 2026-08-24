@@ -2426,10 +2426,18 @@ function doGetChinLabels(p, labeler, action) {
 // a placeholder dataset — this tool's own sampler doesn't exist yet, see
 // boxer_facing_angle/README.md.
 // ============================================================
-var FACING_ANGLE_HEADERS = ['ts', 'video', 'round', 'frame', 'pts_sec',
-                            'bucket', 'base_x', 'base_y', 'end_x', 'end_y', 'skip_reason'];
-var FACING_ANGLE_BUCKETS = ['0', '45', '90', '135', '180', '-135', '-90', '-45'];
-var FACING_ANGLE_SKIP_REASONS = ['hard_to_tell'];
+// `stance` is carried over unchanged from the frame manifest, not asked
+// about or validated — same "free string, no CS_VALUES entry" convention
+// chin_tuck 2.0/3.0 use for the same field (see CS2_HEADERS/CS3_HEADERS):
+// it says WHICH fighter a row is judging, without which a two-person frame
+// isn't interpretable later.
+var FACING_ANGLE_HEADERS = ['ts', 'video', 'round', 'frame', 'pts_sec', 'stance',
+                            'bucket', 'base_x', 'base_y', 'end_x', 'end_y'];
+// 'skip' is just one more valid bucket value, not a separate reason column
+// layered on top of an empty bucket — there was only ever one possible
+// reason ('hard_to_tell'), so the column carried no information beyond
+// "was this a skip", which 'skip' itself already says.
+var FACING_ANGLE_BUCKETS = ['0', '45', '90', '135', '180', '-135', '-90', '-45', 'skip'];
 var FACING_ANGLE_PREFIX = 'facing_angle_labels_';
 // Its own standalone workbook, not the script's bound spreadsheet — same ID
 // the torso-angle prototype already used (renamed here to match the tool).
@@ -2527,8 +2535,10 @@ function facingAngleInvalidateStats() {
 // single shared sheet to scan under this one-tab-per-person model; see
 // cs2Stats for the pattern). `buckets` tallies each resolved frame into one
 // of the 8 compass buckets or 'skip', read straight from the stored
-// `bucket` column. Cached 60s, invalidated on every save/delete so a labeler's own new
-// row is visible immediately even though the cache is shared.
+// `bucket` column — 'skip' is a bucket value like any other, not a
+// separate reason column. Cached 60s, invalidated on every save/delete so
+// a labeler's own new row is visible immediately even though the cache is
+// shared.
 function facingAngleStats() {
   var cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) {}
@@ -2551,12 +2561,11 @@ function facingAngleStats() {
       var row = data[r];
       if (!row[idx.video]) continue;
       entry.n++;
-      var sk = String(row[idx.skip_reason] || '');
-      if (sk !== '') {
+      var b = String(row[idx.bucket] || '');
+      if (b === 'skip') {
         entry.skipped++;
         entry.buckets.skip = (entry.buckets.skip || 0) + 1;
-      } else if (row[idx.bucket] !== '') {
-        var b = String(row[idx.bucket]);
+      } else if (b !== '') {
         entry.buckets[b] = (entry.buckets[b] || 0) + 1;
       }
       var ts = String(row[idx.ts] || '');
@@ -2603,10 +2612,10 @@ function doGetFacingAngle(p, labeler, action) {
         round: Number(lr[idx.round]),
         frame: Number(lr[idx.frame]),
         pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
+        stance: lr[idx.stance] || '',
         bucket: lr[idx.bucket] === '' ? null : String(lr[idx.bucket]),
         base_x: lr[idx.base_x], base_y: lr[idx.base_y],
         end_x: lr[idx.end_x], end_y: lr[idx.end_y],
-        skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
       });
     }
     return jsonOut({ status: 'ok', rows: rows });
@@ -2615,27 +2624,21 @@ function doGetFacingAngle(p, labeler, action) {
   // === SAVE, keyed by (video, round, frame) within this labeler's own tab.
   // TRUE overwrite in place — no soft-delete column, since there is no
   // cross-labeler row left to preserve once the tab itself is the labeler.
-  // Exactly one of bucket / skip_reason must be set. base_x/y + end_x/y
-  // are OPTIONAL and independent of that choice — the drawn line is an
-  // assistant, saved alongside whichever bucket the labeler actually
-  // clicked, never validated against it. ===
+  // `bucket` is always required — 'skip' ("can't tell") is just one more
+  // valid value alongside the eight compass buckets, not a separate reason
+  // column layered on top of an empty one. base_x/y + end_x/y are OPTIONAL
+  // and independent of that choice — the drawn line is an assistant, saved
+  // alongside whichever bucket the labeler actually clicked, never
+  // validated against it. ===
   if (action === 'saveFacingAngle') {
-    var required = ['video', 'round', 'frame'];
+    var required = ['video', 'round', 'frame', 'bucket'];
     for (var k = 0; k < required.length; k++) {
       if (p[required[k]] === undefined || p[required[k]] === '') {
         return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
       }
     }
-    var hasBucket = p.bucket !== undefined && p.bucket !== '';
-    var hasSkip = p.skip_reason !== undefined && p.skip_reason !== '';
-    if (hasBucket === hasSkip) {
-      return jsonOut({ status: 'error', message: 'need exactly one of bucket / skip_reason' });
-    }
-    if (hasBucket && FACING_ANGLE_BUCKETS.indexOf(String(p.bucket)) === -1) {
+    if (FACING_ANGLE_BUCKETS.indexOf(String(p.bucket)) === -1) {
       return jsonOut({ status: 'error', message: 'invalid bucket: ' + p.bucket });
-    }
-    if (hasSkip && FACING_ANGLE_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
-      return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
     }
     var hasBase = p.base_x !== undefined && p.base_x !== '' && p.base_y !== undefined && p.base_y !== '';
     var hasEnd = p.end_x !== undefined && p.end_x !== '' && p.end_y !== undefined && p.end_y !== '';
@@ -2653,12 +2656,12 @@ function doGetFacingAngle(p, labeler, action) {
       round: Number(p.round),
       frame: Number(p.frame),
       pts_sec: p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec),
-      bucket: hasBucket ? String(p.bucket) : '',
+      stance: p.stance !== undefined ? String(p.stance) : '',
+      bucket: String(p.bucket),
       base_x: hasLine ? Number(p.base_x) : '',
       base_y: hasLine ? Number(p.base_y) : '',
       end_x: hasLine ? Number(p.end_x) : '',
       end_y: hasLine ? Number(p.end_y) : '',
-      skip_reason: hasSkip ? String(p.skip_reason) : '',
     };
     var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     var newRow = headerRow.map(function (h) {
