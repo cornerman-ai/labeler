@@ -33,9 +33,10 @@
 // mirrored for stance: recorded as-shown, same reasoning as Guard Drops'
 // guard_hand.
 //
-// Frames are a PLACEHOLDER sample — 500 borrowed from chin_tuck_4.0's
-// height_guard queue (boxer_facing_angle_frames.json), served from the same
-// Firebase Storage objects. This tool's own sampler doesn't exist yet.
+// 2,976 real frames (boxer_facing_angle_frames.json) — guard/punch/impact,
+// reused from chin-point 4.0's already-sampled+exported pools rather than a
+// fresh sample of its own; see cornerman-backend
+// ml/research/boxer_facing_angle/v1/ for exactly how they were picked.
 //
 // Backend: listFacingAngle / saveFacingAngle / deleteFacingAngle /
 // statsFacingAngle in apps_script/Code.js — ONE SHEET TAB PER LABELER
@@ -51,11 +52,15 @@
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyechZQLtMzlmeT15bhIy0eozKpA0jHlmuZPSqVzyEcS5Vy0A5cS/exec';
 
-// Same bucket + objects the frames actually live at — see
-// chin_tuck_4.0/height_guard/height_guard.js. Borrowed wholesale: these are
-// literally the same hosted JPEGs, not a copy.
+// This tool's OWN pool now — 2,976 real frames (guard/punch/impact),
+// reused from chin-point 4.0's already-sampled+exported height_guard/
+// height_punch/height_impact pools, re-gated for arm/leg visibility on top
+// of their existing head/shoulder/hip gate. Same bucket + shared download
+// token as every other labeler_media pool; see
+// cornerman-backend ml/research/boxer_facing_angle/v1/ for the
+// reproducible build (build_dataset.py + boxer_facing_angle_manifest.json).
 const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
-const FRAME_PREFIX = 'labeler_media/chin_tuck/v4/height_guard_v4_frames/frames';
+const FRAME_PREFIX = 'labeler_media/boxer_facing_angle/v1/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
 const BUG_REPORT_TOOL = 'boxer_facing_angle';

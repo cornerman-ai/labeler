@@ -34,18 +34,43 @@ if a labeler never bothers drawing one), a bucket with a line that happens
 to disagree with it (the labeler drew one thing and then decided a
 different wedge fit better), or — on `skip` — neither.
 
-## The data (placeholder)
+## The data
 
-`boxer_facing_angle_frames.json`'s 500 frames are **borrowed wholesale from
-chin_tuck_4.0's `height_guard` queue** — same stems/round/frame, same
-Firebase Storage objects (`FRAME_BUCKET` / `FRAME_PREFIX` / `FRAME_TOKEN`
-in the JS are copied from `chin_tuck_4.0/height_guard/height_guard.js`).
-Nothing was re-exported or re-uploaded.
+`boxer_facing_angle_frames.json`'s **2,976 real frames** — guard, punch, and
+impact phases, ~1,000 each (976 impact — a handful collided with punch
+frames on the same BlazePose frame and were deduped) — across 199 distinct
+videos, shuffled once into final labeling order. Not this tool's own
+sample: **reused wholesale from chin-point 4.0's already-sampled,
+already-exported pools** (`height_guard_v4_frames`/`height_punch_v4_frames`/
+`height_impact_v4_frames` — see `cornerman-backend`'s `v4/README.md`), the
+same eligible-video reasoning applying here (upright, trackable boxing
+footage) plus an EXTRA gate this tool cares about that chin-point never
+needed: at least 4 of 8 limb joints (elbows/wrists/knees/ankles) visible,
+re-checked against the raw BlazePose cache since neither source manifest
+recorded them. Not all 8 — variety matters more than uniform full-body
+shots, and a missing ankle/foot at a chest-height crop's bottom edge is far
+more common than a missing elbow or knee. `stance` is carried over
+UNCHANGED from each source sample's own v4-computed `stance_of()` result —
+nothing here re-derives it. Firebase Storage objects live at their own pool
+now, not chin_tuck's (`FRAME_BUCKET`/`FRAME_PREFIX`/`FRAME_TOKEN` in the JS
+point at `labeler_media/boxer_facing_angle/v1/frames`, same bucket/token as
+every other pool).
 
-This tool has no sampler of its own yet — the real plan is guard / punched /
-impact phases, ~2-3k frames. Swap `boxer_facing_angle_frames.json` for a
-real manifest (same shape: `{stem, round, frame, pts, stance}[]`) when that
-exists and bump the `?v=` on the script tag.
+The reproducible build lives in `cornerman-backend`:
+`ml/research/boxer_facing_angle/v1/build_dataset.py` (score guard/punch/
+impact candidates for limb visibility, water-fill an equal share per video
+within each phase, redistribute phase shortfall, dedupe, shuffle, copy the
+already-extracted JPEGs into one combined local pool, write both this
+file's shape and a full reproducibility manifest) and the manifest itself,
+`boxer_facing_angle_manifest.json` (phase/stance/shoulder/limb_visible per
+frame — committed there, unlike the frames/manifest convention in the
+labeler repo, since it's source for an audit trail, not a build artifact).
+Re-running it is deterministic (seeded RNG) given the same source pools and
+BlazePose caches.
+
+Swap `boxer_facing_angle_frames.json` for a fresh run (same shape:
+`{stem, round, frame, pts, stance}[]`) if the gate or targets ever change,
+and bump the `?v=` on the script tag.
 
 ⚠ The queue's LENGTH is the version stamp for the cached team ranges
 (`fa_range_cache`) — a rebuilt queue of a different size drops the cache by
@@ -90,9 +115,9 @@ manifest — never asked about, never validated server-side, same "free
 string" convention chin_tuck 2.0/3.0 use for the same field
 (`CS2_HEADERS`/`CS3_HEADERS` in `Code.js`): it says which fighter a row is
 judging, without which a two-person frame isn't interpretable later.
-`boxer_facing_angle_frames.json`'s 500 placeholder frames carry it because
-it was already sitting in `height_guard_queue.json`, the source they were
-sampled from — nothing new had to be computed.
+`boxer_facing_angle_frames.json`'s 2,976 real frames carry it because it
+was already computed by v4's own `stance_of()` on each source sample —
+nothing new had to be derived, see "The data" above.
 
 `bucket` ∈ `0 / 45 / 90 / 135 / 180 / -135 / -90 / -45 / skip` — always
 required, the actual saved answer. There is **no separate skip-reason
