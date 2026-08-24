@@ -307,12 +307,12 @@ function doGet(e) {
     return doGetChinLabels(p, labeler, action);
   }
 
-  // Torso-angle labeler — separate sheet, one 45°-bucket verdict per
-  // sampled frame (torso rotation relative to the camera). See
-  // torso_angle/README.md.
-  if (action === 'listTorsoAngle' || action === 'saveTorsoAngle' ||
-      action === 'deleteTorsoAngle' || action === 'statsTorsoAngle') {
-    return doGetTorsoAngle(p, labeler, action);
+  // Boxer facing angle labeler — one sheet TAB PER LABELER, one drawn
+  // line (base -> opponent) per sampled frame. See
+  // boxer_facing_angle/README.md.
+  if (action === 'listFacingAngle' || action === 'saveFacingAngle' ||
+      action === 'deleteFacingAngle' || action === 'statsFacingAngle') {
+    return doGetFacingAngle(p, labeler, action);
   }
 
   // Chin-shoulder labeler — the 3-question chin-vs-lead-shoulder version of
@@ -2399,106 +2399,228 @@ function doGetChinLabels(p, labeler, action) {
 }
 
 // ============================================================
-// Torso-angle labeler (torso_angle/torso_angle.html) — ONE bucketed verdict
-// per sampled frame: torso rotation relative to the camera, in 45° buckets
-// centered on the 8 compass values (0/45/90/135/180/-135/-90/-45), positive
-// = rotated toward the CAMERA's right (an image-plane convention — NOT
-// stance-relative, deliberately unlike punch_dir_16's "boxer's own right").
-// Recorded as-shown: no stance-mirroring at label time, same reasoning as
-// Guard Drops' guard_hand (raw + auditable beats normalized + unfixable).
+// Boxer facing angle labeler (boxer_facing_angle/boxer_facing_angle.html) —
+// ONE bucketed verdict per sampled frame, picked on the same 8-wedge dial
+// the tool always used: which 45°-wide compass bucket the boxer is facing,
+// relative to the CAMERA (0° squared to it, 180° back to it, + toward the
+// camera's RIGHT — image-plane, not stance-relative, never mirrored, same
+// reasoning as Guard Drops' guard_hand).
+//
+// A drawn line (base point -> opponent) is an OPTIONAL assistant, not the
+// label: it computes an angle and lights up the nearest wedge as a
+// suggestion, but the wedge the labeler actually clicks is what's saved.
+// The line's raw points are stored ALONGSIDE the bucket when one was drawn
+// (base_x/y, end_x/y) purely for audit/calibration — nobody derives the
+// bucket from them, and a row with a bucket but no line is completely
+// normal (most of them, if the labeler never draws one).
+//
+// ONE SHEET TAB PER LABELER (facing_angle_labels_{Name}), not a shared tab
+// with a labeler column — the same shape as chin_shoulder_labels_{Name}
+// (see cs2SheetName / getOrCreateCs2Sheet / cs2Stats below for the pattern
+// this mirrors). Keyed by (video, round, frame) within a labeler's own tab;
+// a re-save overwrites that row in place — there is no cross-labeler row
+// to preserve now that the tab itself is the labeler, so there is no
+// soft-delete column either.
 //
 // Frames are currently borrowed from chin_tuck_4.0's height_guard sample as
 // a placeholder dataset — this tool's own sampler doesn't exist yet, see
-// torso_angle/README.md.
-//
-// Keyed by (labeler, video, round, frame); a re-save supersedes the prior
-// row (soft deleted=1) — same contract as Chin Labels above, which this
-// handler mirrors almost verbatim.
+// boxer_facing_angle/README.md.
 // ============================================================
-var TORSO_SHEET_NAME = 'Torso Angle Labels';
-var TORSO_HEADERS = ['ts', 'labeler', 'video', 'round', 'frame', 'pts_sec',
-                     'bucket', 'skip_reason', 'deleted'];
-var TORSO_BUCKETS = ['0', '45', '90', '135', '180', '-135', '-90', '-45'];
-var TORSO_SKIP_REASONS = ['hard_to_tell'];
-// Its own standalone workbook, not the script's bound spreadsheet — same
-// arrangement as the chin generations. openById, not getActiveSpreadsheet():
-// the latter would silently create a fresh, empty 'Torso Angle Labels' tab
-// back in Box Labeled Data, orphaned from every row that lives here.
-var TORSO_SPREADSHEET_ID = '1tRcQeoqr98yvoHldY7B8o2HmuXdisDGSHi20uyYjwyI';
+var FACING_ANGLE_HEADERS = ['ts', 'video', 'round', 'frame', 'pts_sec',
+                            'bucket', 'base_x', 'base_y', 'end_x', 'end_y', 'skip_reason'];
+var FACING_ANGLE_BUCKETS = ['0', '45', '90', '135', '180', '-135', '-90', '-45'];
+var FACING_ANGLE_SKIP_REASONS = ['hard_to_tell'];
+var FACING_ANGLE_PREFIX = 'facing_angle_labels_';
+// Its own standalone workbook, not the script's bound spreadsheet — same ID
+// the torso-angle prototype already used (renamed here to match the tool).
+// openById, not getActiveSpreadsheet(): the latter would silently create a
+// fresh, empty tab back in Box Labeled Data, orphaned from every row here.
+var FACING_ANGLE_SPREADSHEET_ID = '1tRcQeoqr98yvoHldY7B8o2HmuXdisDGSHi20uyYjwyI';
+var FACING_ANGLE_STATS_KEY = 'fa_stats_' + FACING_ANGLE_PREFIX;
+var FACING_ANGLE_STATS_TTL = 60;
 
-function torsoSpreadsheet() {
-  return SpreadsheetApp.openById(TORSO_SPREADSHEET_ID);
+function facingAngleSpreadsheet() {
+  return SpreadsheetApp.openById(FACING_ANGLE_SPREADSHEET_ID);
 }
 
-function getOrCreateTorsoSheet() {
-  var ss = torsoSpreadsheet();
-  var sh = ss.getSheetByName(TORSO_SHEET_NAME);
+// Trim + title-case the first letter, lower-case the rest — the only
+// transformation cs2SheetName applies too. No stripping of spaces/special
+// characters: a labeler whose name doesn't round-trip through this is
+// simply a name to pick more carefully, not something to sanitize around.
+function facingAngleSheetName(labelerName) {
+  var s = String(labelerName || '').trim();
+  if (!s) return null;
+  return FACING_ANGLE_PREFIX + s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+// Reconciles the header row to FACING_ANGLE_HEADERS in both membership and
+// order, same 3-pass shape as getOrCreateCs2Sheet: drop columns not in the
+// schema (right to left, so deletions don't shift undeleted indices),
+// append any missing, then permute the whole data block if the surviving
+// order has drifted. This tab family is entirely code-owned — a hand-added
+// column is removed on the next request, same contract as the chin tabs.
+function getOrCreateFacingAngleSheet(labelerName) {
+  var name = facingAngleSheetName(labelerName);
+  if (!name) return null;
+  var ss = facingAngleSpreadsheet();
+  var sh = ss.getSheetByName(name);
+  var HEADERS = FACING_ANGLE_HEADERS;
   if (!sh) {
-    sh = ss.insertSheet(TORSO_SHEET_NAME);
-    sh.appendRow(TORSO_HEADERS);
+    sh = ss.insertSheet(name);
+    sh.appendRow(HEADERS);
     sh.setFrozenRows(1);
     ensureTextColumn(sh, 'video');
     return sh;
   }
   if (sh.getLastRow() === 0) {
-    sh.appendRow(TORSO_HEADERS);
+    sh.appendRow(HEADERS);
     sh.setFrozenRows(1);
+    ensureTextColumn(sh, 'video');
+    return sh;
   }
-  // Video stems are free text and some of them parse as dates or numbers if
-  // Sheets is left to guess — force the column to plain text, same as the
-  // chin sheets do.
+  var existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+  var want = HEADERS.map(function (h) { return h.toLowerCase(); });
+
+  var dropped = 0;
+  for (var c = existing.length - 1; c >= 0; c--) {
+    var col = String(existing[c]).trim();
+    if (col === '') continue;
+    if (want.indexOf(col.toLowerCase()) < 0) { sh.deleteColumn(c + 1); dropped++; }
+  }
+  if (dropped) existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+  var lower = existing.map(function (h) { return String(h).toLowerCase(); });
+  var missing = HEADERS.filter(function (h) { return lower.indexOf(h.toLowerCase()) < 0; });
+  if (missing.length) {
+    var at = existing.length + 1;
+    var need = at + missing.length - 1;
+    if (sh.getMaxColumns() < need) sh.insertColumnsAfter(sh.getMaxColumns(), need - sh.getMaxColumns());
+    sh.getRange(1, at, 1, missing.length).setValues([missing]);
+  }
+
+  var now = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+              .map(function (h) { return String(h).trim().toLowerCase(); });
+  var ordered = true;
+  for (var oi = 0; oi < want.length; oi++) { if (now[oi] !== want[oi]) { ordered = false; break; } }
+  if (!ordered) {
+    var perm = want.map(function (h) { return now.indexOf(h); });
+    var ok = true;
+    for (var pi = 0; pi < perm.length; pi++) if (perm[pi] < 0) { ok = false; break; }
+    if (ok) {
+      var nRows = Math.max(sh.getLastRow(), 1);
+      var block = sh.getRange(1, 1, nRows, now.length).getValues();
+      var moved = block.map(function (row) { return perm.map(function (p) { return row[p]; }); });
+      moved[0] = HEADERS.slice();
+      sh.getRange(1, 1, nRows, want.length).setValues(moved);
+      for (var extra = now.length; extra > want.length; extra--) sh.deleteColumn(extra);
+    }
+  }
   ensureTextColumn(sh, 'video');
   return sh;
 }
 
-function torsoRowMatches(row, idx, p) {
-  return row[idx.labeler] === p.labeler &&
-         row[idx.video] === p.video &&
-         String(row[idx.round]) === String(p.round) &&
-         String(row[idx.frame]) === String(p.frame);
+function facingAngleInvalidateStats() {
+  try { CacheService.getScriptCache().remove(FACING_ANGLE_STATS_KEY); } catch (e) {}
 }
 
-function doGetTorsoAngle(p, labeler, action) {
-  // A READ must never create the tab — see doGetChinLabels above for why.
-  // statsTorsoAngle is a read too: opening the page must not add a sheet.
-  var sh = torsoSpreadsheet().getSheetByName(TORSO_SHEET_NAME);
-  if (!sh && action !== 'saveTorsoAngle') {
-    if (action === 'deleteTorsoAngle') return jsonOut({ status: 'ok', deleted: 0 });
-    if (action === 'statsTorsoAngle') return jsonOut({ status: 'ok', labelers: [] });
+// The roster behind "Everyone's progress" AND the "everyone" distribution
+// bars — one entry per labeler tab, enumerated by prefix (there is no
+// single shared sheet to scan under this one-tab-per-person model; see
+// cs2Stats for the pattern). `buckets` tallies each resolved frame into one
+// of the 8 compass buckets or 'skip', read straight from the stored
+// `bucket` column. Cached 60s, invalidated on every save/delete so a labeler's own new
+// row is visible immediately even though the cache is shared.
+function facingAngleStats() {
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  if (cache) {
+    var hit = cache.get(FACING_ANGLE_STATS_KEY);
+    if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
+  }
+  var sheets = facingAngleSpreadsheet().getSheets();
+  var out = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var nm = sh.getName();
+    if (nm.indexOf(FACING_ANGLE_PREFIX) !== 0) continue;
+    var data = sh.getDataRange().getValues();
+    if (data.length < 1) continue;
+    var idx = punchDirHeaderIndex(data[0]);
+    var entry = { labeler: nm.substring(FACING_ANGLE_PREFIX.length), n: 0, skipped: 0,
+                  last_ts: '', last: null, buckets: {} };
+    for (var r = 1; r < data.length; r++) {
+      var row = data[r];
+      if (!row[idx.video]) continue;
+      entry.n++;
+      var sk = String(row[idx.skip_reason] || '');
+      if (sk !== '') {
+        entry.skipped++;
+        entry.buckets.skip = (entry.buckets.skip || 0) + 1;
+      } else if (row[idx.bucket] !== '') {
+        var b = String(row[idx.bucket]);
+        entry.buckets[b] = (entry.buckets[b] || 0) + 1;
+      }
+      var ts = String(row[idx.ts] || '');
+      if (ts >= entry.last_ts) {
+        entry.last_ts = ts;
+        entry.last = { video: row[idx.video], round: Number(row[idx.round]), frame: Number(row[idx.frame]) };
+      }
+    }
+    out.push(entry);
+  }
+  out.sort(function (a, b) { return b.n - a.n; });
+  var payload = JSON.stringify({ status: 'ok', labelers: out });
+  if (cache) { try { cache.put(FACING_ANGLE_STATS_KEY, payload, FACING_ANGLE_STATS_TTL); } catch (e) {} }
+  return ContentService.createTextOutput(payload).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGetFacingAngle(p, labeler, action) {
+  if (action === 'statsFacingAngle') return facingAngleStats();
+
+  var who = p.labeler || labeler;
+  var name = facingAngleSheetName(who);
+  if (!name) return jsonOut({ status: 'error', message: 'missing field: labeler' });
+
+  // A READ must never create the tab.
+  var sh = facingAngleSpreadsheet().getSheetByName(name);
+  if (!sh && action !== 'saveFacingAngle') {
+    if (action === 'deleteFacingAngle') return jsonOut({ status: 'ok', deleted: 0 });
     return jsonOut({ status: 'ok', rows: [] });
   }
-  sh = getOrCreateTorsoSheet();
+  sh = getOrCreateFacingAngleSheet(who);
   var data = sh.getDataRange().getValues();
   var idx = punchDirHeaderIndex(data[0]);
 
-  // === LIST torso-angle labels (optionally filtered by labeler / video) ===
-  if (action === 'listTorsoAngle') {
+  // === LIST this labeler's rows (optionally filtered by video) ===
+  if (action === 'listFacingAngle') {
     var video = p.video || '';
-    var filterLabeler = p.labeler || '';
     var rows = [];
     for (var li = 1; li < data.length; li++) {
       var lr = data[li];
-      if (String(lr[idx.deleted]) === '1') continue;
+      if (!lr[idx.video]) continue;
       if (video && lr[idx.video] !== video) continue;
-      if (filterLabeler && lr[idx.labeler] !== filterLabeler) continue;
       rows.push({
-        ts: lr[idx.ts],
-        labeler: lr[idx.labeler],
         video: lr[idx.video],
         round: Number(lr[idx.round]),
         frame: Number(lr[idx.frame]),
         pts_sec: lr[idx.pts_sec] === '' ? null : Number(lr[idx.pts_sec]),
         bucket: lr[idx.bucket] === '' ? null : String(lr[idx.bucket]),
+        base_x: lr[idx.base_x], base_y: lr[idx.base_y],
+        end_x: lr[idx.end_x], end_y: lr[idx.end_y],
         skip_reason: lr[idx.skip_reason] === '' ? null : String(lr[idx.skip_reason]),
       });
     }
     return jsonOut({ status: 'ok', rows: rows });
   }
 
-  // === SAVE a label keyed by (labeler, video, round, frame). Supersedes. ===
-  // Exactly one of bucket / skip_reason must be set.
-  if (action === 'saveTorsoAngle') {
-    var required = ['labeler', 'video', 'round', 'frame'];
+  // === SAVE, keyed by (video, round, frame) within this labeler's own tab.
+  // TRUE overwrite in place — no soft-delete column, since there is no
+  // cross-labeler row left to preserve once the tab itself is the labeler.
+  // Exactly one of bucket / skip_reason must be set. base_x/y + end_x/y
+  // are OPTIONAL and independent of that choice — the drawn line is an
+  // assistant, saved alongside whichever bucket the labeler actually
+  // clicked, never validated against it. ===
+  if (action === 'saveFacingAngle') {
+    var required = ['video', 'round', 'frame'];
     for (var k = 0; k < required.length; k++) {
       if (p[required[k]] === undefined || p[required[k]] === '') {
         return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
@@ -2509,92 +2631,63 @@ function doGetTorsoAngle(p, labeler, action) {
     if (hasBucket === hasSkip) {
       return jsonOut({ status: 'error', message: 'need exactly one of bucket / skip_reason' });
     }
-    var bucketVal = '';
-    var skipVal = '';
-    if (hasBucket) {
-      if (TORSO_BUCKETS.indexOf(String(p.bucket)) === -1) {
-        return jsonOut({ status: 'error', message: 'invalid bucket: ' + p.bucket });
-      }
-      bucketVal = String(p.bucket);
-    } else {
-      if (TORSO_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
-        return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
-      }
-      skipVal = String(p.skip_reason);
+    if (hasBucket && FACING_ANGLE_BUCKETS.indexOf(String(p.bucket)) === -1) {
+      return jsonOut({ status: 'error', message: 'invalid bucket: ' + p.bucket });
     }
+    if (hasSkip && FACING_ANGLE_SKIP_REASONS.indexOf(String(p.skip_reason)) === -1) {
+      return jsonOut({ status: 'error', message: 'invalid skip_reason: ' + p.skip_reason });
+    }
+    var hasBase = p.base_x !== undefined && p.base_x !== '' && p.base_y !== undefined && p.base_y !== '';
+    var hasEnd = p.end_x !== undefined && p.end_x !== '' && p.end_y !== undefined && p.end_y !== '';
+    var hasLine = hasBase && hasEnd;
 
+    var foundRow = -1;
     for (var i2 = 1; i2 < data.length; i2++) {
-      if (String(data[i2][idx.deleted]) === '1') continue;
-      if (!torsoRowMatches(data[i2], idx, p)) continue;
-      sh.getRange(i2 + 1, idx.deleted + 1).setValue('1');
+      if (String(data[i2][idx.video]) === String(p.video) &&
+          String(data[i2][idx.round]) === String(p.round) &&
+          String(data[i2][idx.frame]) === String(p.frame)) { foundRow = i2; break; }
     }
-    var newRow = [];
+    var values = {
+      ts: new Date().toISOString(),
+      video: p.video,
+      round: Number(p.round),
+      frame: Number(p.frame),
+      pts_sec: p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec),
+      bucket: hasBucket ? String(p.bucket) : '',
+      base_x: hasLine ? Number(p.base_x) : '',
+      base_y: hasLine ? Number(p.base_y) : '',
+      end_x: hasLine ? Number(p.end_x) : '',
+      end_y: hasLine ? Number(p.end_y) : '',
+      skip_reason: hasSkip ? String(p.skip_reason) : '',
+    };
     var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-    for (var c = 0; c < headerRow.length; c++) {
-      var col = String(headerRow[c]);
-      if (col === 'ts') newRow.push(new Date().toISOString());
-      else if (col === 'labeler') newRow.push(p.labeler);
-      else if (col === 'video') newRow.push(p.video);
-      else if (col === 'round') newRow.push(Number(p.round));
-      else if (col === 'frame') newRow.push(Number(p.frame));
-      else if (col === 'pts_sec') newRow.push(p.pts_sec === undefined || p.pts_sec === '' ? '' : Number(p.pts_sec));
-      else if (col === 'bucket') newRow.push(bucketVal);
-      else if (col === 'skip_reason') newRow.push(skipVal);
-      else if (col === 'deleted') newRow.push('');
-      else newRow.push('');
-    }
-    sh.appendRow(newRow);
+    var newRow = headerRow.map(function (h) {
+      var v = values[String(h)];
+      return v === undefined ? '' : v;
+    });
+    if (foundRow === -1) sh.appendRow(newRow);
+    else sh.getRange(foundRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    facingAngleInvalidateStats();
     return jsonOut({ status: 'ok' });
   }
 
-  // === DELETE: mark every current row for (labeler, video, round, frame) ===
-  if (action === 'deleteTorsoAngle') {
+  // === DELETE: remove the row entirely for (video, round, frame) — no
+  // soft-delete, matching the chin-point 4.0 generations' contract. ===
+  if (action === 'deleteFacingAngle') {
     var found = 0;
-    for (var i3 = 1; i3 < data.length; i3++) {
-      if (String(data[i3][idx.deleted]) === '1') continue;
-      if (!torsoRowMatches(data[i3], idx, p)) continue;
-      sh.getRange(i3 + 1, idx.deleted + 1).setValue('1');
-      found++;
+    for (var i3 = data.length - 1; i3 >= 1; i3--) {
+      if (String(data[i3][idx.video]) === String(p.video) &&
+          String(data[i3][idx.round]) === String(p.round) &&
+          String(data[i3][idx.frame]) === String(p.frame)) {
+        sh.deleteRow(i3 + 1);
+        found++;
+      }
     }
+    if (found) facingAngleInvalidateStats();
     return jsonOut({ status: 'ok', deleted: found });
   }
 
-  // === STATS: the roster behind the page's "Everyone's progress" panel ===
-  // One entry per labeler who has ever saved a live row: how many frames
-  // they have resolved (a bucket OR a skip both count — the frame is dealt
-  // with either way), how many of those were skips, when they last saved,
-  // and which frame that was. The page turns `last` into a queue position
-  // itself; this handler has never seen the queue.
-  //
-  // Unlike doGetChinPoint's stats, this reads ONE flat sheet rather than a
-  // tab per labeler, so there is nothing to fan out over and no cache: the
-  // whole answer is one pass over the rows already in hand.
-  if (action === 'statsTorsoAngle') {
-    var byName = {};
-    for (var i4 = 1; i4 < data.length; i4++) {
-      var sr = data[i4];
-      if (String(sr[idx.deleted]) === '1') continue;
-      var nm = String(sr[idx.labeler] || '');
-      if (!nm) continue;
-      var e = byName[nm];
-      if (!e) { e = byName[nm] = { labeler: nm, n: 0, skipped: 0, last_ts: '', last: null }; }
-      e.n++;
-      if (String(sr[idx.skip_reason] || '') !== '') e.skipped++;
-      var ts = String(sr[idx.ts] || '');
-      // Rows are appended in save order, but a re-save supersedes an older
-      // row further UP the sheet — so compare rather than trusting position.
-      if (ts >= e.last_ts) {
-        e.last_ts = ts;
-        e.last = { video: sr[idx.video], round: Number(sr[idx.round]), frame: Number(sr[idx.frame]) };
-      }
-    }
-    var out = [];
-    for (var nm2 in byName) out.push(byName[nm2]);
-    out.sort(function (a, b) { return b.n - a.n; });
-    return jsonOut({ status: 'ok', labelers: out });
-  }
-
-  return jsonOut({ status: 'error', message: 'unknown torso action: ' + action });
+  return jsonOut({ status: 'error', message: 'unknown facing-angle action: ' + action });
 }
 
 // ============================================================

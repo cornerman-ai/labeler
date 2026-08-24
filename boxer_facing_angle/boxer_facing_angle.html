@@ -3,13 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Torso Angle Labeler</title>
+<title>Boxer Facing Angle Labeler</title>
 <style>
 /* ── design system copied from chin_tuck_4.0/height_guard ──────────────────
-   Same tokens, same card/pill/button language, same zoom-pan stage — see
-   that file's own header comments for the reasoning behind each choice.
-   What is NOT here: point placement, visibility popovers, admin mode,
-   disagreement grids. This tool asks for one bucket per frame. */
+   Same tokens, same card/pill/button language, same zoom-pan stage. */
 :root {
   --bg: #f5f5f7;
   --card: #ffffff;
@@ -29,6 +26,9 @@
      verdict, so nothing here should read as "good" or "bad". */
   --wedge: rgba(120,120,128,.10);
   --wedge-hover: rgba(120,120,128,.20);
+  /* The line-suggested wedge — a LIGHT tint, clearly weaker than --accent's
+     full fill, so a suggestion never reads as a commitment. */
+  --wedge-suggest: color-mix(in srgb, var(--accent) 28%, var(--wedge));
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -40,6 +40,7 @@
     --shadow: 0 1px 2px rgba(0,0,0,.5);
     --wedge: rgba(120,120,128,.18);
     --wedge-hover: rgba(120,120,128,.30);
+    --wedge-suggest: color-mix(in srgb, var(--accent) 32%, var(--wedge));
   }
 }
 * { box-sizing: border-box; }
@@ -62,6 +63,11 @@ kbd {
   font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace;
   background: rgba(120,120,128,.16); border-radius: 4px; padding: 1px 5px;
 }
+select {
+  font: inherit; color: var(--ink); background: rgba(120,120,128,.10);
+  border: 0; border-radius: 8px; padding: 7px 9px;
+}
+@media (prefers-color-scheme: dark) { select { background: rgba(120,120,128,.22); } }
 
 /* labeler_name.js prepends its own identity strip; here the name lives in
    the side panel instead, so the strip is hidden — same as height_guard. */
@@ -99,21 +105,20 @@ kbd {
   display: flex; align-items: center; justify-content: center;
 }
 /* #stage carries the frame's aspect ratio (set from naturalWidth/Height on
-   load) and the image fills it exactly — transform-origin 0 0 is what makes
-   zoom-at-cursor solvable. Verbatim from height_guard. */
+   load) and the image fills it exactly — this is also what keeps a drawn
+   line's angle undistorted: the marks overlay shares this exact box, so a
+   normalized 0..1 coordinate maps to screen pixels by the same factor in x
+   and y. Verbatim from height_guard. */
 #stage { position: relative; display: block; max-width: 100%; max-height: 100%;
-         aspect-ratio: 9 / 16; user-select: none; transform-origin: 0 0; }
+         aspect-ratio: 9 / 16; user-select: none; transform-origin: 0 0;
+         cursor: crosshair; }
 #stage img { display: block; width: 100%; height: 100%; }
-/* Past SHARP_MAG device pixels per source pixel the browser's smoothing is
-   inventing pixels between the real ones. See magnification(). */
 #stage.sharp img { image-rendering: pixelated; }
-#stage.zoomed { cursor: grab; }
+#stage.zoomed { cursor: crosshair; }
 #stage.panning { cursor: grabbing; }
 #hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
         color: rgba(255,255,255,.85); background: rgba(0,0,0,.45);
         padding: 3px 8px; border-radius: 6px; pointer-events: none; }
-/* Only while zoomed — at fit there is nothing to reset and the chip is
-   one more thing on screen saying nothing. */
 #zoom-chip {
   position: absolute; right: 12px; bottom: 10px; display: none;
   align-items: center; gap: 7px; padding: 3px 5px 3px 9px; border-radius: 999px;
@@ -126,6 +131,27 @@ kbd {
   background: rgba(255,255,255,.18); color: #fff; font-size: 10.5px; font-weight: 590;
 }
 #zoom-reset:hover { background: rgba(255,255,255,.3); }
+
+/* ── the drawn line — an ASSISTANT, not the label ──────────────────────────
+   #marks sits exactly over #stage and shares its aspect-preserved box, so a
+   line drawn in normalized 0..1 coordinates is never distorted. Drawing one
+   only lights up a wedge on the dial as a suggestion (renderDial()) — the
+   wedge actually clicked is what's saved. */
+#marks { position: absolute; inset: 0; pointer-events: none; }
+#line-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.line-seg { stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke;
+            stroke-linecap: round; }
+.line-ext { stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke;
+            stroke-dasharray: 5 4; opacity: .55; }
+.hp {
+  position: absolute; width: 14px; height: 14px;
+  transform: translate(-50%, -50%) scale(var(--inv, 1));
+  background: var(--accent); display: none;
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 3px rgba(0,0,0,.35);
+}
+.hp.set { display: block; }
+.hp.base { border-radius: 50%; }
+.hp.end { border-radius: 3px; }
 
 #side { width: 342px; padding-right: 2px; flex: none; height: 100%;
         overflow-y: auto; scrollbar-gutter: stable;
@@ -144,14 +170,11 @@ kbd {
   grid-column: 1 / -1;
 }
 
-/* ── frame identity ──────────────────────────────────────────────────────
-   Every part separately copyable — they get pasted into different places
-   (a bug report, a spreadsheet filter, the source video). */
 #id-card { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px;
            align-items: baseline; }
 .idl { font-size: 11px; color: var(--ink-dim); }
 .idv { min-width: 0; font: 500 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
-       word-break: break-word; }   /* wrapped, not truncated — stems run long */
+       word-break: break-word; }
 .idc {
   flex: none; padding: 2px; border: 0; border-radius: 5px; background: none;
   color: var(--ink-dim); line-height: 0; opacity: .5;
@@ -163,59 +186,60 @@ kbd {
 .idc.failed { opacity: 1; color: var(--no); }
 .idc svg { width: 13px; height: 13px; display: block; }
 
-/* ── the dial ────────────────────────────────────────────────────────────
+/* ── the dial — the PRIMARY control ────────────────────────────────────────
    Eight 45°-wide SECTORS, not eight dots: the wedge IS the interval, so its
    width on screen is the answer's width. Boundary values are printed on the
    spokes between wedges (±22.5, ±67.5, …) and the CENTRE of each interval
-   inside it — the two facts the bucket is defined by.
-   Geometry: x = cx + R·sin θ, y = cy + R·cos θ, so 0° sits at the bottom
-   (torso squared to camera), 180° at the top (back to camera), + = the
+   inside it. Geometry: x = cx + R·sin θ, y = cy + R·cos θ, so 0° sits at
+   the bottom (facing the camera), 180° at the top (back to camera), + = the
    camera's right. */
+.card-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-dim); line-height: 1.5; }
 #dial-wrap { display: flex; justify-content: center; margin: 2px 0 4px; }
-#dial { width: 300px; height: 300px; display: block; touch-action: none; }
+#dial { width: 260px; height: 260px; display: block; touch-action: none; }
 .wedge {
   fill: var(--wedge); stroke: var(--card); stroke-width: 2;
   cursor: pointer; transition: fill .12s ease;
 }
 .wedge:hover { fill: var(--wedge-hover); }
+/* A wedge can be BOTH the line's suggestion and the committed pick at once
+   — .on wins outright (:not(.on) guard), because a suggestion is a hint
+   and a commitment is a fact, and the two must never look equally strong. */
+.wedge.suggested:not(.on) { fill: var(--wedge-suggest); }
 .wedge.on { fill: var(--accent); }
 .wedge:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2.5; }
-.wlabel { pointer-events: none; fill: var(--ink); font-size: 13px; font-weight: 590;
+.wlabel { pointer-events: none; fill: var(--ink); font-size: 12px; font-weight: 590;
           text-anchor: middle; dominant-baseline: central; }
-.wkey { pointer-events: none; fill: var(--ink-dim); font-size: 9.5px; font-weight: 500;
+.wkey { pointer-events: none; fill: var(--ink-dim); font-size: 9px; font-weight: 500;
         text-anchor: middle; dominant-baseline: central; }
-/* Set by renderDial() on the label AND the key of the picked wedge — not a
-   sibling selector, which would reach every later label in the group. */
 .wlabel.on { fill: #fff; }
 .wkey.on { fill: rgba(255,255,255,.75); }
-/* The interval boundaries, on the spokes that actually divide the wedges. */
-.bound { pointer-events: none; fill: var(--ink-dim); font-size: 8.5px;
+.bound { pointer-events: none; fill: var(--ink-dim); font-size: 8px;
          text-anchor: middle; dominant-baseline: central; opacity: .75; }
 .spoke { stroke: var(--line); stroke-width: 1; pointer-events: none; }
-/* Skip lives in the hole — the biggest single target on the dial, which is
-   right for the answer that gets used most after the eight real ones. */
 .skipw { fill: rgba(120,120,128,.14); cursor: pointer; transition: fill .12s ease; }
 .skipw:hover { fill: rgba(120,120,128,.24); }
 .skipw.on { fill: var(--maybe); }
 .skipt { pointer-events: none; fill: color-mix(in srgb, var(--ink-dim) 70%, var(--ink));
-         font-size: 12px; font-weight: 510; text-anchor: middle; dominant-baseline: central; }
+         font-size: 11px; font-weight: 510; text-anchor: middle; dominant-baseline: central; }
 .skipt.on { fill: #fff; }
-.skipk { pointer-events: none; fill: var(--ink-dim); font-size: 9.5px;
+.skipk { pointer-events: none; fill: var(--ink-dim); font-size: 9px;
          text-anchor: middle; dominant-baseline: central; }
 .skipk.on { fill: rgba(255,255,255,.75); }
-/* What the current pick MEANS, spelled out as the interval it stands for —
-   the one line of prose the dial can't draw. */
 #dial-read {
   margin: 2px 0 0; text-align: center; font-size: 12px; color: var(--ink-dim);
   font-variant-numeric: tabular-nums; min-height: 17px;
 }
 #dial-read b { color: var(--ink); font-weight: 600; }
+/* The line's own reading — separate from the committed pick above it, and
+   only present at all once a line has been drawn. */
+#line-read {
+  margin: 4px 0 0; text-align: center; font-size: 11.5px; color: var(--ink-dim);
+  font-variant-numeric: tabular-nums; min-height: 15px;
+}
+#line-read b { color: var(--accent); font-weight: 600; }
+#line-read:empty { margin: 0; }
 
 /* ── nav / status ───────────────────────────────────────────────────────── */
-/* Prev/next are the only nav left, so the joined pair spans the card as one
-   segmented control. Explicit height rather than padding: the arrows are a
-   single glyph and would otherwise size themselves off the line box —
-   34px is the same height the name field and Start button use. */
 #nav { display: flex; }
 #seg { display: flex; flex: 1; }
 #seg button {
@@ -230,10 +254,10 @@ kbd {
 #status:not(:empty) { margin-top: 9px; }
 #status.err { color: var(--no); }
 #status.ok { color: var(--yes); }
-/* Frozen until this labeler's saved rows have arrived — otherwise a bucket
-   picked in that window is discarded when the sync lands. The FRAME stays
+/* Frozen until this labeler's saved rows have arrived — otherwise a pick
+   made in that window is discarded when the sync lands. The FRAME stays
    fully visible; only the controls that write are inert. */
-body:not(.ready) #dial, body:not(.ready) #act-card { opacity: .4; pointer-events: none; }
+body:not(.ready) #angle-card, body:not(.ready) #act-card { opacity: .4; pointer-events: none; }
 #lock {
   display: none; padding: 8px 11px; border-radius: 9px;
   background: rgba(120,120,128,.14); color: var(--ink-dim);
@@ -246,15 +270,8 @@ body:not(.ready) #lock { display: block; }
 @keyframes breathe { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { #lock:not(.err) { animation: none; } }
 
-/* ── progress: the overview grid ─────────────────────────────────────────
-   One dot per queue slot, in queue order — the same 20-col / 9px geometry
-   and batch-of-100 gutter chin_tuck_4.0 uses, so the two tools' progress
-   reads as the same object. A bar could only say how MUCH; this says
-   WHICH, and it doubles as the way to jump to a frame. */
+/* ── progress: the overview grid ─────────────────────────────────────────── */
 :root { --grid-h: 150px; }
-/* The grid and its batch numbers scroll TOGETHER, so the scroller is the
-   wrapper rather than the grid — otherwise the numbers stay put while the
-   dots move and every label points at the wrong batch. */
 .ovw { display: flex; gap: 6px; max-height: var(--grid-h);
        overflow-y: auto; overflow-x: hidden; margin-top: 9px; }
 .ovn { flex: none; width: 18px; }
@@ -263,36 +280,56 @@ body:not(.ready) #lock { display: block; }
   font: 500 9px/1 ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--ink-dim);
 }
+.ovn b span { display: block; }
+.ovn-g { color: var(--yes); font-weight: 700; }
+.ovn-s { color: var(--ink-dim); font-weight: 700; }
+.ovn-g:empty, .ovn-s:empty { display: none; }
 .d4-grid { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px;
            align-content: start; }
 .d4-grid .d4 {
   width: 9px; height: 9px; border-radius: 2px; cursor: pointer;
   background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
 }
-/* A gap every 100 frames, so a batch is countable without the gutter. */
 .d4-grid .d4[data-batch] { margin-top: 7px; }
 #ov .d4.dn { background: var(--yes); }
-/* Skipped is a real answer, so it is a real shade — but a flat grey, not a
-   fourth colour competing with green: "dealt with, nothing to learn." */
 #ov .d4.sk { background: var(--ink-dim); }
+#agree-grid .d4.agree { background: var(--yes); }
+#agree-grid .d4.disagree { background: var(--no); }
 .d4-grid .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
 .legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px;
           font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
 .legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block;
             margin-right: 3px; }
 #bar-text { font-size: 12.5px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-/* One cell per bucket, so the shape of the distribution is visible without
-   reading any of the numbers. */
-#dist { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px;
-        margin-top: 10px; font-size: 11px; font-variant-numeric: tabular-nums; }
-#dist span { display: flex; justify-content: space-between; gap: 6px;
-             color: var(--ink-dim); }
-#dist span.has { color: var(--ink); }
-#dist b { font-weight: 600; }
 
-/* ── everyone's progress + bug report ─────────────────────────────────────
-   Both ported from height_guard: same disclosure-pill shape, same panel
-   markup and behaviour. */
+/* ── distribution — a live bar chart, one row per bucket ─────────────────── */
+#dist { display: flex; flex-direction: column; gap: 6px; }
+.dist-row { display: grid; grid-template-columns: 38px 1fr 34px;
+            align-items: center; gap: 8px; }
+.dist-label { font-size: 11px; color: var(--ink-dim); text-align: right;
+              font-variant-numeric: tabular-nums; }
+.dist-track { height: 19px; border-radius: 3px; background: rgba(120,120,128,.10);
+              overflow: hidden; display: flex; flex-direction: column;
+              justify-content: center; gap: 2px; padding: 2px 0; }
+.dist-bar { height: 7px; width: 0%; border-radius: 0 3px 3px 0;
+            background: var(--accent); transition: width .2s ease; }
+.dist-bar.all { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.dist-row.skip .dist-bar { background: var(--ink-dim); }
+.dist-row.skip .dist-bar.all { background: color-mix(in srgb, var(--ink-dim) 32%, transparent); }
+.dist-val { font-size: 10.5px; color: var(--ink-dim); text-align: right;
+            font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dist-val b { font-weight: 700; color: var(--ink-dim); }
+.dist-val b.has { color: var(--ink); }
+.dist-slash { margin: 0 2px; opacity: .5; }
+
+/* ── agreement card ─────────────────────────────────────────────────────── */
+#agree-pickers { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+#agree-pickers select { flex: 1; min-width: 0; font-size: 13px; }
+#agree-pickers span { font-size: 12px; color: var(--ink-dim); flex: none; }
+#agree-summary { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 4px;
+                 font-variant-numeric: tabular-nums; }
+
+/* ── everyone's progress + bug report ───────────────────────────────────── */
 @keyframes clue-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: none; }
@@ -346,8 +383,6 @@ body:not(.ready) #lock { display: block; }
 .who-show-all:hover { text-decoration: underline; }
 .who-c { font-variant-numeric: tabular-nums; font-weight: 500; }
 .who-c s { color: var(--ink-dim); text-decoration: none; font-weight: 400; }
-/* Not a progress bar — a MAP of the queue: each run of consecutive
-   positions is drawn where it actually falls. */
 .who-bar { grid-column: 1 / -1; position: relative; height: 3px; border-radius: 2px;
            background: rgba(120,120,128,.16); margin: 6px 0 12px; overflow: hidden; }
 .who-bar:last-child { margin-bottom: 0; }
@@ -381,14 +416,38 @@ body:not(.ready) #lock { display: block; }
   background: var(--accent); color: #fff; font-size: 13px; font-weight: 590;
 }
 #bugreport-send:disabled { opacity: .3; cursor: default; }
+
+/* ── shortcuts card ─────────────────────────────────────────────────────── */
+#keys { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px;
+        margin: 0; font-size: 11.5px; align-items: center; }
+#keys dt { color: var(--ink-dim); }
+#keys dd { margin: 0; display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
+#keys .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
+#keys kbd {
+  font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 5px; min-width: 18px; text-align: center;
+  color: var(--ink); background: rgba(120,120,128,.10);
+}
+@media (prefers-color-scheme: dark) { #keys kbd { background: rgba(120,120,128,.22); } }
 </style>
 </head>
 <body>
 
 <div id="wrap">
   <div id="stage-card">
-    <div id="stage"><img id="frame" alt=""></div>
-    <div id="hint">scroll = zoom &middot; drag = pan &middot; double-click = reset</div>
+    <div id="stage">
+      <img id="frame" alt="">
+      <div id="marks">
+        <svg id="line-svg" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+          <line id="line-ext" class="line-ext"></line>
+          <line id="line-seg" class="line-seg"></line>
+        </svg>
+        <div class="hp base" id="hp-base"></div>
+        <div class="hp end" id="hp-end"></div>
+      </div>
+    </div>
+    <div id="hint">drag = draw a facing line (assistant) &middot; scroll = zoom &middot; right-drag = pan &middot; double-click = reset</div>
     <div id="zoom-chip"><span id="zoom-pct">100%</span><button id="zoom-reset" type="button">Reset</button></div>
   </div>
 
@@ -431,10 +490,16 @@ body:not(.ready) #lock { display: block; }
       <button class="idc" data-copy="id-pts" type="button" title="Copy timestamp" aria-label="Copy timestamp"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.6" y="4.6" width="7.8" height="7.8" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M9.4 4.6V3.2a1.6 1.6 0 0 0-1.6-1.6H3.2a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h1.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
     </div>
 
-    <div class="card">
-      <p class="card-eyebrow">Torso rotation &middot; vs. camera</p>
-      <div id="dial-wrap"><svg id="dial" viewBox="0 0 300 300" role="group" aria-label="Torso angle bucket"></svg></div>
+    <div class="card" id="angle-card">
+      <p class="card-eyebrow">Boxer facing angle &middot; vs. camera</p>
+      <p class="card-hint">Pick the wedge that matches which way the boxer is
+        facing. 0&deg; = squared to the camera, 180&deg; = back to it,
+        <b>+</b> = the camera&rsquo;s right. Dragging a line on the frame from
+        their stance toward the opponent is optional — it lights up the
+        nearest wedge as a suggestion, it doesn&rsquo;t pick it for you.</p>
+      <div id="dial-wrap"><svg id="dial" viewBox="0 0 260 260" role="group" aria-label="Boxer facing angle bucket"></svg></div>
       <p id="dial-read">&mdash;</p>
+      <p id="line-read"></p>
     </div>
 
     <div class="card" id="act-card">
@@ -457,12 +522,51 @@ body:not(.ready) #lock { display: block; }
         <span><b style="background:var(--ink-dim)"></b>can&rsquo;t tell</span>
         <span><b style="background:color-mix(in srgb, var(--ink-dim) 22%, transparent)"></b>not yet</span>
       </div>
+    </div>
+
+    <div class="card">
+      <p class="card-eyebrow">Distribution</p>
       <div id="dist"></div>
+      <div class="legend">
+        <span><b style="background:var(--accent)"></b>you</span>
+        <span><b style="background:color-mix(in srgb, var(--accent) 32%, transparent)"></b>everyone</span>
+      </div>
+    </div>
+
+    <div class="card" id="agree-card">
+      <p class="card-eyebrow">Agreement</p>
+      <div id="agree-pickers">
+        <select id="agree-a"></select>
+        <span>vs</span>
+        <select id="agree-b"></select>
+      </div>
+      <div id="agree-summary">Pick two labelers to compare.</div>
+      <div class="ovw"><div class="ovn"></div><div id="agree-grid" class="d4-grid"></div></div>
+      <div class="legend">
+        <span><b style="background:var(--yes)"></b>agree</span>
+        <span><b style="background:var(--no)"></b>disagree</span>
+        <span><b style="background:color-mix(in srgb, var(--ink-dim) 22%, transparent)"></b>can&rsquo;t compare</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="card-eyebrow">Shortcuts</p>
+      <dl id="keys">
+        <dt>Pick angle bucket</dt>
+        <dd><kbd>1</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><kbd>6</kbd><kbd>7</kbd><kbd>8</kbd><kbd>9</kbd></dd>
+        <dt>Can&rsquo;t tell the angle</dt> <dd><kbd>2</kbd></dd>
+        <div class="sep"></div>
+        <dt>Prev / next frame</dt> <dd><kbd>&larr;</kbd><kbd>&rarr;</kbd></dd>
+        <div class="sep"></div>
+        <dt>Zoom</dt> <dd><kbd>scroll</kbd></dd>
+        <dt>Pan</dt> <dd><kbd>right-drag</kbd></dd>
+        <dt>Reset zoom</dt> <dd><kbd>0</kbd><kbd>dbl-click</kbd></dd>
+      </dl>
     </div>
   </div>
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="torso_angle.js?v=10"></script>
+<script src="boxer_facing_angle.js?v=2"></script>
 </body>
 </html>

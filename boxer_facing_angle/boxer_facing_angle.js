@@ -1,87 +1,80 @@
 // ============================================================
-// torso_angle.js — torso-rotation-relative-to-camera labeler, 45° buckets
+// boxer_facing_angle.js — boxer facing angle vs. camera, picked on a dial
 //
-// One bucketed verdict per sampled frame: which 45°-wide interval the
-// torso's rotation about the vertical axis falls into, relative to the
-// CAMERA. Eight intervals, each named by its centre — [-22.5, 22.5) is
-// "0°", [22.5, 67.5) is "+45°", and so on round to 180°. Positive is
-// toward the CAMERA's right: an image-plane convention, not the boxer's
-// own left/right, and never mirrored for stance — recorded as-shown, same
-// reasoning as Guard Drops' guard_hand (raw + auditable beats normalized +
-// unfixable if a stance turns out to be wrong).
+// The PRIMARY label is a click on one of 8 compass wedges (0/45/90/135/180/
+// -135/-90/-45), same discrete-bucket dial this tool always used — chosen
+// over a continuous rating because bladedness/README.md measured that a
+// continuous angle rating on this kind of rotation records the labeler's
+// visual compression rather than the true angle.
 //
-// Discrete choice, not a continuous angle. bladedness/README.md measured
-// that a rating scale on this same rotation records the labeler's visual
-// compression (perceived slant runs ~0.56 of true) rather than the stance,
-// which is why THAT tool went pairwise. A coarse fixed interval sidesteps
-// it: compression only bites within a couple of degrees of a boundary.
+// Drawing a line on the frame (drag from the boxer's stance toward their
+// opponent) is an ASSISTANT, not the label: it computes an angle and lights
+// up the nearest wedge as a light-tinted SUGGESTION (renderDial()'s
+// `.suggested` class), distinct from the full-strength `.on` a click
+// actually commits. The line is optional; when drawn, its raw points are
+// saved ALONGSIDE whichever wedge gets clicked (for audit — nobody derives
+// the saved bucket from them), never in place of it.
+//
+// 0° = squared to the camera, 180° = back to it, + = toward the CAMERA's
+// right — an image-plane convention, not the boxer's own left/right, never
+// mirrored for stance: recorded as-shown, same reasoning as Guard Drops'
+// guard_hand.
 //
 // Frames are a PLACEHOLDER sample — 50 borrowed from chin_tuck_4.0's
-// height_guard queue (torso_angle_frames.json), served from the same
-// Firebase Storage objects. This tool's own sampler (guard / punched /
-// impact phases, ~2-3k frames) doesn't exist yet — see README.md.
+// height_guard queue (boxer_facing_angle_frames.json), served from the same
+// Firebase Storage objects. This tool's own sampler doesn't exist yet.
 //
-// Backend: listTorsoAngle / saveTorsoAngle / deleteTorsoAngle /
-// statsTorsoAngle in apps_script/Code.js, sheet "Torso Angle Labels".
+// Backend: listFacingAngle / saveFacingAngle / deleteFacingAngle /
+// statsFacingAngle in apps_script/Code.js — ONE SHEET TAB PER LABELER
+// (facing_angle_labels_{Name}, header-reconciled on every save), the same
+// shape as chin_shoulder_labels_{Name}.
 //
-// Ported from chin_tuck_4.0/height_guard: the zoom/pan stage, the
-// everyone's-progress panel (roster + queue-position ranges + per-device
-// hiding), the bug report console, the copy buttons, the readiness gate
-// and the optimistic-save pattern. NOT ported: point placement,
-// visibility popovers, admin mode, disagreement grids, planted repeats —
-// none of them have a counterpart in a one-bucket-per-frame question.
+// Line-placement mechanics (coordinate math, --inv counter-scale, the
+// click-vs-drag distinction) are ported from chin_tuck_4.0/height_guard;
+// the dashed-continuation rendering is adapted from cornerman-debug-
+// viewer's bladedness.js tightrope line (there read-only, here interactive
+// but purely advisory).
 // ============================================================
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM57VoFCXWIhw8jyechZQLtMzlmeT15bhIy0eozKpA0jHlmuZPSqVzyEcS5Vy0A5cS/exec';
 
 // Same bucket + objects the frames actually live at — see
 // chin_tuck_4.0/height_guard/height_guard.js. Borrowed wholesale: these are
-// literally the same hosted JPEGs, not a copy. Rotating the token means
-// re-stamping every object AND shipping this constant.
+// literally the same hosted JPEGs, not a copy.
 const FRAME_BUCKET = 'mycorner-bee6a.firebasestorage.app';
 const FRAME_PREFIX = 'labeler_media/chin_tuck/v4/height_guard_v4_frames/frames';
 const FRAME_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
 
-// Stable per-page identifier for the bug sheet's `tool` column — a plain
-// string, not derived from the URL or title, so it can never change out
-// from under old rows if the page is renamed.
-const BUG_REPORT_TOOL = 'torso_angle';
+const BUG_REPORT_TOOL = 'boxer_facing_angle';
 
 const MIN_ZOOM = 1 / 3;
 const MAX_ZOOM = 12;
 const ZOOM_SPEED = 0.0018;
-// Past this many DEVICE pixels per SOURCE pixel the frame is drawn
-// pixel-for-pixel instead of smoothed (#stage.sharp) — beyond it the
-// browser is inventing pixels between the real ones.
 const SHARP_MAG = 1.5;
-// ...and only for sources with this many pixels on the short side: below HD
-// the grid is as coarse as the anatomy being judged, and the smooth
-// gradient says more than a field of flat squares. A property of the FRAME,
-// not the screen, so every labeler sees the same frame the same way.
 const SHARP_MIN_SOURCE = 720;
-// A click is a click if the mouse moved less than this many screen px
-// between down and up; anything longer is a pan.
-const CLICK_SLOP_PX = 4;
+// A mousedown-mouseup shorter than this, with no handle grabbed, is a
+// misclick, not a line — a zero/near-zero-length segment has no defined
+// angle. Handle DRAGS (adjusting an existing line) have no such floor.
+const MIN_LINE_PX = 16;
+// A handle is grabbed if the mousedown lands within this many screen px of
+// its current on-screen position (handles are counter-scaled to a constant
+// screen size, so this threshold means the same thing at any zoom).
+const GRAB_PX = 12;
 
-// Overview grid geometry — the same BATCH/BATCH_COLS chin_tuck_4.0 uses, so
-// a batch means the same number of frames in both tools.
 const BATCH = 100;
 const BATCH_COLS = 20;
 
 const TEAM_POLL_MS = 45000;
-// A cached range list older than this is refetched when its row is opened.
 const RANGE_FRESH_MS = 60000;
-const HIDE_KEY = 'ta_hidden_labelers';
-const RANGE_KEY = 'ta_range_cache';
+const HIDE_KEY = 'fa_hidden_labelers';
+const RANGE_KEY = 'fa_range_cache';
+const AGREE_KEY = 'fa_agree_pair';
 
 // The eight intervals, in compass order. `c` is the interval's CENTRE and
 // the value written to the sheet; the interval itself is [c-22.5, c+22.5),
-// half-open upward so a frame judged exactly on a boundary always belongs
-// to the higher bucket — arbitrary, but it has to be decided once and
-// written down. `key` is the numpad shortcut, the same layout
-// punch_directions/punch_dir_16 uses, so the keys mean the same thing on
-// every labeler in this suite. (That page's SIGN convention is the
-// opposite of this one — it is boxer-relative, this is camera-relative.)
+// half-open upward. `key` is the numpad shortcut, the same layout
+// punch_directions/punch_dir_16 uses (that page's SIGN convention is the
+// opposite of this one — boxer-relative there, camera-relative here).
 const BINS = [
   { c: 0,    key: '5' },
   { c: 45,   key: '3' },
@@ -105,15 +98,20 @@ const state = {
   frames: [],
   index: new Map(),        // frame key -> queue position
   i: 0,
-  labels: new Map(),       // frame key -> { bucket|null, skip_reason|null }
+  labels: new Map(),       // frame key -> { bucket, base:[x,y]|null, end:[x,y]|null, skip_reason }
+  line: null,              // { base, end } | null — the CURRENT frame's drawn line, an assistant
   ready: false,
-  starting: false,        // a label load is actually in flight (vs. no name yet)
+  starting: false,
   pendingSaves: 0,
-  ovDots: null,           // one div per queue slot, built once by buildOverview()
+  ovDots: null,
+  ovGutter: null,
+  distRows: null,
+  totalCounts: {},
 
   zoom: 1, panX: 0, panY: 0,
-  drag: null,              // pan drag origin
-  down: null,              // mousedown screen pos, for click-vs-drag
+  drag: null,              // right-button pan drag origin
+  down: null,              // left mousedown screen pos, for click-vs-drag
+  draw: null,              // in-progress line placement/adjustment — see startDraw()
 
   roster: [],
   teamOpen: false,
@@ -123,6 +121,10 @@ const state = {
   openRanges: new Set(),
   rangeCache: new Map(),
   rangePending: new Map(),
+
+  agreePair: ['', ''],
+  agreeRows: [null, null],
+  agreeDots: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -130,9 +132,7 @@ const $ = (id) => document.getElementById(id);
 const key = (f) => JSON.stringify([f.stem, f.round, f.frame]);
 const rowKey = (r) => JSON.stringify([r.video, Number(r.round), Number(r.frame)]);
 
-// Mirrors chin_export_frames.frame_dir() — Windows strips trailing dots and
-// spaces from directory names, so the exporter sanitized them and the
-// uploader inherited its layout.
+// Mirrors chin_export_frames.frame_dir().
 const frameDir = (stem) => stem.replace(/[. ]+$/, '');
 
 const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
@@ -140,14 +140,48 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
   + encodeURIComponent(`${FRAME_PREFIX}/${frameDir(f.stem)}/r${f.round}_f${f.frame}.jpg`)
   + `?alt=media&token=${FRAME_TOKEN}`;
 
-// 180 is the wrap point — it is neither turned to the camera's right nor its
-// left, so it carries no sign. Everything else does, including 0, which is
-// signless for the same reason (there is no rotation to have a direction).
+// 180 is the wrap point — neither turned to the camera's right nor its
+// left, so it carries no sign. 0 is signless for the same reason.
 const signed = (v) => {
   const n = Number(v);
   if (Math.abs(n) === 180) return '180°';
   return (n > 0 ? '+' : '') + n + '°';
 };
+
+// Wrap to (-180, 180].
+function norm180(d) {
+  let x = ((d + 180) % 360 + 360) % 360 - 180;
+  return x === -180 ? 180 : x;
+}
+
+// Nearest of the 8 compass buckets — what the line lights up as a
+// suggestion, and what the agreement/distribution logic groups by.
+function angleBucket(deg) {
+  const n = norm180(deg);
+  let b = Math.round(n / 45) * 45;
+  if (b === -180) b = 180;
+  if (b === 360) b = 0;
+  return b;
+}
+
+function intervalText(c) {
+  return `[${signed(norm180(c - 22.5))}, ${signed(norm180(c + 22.5))})`;
+}
+
+// The angle of a base->end vector: θ = atan2(dx, dy), so 0° is "down"
+// (toward camera), +90° is "right" (camera's right), 180° is "up" (back to
+// camera) — the same convention the dial's own geometry uses. Both points
+// are in the SAME normalized 0..1 image space #stage and #marks share, and
+// since #stage's aspect-ratio always matches the frame's own
+// naturalWidth/naturalHeight, that space maps to screen pixels by the same
+// factor in x and y — so this is never distorted by a non-square frame,
+// with no pixel conversion needed.
+function angleOf(line) {
+  if (!line || !line.base || !line.end) return null;
+  const dx = line.end[0] - line.base[0], dy = line.end[1] - line.base[1];
+  if (Math.hypot(dx, dy) < 1e-6) return null;
+  return Math.atan2(dx, dy) * 180 / Math.PI;
+}
 
 // ── identity ───────────────────────────────────────────────────────────────
 function who() { return ($('labeler-input').value || '').trim(); }
@@ -162,10 +196,6 @@ function restoreName() {
 
 function renderNameState() {
   $('name-go').disabled = !who();
-  // The gate's own explanation. Before a name is committed nothing is
-  // loading — saying "Loading…" there describes a request that was never
-  // made, and leaves the labeler waiting for something that will not
-  // arrive on its own.
   if (!state.ready && !$('lock').classList.contains('err')) {
     $('lock').textContent = state.starting
       ? 'Loading your labels…'
@@ -188,10 +218,6 @@ function api(params) {
   return url.toString();
 }
 
-// One retry for cold-start blips. Apps Script's /exec intermittently serves
-// an HTML error page under quick successive requests — a labeler's normal
-// pace — so a transport failure is retried; a JSON-level error is a real
-// answer from the backend and is not.
 async function call(params, what) {
   let last;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -207,7 +233,19 @@ async function call(params, what) {
 }
 
 const fetchRows = async (labeler) =>
-  (await call({ action: 'listTorsoAngle', labeler }, 'load labels')).rows || [];
+  (await call({ action: 'listFacingAngle', labeler }, 'load labels')).rows || [];
+
+// A fetched row's fields are '' (empty string) when absent, never
+// null/undefined over the wire.
+function rowToLabel(r) {
+  const has = (a, b) => r[a] !== '' && r[a] !== undefined && r[b] !== '' && r[b] !== undefined;
+  return {
+    bucket: r.bucket === '' || r.bucket === undefined || r.bucket === null ? null : String(r.bucket),
+    base: has('base_x', 'base_y') ? [Number(r.base_x), Number(r.base_y)] : null,
+    end: has('end_x', 'end_y') ? [Number(r.end_x), Number(r.end_y)] : null,
+    skip_reason: r.skip_reason || null,
+  };
+}
 
 // ── status ─────────────────────────────────────────────────────────────────
 function status(msg, cls) {
@@ -220,6 +258,7 @@ function status(msg, cls) {
 function applyTransform() {
   const stage = $('stage');
   stage.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+  stage.style.setProperty('--inv', String(1 / state.zoom));
   stage.classList.toggle('zoomed', !isFitted());
   $('stage-card').classList.toggle('zoomed', !isFitted());
   $('zoom-pct').textContent = Math.round(state.zoom * 100) + '%';
@@ -227,12 +266,8 @@ function applyTransform() {
   stage.classList.toggle('sharp', !!mag && mag.hd && mag.now >= SHARP_MAG);
 }
 
-// Device pixels per source pixel: `fit` is what displaying the frame at all
-// costs, `now` folds in the zoom, `hd` is whether the source has the
-// resolution to be worth drawing pixel-exactly. null until the image
-// reports its size.
 function magnification() {
-  const w = $('stage').offsetWidth;          // layout width, pre-transform
+  const w = $('stage').offsetWidth;
   const img = $('frame');
   if (!w || !img.naturalWidth) return null;
   const fit = (w * (window.devicePixelRatio || 1)) / img.naturalWidth;
@@ -248,7 +283,7 @@ function zoomAt(px, clientX, clientY) {
   const before = state.zoom;
   let after = before * Math.exp(-px * ZOOM_SPEED);
   after = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, after));
-  if ((before - 1) * (after - 1) < 0) after = 1;   // snap through fit
+  if ((before - 1) * (after - 1) < 0) after = 1;
   if (after === before) return;
   const r = $('stage').getBoundingClientRect();
   const k = 1 - after / before;
@@ -260,18 +295,26 @@ function zoomAt(px, clientX, clientY) {
   applyTransform();
 }
 
+// ── coordinate math — ported from height_guard ──────────────────────────────
+function stageNorm(clientX, clientY) {
+  const r = $('stage').getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  return [Math.min(1, Math.max(0, (clientX - r.left) / r.width)),
+          Math.min(1, Math.max(0, (clientY - r.top) / r.height))];
+}
+function screenPxOf(p) {
+  const r = $('stage').getBoundingClientRect();
+  return [r.left + p[0] * r.width, r.top + p[1] * r.height];
+}
+
 // ── the dial ───────────────────────────────────────────────────────────────
-// Eight 45°-wide SECTORS of a ring. The wedge is the interval: its angular
-// width on screen is the answer's width, so nothing has to explain that a
-// bucket covers a range. Boundary values sit on the spokes that divide
-// them, the centre value inside each wedge.
-//
-// Geometry: x = cx + r·sin θ, y = cy + r·cos θ, so 0° is at the bottom
-// (torso squared to camera), 180° at the top (back to camera), +90° right.
-// Because that maps dial angle θ to SVG screen angle φ = 90° − θ, an
-// INCREASING θ runs in SVG's negative sweep direction — hence sweep 0 on
-// the outer arc and 1 on the inner one coming back.
-const DIAL = { cx: 150, cy: 150, rOut: 118, rIn: 52, rLabel: 86, rBound: 130 };
+// Eight 45°-wide SECTORS of a ring — the wedge IS the interval. Geometry:
+// x = cx + r·sin θ, y = cy + r·cos θ, so 0° is at the bottom (facing the
+// camera), 180° at the top (back to camera), +90° right. That maps dial
+// angle θ to SVG screen angle φ = 90° − θ, so an increasing θ runs in
+// SVG's *negative* sweep direction — hence sweep-flag 0 on the outer arc
+// and 1 on the inner one coming back.
+const DIAL = { cx: 130, cy: 130, rOut: 102, rIn: 44, rLabel: 74, rBound: 113 };
 
 function polar(deg, r) {
   const a = deg * Math.PI / 180;
@@ -318,10 +361,10 @@ function buildDial() {
     path.appendChild(title);
 
     const [lx, ly] = polar(b.c, DIAL.rLabel);
-    const label = svgEl('text', { class: 'wlabel', x: lx, y: ly - 6 });
+    const label = svgEl('text', { class: 'wlabel', x: lx, y: ly - 5 });
     label.textContent = signed(b.c);
     label.dataset.store = String(b.c);
-    const kb = svgEl('text', { class: 'wkey', x: lx, y: ly + 9 });
+    const kb = svgEl('text', { class: 'wkey', x: lx, y: ly + 8 });
     kb.textContent = b.key;
     kb.dataset.store = String(b.c);
 
@@ -329,8 +372,6 @@ function buildDial() {
     dial.appendChild(g);
   }
 
-  // The spokes and their values — the interval boundaries, drawn where the
-  // intervals actually part. 8 of them, at every odd multiple of 22.5.
   for (const b of BINS) {
     const edge = b.c + 22.5;
     const [sx, sy] = polar(edge, DIAL.rIn);
@@ -342,8 +383,6 @@ function buildDial() {
     dial.appendChild(t);
   }
 
-  // Skip, in the hole — the biggest single target on the dial, which suits
-  // the answer reached for most often after the eight real ones.
   const hole = svgEl('circle', { class: 'skipw', cx: DIAL.cx, cy: DIAL.cy, r: DIAL.rIn - 3,
                                  role: 'button', tabindex: '0', 'aria-label': "Can't tell the angle" });
   const skipAct = () => applyLabel(null, true);
@@ -351,159 +390,162 @@ function buildDial() {
   hole.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); skipAct(); }
   });
-  const st = svgEl('text', { class: 'skipt', x: DIAL.cx, y: DIAL.cy - 6 });
+  const st = svgEl('text', { class: 'skipt', x: DIAL.cx, y: DIAL.cy - 5 });
   st.textContent = "can't tell";
-  const sk = svgEl('text', { class: 'skipk', x: DIAL.cx, y: DIAL.cy + 10 });
+  const sk = svgEl('text', { class: 'skipk', x: DIAL.cx, y: DIAL.cy + 9 });
   sk.textContent = '2';
   dial.append(hole, st, sk);
 }
 
-// Wrap a boundary to (-180, 180] so the spoke past 180 prints as -157.5
-// rather than 202.5 — the sheet's own vocabulary.
-function norm180(d) {
-  let x = ((d + 180) % 360 + 360) % 360 - 180;
-  return Math.round(x * 10) / 10;
-}
-
-function intervalText(c) {
-  return `[${signed(norm180(c - 22.5))}, ${signed(norm180(c + 22.5))})`;
-}
-
+// Paints TWO independent signals: `.on` for the committed pick (the row
+// actually saved for this frame) and `.suggested` for whichever wedge the
+// CURRENTLY DRAWN line (state.line, which may not be saved yet) is nearest
+// to. A wedge can carry both — CSS makes `.on` win when it does.
 function renderDial() {
-  const cur = state.labels.get(key(state.frames[state.i]) || '');
-  const picked = cur ? (cur.skip_reason ? 'skip' : String(cur.bucket)) : null;
+  const row = state.labels.get(key(state.frames[state.i]));
+  const picked = row ? (row.skip_reason ? 'skip' : row.bucket) : null;
+  const lineAngle = angleOf(state.line);
+  const suggested = lineAngle === null ? null : String(angleBucket(lineAngle));
+
   for (const el of $('dial').querySelectorAll('.wedge, .wlabel, .wkey')) {
-    el.classList.toggle('on', picked !== null && el.dataset.store === picked);
+    const store = el.dataset.store;
+    el.classList.toggle('on', picked !== null && picked !== 'skip' && store === picked);
+    el.classList.toggle('suggested', suggested !== null && store === suggested);
   }
   for (const el of $('dial').querySelectorAll('.skipw, .skipt, .skipk')) {
     el.classList.toggle('on', picked === 'skip');
   }
+
   const read = $('dial-read');
   if (picked === null) read.innerHTML = '&mdash;';
   else if (picked === 'skip') read.innerHTML = '<b>Skipped</b> &mdash; angle not readable';
   else read.innerHTML = `<b>${signed(picked)}</b> &mdash; ${intervalText(Number(picked))}`;
+
+  const lineRead = $('line-read');
+  lineRead.innerHTML = lineAngle === null ? ''
+    : `Line: <b>${signed(lineAngle)}</b> &middot; nearest ${signed(angleBucket(lineAngle))}`;
 }
 
-// ── frame ──────────────────────────────────────────────────────────────────
-function showFrame() {
-  const f = state.frames[state.i];
-  const img = $('frame');
-  resetZoom();
-  if (!f) {
-    img.removeAttribute('src');
+// ── the drawn line (assistant) ──────────────────────────────────────────────
+// Where the base->end ray exits the unit square, for the dashed
+// continuation — pure normalized-space geometry (angle-correct, see
+// angleOf()'s comment).
+function rayExit(base, end) {
+  const dx = end[0] - base[0], dy = end[1] - base[1];
+  const tx = dx > 0 ? (1 - end[0]) / dx : dx < 0 ? (0 - end[0]) / dx : Infinity;
+  const ty = dy > 0 ? (1 - end[1]) / dy : dy < 0 ? (0 - end[1]) / dy : Infinity;
+  const t = Math.max(0, Math.min(tx, ty));
+  return [end[0] + t * dx, end[1] + t * dy];
+}
+
+function renderLine(base, end) {
+  const svg = $('line-svg');
+  if (!base) {
+    $('hp-base').classList.remove('set');
+    $('hp-end').classList.remove('set');
+    svg.style.display = 'none';
     return;
   }
-  img.src = imgSrc(f);
-  $('id-pos').textContent = `${state.i + 1} / ${state.frames.length}`;
-  $('id-video').textContent = f.stem;
-  $('id-round').textContent = String(f.round);
-  $('id-frame').textContent = String(f.frame);
-  $('id-pts').textContent = f.pts.toFixed(3);
-  $('bugreport-context').textContent =
-    `Attaching: "${f.stem}" · round ${f.round} · frame ${f.frame}`;
+  svg.style.display = '';
+  const b = $('hp-base'); b.classList.add('set');
+  b.style.left = (base[0] * 100) + '%'; b.style.top = (base[1] * 100) + '%';
+  if (!end) {
+    $('hp-end').classList.remove('set');
+    $('line-seg').setAttribute('x1', base[0]); $('line-seg').setAttribute('y1', base[1]);
+    $('line-seg').setAttribute('x2', base[0]); $('line-seg').setAttribute('y2', base[1]);
+    $('line-ext').style.display = 'none';
+    return;
+  }
+  const e = $('hp-end'); e.classList.add('set');
+  e.style.left = (end[0] * 100) + '%'; e.style.top = (end[1] * 100) + '%';
+  const seg = $('line-seg');
+  seg.setAttribute('x1', base[0]); seg.setAttribute('y1', base[1]);
+  seg.setAttribute('x2', end[0]); seg.setAttribute('y2', end[1]);
+  const ext = $('line-ext');
+  const exit = rayExit(base, end);
+  ext.style.display = '';
+  ext.setAttribute('x1', end[0]); ext.setAttribute('y1', end[1]);
+  ext.setAttribute('x2', exit[0]); ext.setAttribute('y2', exit[1]);
+}
+
+function grabHandle(clientX, clientY) {
+  if (!state.line) return null;
+  const pb = screenPxOf(state.line.base), pe = screenPxOf(state.line.end);
+  if (Math.hypot(clientX - pb[0], clientY - pb[1]) <= GRAB_PX) return 'base';
+  if (Math.hypot(clientX - pe[0], clientY - pe[1]) <= GRAB_PX) return 'end';
+  return null;
+}
+
+function startDraw(clientX, clientY) {
+  if (!state.ready) return false;
+  const grab = grabHandle(clientX, clientY);
+  if (grab) {
+    state.draw = { mode: grab, orig: { base: state.line.base.slice(), end: state.line.end.slice() } };
+  } else {
+    state.draw = { mode: 'new', base: stageNorm(clientX, clientY) };
+  }
+  return true;
+}
+
+// Live suggestion while dragging, not just after release — repaints the
+// dial's `.suggested` wedge and the line-read text from whatever base/end
+// the drag currently implies. Translating the base (mode 'base') doesn't
+// change the angle, so it skips this rather than recomputing a no-op.
+function updateSuggestionFrom(base, end) {
+  const a = Math.atan2(end[0] - base[0], end[1] - base[1]) * 180 / Math.PI;
+  if (!Number.isFinite(a)) return;
+  $('line-read').innerHTML = `Line: <b>${signed(a)}</b> &middot; nearest ${signed(angleBucket(a))}`;
+  const bucket = String(angleBucket(a));
+  for (const el of $('dial').querySelectorAll('.wedge, .wlabel, .wkey')) {
+    el.classList.toggle('suggested', el.dataset.store === bucket);
+  }
+}
+
+function moveDraw(clientX, clientY) {
+  const d = state.draw;
+  if (!d) return;
+  const p = stageNorm(clientX, clientY);
+  if (d.mode === 'new') {
+    renderLine(d.base, p);
+    updateSuggestionFrom(d.base, p);
+  } else if (d.mode === 'base') {
+    const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
+    renderLine(p, [d.orig.end[0] + dx, d.orig.end[1] + dy]);
+  } else if (d.mode === 'end') {
+    renderLine(d.orig.base, p);
+    updateSuggestionFrom(d.orig.base, p);
+  }
+}
+
+function finishDraw(clientX, clientY, downX, downY) {
+  const d = state.draw;
+  state.draw = null;
+  if (!d) return;
+  const p = stageNorm(clientX, clientY);
+  if (d.mode === 'new') {
+    const distPx = Math.hypot(clientX - downX, clientY - downY);
+    if (distPx < MIN_LINE_PX) { renderDial(); renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null); return; }
+    state.line = { base: d.base, end: p };
+  } else if (d.mode === 'base') {
+    const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
+    state.line = { base: p, end: [d.orig.end[0] + dx, d.orig.end[1] + dy] };
+  } else if (d.mode === 'end') {
+    if (Math.hypot(p[0] - d.orig.base[0], p[1] - d.orig.base[1]) < 0.002) {
+      state.line = { base: d.orig.base, end: d.orig.end };
+    } else {
+      state.line = { base: d.orig.base, end: p };
+    }
+  }
+  renderLine(state.line.base, state.line.end);
   renderDial();
-  renderOverview();          // moves the .cur outline to this slot
-}
-
-function go(i) {
-  if (!state.frames.length) return;
-  const n = Math.min(state.frames.length - 1, Math.max(0, i));
-  if (n === state.i) return;
-  state.i = n;
-  showFrame();
-}
-
-// ── progress: the overview grid ────────────────────────────────────────────
-// One dot per queue slot, built once and repainted in place — rebuilding
-// 3k elements on every frame change would be the expensive way to move one
-// outline. Same geometry as chin_tuck_4.0's grids.
-function buildOverview() {
-  const ov = $('ov');
-  ov.textContent = '';
-  const frag = document.createDocumentFragment();
-  state.ovDots = [];
-  for (let i = 0; i < state.frames.length; i++) {
-    const d = document.createElement('div');
-    d.className = 'd4';
-    // The marker goes on the first row of each new batch, never the first.
-    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
-    frag.appendChild(d);
-    state.ovDots.push(d);
-  }
-  ov.appendChild(frag);
-  ov.onclick = (e) => {
-    const at = state.ovDots.indexOf(e.target);
-    if (at >= 0) go(at);
-  };
-
-  // One label per batch, its height computed from the rows that batch
-  // actually occupies (the last one is usually short). The 7px lead matches
-  // the gap the dots take, which is what keeps a number level with its batch.
-  const gutter = document.querySelector('.ovn');
-  const col = document.createDocumentFragment();
-  for (let b = 0; b * BATCH < state.frames.length; b++) {
-    const count = Math.min(BATCH, state.frames.length - b * BATCH);
-    const rows = Math.ceil(count / BATCH_COLS);
-    const n = document.createElement('b');
-    n.textContent = b + 1;
-    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
-    n.style.lineHeight = '9px';
-    if (b) n.style.marginTop = '10px';
-    n.title = `frames ${b * BATCH + 1}–${b * BATCH + count}`;
-    col.appendChild(n);
-  }
-  gutter.replaceChildren(col);
-}
-
-function renderOverview() {
-  const dots = state.ovDots;
-  if (!dots) return;
-  for (let i = 0; i < state.frames.length; i++) {
-    const row = state.labels.get(key(state.frames[i]));
-    let cls = 'd4';
-    let what = 'not labelled';
-    if (row && row.skip_reason) { cls += ' sk'; what = "can't tell"; }
-    else if (row) { cls += ' dn'; what = signed(row.bucket); }
-    if (i === state.i) cls += ' cur';
-    // Colour is never the only signal — the tooltip says the same thing.
-    const t = `#${i + 1} — ${what}`;
-    if (dots[i].title !== t) dots[i].title = t;
-    if (dots[i].className !== cls) dots[i].className = cls;
-  }
-}
-
-function renderProgress() {
-  const N = state.frames.length;
-  const done = state.labels.size;
-  $('bar-text').textContent = N
-    ? `${done.toLocaleString()} / ${N.toLocaleString()} labelled`
-    : 'no frames';
-  renderOverview();
-
-  const count = {};
-  for (const v of state.labels.values()) {
-    const k = v.skip_reason ? 'skip' : String(v.bucket);
-    count[k] = (count[k] || 0) + 1;
-  }
-  const cells = [];
-  for (const b of BINS) {
-    const n = count[String(b.c)] || 0;
-    const s = document.createElement('span');
-    if (n) s.className = 'has';
-    s.innerHTML = `${signed(b.c)}<b>${n}</b>`;
-    cells.push(s);
-  }
-  const sk = document.createElement('span');
-  if (count.skip) sk.className = 'has';
-  sk.innerHTML = `skip<b>${count.skip || 0}</b>`;
-  cells.push(sk);
-  $('dist').replaceChildren(...cells);
 }
 
 // ── labeling ───────────────────────────────────────────────────────────────
 // Optimistic: the pick lands and the page advances immediately, the save
 // drains behind it, and a failure rolls the row back so the frame resurfaces
-// on the next sweep rather than being silently lost.
+// on the next sweep rather than being silently lost. Whatever line is
+// currently drawn for this frame (state.line) rides along as auxiliary
+// data — it never decides which bucket gets saved.
 function applyLabel(store, isSkip) {
   if (!state.ready) return;
   const labeler = who();
@@ -512,12 +554,19 @@ function applyLabel(store, isSkip) {
   if (!f) return;
   const k = key(f);
   const prev = state.labels.get(k);
-  const row = isSkip ? { bucket: null, skip_reason: SKIP_REASON }
-                     : { bucket: store, skip_reason: null };
+  const line = isSkip ? null : state.line;
+  const row = {
+    bucket: isSkip ? null : store,
+    base: line ? line.base : null,
+    end: line ? line.end : null,
+    skip_reason: isSkip ? SKIP_REASON : null,
+  };
+  if (isSkip) state.line = null;
 
   state.labels.set(k, row);
   state.pendingSaves++;
   renderDial();
+  renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null);
   renderProgress();
   bumpMyTeamRow();
   status(`Saving ${isSkip ? 'skip' : signed(store)}…`);
@@ -525,9 +574,11 @@ function applyLabel(store, isSkip) {
   go(state.i + 1);
 
   call({
-    action: 'saveTorsoAngle', labeler, video: f.stem,
+    action: 'saveFacingAngle', labeler, video: f.stem,
     round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
     bucket: isSkip ? '' : String(store),
+    base_x: row.base ? String(row.base[0]) : '', base_y: row.base ? String(row.base[1]) : '',
+    end_x: row.end ? String(row.end[0]) : '', end_y: row.end ? String(row.end[1]) : '',
     skip_reason: isSkip ? SKIP_REASON : '',
   }, 'save').then(() => {
     state.pendingSaves = Math.max(0, state.pendingSaves - 1);
@@ -544,11 +595,204 @@ function applyLabel(store, isSkip) {
   });
 }
 
+// ── frame ──────────────────────────────────────────────────────────────────
+function showFrame() {
+  const f = state.frames[state.i];
+  const img = $('frame');
+  resetZoom();
+  if (!f) {
+    img.removeAttribute('src');
+    state.line = null;
+    renderDial();
+    renderLine(null, null);
+    return;
+  }
+  img.src = imgSrc(f);
+  $('id-pos').textContent = `${state.i + 1} / ${state.frames.length}`;
+  $('id-video').textContent = f.stem;
+  $('id-round').textContent = String(f.round);
+  $('id-frame').textContent = String(f.frame);
+  $('id-pts').textContent = f.pts.toFixed(3);
+  $('bugreport-context').textContent =
+    `Attaching: "${f.stem}" · round ${f.round} · frame ${f.frame}`;
+  const row = state.labels.get(key(f));
+  state.line = row && row.base && row.end ? { base: row.base.slice(), end: row.end.slice() } : null;
+  renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null);
+  renderDial();
+  renderOverview();          // moves the .cur outline to this slot
+}
+
+function go(i) {
+  if (!state.frames.length) return;
+  const n = Math.min(state.frames.length - 1, Math.max(0, i));
+  if (n === state.i) return;
+  state.i = n;
+  showFrame();
+}
+
+// ── progress: the overview grid ────────────────────────────────────────────
+function buildOverview() {
+  const ov = $('ov');
+  ov.textContent = '';
+  const frag = document.createDocumentFragment();
+  state.ovDots = [];
+  for (let i = 0; i < state.frames.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'd4';
+    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
+    frag.appendChild(d);
+    state.ovDots.push(d);
+  }
+  ov.appendChild(frag);
+  ov.onclick = (e) => {
+    const at = state.ovDots.indexOf(e.target);
+    if (at >= 0) go(at);
+  };
+
+  const gutter = document.querySelector('.ovn');
+  const col = document.createDocumentFragment();
+  state.ovGutter = [];
+  for (let b = 0; b * BATCH < state.frames.length; b++) {
+    const count = Math.min(BATCH, state.frames.length - b * BATCH);
+    const rows = Math.ceil(count / BATCH_COLS);
+    const n = document.createElement('b');
+    const num = document.createElement('span');
+    num.textContent = b + 1;
+    const g = document.createElement('span');
+    g.className = 'ovn-g';
+    const s = document.createElement('span');
+    s.className = 'ovn-s';
+    n.append(num, g, s);
+    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+    n.style.lineHeight = '9px';
+    if (b) n.style.marginTop = '10px';
+    col.appendChild(n);
+    state.ovGutter.push({ g, s, start: b * BATCH, end: b * BATCH + count, node: n });
+  }
+  gutter.replaceChildren(col);
+}
+
+function paintBatchCounts() {
+  if (!state.ovGutter) return;
+  for (const gu of state.ovGutter) {
+    let g = 0, s = 0;
+    for (let i = gu.start; i < gu.end; i++) {
+      const row = state.labels.get(key(state.frames[i]));
+      if (!row) continue;
+      if (row.skip_reason) s++; else if (row.bucket !== null) g++;
+    }
+    gu.g.textContent = g || '';
+    gu.s.textContent = s || '';
+    gu.node.title = `frames ${gu.start + 1}–${gu.end} — ${g} labelled, ${s} skipped`;
+  }
+}
+
+function renderOverview() {
+  const dots = state.ovDots;
+  if (!dots) return;
+  for (let i = 0; i < state.frames.length; i++) {
+    const row = state.labels.get(key(state.frames[i]));
+    let cls = 'd4';
+    let what = 'not labelled';
+    if (row && row.skip_reason) { cls += ' sk'; what = "can't tell"; }
+    else if (row && row.bucket !== null) { cls += ' dn'; what = signed(row.bucket); }
+    if (i === state.i) cls += ' cur';
+    const t = `#${i + 1} — ${what}`;
+    if (dots[i].title !== t) dots[i].title = t;
+    if (dots[i].className !== cls) dots[i].className = cls;
+  }
+  paintBatchCounts();
+}
+
+// Two series per row — you, and everyone — as an EMPHASIS pair: your own
+// progress is the point, the team total is context for it.
+function buildDist() {
+  const dist = $('dist');
+  dist.replaceChildren();
+  state.distRows = new Map();
+  const rows = BINS.map((b) => ({ k: String(b.c), label: signed(b.c) }))
+    .concat([{ k: 'skip', label: 'skip', skip: true }]);
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'dist-row' + (r.skip ? ' skip' : '');
+    const label = document.createElement('span');
+    label.className = 'dist-label';
+    label.textContent = r.label;
+    const track = document.createElement('div');
+    track.className = 'dist-track';
+    const you = document.createElement('div');
+    you.className = 'dist-bar you';
+    const all = document.createElement('div');
+    all.className = 'dist-bar all';
+    track.append(you, all);
+    const val = document.createElement('span');
+    val.className = 'dist-val';
+    const youVal = document.createElement('b');
+    const slash = document.createElement('span');
+    slash.className = 'dist-slash';
+    slash.textContent = '/';
+    const allVal = document.createElement('span');
+    val.append(youVal, slash, allVal);
+    row.append(label, track, val);
+    dist.appendChild(row);
+    state.distRows.set(r.k, { you, all, youVal, allVal });
+  }
+}
+
+function bucketCounts(rows) {
+  const count = {};
+  for (const row of rows) {
+    if (row.skip_reason) { count.skip = (count.skip || 0) + 1; continue; }
+    if (row.bucket === null || row.bucket === undefined) continue;
+    count[row.bucket] = (count[row.bucket] || 0) + 1;
+  }
+  return count;
+}
+
+function renderDist() {
+  const mine = bucketCounts(state.labels.values());
+  const total = state.totalCounts || {};
+  const max = Math.max(1, ...Object.values(mine), ...Object.values(total));
+  for (const [k, els] of state.distRows) {
+    const you = mine[k] || 0;
+    const all = total[k] || 0;
+    els.you.style.width = (100 * you / max).toFixed(1) + '%';
+    els.all.style.width = (100 * all / max).toFixed(1) + '%';
+    els.youVal.textContent = String(you);
+    els.youVal.classList.toggle('has', you > 0);
+    els.allVal.textContent = String(all);
+  }
+}
+
+// The team total — every labeler's rows, via statsFacingAngle's per-tab
+// bucket tally (there is no single shared sheet to read unfiltered under
+// the one-tab-per-labeler backend).
+async function refreshTotalDist() {
+  try {
+    const body = await call({ action: 'statsFacingAngle' }, 'load team');
+    state.roster = (body.labelers || []).filter((l) => l.n > 0);
+    const total = {};
+    for (const l of state.roster) {
+      for (const [k, n] of Object.entries(l.buckets || {})) total[k] = (total[k] || 0) + n;
+    }
+    state.totalCounts = total;
+    renderTeamPanel();
+    renderDist();
+    populateAgreeSelects();
+  } catch (e) { /* keep the stale totals over losing them */ }
+}
+
+function renderProgress() {
+  const N = state.frames.length;
+  const done = state.labels.size;
+  $('bar-text').textContent = N
+    ? `${done.toLocaleString()} / ${N.toLocaleString()} labelled`
+    : 'no frames';
+  renderOverview();
+  renderDist();
+}
+
 // ── start / sync ───────────────────────────────────────────────────────────
-// The readiness gate: until this labeler's saved rows are in hand the dial
-// is inert, because a bucket picked in that window would be overwritten by
-// the sync landing on top of it. Lands the labeler on their first
-// unlabeled frame, the way height_guard's start() does.
 async function start() {
   if (!who()) return;
   document.body.classList.remove('ready');
@@ -561,11 +805,8 @@ async function start() {
     state.labels = new Map();
     for (const r of rows) {
       const k = rowKey(r);
-      if (!state.index.has(k)) continue;    // a row outside the current queue
-      state.labels.set(k, {
-        bucket: r.bucket === null || r.bucket === undefined ? null : String(r.bucket),
-        skip_reason: r.skip_reason || null,
-      });
+      if (!state.index.has(k)) continue;
+      state.labels.set(k, rowToLabel(r));
     }
   } catch (e) {
     state.starting = false;
@@ -577,40 +818,31 @@ async function start() {
   state.ready = true;
   document.body.classList.add('ready');
   renderProgress();
-  // First unlabeled frame, or the last one if the queue is finished.
   const first = state.frames.findIndex((f) => !state.labels.has(key(f)));
   state.i = first === -1 ? state.frames.length - 1 : first;
   showFrame();
   status(`Loaded ${state.labels.size} of your label(s).`, 'ok');
 
-  try { await loadRoster(); renderTeamPanel(); } catch (e) {}
+  refreshTotalDist();
   startRosterPoll();
   if (state.teamOpen) prefetchRanges();
 }
 
 // ── team data ──────────────────────────────────────────────────────────────
-async function loadRoster() {
-  const body = await call({ action: 'statsTorsoAngle' }, 'load team');
-  state.roster = (body.labelers || []).filter((l) => l.n > 0);
-}
-
 function startRosterPoll() {
   if (state.rosterPoll) return;
-  state.rosterPoll = setInterval(async () => {
-    try { await loadRoster(); renderTeamPanel(); } catch (e) { /* keep the stale roster */ }
-  }, TEAM_POLL_MS);
+  state.rosterPoll = setInterval(refreshTotalDist, TEAM_POLL_MS);
 }
 
-// One real refresh after a burst of saves, not one per save — the stats
-// call reads the whole sheet.
 function scheduleTeamRefresh() {
   clearTimeout(state.teamTimer);
   state.teamTimer = setTimeout(async () => {
-    try { await loadRoster(); renderTeamPanel(); prefetchRanges(); } catch (e) {}
+    await refreshTotalDist();
+    prefetchRanges();
+    await refreshAgreement();
   }, 4000);
 }
 
-// Your own row moves the instant you save, so it never waits for the poll.
 function bumpMyTeamRow() {
   const me = who();
   if (!me) return;
@@ -622,8 +854,6 @@ function bumpMyTeamRow() {
   const f = state.frames[state.i];
   if (f) mine.last = { video: f.stem, round: f.round, frame: f.frame };
   state.roster.sort((a, b) => b.n - a.n);
-  // Our own ranges are derivable with no request at all, so they never go
-  // stale behind the cache the way a teammate's do.
   state.rangeCache.set(me, { n: mine.n, ranges: frameRuns(myIndices()), at: Date.now() });
   renderTeamPanel();
 }
@@ -647,10 +877,6 @@ function ago(iso) {
   return `${Math.round(s / 86400)}d ago`;
 }
 
-// ── team panel: hide-from-my-list ──────────────────────────────────────────
-// A VIEW preference, so it lives in localStorage and never reaches the
-// sheet — one person tidying their own list must not change what anybody
-// else sees.
 function loadHidden() {
   try {
     const raw = JSON.parse(localStorage.getItem(HIDE_KEY) || '[]');
@@ -667,9 +893,6 @@ function setNameHidden(name, hidden) {
   renderTeamPanel();
 }
 
-// ── team panel: frame ranges ───────────────────────────────────────────────
-// Consecutive queue positions collapse into one run, so "1-100, 401-1100"
-// is three facts rather than eleven hundred.
 function frameRuns(indices) {
   const s = [...indices].sort((a, b) => a - b);
   const out = [];
@@ -685,14 +908,8 @@ function frameRuns(indices) {
   return out;
 }
 
-// Closed on both sides, 1-based — every number printed is a frame the
-// labeler actually did, matching the position shown on the Frame card.
 function fmtRanges(runs) { return runs.map(([a, b]) => `[${a + 1}, ${b + 1}]`).join('  ·  '); }
 
-// Ranges are positions in the CURRENT queue, so a rebuilt queue makes every
-// stored entry meaningless — the length rides along as a cheap version
-// stamp and a mismatch drops the lot. Errors are never stored: a fetch that
-// failed once is worth retrying, unlike an answer that is merely stale.
 function loadRangeCache() {
   try {
     const raw = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
@@ -705,12 +922,9 @@ function saveRangeCache() {
     const by = {};
     for (const [k, v] of state.rangeCache) if (!v.error) by[k] = v;
     localStorage.setItem(RANGE_KEY, JSON.stringify({ q: state.frames.length, by }));
-  } catch (e) {}                                  // quota — the cache is a luxury
+  } catch (e) {}
 }
 
-// Warm every visible row at once when the panel OPENS: the reads are
-// independent and Apps Script serves them in parallel, so the whole team
-// costs about what one labeler does, and clicking a name is then instant.
 function prefetchRanges(force) {
   if ((!state.teamOpen && !force) || !state.frames.length) return;
   const me = (who() || '').toLowerCase();
@@ -724,7 +938,7 @@ function prefetchRanges(force) {
 
 async function loadRanges(labeler, n) {
   const inflight = state.rangePending.get(labeler);
-  if (inflight) return inflight;                  // a click during a prefetch
+  if (inflight) return inflight;
   const p = fetchRanges(labeler, n).finally(() => state.rangePending.delete(labeler));
   state.rangePending.set(labeler, p);
   return p;
@@ -736,12 +950,10 @@ async function fetchRanges(labeler, n) {
     if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
       state.rangeCache.set(labeler, { n, ranges: frameRuns(myIndices()), at: Date.now() });
       saveRangeCache();
-      return;                                     // already in hand, no request
+      return;
     }
     rows = await fetchRows(labeler);
   } catch (e) {
-    // An error must never overwrite ranges already on screen — but the
-    // ATTEMPT is always stamped, on the old entry if there is one.
     const had = state.rangeCache.get(labeler);
     state.rangeCache.set(labeler, had
       ? Object.assign({}, had, { at: Date.now() })
@@ -751,25 +963,16 @@ async function fetchRanges(labeler, n) {
   const idx = [];
   for (const r of rows) {
     const i = state.index.get(rowKey(r));
-    if (i !== undefined) idx.push(i);             // rows outside the queue are not shown
+    if (i !== undefined) idx.push(i);
   }
   state.rangeCache.set(labeler, { n, ranges: frameRuns(idx), at: Date.now() });
   saveRangeCache();
 }
 
-// ── team panel: render ─────────────────────────────────────────────────────
-// Name, count, and a MAP of where in the queue those frames fall — never
-// anybody's actual answer. Whoever can see another answer anchors on it,
-// and an anchored pick is not a second opinion; a position on a bar carries
-// no verdict, so there is nothing in it to anchor on. Same rule 4.0 states
-// in its own README.
 function setTeamOpen(open) {
   state.teamOpen = !!open;
   $('team').classList.toggle('on', state.teamOpen);
   $('team-btn').setAttribute('aria-expanded', String(state.teamOpen));
-  // Render on open rather than trusting the last poll to have left the
-  // panel current — the roster can have moved (a save of our own bumps it)
-  // while the panel was folded away and nothing repainted it.
   if (state.teamOpen) { renderTeamPanel(); prefetchRanges(); }
   else renderTeamLabel();
 }
@@ -792,16 +995,10 @@ function renderTeamPanel() {
   const me = who().toLowerCase();
   const n = state.frames.length;
 
-  // You can never hide yourself — your own progress is the one row always
-  // relevant. Counted over PRESENT rows only, so a name hidden long ago
-  // that has since stopped labeling does not inflate the tally.
   const isMe = (r) => r.labeler.toLowerCase() === me;
   const shown = rows.filter((r) => isMe(r) || !state.hidden.has(r.labeler.toLowerCase()));
   const hiddenNow = rows.length - shown.length;
 
-  // #team IS the grid, so each labeler contributes cells directly to it —
-  // a wrapper would become the grid item and the columns would stop lining
-  // up between labelers.
   const cells = [];
   const add = (cls, html) => {
     const s = document.createElement('span');
@@ -854,8 +1051,6 @@ function renderTeamPanel() {
         bar.appendChild(seg);
       }
     } else if (r.n) {
-      // No runs yet. Fall back to a proportional fill rather than an empty
-      // track: an empty bar beside "31 / 50" reads as nothing done.
       bar.classList.add('approx');
       const fill = document.createElement('i');
       fill.style.left = '0';
@@ -863,7 +1058,6 @@ function renderTeamPanel() {
       bar.appendChild(fill);
     }
 
-    // Position is worth knowing — it is just not worth a column.
     const at = r.last
       ? state.index.get(JSON.stringify([r.last.video, Number(r.last.round), Number(r.last.frame)]))
       : undefined;
@@ -875,13 +1069,11 @@ function renderTeamPanel() {
     bar.title = tip + (bar.classList.contains('approx')
       ? ' · bar shows the amount; the positions are still loading'
       : ' · the bar shows where in the queue');
-    cells[cells.length - 2].title = tip;           // the count cell
+    cells[cells.length - 2].title = tip;
 
     if (open) {
       const box = add('who-ranges' + m, '');
       const got = state.rangeCache.get(r.labeler);
-      // Whatever we have goes up straight away; only a row never read shows
-      // a spinner-equivalent, so the panel never blanks what it just said.
       box.textContent = !got ? 'Loading…'
         : got.error ? got.error
         : got.ranges.length ? fmtRanges(got.ranges)
@@ -907,12 +1099,131 @@ function renderTeamPanel() {
   el.replaceChildren(...cells);
 }
 
+// ── agreement card ───────────────────────────────────────────────────────
+// Two named labelers, picked from the roster, fetched on demand — not
+// chin_tuck's admin-only loadTeamRows() fan-out. Agreement compares the
+// STORED bucket directly (the actual label), not anything derived from a
+// line — a labeler who never draws one is compared exactly the same way
+// as one who always does.
+function loadAgreePair() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AGREE_KEY) || 'null');
+    if (Array.isArray(raw) && raw.length === 2) return raw;
+  } catch (e) {}
+  return ['', ''];
+}
+function saveAgreePair() {
+  try { localStorage.setItem(AGREE_KEY, JSON.stringify(state.agreePair)); } catch (e) {}
+}
+
+function populateAgreeSelects() {
+  for (const [idx, id] of [[0, 'agree-a'], [1, 'agree-b']]) {
+    const sel = $(id);
+    const cur = state.agreePair[idx];
+    sel.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = ''; placeholder.textContent = '— pick —';
+    sel.appendChild(placeholder);
+    for (const r of state.roster) {
+      const opt = document.createElement('option');
+      opt.value = r.labeler; opt.textContent = r.labeler;
+      sel.appendChild(opt);
+    }
+    sel.value = cur && state.roster.some((r) => r.labeler === cur) ? cur : '';
+  }
+}
+
+async function setAgreePair(idx, name) {
+  state.agreePair[idx] = name;
+  saveAgreePair();
+  await refreshAgreement();
+}
+
+async function refreshAgreement() {
+  const [a, b] = state.agreePair;
+  if (!a || !b) {
+    state.agreeRows = [null, null];
+    renderAgreement();
+    return;
+  }
+  try {
+    const [rowsA, rowsB] = await Promise.all([fetchRows(a), fetchRows(b)]);
+    state.agreeRows = [
+      new Map(rowsA.map((r) => [rowKey(r), rowToLabel(r)])),
+      new Map(rowsB.map((r) => [rowKey(r), rowToLabel(r)])),
+    ];
+  } catch (e) {
+    $('agree-summary').textContent = "Couldn't load: " + e.message;
+    return;
+  }
+  renderAgreement();
+}
+
+function agreeForSlot(f) {
+  const k = key(f);
+  const [ra, rb] = state.agreeRows.map((m) => m && m.get(k));
+  if (!ra && !rb) return { kind: 'none' };
+  if (!ra || !rb) return { kind: 'solo' };
+  if (ra.skip_reason || rb.skip_reason) return { kind: 'skip' };
+  if (ra.bucket === null || rb.bucket === null) return { kind: 'none' };
+  return { kind: ra.bucket === rb.bucket ? 'agree' : 'disagree' };
+}
+
+function buildAgreeGrid() {
+  const grid = $('agree-grid');
+  grid.textContent = '';
+  const frag = document.createDocumentFragment();
+  state.agreeDots = [];
+  for (let i = 0; i < state.frames.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'd4';
+    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
+    frag.appendChild(d);
+    state.agreeDots.push(d);
+  }
+  grid.appendChild(frag);
+  grid.onclick = (e) => {
+    const at = state.agreeDots.indexOf(e.target);
+    if (at >= 0) go(at);
+  };
+  const gutter = document.querySelector('#agree-card .ovn');
+  const col = document.createDocumentFragment();
+  for (let b = 0; b * BATCH < state.frames.length; b++) {
+    const count = Math.min(BATCH, state.frames.length - b * BATCH);
+    const rows = Math.ceil(count / BATCH_COLS);
+    const n = document.createElement('b');
+    n.textContent = b + 1;
+    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+    n.style.lineHeight = '9px';
+    if (b) n.style.marginTop = '10px';
+    col.appendChild(n);
+  }
+  gutter.replaceChildren(col);
+}
+
+function renderAgreement() {
+  const [a, b] = state.agreePair;
+  const summary = $('agree-summary');
+  if (!a || !b) { summary.textContent = 'Pick two labelers to compare.'; }
+  if (!state.agreeDots) return;
+  let agree = 0, disagree = 0, compared = 0;
+  for (let i = 0; i < state.frames.length; i++) {
+    const r = agreeForSlot(state.frames[i]);
+    let cls = 'd4';
+    if (r.kind === 'agree') { cls += ' agree'; agree++; compared++; }
+    else if (r.kind === 'disagree') { cls += ' disagree'; disagree++; compared++; }
+    if (i === state.i) cls += ' cur';
+    state.agreeDots[i].className = cls;
+    state.agreeDots[i].title = `#${i + 1} — ${r.kind}`;
+  }
+  if (a && b) {
+    summary.textContent = compared
+      ? `${Math.round(100 * agree / compared)}% agree · ${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
+      : 'No frames both have labelled yet.';
+  }
+}
+
 // ── bug report console ─────────────────────────────────────────────────────
-// Saved to one spreadsheet shared by every labeler on the site, and
-// deliberately independent of call()'s retry/marker machinery — a bug
-// report isn't label data, and staying independent is what keeps this block
-// copy-pasteable into any future labeler. Reuses api() but does its own
-// fetch. See saveBugReport / doGetBugReport in apps_script/Code.js.
 function setBugReportOpen(open) {
   $('bugreport-panel').classList.toggle('on', !!open);
   $('bugreport-btn').setAttribute('aria-expanded', String(!!open));
@@ -954,11 +1265,6 @@ async function sendBugReport() {
 }
 
 // ── copy buttons ───────────────────────────────────────────────────────────
-// The async clipboard API is refused outright in some embedded/permission-
-// restricted browsers, so a bare writeText().catch(return) is a button that
-// silently does nothing — the labeler pastes and gets whatever was there
-// before. Fall back to the execCommand path, and if BOTH fail say so rather
-// than pretending it worked.
 async function copyText(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -969,8 +1275,6 @@ async function copyText(text) {
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
-    // Off-screen but focusable — display:none or visibility:hidden makes
-    // the selection uncopyable.
     ta.setAttribute('readonly', '');
     ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
     document.body.appendChild(ta);
@@ -995,7 +1299,7 @@ function wireCopyButtons() {
 
 // ── wire-up ────────────────────────────────────────────────────────────────
 async function loadFrames() {
-  const res = await fetch('./torso_angle_frames.json', { cache: 'no-cache' });
+  const res = await fetch('./boxer_facing_angle_frames.json', { cache: 'no-cache' });
   const body = await res.json();
   return body.frames || [];
 }
@@ -1008,7 +1312,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.frames.forEach((f, i) => state.index.set(key(f), i));
   state.hidden = loadHidden();
   state.rangeCache = loadRangeCache();
+  state.agreePair = loadAgreePair();
   buildOverview();
+  buildDist();
+  buildAgreeGrid();
   renderProgress();
   showFrame();
 
@@ -1039,31 +1346,42 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   $('bugreport-send').addEventListener('click', sendBugReport);
 
-  // ── stage: pan / zoom ────────────────────────────────────────────────
+  $('agree-a').addEventListener('change', (e) => setAgreePair(0, e.target.value));
+  $('agree-b').addEventListener('change', (e) => setAgreePair(1, e.target.value));
+  populateAgreeSelects();
+  refreshAgreement();
+
+  // ── stage: draw the assistant line, pan, zoom ─────────────────────────
   const stage = $('stage');
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
   stage.addEventListener('mousedown', (e) => {
+    if (e.button === 2) {
+      if (!isFitted()) {
+        state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
+        stage.classList.add('panning');
+      }
+      e.preventDefault();
+      return;
+    }
     if (e.button !== 0) return;
     state.down = { x: e.clientX, y: e.clientY };
-    if (!isFitted()) {
-      state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
-      stage.classList.add('panning');
-    }
-    e.preventDefault();
+    if (startDraw(e.clientX, e.clientY)) e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
-    if (!state.drag) return;
-    state.panX = state.drag.px + (e.clientX - state.drag.x);
-    state.panY = state.drag.py + (e.clientY - state.drag.y);
-    applyTransform();
+    if (state.draw) { moveDraw(e.clientX, e.clientY); return; }
+    if (state.drag) {
+      state.panX = state.drag.px + (e.clientX - state.drag.x);
+      state.panY = state.drag.py + (e.clientY - state.drag.y);
+      applyTransform();
+    }
   });
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (e) => {
+    if (state.draw) { finishDraw(e.clientX, e.clientY, state.down.x, state.down.y); state.down = null; return; }
     state.drag = null;
     state.down = null;
     stage.classList.remove('panning');
   });
   stage.addEventListener('dblclick', resetZoom);
-  // deltaMode 0/1/2 = pixels / lines / pages; normalise before scaling so a
-  // line-scrolling mouse and a pixel-scrolling trackpad zoom alike.
   const DELTA_PX = { 0: 1, 1: 16, 2: 400 };
   $('stage-card').addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -1071,8 +1389,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     zoomAt(Math.max(-200, Math.min(200, px)), e.clientX, e.clientY);
   }, { passive: false });
 
-  // The frame's own resolution is half the sharp/smooth decision, and it is
-  // only known once the image loads — hence applyTransform here too.
   $('frame').addEventListener('load', () => {
     const img = $('frame');
     if (img.naturalWidth && img.naturalHeight) {
@@ -1083,7 +1399,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('keydown', (e) => {
     const tag = e.target && e.target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key in KEY_BINS) { e.preventDefault(); const m = KEY_BINS[e.key]; applyLabel(m.store, m.skip); return; }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); go(state.i - 1); return; }
