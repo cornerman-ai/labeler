@@ -119,30 +119,34 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
   relative there, camera-relative here.
 - **The stage** — full zoom/pan: wheel zooms at the cursor, double-click or
   `0` resets, `image-rendering: pixelated` past the magnification
-  threshold. One button does everything else, resolved by what the
-  mousedown hits and how far the mouse actually moves (`CLICK_SLOP_PX` = 4,
-  same distinction height_guard's own click-vs-drag uses): mousedown on an
-  existing handle adjusts it; mousedown on empty space tentatively arms a
-  pan (only possible once zoomed in — at fit there's nowhere to pan to);
-  mouseup then checks whether the mouse actually travelled — real movement
-  means it was a pan, no movement means it was a stationary CLICK, which
-  places a brand-new line if this frame doesn't have one yet and otherwise
-  does **nothing** (a stray click must never overwrite a line already
-  placed).
-- **Placing the line (assistant)** — a single stationary click, not a
-  drag, since a plain drag is reserved for panning. Defaults to pointing
-  straight down (0°, squared to the camera) at a fixed on-screen length
-  (`DEFAULT_LINE_PX` = 80px; falls back to pointing up if clicked too close
-  to the stage's bottom edge for the default to fit). From there, two small
-  handles stay grabbable (`GRAB_PX` = 12px, checked against their current
-  SCREEN position so the threshold means the same thing at any zoom) —
-  dragging the **base** handle translates the whole line, dragging the
-  **end** handle rotates it around the base, both equally editable from
-  the moment the line exists. Handles are counter-scaled by `--inv` exactly
-  like chin_tuck's `.hp` dots; round = base, square = end, same "shape says
-  which point" convention. None of this saves anything by itself — see
-  `applyLabel()`, which is what does, once a wedge or the skip hole is
-  actually clicked.
+  threshold. The two mouse buttons do two unrelated things, so there's no
+  click-vs-drag ambiguity to resolve on a single button:
+  - **Left** — mousedown on an existing handle grabs and moves that ONE
+    point; mousedown on empty space arms a pan, at **any** zoom (including
+    fit — panning used to be gated behind `!isFitted()`, which is gone).
+  - **Right** — a drag draws a brand-new line, base at mousedown and end
+    at mouseup, at any zoom, replacing whatever line this frame already
+    had; a **stationary** right-click (`CLICK_SLOP_PX` = 4, same threshold
+    height_guard's own click-vs-drag uses) opens a small delete-line menu
+    when this frame has one and does nothing otherwise. The stage
+    suppresses the browser's own context menu so it never fights this.
+- **Placing/editing the line (assistant)** — right-drag draws it (see
+  above); from there, two small handles stay grabbable (`GRAB_PX` = 12px,
+  checked against their current SCREEN position so the threshold means the
+  same thing at any zoom) — dragging the **base** handle moves ONLY the
+  base (the end stays exactly where it was) and dragging the **end**
+  handle moves ONLY the end (the base stays put), genuinely independent —
+  an earlier version of this had the base handle translate the *whole*
+  line instead of just itself, which read as broken since it looked like
+  dragging the base couldn't change the line's direction at all. Handles
+  are counter-scaled by `--inv` exactly like chin_tuck's `.hp` dots; round
+  = base, square = end, same "shape says which point" convention. None of
+  this saves anything by itself — see `applyLabel()`, which is what does,
+  once a wedge or the skip hole is actually clicked. Right-clicking the
+  line opens a menu with a single **Delete line** action — this only
+  clears the currently-drawn `state.line`, since the line is never saved
+  on its own; a row already saved with one keeps it until the next save
+  overwrites it.
 - **Rendering** — the interactive segment (base→end) is solid; a dashed
   continuation runs from the end point to the frame edge in the same
   direction, visual only — adapted from
@@ -174,16 +178,18 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
   same way chin_tuck's own `agreePair` does), fetched **on demand** — two
   `listFacingAngle` calls, one per picked name — not chin_tuck's admin-only
   `loadTeamRows()` fan-out over the whole roster (this tool has no admin
-  mode). Agreement compares the **stored bucket directly** — exact match,
+  mode). Agreement compares the **stored answer directly** — exact match,
   nothing derived from a line — so a labeler who never draws one is
   compared exactly the same way as one who always does. Reuses the
   `.d4-grid`/`.ovn` overview machinery. Four states, deliberately no more:
-  **green** = both gave a bucket and it matches, **red** = both gave a
-  bucket and it differs, **light blue** (`.solo`, the same faded-accent
-  chin_tuck_4.0 uses for its own solo dots) = exactly one of the two has a
-  bucket, **grey** = neither does. A skip is not a bucket, so it counts the
-  same as "hasn't answered" — it folds into light-blue or grey, never a
-  category of its own. No kappa panel, no PNG export, no admin gating.
+  **green** = both gave the SAME answer, **red** = both answered but
+  differently, **light blue** (`.solo`, the same faded-accent chin_tuck_4.0
+  uses for its own solo dots) = exactly one of the two has answered,
+  **grey** = neither has. A skip counts as a real answer here — "can't
+  tell" is a judgment call, not a non-answer — so two skips on the same
+  frame agree (green) exactly like two matching buckets would, and a skip
+  against a bucket disagrees (red), since they're two different valid
+  answers. No kappa panel, no PNG export, no admin gating.
 - **Optimistic saves** — a wedge (or skip) lands and the page advances
   immediately, the write drains behind it, a failure rolls the row back.
 

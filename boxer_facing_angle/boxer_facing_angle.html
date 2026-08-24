@@ -109,16 +109,17 @@ select {
    line's angle undistorted: the marks overlay shares this exact box, so a
    normalized 0..1 coordinate maps to screen pixels by the same factor in x
    and y. Verbatim from height_guard. */
+/* Left-drag pans at ANY zoom now (not just once zoomed in), so grab is
+   the base cursor unconditionally — drawing a line is a RIGHT-button
+   drag instead, which needs no cursor affordance of its own since it's
+   the only thing the right button does on this stage. */
 #stage { position: relative; display: block; max-width: 100%; max-height: 100%;
          aspect-ratio: 9 / 16; user-select: none; transform-origin: 0 0;
-         cursor: crosshair; }
+         cursor: grab; }
 #stage img { display: block; width: 100%; height: 100%; }
 #stage.sharp img { image-rendering: pixelated; }
-/* Once zoomed, an empty-space drag pans instead of placing a line — grab
-   says so; at fit there's nowhere to pan to, so crosshair (place a line)
-   is the only affordance and stays the base rule above. */
-#stage.zoomed { cursor: grab; }
 #stage.panning { cursor: grabbing; }
+#stage.line-drawing { cursor: crosshair; }
 #hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
         color: rgba(255,255,255,.85); background: rgba(0,0,0,.45);
         padding: 3px 8px; border-radius: 6px; pointer-events: none; }
@@ -155,6 +156,24 @@ select {
 .hp.set { display: block; }
 .hp.base { border-radius: 50%; }
 .hp.end { border-radius: 3px; }
+
+/* Right-click-on-a-line menu — position:fixed and placed by JS at the
+   cursor, same chrome/behaviour as punch/ui.js's setupSegmentContextMenu()
+   (that page calls its own tokens --chrome/--fill; this one has no such
+   tokens, so it's built from --card/--line/--ink directly instead). */
+.ctx-menu {
+  position: fixed; z-index: 100; min-width: 160px; padding: 6px;
+  border-radius: 12px; background: var(--card);
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-menu .menu-item {
+  display: block; width: 100%; border: none; background: none; cursor: pointer;
+  font: inherit; text-align: left; padding: 8px 10px; border-radius: 7px;
+  font-size: 13px; color: var(--ink);
+}
+.ctx-menu .menu-item:hover { background: rgba(120,120,128,.14); }
+.ctx-menu .menu-item-danger:hover { color: var(--no); }
 
 #side { width: 342px; padding-right: 2px; flex: none; height: 100%;
         overflow-y: auto; scrollbar-gutter: stable;
@@ -452,8 +471,11 @@ body:not(.ready) #lock { display: block; }
         <div class="hp end" id="hp-end"></div>
       </div>
     </div>
-    <div id="hint">click = place a facing line (assistant) &middot; drag a dot = adjust it &middot; drag elsewhere = pan (once zoomed) &middot; scroll = zoom &middot; double-click = reset</div>
+    <div id="hint">left-drag = pan &middot; right-drag = draw a facing line (assistant) &middot; drag a dot = move it &middot; right-click a line = delete it &middot; scroll = zoom &middot; double-click = reset</div>
     <div id="zoom-chip"><span id="zoom-pct">100%</span><button id="zoom-reset" type="button">Reset</button></div>
+    <div id="line-ctx-menu" class="ctx-menu" role="menu" hidden>
+      <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete-line">Delete line</button>
+    </div>
   </div>
 
   <div id="side">
@@ -559,10 +581,11 @@ body:not(.ready) #lock { display: block; }
         <div class="sep"></div>
         <dt>Prev / next frame</dt> <dd><kbd>&larr;</kbd><kbd>&rarr;</kbd></dd>
         <div class="sep"></div>
-        <dt>Place a facing line</dt> <dd><kbd>click</kbd></dd>
-        <dt>Adjust it</dt> <dd><kbd>drag a dot</kbd></dd>
+        <dt>Draw a facing line</dt> <dd><kbd>right-drag</kbd></dd>
+        <dt>Move a dot</dt> <dd><kbd>drag it</kbd></dd>
+        <dt>Delete the line</dt> <dd><kbd>right-click it</kbd></dd>
         <dt>Zoom</dt> <dd><kbd>scroll</kbd></dd>
-        <dt>Pan (once zoomed)</dt> <dd><kbd>drag</kbd></dd>
+        <dt>Pan</dt> <dd><kbd>drag</kbd></dd>
         <dt>Reset zoom</dt> <dd><kbd>0</kbd><kbd>dbl-click</kbd></dd>
       </dl>
     </div>
@@ -570,6 +593,6 @@ body:not(.ready) #lock { display: block; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=5"></script>
+<script src="boxer_facing_angle.js?v=7"></script>
 </body>
 </html>

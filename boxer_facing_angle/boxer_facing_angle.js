@@ -15,14 +15,18 @@
 // saved ALONGSIDE whichever wedge gets clicked (for audit — nobody derives
 // the saved bucket from them), never in place of it.
 //
-// A STATIONARY CLICK on empty space places a new line (default straight
-// down, 0°); its two points are then independently draggable — the base
-// dot translates the whole line, the end dot rotates it — same "shape
-// says which point" idea as chin_tuck's own round/square dots. A DRAG that
-// doesn't grab either dot pans instead (only possible once zoomed in —
-// at fit there's nowhere to pan to). One button does both, resolved by
-// what the mousedown hit and how far the mouse actually moved — see the
-// stage wiring at the bottom of this file.
+// The two mouse buttons do two UNRELATED things, so there's no click-vs-
+// drag ambiguity to resolve on a single button: LEFT drag pans (any zoom,
+// even at fit); RIGHT drag draws a brand new line, base at the mousedown
+// point, end wherever the button comes up — replacing whatever line this
+// frame already had. A LEFT mousedown that lands on an existing handle
+// grabs and moves that one point instead of arming a pan — the base dot
+// moves the base only (end stays put) and the end dot moves the end only
+// (base stays put), same "shape says which point" idea as chin_tuck's own
+// round/square dots, but now genuinely independent: dragging one point
+// never drags the other along with it. A STATIONARY right-click (no real
+// movement) opens a small delete menu when this frame has a line, and does
+// nothing otherwise — see the stage wiring at the bottom of this file.
 //
 // 0° = squared to the camera, 180° = back to it, + = toward the CAMERA's
 // right — an image-plane convention, not the boxer's own left/right, never
@@ -121,9 +125,10 @@ const state = {
   totalCounts: {},
 
   zoom: 1, panX: 0, panY: 0,
-  drag: null,              // right-button pan drag origin
+  drag: null,              // left-button pan drag origin
   down: null,              // left mousedown screen pos, for click-vs-drag
-  draw: null,              // in-progress line placement/adjustment — see startDraw()
+  draw: null,              // in-progress LEFT-button handle adjustment — see startDraw()
+  rdown: null,             // in-progress RIGHT-button new-line drag origin
 
   roster: [],
   teamOpen: false,
@@ -485,6 +490,30 @@ function renderLine(base, end) {
   ext.setAttribute('x2', exit[0]); ext.setAttribute('y2', exit[1]);
 }
 
+// ── delete-line context menu — right-click on a line that already exists ──
+// Same fixed-position, cursor-placed menu chrome as punch/ui.js's own
+// segment context menu. Deleting only clears the CURRENTLY DRAWN state —
+// the line is never saved on its own (see applyLabel()), so this just
+// means the next save for this frame won't carry one; a row already saved
+// with a line keeps it until the next save overwrites it.
+function openLineContextMenu(clientX, clientY) {
+  const menu = $('line-ctx-menu');
+  menu.hidden = false;
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(4, Math.min(clientX, window.innerWidth - mw - 8)) + 'px';
+  menu.style.top = Math.max(4, Math.min(clientY, window.innerHeight - mh - 8)) + 'px';
+}
+function closeLineContextMenu() {
+  const menu = $('line-ctx-menu');
+  if (menu) menu.hidden = true;
+}
+function deleteCurrentLine() {
+  state.line = null;
+  renderLine(null, null);
+  renderDial();
+  closeLineContextMenu();
+}
+
 function grabHandle(clientX, clientY) {
   if (!state.line) return null;
   const pb = screenPxOf(state.line.base), pe = screenPxOf(state.line.end);
@@ -493,10 +522,11 @@ function grabHandle(clientX, clientY) {
   return null;
 }
 
-// Only ever called with a handle actually grabbed — placing a BRAND NEW
-// line is a stationary click, not a drag (see placeDefaultLine()), so
-// there's no 'new' mode here: dragging on the stage always means adjusting
-// one of an EXISTING line's two points, or (if nothing is grabbed) panning.
+// Only ever called with a handle actually grabbed on the LEFT button —
+// placing a BRAND NEW line is a right-button drag (see the stage wiring),
+// so there's no 'new' mode here: a left-button drag on the stage always
+// means adjusting one of an EXISTING line's two points, or (if nothing is
+// grabbed) panning.
 function startDraw(clientX, clientY) {
   const grab = grabHandle(clientX, clientY);
   if (!grab) return false;
@@ -506,8 +536,7 @@ function startDraw(clientX, clientY) {
 
 // Live suggestion while dragging, not just after release — repaints the
 // dial's `.suggested` wedge and the line-read text from whatever base/end
-// the drag currently implies. Translating the base (mode 'base') doesn't
-// change the angle, so it skips this rather than recomputing a no-op.
+// the drag currently implies.
 function updateSuggestionFrom(base, end) {
   const a = Math.atan2(end[0] - base[0], end[1] - base[1]) * 180 / Math.PI;
   if (!Number.isFinite(a)) return;
@@ -518,13 +547,17 @@ function updateSuggestionFrom(base, end) {
   }
 }
 
+// Each handle moves ONLY its own point — dragging the base leaves the end
+// exactly where it was and vice versa, so the two are genuinely
+// independent (previously the base handle translated the whole line,
+// preserving the angle; that made it impossible to edit just the base).
 function moveDraw(clientX, clientY) {
   const d = state.draw;
   if (!d) return;
   const p = stageNorm(clientX, clientY);
   if (d.mode === 'base') {
-    const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
-    renderLine(p, [d.orig.end[0] + dx, d.orig.end[1] + dy]);
+    renderLine(p, d.orig.end);
+    updateSuggestionFrom(p, d.orig.end);
   } else if (d.mode === 'end') {
     renderLine(d.orig.base, p);
     updateSuggestionFrom(d.orig.base, p);
@@ -536,12 +569,14 @@ function finishDraw(clientX, clientY) {
   state.draw = null;
   if (!d) return;
   const p = stageNorm(clientX, clientY);
+  // A near-zero-length result (dragged one handle onto the other) would
+  // make the angle undefined — treat it as no change rather than a
+  // degenerate line.
   if (d.mode === 'base') {
-    const dx = p[0] - d.orig.base[0], dy = p[1] - d.orig.base[1];
-    state.line = { base: p, end: [d.orig.end[0] + dx, d.orig.end[1] + dy] };
+    state.line = Math.hypot(p[0] - d.orig.end[0], p[1] - d.orig.end[1]) < 0.002
+      ? { base: d.orig.base, end: d.orig.end }
+      : { base: p, end: d.orig.end };
   } else {
-    // A near-zero-length drag on the end handle would make the angle
-    // undefined — treat it as no change rather than a degenerate line.
     state.line = Math.hypot(p[0] - d.orig.base[0], p[1] - d.orig.base[1]) < 0.002
       ? { base: d.orig.base, end: d.orig.end }
       : { base: d.orig.base, end: p };
@@ -550,21 +585,11 @@ function finishDraw(clientX, clientY) {
   renderDial();
 }
 
-// A brand new line, from a single STATIONARY click on empty space (never
-// a drag — plain drag is reserved for panning, see the wiring below).
-// Defaults to pointing straight down (0°, squared to the camera) at a
-// fixed on-screen length; the labeler drags the end handle to set the
-// real direction from there, and the base handle to reposition it — both
-// equally editable from the moment the line exists.
-const DEFAULT_LINE_PX = 80;
-function placeDefaultLine(clientX, clientY) {
-  const base = stageNorm(clientX, clientY);
-  let end = stageNorm(clientX, clientY + DEFAULT_LINE_PX);
-  // Clicked too close to the stage's bottom edge for a downward default
-  // (base and end would clamp to the same point) — try upward instead.
-  if (Math.hypot(end[0] - base[0], end[1] - base[1]) < 1e-4) {
-    end = stageNorm(clientX, clientY - DEFAULT_LINE_PX);
-  }
+// A brand new line, from a RIGHT-button drag (base at mousedown, end at
+// mouseup) — replaces whatever line this frame already had. See the stage
+// wiring below for how this is told apart from a stationary right-click
+// (which opens the delete menu instead).
+function drawNewLine(base, end) {
   state.line = { base, end };
   renderLine(base, end);
   renderDial();
@@ -630,6 +655,7 @@ function showFrame() {
   const f = state.frames[state.i];
   const img = $('frame');
   resetZoom();
+  closeLineContextMenu();
   if (!f) {
     img.removeAttribute('src');
     state.line = null;
@@ -1192,17 +1218,21 @@ async function refreshAgreement() {
   renderAgreement();
 }
 
-// Four states only, by design: green/red need a real bucket from BOTH
-// labelers; a skip is not a bucket, so it counts the same as "hasn't
-// answered" here — it folds into 'solo' or 'none' exactly like a frame
-// neither has touched, never its own category.
+// Four states only, by design. A SKIP is a valid answer here, same as any
+// bucket — "can't tell" is a real judgment call, not a non-answer — so two
+// skips on the same frame agree (both green), a skip against a bucket
+// disagrees (they gave two different valid answers), and only a frame
+// NEITHER labeler has touched at all counts as "neither answered".
 function agreeForSlot(f) {
   const k = key(f);
   const [ra, rb] = state.agreeRows.map((m) => m && m.get(k));
-  const aHas = !!ra && ra.bucket !== null && ra.bucket !== undefined;
-  const bHas = !!rb && rb.bucket !== null && rb.bucket !== undefined;
-  if (aHas && bHas) return { kind: ra.bucket === rb.bucket ? 'agree' : 'disagree' };
-  if (aHas || bHas) return { kind: 'solo' };
+  // 'skip' for a can't-tell row, the bucket string for a real pick, null
+  // for not yet answered at all.
+  const answerOf = (r) => !r ? null : r.skip_reason ? 'skip'
+    : (r.bucket !== null && r.bucket !== undefined ? r.bucket : null);
+  const aAns = answerOf(ra), bAns = answerOf(rb);
+  if (aAns !== null && bAns !== null) return { kind: aAns === bAns ? 'agree' : 'disagree' };
+  if (aAns !== null || bAns !== null) return { kind: 'solo' };
   return { kind: 'none' };
 }
 
@@ -1375,6 +1405,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('next').addEventListener('click', () => go(state.i + 1));
   $('zoom-reset').addEventListener('click', resetZoom);
 
+  $('line-ctx-menu').querySelector('[data-action="delete-line"]')
+    .addEventListener('click', deleteCurrentLine);
+  document.addEventListener('click', (e) => {
+    const menu = $('line-ctx-menu');
+    if (!menu.hidden && !menu.contains(e.target)) closeLineContextMenu();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLineContextMenu();
+  });
+
   $('team-btn').addEventListener('click', () => setTeamOpen(!state.teamOpen));
   $('bugreport-btn').addEventListener('click', () => {
     setBugReportOpen(!$('bugreport-panel').classList.contains('on'));
@@ -1389,29 +1429,48 @@ window.addEventListener('DOMContentLoaded', async () => {
   populateAgreeSelects();
   refreshAgreement();
 
-  // ── stage: draw/adjust the assistant line, pan, zoom ──────────────────
-  // One button does everything, resolved by what the mousedown actually
-  // hit and how far it moves — same shape as height_guard's own
-  // grab-vs-pan split: mousedown on an existing handle adjusts it; on
-  // empty space it tentatively arms a pan (only possible once zoomed in —
-  // at fit there's nowhere to pan to); mouseup then looks at how far the
-  // mouse actually travelled: real movement means it WAS a pan, no
-  // movement means it was a stationary CLICK, which places a brand new
-  // line if this frame doesn't have one yet (see placeDefaultLine()) and
-  // otherwise does nothing (a stray click must never overwrite an
-  // existing line the labeler already placed).
+  // ── stage: pan, draw/adjust the assistant line, zoom ───────────────────
+  // The two buttons do two unrelated things, so there's no click-vs-drag
+  // ambiguity on a single button to resolve:
+  //   LEFT  — mousedown on an existing handle grabs and moves that ONE
+  //           point (see startDraw/moveDraw/finishDraw); mousedown on
+  //           empty space arms a pan, at ANY zoom (including fit — there's
+  //           always somewhere to nudge to, even if it's just a few px of
+  //           slack against the card's edge).
+  //   RIGHT — a drag draws a brand new line, base at mousedown and end at
+  //           mouseup, replacing whatever line this frame already had,
+  //           at any zoom; a STATIONARY right-click (no real movement)
+  //           opens the delete-line menu when this frame has a line, and
+  //           does nothing otherwise. The browser's own context menu is
+  //           suppressed on the stage so it never fights this.
   const stage = $('stage');
   stage.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || !state.ready) return;
+    if (!state.ready) return;
+    if (e.button === 2) {
+      state.rdown = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+      return;
+    }
+    if (e.button !== 0) return;
+    closeLineContextMenu();
     state.down = { x: e.clientX, y: e.clientY };
     if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
-    if (!isFitted()) {
-      state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
-    }
+    state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
     e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
     if (state.draw) { moveDraw(e.clientX, e.clientY); return; }
+    if (state.rdown) {
+      const moved = Math.hypot(e.clientX - state.rdown.x, e.clientY - state.rdown.y) > CLICK_SLOP_PX;
+      if (moved) {
+        const base = stageNorm(state.rdown.x, state.rdown.y);
+        const end = stageNorm(e.clientX, e.clientY);
+        renderLine(base, end);
+        updateSuggestionFrom(base, end);
+        stage.classList.add('line-drawing');
+      }
+      return;
+    }
     if (state.drag) {
       state.panX = state.drag.px + (e.clientX - state.drag.x);
       state.panY = state.drag.py + (e.clientY - state.drag.y);
@@ -1421,16 +1480,23 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   window.addEventListener('mouseup', (e) => {
     if (state.draw) { finishDraw(e.clientX, e.clientY); state.down = null; return; }
-    const wasPanning = !!state.drag;
+    if (state.rdown) {
+      const rd = state.rdown;
+      state.rdown = null;
+      stage.classList.remove('line-drawing');
+      const moved = Math.hypot(e.clientX - rd.x, e.clientY - rd.y) > CLICK_SLOP_PX;
+      if (moved) {
+        drawNewLine(stageNorm(rd.x, rd.y), stageNorm(e.clientX, e.clientY));
+      } else if (state.line) {
+        openLineContextMenu(e.clientX, e.clientY);
+      }
+      return;
+    }
     state.drag = null;
     stage.classList.remove('panning');
-    const moved = wasPanning && state.down
-      && Math.hypot(e.clientX - state.down.x, e.clientY - state.down.y) > CLICK_SLOP_PX;
-    if (!moved && state.ready && !state.line && state.down) {
-      placeDefaultLine(state.down.x, state.down.y);
-    }
     state.down = null;
   });
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
   stage.addEventListener('dblclick', resetZoom);
   const DELTA_PX = { 0: 1, 1: 16, 2: 400 };
   $('stage-card').addEventListener('wheel', (e) => {
