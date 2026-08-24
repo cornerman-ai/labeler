@@ -193,7 +193,6 @@ select {
    inside it. Geometry: x = cx + R·sin θ, y = cy + R·cos θ, so 0° sits at
    the bottom (facing the camera), 180° at the top (back to camera), + = the
    camera's right. */
-.card-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-dim); line-height: 1.5; }
 #dial-wrap { display: flex; justify-content: center; margin: 2px 0 4px; }
 #dial { width: 260px; height: 260px; display: block; touch-action: none; }
 .wedge {
@@ -492,11 +491,6 @@ body:not(.ready) #lock { display: block; }
 
     <div class="card" id="angle-card">
       <p class="card-eyebrow">Boxer facing angle &middot; vs. camera</p>
-      <p class="card-hint">Pick the wedge that matches which way the boxer is
-        facing. 0&deg; = squared to the camera, 180&deg; = back to it,
-        <b>+</b> = the camera&rsquo;s right. Dragging a line on the frame from
-        their stance toward the opponent is optional — it lights up the
-        nearest wedge as a suggestion, it doesn&rsquo;t pick it for you.</p>
       <div id="dial-wrap"><svg id="dial" viewBox="0 0 260 260" role="group" aria-label="Boxer facing angle bucket"></svg></div>
       <p id="dial-read">&mdash;</p>
       <p id="line-read"></p>
@@ -567,6 +561,6 @@ body:not(.ready) #lock { display: block; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=2"></script>
+<script src="boxer_facing_angle.js?v=3"></script>
 </body>
 </html>

@@ -142,10 +142,15 @@ const imgSrc = (f) => 'https://firebasestorage.googleapis.com/v0/b/'
 
 // 180 is the wrap point — neither turned to the camera's right nor its
 // left, so it carries no sign. 0 is signless for the same reason.
+// Buckets are always whole numbers (0/45/90/…) and print as such; a line's
+// computed angle is a float and rounds to 1 decimal — the raw atan2 result
+// otherwise runs to full float precision ("+66.72501969638135°"), which is
+// noise past the first decimal for a hand-drawn line.
 const signed = (v) => {
-  const n = Number(v);
+  const n = Math.round(Number(v) * 10) / 10;
   if (Math.abs(n) === 180) return '180°';
-  return (n > 0 ? '+' : '') + n + '°';
+  const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
+  return (n > 0 ? '+' : '') + s + '°';
 };
 
 // Wrap to (-180, 180].

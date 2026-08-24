@@ -36,7 +36,7 @@ different wedge fit better), or — on `skip` — neither.
 
 ## The data (placeholder)
 
-`boxer_facing_angle_frames.json`'s 50 frames are **borrowed wholesale from
+`boxer_facing_angle_frames.json`'s 500 frames are **borrowed wholesale from
 chin_tuck_4.0's `height_guard` queue** — same stems/round/frame, same
 Firebase Storage objects (`FRAME_BUCKET` / `FRAME_PREFIX` / `FRAME_TOKEN`
 in the JS are copied from `chin_tuck_4.0/height_guard/height_guard.js`).
