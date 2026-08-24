@@ -80,6 +80,12 @@ const GRAB_PX = 12;
 const BATCH = 100;
 const BATCH_COLS = 20;
 
+// How many frames AHEAD of the current one to warm the browser's own image
+// cache for — same idea and number as height_guard's own PREFETCH. Only
+// forward, never back: a frame already viewed is already cached, so there's
+// nothing to warm going the other way.
+const PREFETCH = 4;
+
 const TEAM_POLL_MS = 45000;
 const RANGE_FRESH_MS = 60000;
 const HIDE_KEY = 'fa_hidden_labelers';
@@ -676,6 +682,18 @@ function showFrame() {
   renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null);
   renderDial();
   renderOverview();          // moves the .cur outline to this slot
+  prefetch();
+}
+
+// Warms the browser's own image cache for the next few frames so the
+// mousedown->image-load lag on Next isn't paid on every single click —
+// `new Image().src` starts the request without touching the DOM; the real
+// `<img>`'s later `.src =` assignment then hits an already-warm cache.
+function prefetch() {
+  for (let n = 1; n <= PREFETCH; n++) {
+    const f = state.frames[state.i + n];
+    if (f) new Image().src = imgSrc(f);
+  }
 }
 
 function go(i) {
