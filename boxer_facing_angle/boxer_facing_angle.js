@@ -122,6 +122,14 @@ KEY_BINS['2'] = { store: null, skip: true };
 // carried anything past "was this a skip", which 'skip' already says.
 const SKIP_BUCKET = 'skip';
 
+// One color per roster member's line in admin mode — Apple's own 8 system
+// accent colors (Apple-HIG design system this tool already uses), assigned
+// by state.roster's existing order (stable, sorted by activity) so a given
+// labeler keeps the same color across a session. Cycles past 8 labelers —
+// an acceptable edge case for a small team, not worth a bigger palette.
+const ADMIN_LINE_COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759',
+                           '#00c7be', '#007aff', '#5856d6', '#af52de'];
+
 const EYE_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8s2.3-3.8 6.4-3.8S14.4 8 14.4 8s-2.3 3.8-6.4 3.8S1.6 8 1.6 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.7" stroke="currentColor" stroke-width="1.3"/></svg>';
 const CHEV_SVG = '<svg viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -162,6 +170,8 @@ const state = {
   isAdmin: false,          // typed name (who()) is literally "admin", case-insensitive
   teamRows: null,          // Map<labeler, Map<frameKey, label>> — every roster member's own rows
   adminBlocks: [],         // one { name, dialSvg, dialReadEl, ovDots, ovGutter, barTextEl, distRows } per roster member
+  adminLineEls: new Map(), // labeler -> { seg, ext, baseEl, endEl, color } — persistent, built once in buildAdminStack()
+  adminDrag: null,         // in-progress admin line-point drag — { name, mode, orig: {base, end} }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -717,6 +727,7 @@ function showFrame() {
   renderDial();
   renderOverview();          // moves the .cur outline to this slot
   renderAllAdminBlocks();    // no-op until the stack is built — see loadAllAdminData()
+  renderAdminLines();        // every labeler's line for THIS frame, color-coded
   prefetch();
 }
 
@@ -951,6 +962,7 @@ async function start() {
 
   if (state.isAdmin) {
     state.starting = false;
+    state.ready = true;                // stage pan/zoom/line-drag all gate on this — see the mousedown wiring
     state.labels = new Map();          // admin never has an "own" row
     document.body.classList.add('ready');   // frame nav usable right away
     showFrame();
@@ -1022,14 +1034,22 @@ async function loadAllAdminData() {
 function buildAdminStack() {
   const container = $('admin-stack');
   container.replaceChildren();
+  $('admin-lines-svg').replaceChildren();
+  for (const el of $('marks').querySelectorAll('.admin-hp')) el.remove();
   state.adminBlocks = [];
-  for (const r of state.roster) {
-    const block = { name: r.labeler };
+  state.adminLineEls = new Map();
+  state.roster.forEach((r, i) => {
+    const color = ADMIN_LINE_COLORS[i % ADMIN_LINE_COLORS.length];
+    const block = { name: r.labeler, color };
+    state.adminLineEls.set(r.labeler, buildAdminLineElsFor(color));
     const wrap = document.createElement('div');
     wrap.className = 'admin-person';
     const heading = document.createElement('p');
     heading.className = 'admin-person-name';
-    heading.textContent = r.labeler;
+    const swatch = document.createElement('span');
+    swatch.className = 'admin-color-swatch';
+    swatch.style.background = color;
+    heading.append(swatch, document.createTextNode(r.labeler));
     wrap.appendChild(heading);
 
     const progCard = document.createElement('div');
@@ -1075,12 +1095,150 @@ function buildAdminStack() {
 
     container.appendChild(wrap);
     state.adminBlocks.push(block);
-  }
+  });
   renderAllAdminBlocks();
+  renderAdminLines();
 }
 
 function renderAllAdminBlocks() {
   for (const block of state.adminBlocks) renderAdminBlock(block);
+}
+
+// ── admin: every labeler's line, shown together on the shared stage ─────
+// Each labeler who's drawn a line for the CURRENT frame gets their own
+// solid segment + dashed continuation + base/end dots, color-coded by
+// state.adminLineEls (built once in buildAdminStack(), just
+// repositioned/shown-hidden per frame here) — same rayExit()/rendering
+// shape as the single-identity renderLine(), just N of them at once
+// instead of one.
+function buildAdminLineElsFor(color) {
+  const ext = svgEl('line', { class: 'admin-line-ext', stroke: color });
+  const seg = svgEl('line', { class: 'admin-line-seg', stroke: color });
+  $('admin-lines-svg').append(ext, seg);
+  const baseEl = document.createElement('div');
+  baseEl.className = 'hp admin-hp base';
+  baseEl.style.background = color;
+  const endEl = document.createElement('div');
+  endEl.className = 'hp admin-hp end';
+  endEl.style.background = color;
+  $('marks').append(baseEl, endEl);
+  return { seg, ext, baseEl, endEl, color };
+}
+
+function renderAdminLines() {
+  if (!state.isAdmin) return;
+  const f = state.frames[state.i];
+  for (const block of state.adminBlocks) {
+    const els = state.adminLineEls.get(block.name);
+    if (!els) continue;
+    const labelsMap = state.teamRows.get(block.name);
+    const row = f && labelsMap ? labelsMap.get(key(f)) : null;
+    if (row && row.base && row.end) {
+      els.baseEl.classList.add('set');
+      els.endEl.classList.add('set');
+      els.baseEl.style.left = (row.base[0] * 100) + '%';
+      els.baseEl.style.top = (row.base[1] * 100) + '%';
+      els.endEl.style.left = (row.end[0] * 100) + '%';
+      els.endEl.style.top = (row.end[1] * 100) + '%';
+      els.seg.setAttribute('x1', row.base[0]); els.seg.setAttribute('y1', row.base[1]);
+      els.seg.setAttribute('x2', row.end[0]); els.seg.setAttribute('y2', row.end[1]);
+      const exit = rayExit(row.base, row.end);
+      els.ext.setAttribute('x1', row.end[0]); els.ext.setAttribute('y1', row.end[1]);
+      els.ext.setAttribute('x2', exit[0]); els.ext.setAttribute('y2', exit[1]);
+      els.seg.style.display = '';
+      els.ext.style.display = '';
+    } else {
+      els.baseEl.classList.remove('set');
+      els.endEl.classList.remove('set');
+      els.seg.style.display = 'none';
+      els.ext.style.display = 'none';
+    }
+  }
+}
+
+// Proximity-checks EVERY labeler's currently-shown line dots (screen-space,
+// so it means the same thing at any zoom — same GRAB_PX as the single-
+// identity grabHandle()) and returns whichever one the mousedown landed on.
+function grabAdminHandle(clientX, clientY) {
+  const f = state.frames[state.i];
+  if (!f) return null;
+  const k = key(f);
+  for (const [name, els] of state.adminLineEls) {
+    if (!els.baseEl.classList.contains('set')) continue;
+    const labelsMap = state.teamRows.get(name);
+    const row = labelsMap && labelsMap.get(k);
+    if (!row || !row.base || !row.end) continue;
+    const pb = screenPxOf(row.base), pe = screenPxOf(row.end);
+    if (Math.hypot(clientX - pb[0], clientY - pb[1]) <= GRAB_PX) return { name, mode: 'base' };
+    if (Math.hypot(clientX - pe[0], clientY - pe[1]) <= GRAB_PX) return { name, mode: 'end' };
+  }
+  return null;
+}
+
+function startAdminDrag(clientX, clientY) {
+  const grab = grabAdminHandle(clientX, clientY);
+  if (!grab) return false;
+  const row = state.teamRows.get(grab.name).get(key(state.frames[state.i]));
+  state.adminDrag = { name: grab.name, mode: grab.mode, orig: { base: row.base.slice(), end: row.end.slice() } };
+  return true;
+}
+
+// Same independent-point behavior as the individual flow's moveDraw() —
+// dragging one point never moves the other.
+function moveAdminDrag(clientX, clientY) {
+  const d = state.adminDrag;
+  if (!d) return;
+  const p = stageNorm(clientX, clientY);
+  const els = state.adminLineEls.get(d.name);
+  const base = d.mode === 'base' ? p : d.orig.base;
+  const end = d.mode === 'end' ? p : d.orig.end;
+  els.baseEl.style.left = (base[0] * 100) + '%'; els.baseEl.style.top = (base[1] * 100) + '%';
+  els.endEl.style.left = (end[0] * 100) + '%'; els.endEl.style.top = (end[1] * 100) + '%';
+  els.seg.setAttribute('x1', base[0]); els.seg.setAttribute('y1', base[1]);
+  els.seg.setAttribute('x2', end[0]); els.seg.setAttribute('y2', end[1]);
+  const exit = rayExit(base, end);
+  els.ext.setAttribute('x1', end[0]); els.ext.setAttribute('y1', end[1]);
+  els.ext.setAttribute('x2', exit[0]); els.ext.setAttribute('y2', exit[1]);
+}
+
+// Unlike the individual flow (a line-drag only rides along on the NEXT
+// bucket click), an admin edit saves immediately on release — the bucket
+// isn't changing, there's no "next click" to piggyback on, and the whole
+// point of admin dragging someone else's line is to fix it right now.
+function finishAdminDrag(clientX, clientY) {
+  const d = state.adminDrag;
+  state.adminDrag = null;
+  if (!d) return;
+  const f = state.frames[state.i];
+  const k = key(f);
+  const labelsMap = state.teamRows.get(d.name);
+  const prevRow = labelsMap.get(k);
+  const p = stageNorm(clientX, clientY);
+  let base = d.mode === 'base' ? p : d.orig.base;
+  let end = d.mode === 'end' ? p : d.orig.end;
+  // A near-zero-length result (dragged one handle onto the other) would
+  // make the angle undefined — same guard the individual flow uses.
+  if (Math.hypot(end[0] - base[0], end[1] - base[1]) < 0.002) {
+    base = d.orig.base; end = d.orig.end;
+  }
+  labelsMap.set(k, Object.assign({}, prevRow, { base, end }));
+  renderAdminLines();
+  status(`Saving ${d.name}’s line…`);
+
+  call({
+    action: 'saveFacingAngle', labeler: d.name, video: f.stem,
+    round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
+    stance: f.stance || '',
+    bucket: String(prevRow.bucket),
+    base_x: String(base[0]), base_y: String(base[1]),
+    end_x: String(end[0]), end_y: String(end[1]),
+  }, 'save').then(() => {
+    status(`Saved ${d.name}’s line.`, 'ok');
+  }).catch((e) => {
+    labelsMap.set(k, prevRow);
+    renderAdminLines();
+    status(`Save failed for ${d.name}: ` + e.message, 'err');
+  });
 }
 
 function renderAdminBlock(block) {
@@ -1814,6 +1972,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   stage.addEventListener('mousedown', (e) => {
     if (!state.ready) return;
     if (e.button === 2) {
+      if (state.isAdmin) { e.preventDefault(); return; }  // no "own" identity to draw a brand-new line for
       state.rdown = { x: e.clientX, y: e.clientY };
       e.preventDefault();
       return;
@@ -1821,11 +1980,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (e.button !== 0) return;
     closeLineContextMenu();
     state.down = { x: e.clientX, y: e.clientY };
-    if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
+    if (state.isAdmin) {
+      if (startAdminDrag(e.clientX, e.clientY)) { e.preventDefault(); return; }
+    } else if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
     state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
     e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
+    if (state.adminDrag) { moveAdminDrag(e.clientX, e.clientY); return; }
     if (state.draw) { moveDraw(e.clientX, e.clientY); return; }
     if (state.rdown) {
       const moved = Math.hypot(e.clientX - state.rdown.x, e.clientY - state.rdown.y) > CLICK_SLOP_PX;
@@ -1846,6 +2008,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   });
   window.addEventListener('mouseup', (e) => {
+    if (state.adminDrag) { finishAdminDrag(e.clientX, e.clientY); state.down = null; return; }
     if (state.draw) { finishDraw(e.clientX, e.clientY); state.down = null; return; }
     if (state.rdown) {
       const rd = state.rdown;

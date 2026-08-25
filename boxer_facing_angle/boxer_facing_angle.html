@@ -120,9 +120,11 @@ select {
 #stage.sharp img { image-rendering: pixelated; }
 #stage.panning { cursor: grabbing; }
 #stage.line-drawing { cursor: crosshair; }
-#hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+#hint, #hint-admin { position: absolute; left: 12px; bottom: 10px; font-size: 11px;
         color: rgba(255,255,255,.85); background: rgba(0,0,0,.45);
         padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+body.admin #hint { display: none; }
+body:not(.admin) #hint-admin { display: none; }
 #zoom-chip {
   position: absolute; right: 12px; bottom: 10px; display: none;
   align-items: center; gap: 7px; padding: 3px 5px 3px 9px; border-radius: 999px;
@@ -156,6 +158,15 @@ select {
 .hp.set { display: block; }
 .hp.base { border-radius: 50%; }
 .hp.end { border-radius: 3px; }
+
+/* Admin mode: every labeler's line at once, color set inline per instance
+   (buildAdminLineElsFor()) rather than through these classes — same
+   stroke weights/dash as the single-identity .line-seg/.line-ext above. */
+#admin-lines-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.admin-line-seg { stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.admin-line-ext { stroke-width: 1.5; vector-effect: non-scaling-stroke;
+                  stroke-dasharray: 5 4; opacity: .55; }
+.admin-hp { width: 12px; height: 12px; }
 
 /* Right-click-on-a-line menu — position:fixed and placed by JS at the
    cursor, same chrome/behaviour as punch/ui.js's setupSegmentContextMenu()
@@ -387,7 +398,11 @@ body:not(.admin) #admin-stack { display: none; }
 .admin-person-name {
   font-size: 13px; font-weight: 650; color: var(--ink);
   margin: 0 0 8px; padding-top: 14px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 6px;
 }
+/* Same color the line is drawn in on the shared stage — see
+   buildAdminLineElsFor()/ADMIN_LINE_COLORS. */
+.admin-color-swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .admin-person:first-child .admin-person-name { padding-top: 0; border-top: none; }
 .card.admin-mini { padding: 12px; margin-bottom: 8px; }
 .card.admin-mini:last-child { margin-bottom: 0; }
@@ -515,9 +530,14 @@ body:not(.admin) #admin-stack { display: none; }
         </svg>
         <div class="hp base" id="hp-base"></div>
         <div class="hp end" id="hp-end"></div>
+        <!-- admin mode only — one line per roster member, color-coded
+             (buildAdminLineElsFor()/renderAdminLines() in the JS); the
+             single-identity #line-svg/.hp pair above is unused for admin. -->
+        <svg id="admin-lines-svg" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
       </div>
     </div>
     <div id="hint">left-drag = pan &middot; right-drag = draw a facing line (assistant) &middot; drag a dot = move it &middot; right-click a line = delete it &middot; scroll = zoom &middot; double-click = reset</div>
+    <div id="hint-admin">left-drag = pan &middot; every labeler&rsquo;s line shown, color-coded &mdash; drag anyone&rsquo;s dot to fix it, saves immediately &middot; scroll = zoom &middot; double-click = reset</div>
     <div id="zoom-chip"><span id="zoom-pct">100%</span><button id="zoom-reset" type="button">Reset</button></div>
     <div id="line-ctx-menu" class="ctx-menu" role="menu" hidden>
       <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete-line">Delete line</button>
@@ -651,6 +671,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=15"></script>
+<script src="boxer_facing_angle.js?v=16"></script>
 </body>
 </html>

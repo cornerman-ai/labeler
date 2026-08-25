@@ -248,9 +248,25 @@ kept only what still made sense, primitively:
   network call. Saves are optimistic per person (`applyAdminLabel()`, the
   admin-stack sibling of `applyLabel()`) but **don't auto-advance** to the
   next frame the way a normal save does — admin may still want to fix
-  several OTHER people on this same frame before moving on. No assistive
-  line either: that's something a labeler draws about their own read of a
-  frame, not something admin draws on someone else's behalf.
+  several OTHER people on this same frame before moving on.
+- **Every labeler's line, shown together and editable (`renderAdminLines()`,
+  `#admin-lines-svg`)** — the same `base_x/y`/`end_x/y` each labeler's own
+  row already carries (read straight from `state.teamRows`, the same data
+  the stack's dials read) is drawn on the shared stage all at once, one
+  solid segment + dashed continuation + base/end dot pair per person,
+  color-coded (`ADMIN_LINE_COLORS` — Apple's own 8 system accent colors,
+  assigned by roster order; a swatch next to each person's name in the
+  stack matches their line's color). Each is **independently draggable** —
+  grabbing a dot only ever moves that ONE labeler's ONE point
+  (`grabAdminHandle()`/`moveAdminDrag()`, the same base-moves-only-base/
+  end-moves-only-end independence the individual flow uses), and unlike
+  the individual flow — where a line-drag only rides along on the NEXT
+  bucket click — an admin edit **saves immediately on release**: the
+  bucket isn't changing, there's no next click to piggyback the save on,
+  and the whole point of dragging someone else's line is to fix it right
+  now. Right-drag (drawing a brand-NEW line) is disabled for admin — that
+  has no obvious "for whom" without a delegated identity, and isn't what
+  was asked for; only existing lines are editable.
 - **No "own" identity at all.** Admin has no personal row full stop now
   (`activeLabeler()` always returns `null` for admin) — the single-
   identity dial/Progress/Distribution cards (`#angle-card`/
@@ -258,6 +274,12 @@ kept only what still made sense, primitively:
   locked, since there is nothing of admin's own for them to show; only
   `#id-card` (frame identity) and `#act-card` (prev/next nav) stay usable
   immediately, so admin can page through frames while the stack loads.
+  Pan/zoom on the stage — a real bug, not a design choice — used to stay
+  dead for admin entirely: `state.ready` (what the stage's own mousedown/
+  wheel gating reads) was never actually set `true` on the admin path,
+  only the `body.ready` CSS class was, so the stage looked unlocked but
+  every drag was silently dropped at the first `if (!state.ready) return;`
+  check. Fixed by setting both.
 - **Agreement (moved here from every-labeler)** — two `<select>` pickers
   over the roster (`state.agreePair`, defaulting to `['Arianne', 'John']`
   — chin_tuck_4.0's own default pair — persisted the same way chin_tuck's
