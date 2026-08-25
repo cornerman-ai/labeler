@@ -207,10 +207,18 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
 - **The overview grid** — green = a bucket was picked, grey = skip, light
   grey = not yet; unchanged geometry and meaning, reading straight from the
   stored `bucket`.
-- **Distribution** — unchanged card, you-vs-everyone emphasis pairing on 8
-  buckets + skip, both series read straight from `bucket` ("you" from
-  `state.labels`, "everyone" from `statsFacingAngle`'s per-labeler
-  `buckets`, summed client-side).
+- **Distribution** — you-vs-everyone emphasis pairing on 8 buckets + skip,
+  both series read straight from `bucket` ("you" from `state.labels`,
+  "everyone" from `statsFacingAngle`'s per-labeler `buckets`, summed
+  client-side). Each bar is a **percent of that series' own total**, not a
+  raw count scaled against the single largest bucket — the earlier version
+  did the latter, which made every OTHER bucket look tiny whenever one
+  bucket dominated (90°/-90° swamp everything here) and a "2/1051" readout
+  said nothing about how either person's own labeling is actually spread.
+  "40% of everyone's picks are 0°, 20% of yours are" is the comparison
+  that's actually useful, and it's naturally bounded to 100% with no
+  shared scale to compute. Shows `—` instead of `0%` when that series has
+  no labels at all yet (an honest "no data", not a misleading all-zero row).
 - **Optimistic saves** — a wedge (or skip) lands and the page advances
   immediately, the write drains behind it, a failure rolls the row back.
 

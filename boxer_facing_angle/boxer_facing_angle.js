@@ -847,18 +847,29 @@ function bucketCounts(rows) {
   return count;
 }
 
+// PERCENT of each series' own total, not raw counts — a raw-count bar
+// scaled against the single largest bucket (as this used to work) makes
+// every OTHER bucket look tiny whenever one bucket dominates (90°/-90°
+// swamping everything else here), and a "2/1051" readout says nothing
+// about how either person's own labeling is actually distributed. "40% of
+// everyone's picks are 0°, 20% of yours are" is the comparison that's
+// actually useful, and it's naturally bounded to 100% — no shared `max`
+// to compute at all.
 function renderDist() {
   const mine = bucketCounts(state.labels.values());
   const total = state.totalCounts || {};
-  const max = Math.max(1, ...Object.values(mine), ...Object.values(total));
+  const mineTotal = Object.values(mine).reduce((a, n) => a + n, 0);
+  const totalTotal = Object.values(total).reduce((a, n) => a + n, 0);
   for (const [k, els] of state.distRows) {
     const you = mine[k] || 0;
     const all = total[k] || 0;
-    els.you.style.width = (100 * you / max).toFixed(1) + '%';
-    els.all.style.width = (100 * all / max).toFixed(1) + '%';
-    els.youVal.textContent = String(you);
+    const youPct = mineTotal ? 100 * you / mineTotal : 0;
+    const allPct = totalTotal ? 100 * all / totalTotal : 0;
+    els.you.style.width = youPct.toFixed(1) + '%';
+    els.all.style.width = allPct.toFixed(1) + '%';
+    els.youVal.textContent = mineTotal ? Math.round(youPct) + '%' : '—';
     els.youVal.classList.toggle('has', you > 0);
-    els.allVal.textContent = String(all);
+    els.allVal.textContent = totalTotal ? Math.round(allPct) + '%' : '—';
   }
 }
 
