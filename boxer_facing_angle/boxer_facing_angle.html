@@ -312,8 +312,8 @@ body:not(.ready) #lock { display: block; }
   background: color-mix(in srgb, var(--ink-dim) 22%, transparent);
 }
 .d4-grid .d4[data-batch] { margin-top: 7px; }
-#ov .d4.dn { background: var(--yes); }
-#ov .d4.sk { background: var(--ink-dim); }
+.d4-grid .d4.dn { background: var(--yes); }
+.d4-grid .d4.sk { background: var(--ink-dim); }
 #agree-grid .d4.agree { background: var(--yes); }
 #agree-grid .d4.disagree { background: var(--no); }
 /* Same "faded accent = one opinion so far" language chin_tuck_4.0's own
@@ -358,28 +358,46 @@ body:not(.admin) #admin-card { display: none; }
 /* Agreement moved to admin-only — see refreshAgreement()'s own isAdmin
    guard, which stops the two-labeler fetch for everyone else too. */
 body:not(.admin) #agree-card { display: none; }
-#admin-acting-row { display: flex; align-items: center; gap: 8px; }
-#admin-acting-row span { font-size: 12px; color: var(--ink-dim); flex: none; }
-#admin-acting-row select { flex: 1; min-width: 0; font-size: 13px; }
-#admin-note { font-size: 11.5px; color: var(--ink-dim); margin: 6px 0 0; }
-#admin-team-head { display: flex; align-items: center; justify-content: space-between;
-                   margin: 12px 0 6px; }
-#admin-team-head .card-eyebrow { margin: 0; }
-#admin-team-load {
+/* Admin has no "own" row at all now — see activeLabeler() — so the
+   single-identity dial/progress/distribution cards have nothing to show
+   and are hidden outright rather than locked; #admin-stack replaces all
+   three, once per roster member. */
+body.admin #angle-card, body.admin #progress-card, body.admin #dist-card { display: none; }
+body:not(.admin) #admin-stack { display: none; }
+
+#admin-head { display: flex; align-items: center; justify-content: space-between; }
+#admin-head .card-eyebrow { margin: 0; }
+#admin-refresh {
   flex: none; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent;
   font-size: 11.5px; font-weight: 500; color: var(--ink-dim);
 }
-#admin-team-load:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
-#admin-team-load:disabled { opacity: .5; }
-#admin-team-empty { font-size: 12px; color: var(--ink-dim); }
-.admin-team-row { display: flex; align-items: baseline; justify-content: space-between;
-                  gap: 8px; padding: 3px 0; font-size: 12.5px; }
-.admin-team-row .atn { color: var(--ink); min-width: 0; overflow: hidden;
-                       text-overflow: ellipsis; white-space: nowrap; }
-.admin-team-row .atv { flex: none; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
-.admin-team-row .atv-has { color: var(--accent); font-weight: 600; }
-.admin-team-row .atv-skip { color: var(--maybe); }
+#admin-refresh:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#admin-note { font-size: 11.5px; color: var(--ink-dim); margin: 6px 0 0; }
+
+/* ── the per-person stack ─────────────────────────────────────────────────
+   One block per roster member (buildAdminStack()): a name heading, then
+   three small cards mirroring Progress/Distribution/the dial exactly, just
+   scaled down and reading that ONE person's own rows instead of state.
+   labels. Deliberately long — reviewing the whole team on one frame is the
+   point, not a compact summary. */
+#admin-stack-status { font-size: 12.5px; color: var(--ink-dim); padding: 4px 2px; }
+.admin-person { margin: 18px 0 0; }
+.admin-person:first-child { margin-top: 0; }
+.admin-person-name {
+  font-size: 13px; font-weight: 650; color: var(--ink);
+  margin: 0 0 8px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.admin-person:first-child .admin-person-name { padding-top: 0; border-top: none; }
+.card.admin-mini { padding: 12px; margin-bottom: 8px; }
+.card.admin-mini:last-child { margin-bottom: 0; }
+.bar-text-mini { font-size: 11.5px; color: var(--ink-dim); font-variant-numeric: tabular-nums;
+                 margin-bottom: 4px; }
+.admin-dial-wrap { display: flex; justify-content: center; margin: 0 0 2px; }
+.admin-dial { width: 168px; height: 168px; display: block; }
+.dial-read-mini { margin: 0; text-align: center; font-size: 11.5px; color: var(--ink-dim);
+                  font-variant-numeric: tabular-nums; }
+.dial-read-mini b { color: var(--ink); font-weight: 600; }
 
 /* ── everyone's progress + bug report ───────────────────────────────────── */
 @keyframes clue-in {
@@ -530,18 +548,13 @@ body:not(.admin) #agree-card { display: none; }
     </div>
 
     <div class="card" id="admin-card">
-      <p class="card-eyebrow">Admin</p>
-      <div id="admin-acting-row">
-        <span>Acting as</span>
-        <select id="admin-acting-as"><option value="">— pick —</option></select>
+      <div id="admin-head">
+        <p class="card-eyebrow">Admin</p>
+        <button type="button" id="admin-refresh">Refresh</button>
       </div>
-      <p id="admin-note">Saves land under the picked labeler's own tab, exactly
+      <p id="admin-note">Every labeler, stacked below the usual cards —
+        click a wedge under their own name to save it under theirs, exactly
         as if they were signed in.</p>
-      <div id="admin-team-head">
-        <p class="card-eyebrow">Team answers &middot; this frame</p>
-        <button type="button" id="admin-team-load">Load</button>
-      </div>
-      <div id="admin-team-rows"><div id="admin-team-empty">Not loaded yet.</div></div>
     </div>
 
     <div class="card" id="id-card">
@@ -578,7 +591,7 @@ body:not(.admin) #agree-card { display: none; }
       <div id="status"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="progress-card">
       <p class="card-eyebrow">Progress</p>
       <div id="bar-text">&mdash;</div>
       <div class="ovw"><div class="ovn"></div><div id="ov" class="d4-grid"></div></div>
@@ -589,7 +602,7 @@ body:not(.admin) #agree-card { display: none; }
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="dist-card">
       <p class="card-eyebrow">Distribution</p>
       <div id="dist"></div>
       <div class="legend">
@@ -632,10 +645,12 @@ body:not(.admin) #agree-card { display: none; }
         <dt>Reset zoom</dt> <dd><kbd>0</kbd><kbd>dbl-click</kbd></dd>
       </dl>
     </div>
+
+    <div id="admin-stack"><div id="admin-stack-status">Loading everyone&rsquo;s labels&hellip;</div></div>
   </div>
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=14"></script>
+<script src="boxer_facing_angle.js?v=15"></script>
 </body>
 </html>

@@ -96,7 +96,6 @@ const RANGE_FRESH_MS = 60000;
 const HIDE_KEY = 'fa_hidden_labelers';
 const RANGE_KEY = 'fa_range_cache';
 const AGREE_KEY = 'fa_agree_pair';
-const ACTING_AS_KEY = 'fa_admin_acting_as';
 
 // The eight intervals, in compass order. `c` is the interval's CENTRE and
 // the value written to the sheet; the interval itself is [c-22.5, c+22.5),
@@ -161,8 +160,8 @@ const state = {
 
   // ── admin mode — see the header comment above start() ──
   isAdmin: false,          // typed name (who()) is literally "admin", case-insensitive
-  actingAs: '',            // which real labeler admin is currently editing as
-  teamRows: null,          // Map<labeler, Map<frameKey, label>> — admin's on-demand full fetch
+  teamRows: null,          // Map<labeler, Map<frameKey, label>> — every roster member's own rows
+  adminBlocks: [],         // one { name, dialSvg, dialReadEl, ovDots, ovGutter, barTextEl, distRows } per roster member
 };
 
 const $ = (id) => document.getElementById(id);
@@ -229,16 +228,15 @@ function angleOf(line) {
 // ── identity ───────────────────────────────────────────────────────────────
 function who() { return ($('labeler-input').value || '').trim(); }
 
-// The identity whose data is actually being read/edited right now — who()
-// itself for a normal labeler, but for admin (who() === "admin") it's
-// whichever real labeler is picked in the "acting as" select, or null if
-// nobody's picked yet. Admin has no "own" row of their own — see the
-// admin-mode header comment above start() — so every identity-sensitive
-// call site (applyLabel, bumpMyTeamRow, the range cache, the team panel's
-// "you" highlight) reads THIS, not who(), while who() itself stays reserved
-// for the raw login field (the name-widget persistence, the "is a name
-// typed at all" gate, and the isAdmin check itself).
-function activeLabeler() { return state.isAdmin ? (state.actingAs || null) : who(); }
+// The identity whose OWN data is actually being read/edited — who() itself
+// for a normal labeler, always null for admin. Admin has no "own" row at
+// all (see the admin-mode header comment above start()): every roster
+// member's data is edited independently through their own dial in
+// #admin-stack, never through a single delegated identity, so every
+// identity-sensitive call site that used to read who() (applyLabel,
+// bumpMyTeamRow, the range cache, the team panel's "you" highlight) reads
+// THIS instead and correctly no-ops/shows nothing-highlighted for admin.
+function activeLabeler() { return state.isAdmin ? null : who(); }
 
 function restoreName() {
   const el = $('labeler-input');
@@ -392,9 +390,17 @@ const svgEl = (name, attrs) => {
   return e;
 };
 
-function buildDial() {
-  const dial = $('dial');
-  dial.replaceChildren();
+// Builds the 8-wedge + skip-hole SVG structure into `svg`, wiring each
+// pick to `onPick(store, isSkip)` — applyLabel() itself for the single
+// normal-mode dial (buildDial() below), or a per-person closure for each
+// admin-stack dial (buildAdminStack()). `showKeys` prints the numpad-
+// shortcut hint on each wedge; admin dials pass false since the GLOBAL
+// keyboard shortcuts only ever drive the single normal-mode dial (there's
+// no single "active" identity for a key press to target once multiple
+// per-person dials exist), so printing key hints on every roster member's
+// mini-dial would just be misleading.
+function buildDialInto(svg, onPick, showKeys) {
+  svg.replaceChildren();
 
   for (const b of BINS) {
     const g = svgEl('g');
@@ -404,7 +410,7 @@ function buildDial() {
       'aria-label': `${signed(b.c)} — ${intervalText(b.c)}`,
     });
     path.dataset.store = String(b.c);
-    const act = () => applyLabel(String(b.c), false);
+    const act = () => onPick(String(b.c), false);
     path.addEventListener('click', act);
     path.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); }
@@ -418,27 +424,27 @@ function buildDial() {
     label.textContent = signed(b.c);
     label.dataset.store = String(b.c);
     const kb = svgEl('text', { class: 'wkey', x: lx, y: ly + 8 });
-    kb.textContent = b.key;
+    kb.textContent = showKeys ? b.key : '';
     kb.dataset.store = String(b.c);
 
     g.append(path, label, kb);
-    dial.appendChild(g);
+    svg.appendChild(g);
   }
 
   for (const b of BINS) {
     const edge = b.c + 22.5;
     const [sx, sy] = polar(edge, DIAL.rIn);
     const [ex, ey] = polar(edge, DIAL.rOut);
-    dial.appendChild(svgEl('line', { class: 'spoke', x1: sx, y1: sy, x2: ex, y2: ey }));
+    svg.appendChild(svgEl('line', { class: 'spoke', x1: sx, y1: sy, x2: ex, y2: ey }));
     const [bx, by] = polar(edge, DIAL.rBound);
     const t = svgEl('text', { class: 'bound', x: bx, y: by });
     t.textContent = signed(norm180(edge));
-    dial.appendChild(t);
+    svg.appendChild(t);
   }
 
   const hole = svgEl('circle', { class: 'skipw', cx: DIAL.cx, cy: DIAL.cy, r: DIAL.rIn - 3,
                                  role: 'button', tabindex: '0', 'aria-label': "Can't tell the angle" });
-  const skipAct = () => applyLabel(null, true);
+  const skipAct = () => onPick(null, true);
   hole.addEventListener('click', skipAct);
   hole.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); skipAct(); }
@@ -446,8 +452,12 @@ function buildDial() {
   const st = svgEl('text', { class: 'skipt', x: DIAL.cx, y: DIAL.cy - 5 });
   st.textContent = "can't tell";
   const sk = svgEl('text', { class: 'skipk', x: DIAL.cx, y: DIAL.cy + 9 });
-  sk.textContent = '2';
-  dial.append(hole, st, sk);
+  sk.textContent = showKeys ? '2' : '';
+  svg.append(hole, st, sk);
+}
+
+function buildDial() {
+  buildDialInto($('dial'), applyLabel, true);
 }
 
 // Paints TWO independent signals: `.on` for the committed pick (the row
@@ -706,7 +716,7 @@ function showFrame() {
   renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null);
   renderDial();
   renderOverview();          // moves the .cur outline to this slot
-  renderAdminTeamAnswers();  // no-op / already-cached — see loadAdminTeamAnswers()
+  renderAllAdminBlocks();    // no-op until the stack is built — see loadAllAdminData()
   prefetch();
 }
 
@@ -888,7 +898,6 @@ async function refreshTotalDist() {
     renderTeamPanel();
     renderDist();
     populateAgreeSelects();
-    populateActingAsSelect();
   } catch (e) { /* keep the stale totals over losing them */ }
 }
 
@@ -906,22 +915,21 @@ function renderProgress() {
 // ADMIN MODE. Reached by typing the literal name "admin" (case-insensitive)
 // and pressing Start — same gate chin_tuck_4.0/height_guard uses. Unlike
 // height_guard, admin here never edits anyone's data live on canvas: this
-// tool's whole label is one dial click (plus an optional assistive line the
-// SAME labeler drew), so there's nothing to drag on someone else's behalf.
-// Instead admin picks a real labeler from the "acting as" select (#admin-
-// acting-as) and from that point on drives the EXACT same dial/line/save
-// flow a normal labeler does — activeLabeler() is what substitutes the
-// picked name in for who() everywhere identity actually matters, so 100%
-// of the existing labeling code needed zero changes beyond that one
-// indirection. Admin has no "own" row (activeLabeler() returns null until
-// someone's picked), so the dial stays locked — same #lock/`.ready` gate
-// every labeler sees before Start, just with a different message.
-//
-// Also shows a read-only "team answers" breakdown for the current frame
-// (#admin-team-rows) — every roster member's saved answer at a glance,
-// fetched on demand (the Load button) rather than polled, since it means
-// one listFacingAngle call per roster member and there's no ambient need
-// to keep it live the way the roster's own aggregate counts are.
+// tool's whole label is one dial click, so there's nothing to drag on
+// someone else's behalf. Rather than picking ONE teammate to edit "as"
+// (an earlier version of this did exactly that, with an "acting as"
+// select), admin instead sees EVERY roster member's own Progress/
+// Distribution/dial stacked one after another (#admin-stack,
+// buildAdminStack()) — long, deliberately: reviewing one frame across the
+// whole team at a glance was the actual point, not a single delegated
+// identity. Each person's mini-dial is independently clickable — click a
+// wedge under "Alex" to save AS Alex, under "John" to save AS John — so
+// the stack itself is how admin edits, no separate identity switch at all.
+// Admin has no "own" row at all now (activeLabeler() always returns null
+// for admin), so the single dial/Progress/Distribution cards (#angle-card/
+// #progress-card/#dist-card) are hidden outright rather than locked —
+// there's nothing for them to show. #act-card (prev/next) stays live
+// immediately so admin can page through frames while the stack loads.
 //
 // Deliberately NOT ported from height_guard's admin mode: manual re-push
 // (nothing here holds a teammate's DRAFT row to re-send — every save,
@@ -930,9 +938,8 @@ function renderProgress() {
 // with the real labeler); adjustable agreement thresholds and the 3-metric
 // disagreement grids (this tool's agreement is one exact bucket match, no
 // continuous distance to threshold or split by axis); PNG export (real
-// complexity for a "keep it primitive" ask). The "Everyone's progress" and
-// "Agreement" cards are already visible to every labeler, admin included —
-// no admin-only duplicate of either was needed.
+// complexity for a "keep it primitive" ask). "Everyone's progress" stays
+// open to every labeler, admin included — no admin-only duplicate needed.
 async function start() {
   if (!who()) return;
   state.isAdmin = who().toLowerCase() === 'admin';
@@ -942,15 +949,15 @@ async function start() {
   state.starting = true;
   $('lock').classList.remove('err');
 
-  if (state.isAdmin && !state.actingAs) {
+  if (state.isAdmin) {
     state.starting = false;
-    state.labels = new Map();
-    $('lock').textContent = 'Admin — pick who to act as below.';
-    renderProgress();
+    state.labels = new Map();          // admin never has an "own" row
+    document.body.classList.add('ready');   // frame nav usable right away
     showFrame();
-    refreshTotalDist();       // loads state.roster, so the acting-as select has options
-    refreshAgreement();       // agree-card is admin-only — see its own isAdmin guard
     startRosterPoll();
+    await refreshTotalDist();          // must resolve before the stack knows who's on the roster
+    await loadAllAdminData();
+    refreshAgreement();                // agree-card is admin-only — see its own isAdmin guard
     return;
   }
 
@@ -983,44 +990,13 @@ async function start() {
   if (state.teamOpen) prefetchRanges();
 }
 
-// ── admin: acting-as identity ────────────────────────────────────────────
-function loadActingAs() {
-  try { return localStorage.getItem(ACTING_AS_KEY) || ''; } catch (e) { return ''; }
-}
-function saveActingAs() {
-  try { localStorage.setItem(ACTING_AS_KEY, state.actingAs); } catch (e) {}
-}
-function setActingAs(name) {
-  state.actingAs = name || '';
-  saveActingAs();
-  start();                   // same login flow a normal labeler goes through
-}
-function populateActingAsSelect() {
-  const sel = $('admin-acting-as');
-  if (!sel) return;
-  const cur = state.actingAs;
-  sel.replaceChildren();
-  const placeholder = document.createElement('option');
-  placeholder.value = ''; placeholder.textContent = '— pick —';
-  sel.appendChild(placeholder);
-  for (const r of state.roster) {
-    if (r.labeler.toLowerCase() === 'admin') continue;
-    const opt = document.createElement('option');
-    opt.value = r.labeler; opt.textContent = r.labeler;
-    sel.appendChild(opt);
-  }
-  sel.value = cur && state.roster.some((r) => r.labeler === cur) ? cur : '';
-}
-
-// ── admin: team answers for the CURRENT frame ────────────────────────────
-// One listFacingAngle per roster member, fetched on demand (the Load
-// button) — not polled, and not refetched on every frame navigation; only
-// the DISPLAY (which frame's row from the already-fetched cache) updates
-// as you page through, from showFrame().
-async function loadAdminTeamAnswers() {
+// ── admin: the per-person stack ──────────────────────────────────────────
+// One listFacingAngle per roster member — the only fan-out cost admin mode
+// pays, and it's paid once per login/refresh, not per frame navigated.
+async function loadAllAdminData() {
   if (!state.isAdmin) return;
-  const btn = $('admin-team-load');
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const container = $('admin-stack');
+  container.innerHTML = '<div id="admin-stack-status">Loading everyone&rsquo;s labels&hellip;</div>';
   try {
     const names = state.roster.map((r) => r.labeler);
     const results = await Promise.all(names.map((n) => fetchRows(n).catch(() => [])));
@@ -1031,34 +1007,246 @@ async function loadAdminTeamAnswers() {
       teamRows.set(n, m);
     });
     state.teamRows = teamRows;
-    renderAdminTeamAnswers();
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
+    buildAdminStack();
+  } catch (e) {
+    container.innerHTML = `<div id="admin-stack-status">Couldn&rsquo;t load: ${e.message}</div>`;
   }
 }
 
-function renderAdminTeamAnswers() {
-  const el = $('admin-team-rows');
-  if (!el) return;
-  if (!state.teamRows || !state.teamRows.size) {
-    el.innerHTML = '<div id="admin-team-empty">Not loaded yet.</div>';
-    return;
+// Builds one block per roster member (in state.roster's existing order —
+// already sorted by activity, most labels first, from statsFacingAngle)
+// into #admin-stack, each with its own Progress grid, Distribution rows,
+// and an independently-clickable dial — all built fresh from scratch, so
+// call this again (via the Refresh button) if the roster changes mid-
+// session rather than trying to diff it in place.
+function buildAdminStack() {
+  const container = $('admin-stack');
+  container.replaceChildren();
+  state.adminBlocks = [];
+  for (const r of state.roster) {
+    const block = { name: r.labeler };
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-person';
+    const heading = document.createElement('p');
+    heading.className = 'admin-person-name';
+    heading.textContent = r.labeler;
+    wrap.appendChild(heading);
+
+    const progCard = document.createElement('div');
+    progCard.className = 'card admin-mini';
+    const progEyebrow = document.createElement('p');
+    progEyebrow.className = 'card-eyebrow'; progEyebrow.textContent = 'Progress';
+    block.barTextEl = document.createElement('div');
+    block.barTextEl.className = 'bar-text-mini';
+    const ovw = document.createElement('div'); ovw.className = 'ovw';
+    const ovn = document.createElement('div'); ovn.className = 'ovn';
+    const ov = document.createElement('div'); ov.className = 'd4-grid';
+    ovw.append(ovn, ov);
+    progCard.append(progEyebrow, block.barTextEl, ovw);
+    wrap.appendChild(progCard);
+    const built = buildAdminOverviewInto(ov, ovn);
+    block.ovDots = built.dots; block.ovGutter = built.gutter;
+
+    const distCard = document.createElement('div');
+    distCard.className = 'card admin-mini';
+    const distEyebrow = document.createElement('p');
+    distEyebrow.className = 'card-eyebrow'; distEyebrow.textContent = 'Distribution';
+    const distEl = document.createElement('div');
+    distCard.append(distEyebrow, distEl);
+    wrap.appendChild(distCard);
+    block.distRows = buildAdminDistInto(distEl);
+
+    const dialCard = document.createElement('div');
+    dialCard.className = 'card admin-mini';
+    const dialEyebrow = document.createElement('p');
+    dialEyebrow.className = 'card-eyebrow'; dialEyebrow.textContent = 'Boxer facing angle · vs. camera';
+    const dialWrap = document.createElement('div'); dialWrap.className = 'dial-wrap admin-dial-wrap';
+    const svg = svgEl('svg', {
+      viewBox: '0 0 260 260', class: 'dial admin-dial', role: 'group',
+      'aria-label': `${r.labeler}'s facing angle bucket`,
+    });
+    dialWrap.appendChild(svg);
+    block.dialReadEl = document.createElement('p');
+    block.dialReadEl.className = 'dial-read-mini';
+    dialCard.append(dialEyebrow, dialWrap, block.dialReadEl);
+    wrap.appendChild(dialCard);
+    buildDialInto(svg, (store, isSkip) => applyAdminLabel(block, store, isSkip), false);
+    block.dialSvg = svg;
+
+    container.appendChild(wrap);
+    state.adminBlocks.push(block);
   }
+  renderAllAdminBlocks();
+}
+
+function renderAllAdminBlocks() {
+  for (const block of state.adminBlocks) renderAdminBlock(block);
+}
+
+function renderAdminBlock(block) {
   const f = state.frames[state.i];
+  const labelsMap = state.teamRows.get(block.name) || new Map();
+  const row = f ? labelsMap.get(key(f)) : null;
+  paintAdminDial(block.dialSvg, block.dialReadEl, row ? row.bucket : null);
+  renderAdminOverview(block.ovDots, block.ovGutter, block.barTextEl, labelsMap);
+  renderAdminDist(block.distRows, labelsMap);
+}
+
+// Optimistic, same shape as applyLabel() but scoped to ONE person's map
+// (state.teamRows.get(block.name)) instead of state.labels, no line (admin
+// isn't drawing an assistive line on someone else's behalf), and no
+// auto-advance to the next frame — admin may want to fix several people on
+// THIS frame before moving on.
+function applyAdminLabel(block, store, isSkip) {
+  const f = state.frames[state.i];
+  if (!f) return;
+  const k = key(f);
+  let labelsMap = state.teamRows.get(block.name);
+  if (!labelsMap) { labelsMap = new Map(); state.teamRows.set(block.name, labelsMap); }
+  const prev = labelsMap.get(k);
+  labelsMap.set(k, { bucket: isSkip ? SKIP_BUCKET : store, base: null, end: null });
+  renderAdminBlock(block);
+  status(`Saving ${block.name}’s ${isSkip ? 'skip' : signed(store)}…`);
+
+  call({
+    action: 'saveFacingAngle', labeler: block.name, video: f.stem,
+    round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
+    stance: f.stance || '',
+    bucket: isSkip ? SKIP_BUCKET : String(store),
+    base_x: '', base_y: '', end_x: '', end_y: '',
+  }, 'save').then(() => {
+    status(`Saved ${block.name}.`, 'ok');
+    scheduleTeamRefresh();
+  }).catch((e) => {
+    if (prev) labelsMap.set(k, prev); else labelsMap.delete(k);
+    renderAdminBlock(block);
+    status(`Save failed for ${block.name}: ` + e.message, 'err');
+  });
+}
+
+// ── admin: per-person Progress grid (parametrized buildOverview/renderOverview) ──
+function buildAdminOverviewInto(gridEl, gutterEl) {
   const frag = document.createDocumentFragment();
-  for (const [name, rows] of state.teamRows) {
-    const row = f ? rows.get(key(f)) : null;
-    const div = document.createElement('div');
-    div.className = 'admin-team-row';
-    const nm = document.createElement('span'); nm.className = 'atn'; nm.textContent = name;
-    const val = document.createElement('span'); val.className = 'atv';
-    if (!row) { val.textContent = '—'; val.classList.add('atv-none'); }
-    else if (row.bucket === SKIP_BUCKET) { val.textContent = "can't tell"; val.classList.add('atv-skip'); }
-    else { val.textContent = signed(row.bucket); val.classList.add('atv-has'); }
-    div.append(nm, val);
-    frag.appendChild(div);
+  const dots = [];
+  for (let i = 0; i < state.frames.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'd4';
+    if (i >= BATCH && i % BATCH < BATCH_COLS) d.dataset.batch = '1';
+    frag.appendChild(d);
+    dots.push(d);
   }
-  el.replaceChildren(frag);
+  gridEl.appendChild(frag);
+  gridEl.onclick = (e) => {
+    const at = dots.indexOf(e.target);
+    if (at >= 0) go(at);
+  };
+
+  const col = document.createDocumentFragment();
+  const gutter = [];
+  for (let b = 0; b * BATCH < state.frames.length; b++) {
+    const count = Math.min(BATCH, state.frames.length - b * BATCH);
+    const rows = Math.ceil(count / BATCH_COLS);
+    const n = document.createElement('b');
+    const num = document.createElement('span'); num.textContent = b + 1;
+    const g = document.createElement('span'); g.className = 'ovn-g';
+    const s = document.createElement('span'); s.className = 'ovn-s';
+    n.append(num, g, s);
+    n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
+    n.style.lineHeight = '9px';
+    if (b) n.style.marginTop = '10px';
+    col.appendChild(n);
+    gutter.push({ g, s, start: b * BATCH, end: b * BATCH + count, node: n });
+  }
+  gutterEl.replaceChildren(col);
+  return { dots, gutter };
+}
+
+// No per-dot title tooltips here (unlike renderOverview()) — with a whole
+// roster's worth of grids on screen at once the per-dot string-building
+// cost multiplies by roster size for a hover detail this view doesn't
+// really need; the colour alone is enough at a glance.
+function renderAdminOverview(dots, gutter, barTextEl, labelsMap) {
+  const N = state.frames.length;
+  let done = 0;
+  for (let i = 0; i < N; i++) {
+    const row = labelsMap.get(key(state.frames[i]));
+    let cls = 'd4';
+    if (row && row.bucket === SKIP_BUCKET) cls += ' sk';
+    else if (row && row.bucket !== null) cls += ' dn';
+    if (i === state.i) cls += ' cur';
+    if (row) done++;
+    if (dots[i].className !== cls) dots[i].className = cls;
+  }
+  barTextEl.textContent = `${done.toLocaleString()} / ${N.toLocaleString()} labelled`;
+  for (const gu of gutter) {
+    let g = 0, s = 0;
+    for (let i = gu.start; i < gu.end; i++) {
+      const row = labelsMap.get(key(state.frames[i]));
+      if (!row) continue;
+      if (row.bucket === SKIP_BUCKET) s++; else if (row.bucket !== null) g++;
+    }
+    gu.g.textContent = g || '';
+    gu.s.textContent = s || '';
+    gu.node.title = `frames ${gu.start + 1}–${gu.end} — ${g} labelled, ${s} skipped`;
+  }
+}
+
+// ── admin: per-person Distribution (parametrized buildDist/renderDist) ───
+function buildAdminDistInto(distEl) {
+  const rows = BINS.map((b) => ({ k: String(b.c), label: signed(b.c) }))
+    .concat([{ k: 'skip', label: 'skip', skip: true }]);
+  const distRows = new Map();
+  const frag = document.createDocumentFragment();
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'dist-row' + (r.skip ? ' skip' : '');
+    const label = document.createElement('span'); label.className = 'dist-label'; label.textContent = r.label;
+    const track = document.createElement('div'); track.className = 'dist-track';
+    const you = document.createElement('div'); you.className = 'dist-bar you';
+    const all = document.createElement('div'); all.className = 'dist-bar all';
+    track.append(you, all);
+    const val = document.createElement('span'); val.className = 'dist-val';
+    const youVal = document.createElement('b');
+    const slash = document.createElement('span'); slash.className = 'dist-slash'; slash.textContent = '/';
+    const allVal = document.createElement('span');
+    val.append(youVal, slash, allVal);
+    row.append(label, track, val);
+    frag.appendChild(row);
+    distRows.set(r.k, { you, all, youVal, allVal });
+  }
+  distEl.replaceChildren(frag);
+  return distRows;
+}
+
+function renderAdminDist(distRows, labelsMap) {
+  const mine = bucketCounts(labelsMap.values());
+  const total = state.totalCounts || {};
+  const mineTotal = Object.values(mine).reduce((a, n) => a + n, 0);
+  const totalTotal = Object.values(total).reduce((a, n) => a + n, 0);
+  for (const [k, els] of distRows) {
+    const you = mine[k] || 0;
+    const all = total[k] || 0;
+    const youPct = mineTotal ? 100 * you / mineTotal : 0;
+    const allPct = totalTotal ? 100 * all / totalTotal : 0;
+    els.you.style.width = youPct.toFixed(1) + '%';
+    els.all.style.width = allPct.toFixed(1) + '%';
+    els.youVal.textContent = mineTotal ? Math.round(youPct) + '%' : '—';
+    els.youVal.classList.toggle('has', you > 0);
+    els.allVal.textContent = totalTotal ? Math.round(allPct) + '%' : '—';
+  }
+}
+
+// ── admin: per-person dial paint (no suggested-wedge/line — see applyAdminLabel) ──
+function paintAdminDial(svg, dialReadEl, picked) {
+  for (const el of svg.querySelectorAll('.wedge, .wlabel, .wkey')) {
+    el.classList.toggle('on', picked !== null && picked !== SKIP_BUCKET && el.dataset.store === picked);
+  }
+  for (const el of svg.querySelectorAll('.skipw, .skipt, .skipk')) {
+    el.classList.toggle('on', picked === SKIP_BUCKET);
+  }
+  if (picked === null || picked === undefined) dialReadEl.innerHTML = '&mdash;';
+  else if (picked === SKIP_BUCKET) dialReadEl.innerHTML = '<b>Skipped</b>';
+  else dialReadEl.innerHTML = `<b>${signed(picked)}</b>`;
 }
 
 // ── team data ──────────────────────────────────────────────────────────────
@@ -1558,7 +1746,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.hidden = loadHidden();
   state.rangeCache = loadRangeCache();
   state.agreePair = loadAgreePair();
-  state.actingAs = loadActingAs();
   buildOverview();
   buildDist();
   buildAgreeGrid();
@@ -1607,8 +1794,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   populateAgreeSelects();
   refreshAgreement();
 
-  $('admin-acting-as').addEventListener('change', (e) => setActingAs(e.target.value));
-  $('admin-team-load').addEventListener('click', loadAdminTeamAnswers);
+  $('admin-refresh').addEventListener('click', loadAllAdminData);
 
   // ── stage: pan, draw/adjust the assistant line, zoom ───────────────────
   // The two buttons do two unrelated things, so there's no click-vs-drag
@@ -1698,7 +1884,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key in KEY_BINS) { e.preventDefault(); const m = KEY_BINS[e.key]; applyLabel(m.store, m.skip); return; }
+    if (e.key in KEY_BINS) {
+      if (state.isAdmin) return;  // no single identity to target — pick a person's own dial in the stack instead
+      e.preventDefault(); const m = KEY_BINS[e.key]; applyLabel(m.store, m.skip); return;
+    }
     if (e.key === 'ArrowLeft')  { e.preventDefault(); go(state.i - 1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); go(state.i + 1); return; }
     if (e.key === '0') { e.preventDefault(); resetZoom(); return; }

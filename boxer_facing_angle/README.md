@@ -230,29 +230,34 @@ Evaluated every height_guard admin component against this tool's own
 shape — one dial click per frame, no cross-labeler point-dragging — and
 kept only what still made sense, primitively:
 
-- **"Acting as" (kept, rebuilt much simpler)** — height_guard's admin
-  drags a TEAMMATE's existing click-point live on canvas and autosaves it
-  under their identity; there's no equivalent motion here (a bucket click
-  isn't a draggable point). Instead admin picks a real labeler from a
-  `<select>` (`#admin-acting-as`, populated from the roster) and from then
-  on drives the exact same dial/line/save flow a normal labeler does —
-  `activeLabeler()` is the one indirection that substitutes the picked
-  name in for `who()` everywhere identity actually matters (`applyLabel`,
-  `bumpMyTeamRow`, the range cache, the team panel's "you" highlight), so
-  every other line of labeling code needed zero changes. Admin has no
-  "own" row — `activeLabeler()` returns `null` until someone's picked —
-  so the dial stays behind the same `#lock`/`.ready` gate every labeler
-  sees before Start, just with "Admin — pick who to act as below."
-  instead. Picking persists (`fa_admin_acting_as` in localStorage), so a
-  reload resumes editing as the same person.
-- **Team answers, this frame (kept, simplified)** — height_guard's
-  per-labeler live points list needed constant polling since admin could
-  be mid-drag on anyone's point at any moment; this tool's dial is a
-  static committed value, so a read-only breakdown fetched **on demand**
-  (the Load button, one `listFacingAngle` per roster member, cached
-  client-side) is enough — the display for the current frame just reads
-  whichever cell is already cached as you page through, no per-frame
-  network call.
+- **The per-person stack (`#admin-stack`, `buildAdminStack()`)** — an
+  earlier version of this had admin pick ONE teammate to edit "as" from a
+  select, mirroring the single-identity flow every normal labeler goes
+  through. Replaced entirely: admin now sees **every roster member's own
+  Progress grid, Distribution, and dial stacked one after another** — long
+  on purpose, since reviewing the whole team against one frame at a glance
+  was the actual point, not a single delegated identity. Each person's
+  mini-dial (`.admin-dial`, same wedge geometry as the main dial at a
+  smaller size, built by the newly-generalized `buildDialInto(svg, onPick,
+  showKeys)`) is **independently clickable** — a click under "Alex" saves
+  as Alex, under "John" as John — so the stack IS how admin edits, with no
+  separate identity switch at all. Fetched once per login (or the Refresh
+  button): one `listFacingAngle` per roster member into `state.teamRows`
+  (`Map<labeler, Map<frameKey, label>>`), then every block reads its own
+  slice of that for the current frame as you page through — no per-frame
+  network call. Saves are optimistic per person (`applyAdminLabel()`, the
+  admin-stack sibling of `applyLabel()`) but **don't auto-advance** to the
+  next frame the way a normal save does — admin may still want to fix
+  several OTHER people on this same frame before moving on. No assistive
+  line either: that's something a labeler draws about their own read of a
+  frame, not something admin draws on someone else's behalf.
+- **No "own" identity at all.** Admin has no personal row full stop now
+  (`activeLabeler()` always returns `null` for admin) — the single-
+  identity dial/Progress/Distribution cards (`#angle-card`/
+  `#progress-card`/`#dist-card`) are hidden outright for admin rather than
+  locked, since there is nothing of admin's own for them to show; only
+  `#id-card` (frame identity) and `#act-card` (prev/next nav) stay usable
+  immediately, so admin can page through frames while the stack loads.
 - **Agreement (moved here from every-labeler)** — two `<select>` pickers
   over the roster (`state.agreePair`, defaulting to `['Arianne', 'John']`
   — chin_tuck_4.0's own default pair — persisted the same way chin_tuck's
