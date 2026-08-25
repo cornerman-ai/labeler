@@ -211,30 +211,76 @@ here (unlike chin-point 4.0's `v4cb`) to catch that automatically.
   buckets + skip, both series read straight from `bucket` ("you" from
   `state.labels`, "everyone" from `statsFacingAngle`'s per-labeler
   `buckets`, summed client-side).
-- **Agreement** — new card. Two `<select>` pickers over the roster
-  (`state.agreePair`, defaulting to `['Arianne', 'John']` — chin_tuck_4.0's
-  own default pair — until a different pair is picked, which persists the
-  same way chin_tuck's own `agreePair` does), fetched **on demand** — two
-  `listFacingAngle` calls, one per picked name — not chin_tuck's admin-only
-  `loadTeamRows()` fan-out over the whole roster (this tool has no admin
-  mode). Agreement compares the **stored answer directly** — exact match,
-  nothing derived from a line — so a labeler who never draws one is
-  compared exactly the same way as one who always does. Reuses the
-  `.d4-grid`/`.ovn` overview machinery. Four states, deliberately no more:
-  **green** = both gave the SAME answer, **red** = both answered but
-  differently, **light blue** (`.solo`, the same faded-accent chin_tuck_4.0
-  uses for its own solo dots) = exactly one of the two has answered,
-  **grey** = neither has. A skip counts as a real answer here — "can't
-  tell" is a judgment call, not a non-answer — so two skips on the same
-  frame agree (green) exactly like two matching buckets would, and a skip
-  against a bucket disagrees (red), since they're two different valid
-  answers. No kappa panel, no PNG export, no admin gating.
 - **Optimistic saves** — a wedge (or skip) lands and the page advances
   immediately, the write drains behind it, a failure rolls the row back.
 
-**Not ported** from chin_tuck_4.0 (no counterpart here): visibility
-(seen/occluded) popovers, admin mode and presence broadcasting, the
-three-metric disagreement grids, PNG export, planted repeats, `camera_bad`.
+## Admin mode
+
+Reached the same way as chin_tuck_4.0/height_guard's: type the literal
+name **"admin"** (case-insensitive) and press Start (`state.isAdmin`).
+Evaluated every height_guard admin component against this tool's own
+shape — one dial click per frame, no cross-labeler point-dragging — and
+kept only what still made sense, primitively:
+
+- **"Acting as" (kept, rebuilt much simpler)** — height_guard's admin
+  drags a TEAMMATE's existing click-point live on canvas and autosaves it
+  under their identity; there's no equivalent motion here (a bucket click
+  isn't a draggable point). Instead admin picks a real labeler from a
+  `<select>` (`#admin-acting-as`, populated from the roster) and from then
+  on drives the exact same dial/line/save flow a normal labeler does —
+  `activeLabeler()` is the one indirection that substitutes the picked
+  name in for `who()` everywhere identity actually matters (`applyLabel`,
+  `bumpMyTeamRow`, the range cache, the team panel's "you" highlight), so
+  every other line of labeling code needed zero changes. Admin has no
+  "own" row — `activeLabeler()` returns `null` until someone's picked —
+  so the dial stays behind the same `#lock`/`.ready` gate every labeler
+  sees before Start, just with "Admin — pick who to act as below."
+  instead. Picking persists (`fa_admin_acting_as` in localStorage), so a
+  reload resumes editing as the same person.
+- **Team answers, this frame (kept, simplified)** — height_guard's
+  per-labeler live points list needed constant polling since admin could
+  be mid-drag on anyone's point at any moment; this tool's dial is a
+  static committed value, so a read-only breakdown fetched **on demand**
+  (the Load button, one `listFacingAngle` per roster member, cached
+  client-side) is enough — the display for the current frame just reads
+  whichever cell is already cached as you page through, no per-frame
+  network call.
+- **Agreement (moved here from every-labeler)** — two `<select>` pickers
+  over the roster (`state.agreePair`, defaulting to `['Arianne', 'John']`
+  — chin_tuck_4.0's own default pair — persisted the same way chin_tuck's
+  own `agreePair` is), fetched **on demand** — two `listFacingAngle` calls,
+  one per picked name, not chin_tuck's `loadTeamRows()` fan-out over the
+  whole roster. Originally open to every labeler; moved admin-only since
+  a normal labeler comparing two OTHER people's answers isn't part of
+  their own job, and it was firing two extra fetches on every page load
+  for everyone (`refreshAgreement()`'s own `!state.isAdmin` guard is what
+  stops that now, same gate the CSS uses to hide `#agree-card`). Compares
+  the **stored answer directly** — exact match, nothing derived from a
+  line — so a labeler who never draws one is compared exactly the same
+  way as one who always does. Reuses the `.d4-grid`/`.ovn` overview
+  machinery. Four states, deliberately no more: **green** = both gave the
+  SAME answer, **red** = both answered but differently, **light blue**
+  (`.solo`, the same faded-accent chin_tuck_4.0 uses for its own solo
+  dots) = exactly one of the two has answered, **grey** = neither has. A
+  skip counts as a real answer here — "can't tell" is a judgment call, not
+  a non-answer — so two skips on the same frame agree (green) exactly
+  like two matching buckets would, and a skip against a bucket disagrees
+  (red), since they're two different valid answers. No kappa panel, no
+  PNG export, no threshold controls (the adjustable chin/shoulder
+  thresholds and three-axis euclid/height/width grids don't apply — this
+  tool's whole comparison is one exact bucket match).
+- **Skipped — no live-collision risk to guard against.** Presence
+  ping/banner exists in height_guard because admin might start dragging
+  the exact point a labeler is also looking at; here admin edits one
+  identity at a time, sequentially, never simultaneously with the real
+  labeler, so there's nothing to warn anyone about.
+- **Skipped — real complexity for a "keep it primitive" ask.** PNG export
+  (~400 lines of hand-drawn canvas layout in height_guard) and the
+  manual re-push button (nothing here holds a teammate's unsent draft row
+  to re-send — every save, admin's or not, lands immediately).
+- **Not admin-gated.** "Everyone's progress" stays open to every
+  labeler — it's each person's own read on where the whole team stands,
+  not an admin-only view.
 
 ### Sign convention vs. `punch_directions/punch_dir_16`
 

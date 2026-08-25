@@ -2561,7 +2561,14 @@ function facingAngleStats() {
       var row = data[r];
       if (!row[idx.video]) continue;
       entry.n++;
-      var b = String(row[idx.bucket] || '');
+      // NOT `row[idx.bucket] || ''` — Sheets returns a numeric-looking cell
+      // as a JS number via getValues(), so a bucket of 0 comes back as the
+      // number 0, and `0 || ''` silently becomes '' (0 is falsy), dropping
+      // every 0° row from the tally entirely. Explicit emptiness check,
+      // same as listFacingAngle's own bucket read just above.
+      var rawBucket = row[idx.bucket];
+      var b = (rawBucket === '' || rawBucket === undefined || rawBucket === null)
+        ? '' : String(rawBucket);
       if (b === 'skip') {
         entry.skipped++;
         entry.buckets.skip = (entry.buckets.skip || 0) + 1;

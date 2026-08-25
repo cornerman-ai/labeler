@@ -96,6 +96,7 @@ const RANGE_FRESH_MS = 60000;
 const HIDE_KEY = 'fa_hidden_labelers';
 const RANGE_KEY = 'fa_range_cache';
 const AGREE_KEY = 'fa_agree_pair';
+const ACTING_AS_KEY = 'fa_admin_acting_as';
 
 // The eight intervals, in compass order. `c` is the interval's CENTRE and
 // the value written to the sheet; the interval itself is [c-22.5, c+22.5),
@@ -157,6 +158,11 @@ const state = {
   agreePair: ['', ''],
   agreeRows: [null, null],
   agreeDots: null,
+
+  // ── admin mode — see the header comment above start() ──
+  isAdmin: false,          // typed name (who()) is literally "admin", case-insensitive
+  actingAs: '',            // which real labeler admin is currently editing as
+  teamRows: null,          // Map<labeler, Map<frameKey, label>> — admin's on-demand full fetch
 };
 
 const $ = (id) => document.getElementById(id);
@@ -222,6 +228,17 @@ function angleOf(line) {
 
 // ── identity ───────────────────────────────────────────────────────────────
 function who() { return ($('labeler-input').value || '').trim(); }
+
+// The identity whose data is actually being read/edited right now — who()
+// itself for a normal labeler, but for admin (who() === "admin") it's
+// whichever real labeler is picked in the "acting as" select, or null if
+// nobody's picked yet. Admin has no "own" row of their own — see the
+// admin-mode header comment above start() — so every identity-sensitive
+// call site (applyLabel, bumpMyTeamRow, the range cache, the team panel's
+// "you" highlight) reads THIS, not who(), while who() itself stays reserved
+// for the raw login field (the name-widget persistence, the "is a name
+// typed at all" gate, and the isAdmin check itself).
+function activeLabeler() { return state.isAdmin ? (state.actingAs || null) : who(); }
 
 function restoreName() {
   const el = $('labeler-input');
@@ -617,7 +634,7 @@ function drawNewLine(base, end) {
 // data — it never decides which bucket gets saved.
 function applyLabel(store, isSkip) {
   if (!state.ready) return;
-  const labeler = who();
+  const labeler = activeLabeler();
   if (!labeler) { status('Enter your name and press Start first.', 'err'); return; }
   const f = state.frames[state.i];
   if (!f) return;
@@ -689,6 +706,7 @@ function showFrame() {
   renderLine(state.line ? state.line.base : null, state.line ? state.line.end : null);
   renderDial();
   renderOverview();          // moves the .cur outline to this slot
+  renderAdminTeamAnswers();  // no-op / already-cached — see loadAdminTeamAnswers()
   prefetch();
 }
 
@@ -859,6 +877,7 @@ async function refreshTotalDist() {
     renderTeamPanel();
     renderDist();
     populateAgreeSelects();
+    populateActingAsSelect();
   } catch (e) { /* keep the stale totals over losing them */ }
 }
 
@@ -873,15 +892,60 @@ function renderProgress() {
 }
 
 // ── start / sync ───────────────────────────────────────────────────────────
+// ADMIN MODE. Reached by typing the literal name "admin" (case-insensitive)
+// and pressing Start — same gate chin_tuck_4.0/height_guard uses. Unlike
+// height_guard, admin here never edits anyone's data live on canvas: this
+// tool's whole label is one dial click (plus an optional assistive line the
+// SAME labeler drew), so there's nothing to drag on someone else's behalf.
+// Instead admin picks a real labeler from the "acting as" select (#admin-
+// acting-as) and from that point on drives the EXACT same dial/line/save
+// flow a normal labeler does — activeLabeler() is what substitutes the
+// picked name in for who() everywhere identity actually matters, so 100%
+// of the existing labeling code needed zero changes beyond that one
+// indirection. Admin has no "own" row (activeLabeler() returns null until
+// someone's picked), so the dial stays locked — same #lock/`.ready` gate
+// every labeler sees before Start, just with a different message.
+//
+// Also shows a read-only "team answers" breakdown for the current frame
+// (#admin-team-rows) — every roster member's saved answer at a glance,
+// fetched on demand (the Load button) rather than polled, since it means
+// one listFacingAngle call per roster member and there's no ambient need
+// to keep it live the way the roster's own aggregate counts are.
+//
+// Deliberately NOT ported from height_guard's admin mode: manual re-push
+// (nothing here holds a teammate's DRAFT row to re-send — every save,
+// admin's or not, lands immediately); presence ping/banner (no live
+// collision risk — admin edits one identity at a time, never simultaneous
+// with the real labeler); adjustable agreement thresholds and the 3-metric
+// disagreement grids (this tool's agreement is one exact bucket match, no
+// continuous distance to threshold or split by axis); PNG export (real
+// complexity for a "keep it primitive" ask). The "Everyone's progress" and
+// "Agreement" cards are already visible to every labeler, admin included —
+// no admin-only duplicate of either was needed.
 async function start() {
   if (!who()) return;
+  state.isAdmin = who().toLowerCase() === 'admin';
+  document.body.classList.toggle('admin', state.isAdmin);
   document.body.classList.remove('ready');
   state.ready = false;
   state.starting = true;
   $('lock').classList.remove('err');
+
+  if (state.isAdmin && !state.actingAs) {
+    state.starting = false;
+    state.labels = new Map();
+    $('lock').textContent = 'Admin — pick who to act as below.';
+    renderProgress();
+    showFrame();
+    refreshTotalDist();       // loads state.roster, so the acting-as select has options
+    refreshAgreement();       // agree-card is admin-only — see its own isAdmin guard
+    startRosterPoll();
+    return;
+  }
+
   $('lock').textContent = 'Loading your labels…';
   try {
-    const rows = await fetchRows(who());
+    const rows = await fetchRows(activeLabeler());
     state.labels = new Map();
     for (const r of rows) {
       const k = rowKey(r);
@@ -908,6 +972,84 @@ async function start() {
   if (state.teamOpen) prefetchRanges();
 }
 
+// ── admin: acting-as identity ────────────────────────────────────────────
+function loadActingAs() {
+  try { return localStorage.getItem(ACTING_AS_KEY) || ''; } catch (e) { return ''; }
+}
+function saveActingAs() {
+  try { localStorage.setItem(ACTING_AS_KEY, state.actingAs); } catch (e) {}
+}
+function setActingAs(name) {
+  state.actingAs = name || '';
+  saveActingAs();
+  start();                   // same login flow a normal labeler goes through
+}
+function populateActingAsSelect() {
+  const sel = $('admin-acting-as');
+  if (!sel) return;
+  const cur = state.actingAs;
+  sel.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = '— pick —';
+  sel.appendChild(placeholder);
+  for (const r of state.roster) {
+    if (r.labeler.toLowerCase() === 'admin') continue;
+    const opt = document.createElement('option');
+    opt.value = r.labeler; opt.textContent = r.labeler;
+    sel.appendChild(opt);
+  }
+  sel.value = cur && state.roster.some((r) => r.labeler === cur) ? cur : '';
+}
+
+// ── admin: team answers for the CURRENT frame ────────────────────────────
+// One listFacingAngle per roster member, fetched on demand (the Load
+// button) — not polled, and not refetched on every frame navigation; only
+// the DISPLAY (which frame's row from the already-fetched cache) updates
+// as you page through, from showFrame().
+async function loadAdminTeamAnswers() {
+  if (!state.isAdmin) return;
+  const btn = $('admin-team-load');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const names = state.roster.map((r) => r.labeler);
+    const results = await Promise.all(names.map((n) => fetchRows(n).catch(() => [])));
+    const teamRows = new Map();
+    names.forEach((n, i) => {
+      const m = new Map();
+      for (const r of results[i]) m.set(rowKey(r), rowToLabel(r));
+      teamRows.set(n, m);
+    });
+    state.teamRows = teamRows;
+    renderAdminTeamAnswers();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
+  }
+}
+
+function renderAdminTeamAnswers() {
+  const el = $('admin-team-rows');
+  if (!el) return;
+  if (!state.teamRows || !state.teamRows.size) {
+    el.innerHTML = '<div id="admin-team-empty">Not loaded yet.</div>';
+    return;
+  }
+  const f = state.frames[state.i];
+  const frag = document.createDocumentFragment();
+  for (const [name, rows] of state.teamRows) {
+    const row = f ? rows.get(key(f)) : null;
+    const div = document.createElement('div');
+    div.className = 'admin-team-row';
+    const nm = document.createElement('span'); nm.className = 'atn'; nm.textContent = name;
+    const val = document.createElement('span'); val.className = 'atv';
+    if (!row) { val.textContent = '—'; val.classList.add('atv-none'); }
+    else if (row.bucket === SKIP_BUCKET) { val.textContent = "can't tell"; val.classList.add('atv-skip'); }
+    else { val.textContent = signed(row.bucket); val.classList.add('atv-has'); }
+    div.append(nm, val);
+    frag.appendChild(div);
+  }
+  el.replaceChildren(frag);
+}
+
 // ── team data ──────────────────────────────────────────────────────────────
 function startRosterPoll() {
   if (state.rosterPoll) return;
@@ -924,7 +1066,7 @@ function scheduleTeamRefresh() {
 }
 
 function bumpMyTeamRow() {
-  const me = who();
+  const me = activeLabeler();
   if (!me) return;
   let mine = state.roster.find((r) => r.labeler.toLowerCase() === me.toLowerCase());
   if (!mine) { mine = { labeler: me, n: 0, skipped: 0, last_ts: '', last: null }; state.roster.push(mine); }
@@ -1007,7 +1149,7 @@ function saveRangeCache() {
 
 function prefetchRanges(force) {
   if ((!state.teamOpen && !force) || !state.frames.length) return;
-  const me = (who() || '').toLowerCase();
+  const me = (activeLabeler() || '').toLowerCase();
   for (const r of state.roster) {
     const k = r.labeler.toLowerCase();
     if (k !== me && state.hidden.has(k)) continue;
@@ -1027,7 +1169,7 @@ async function loadRanges(labeler, n) {
 async function fetchRanges(labeler, n) {
   let rows;
   try {
-    if (labeler.toLowerCase() === (who() || '').toLowerCase()) {
+    if (labeler.toLowerCase() === (activeLabeler() || '').toLowerCase()) {
       state.rangeCache.set(labeler, { n, ranges: frameRuns(myIndices()), at: Date.now() });
       saveRangeCache();
       return;
@@ -1072,7 +1214,7 @@ function renderTeamPanel() {
     el.innerHTML = '<div id="team-empty">No labels saved yet</div>';
     return;
   }
-  const me = who().toLowerCase();
+  const me = (activeLabeler() || '').toLowerCase();
   const n = state.frames.length;
 
   const isMe = (r) => r.labeler.toLowerCase() === me;
@@ -1223,6 +1365,7 @@ async function setAgreePair(idx, name) {
 }
 
 async function refreshAgreement() {
+  if (!state.isAdmin) return;    // admin-only card — see #agree-card's CSS gate
   const [a, b] = state.agreePair;
   if (!a || !b) {
     state.agreeRows = [null, null];
@@ -1404,6 +1547,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.hidden = loadHidden();
   state.rangeCache = loadRangeCache();
   state.agreePair = loadAgreePair();
+  state.actingAs = loadActingAs();
   buildOverview();
   buildDist();
   buildAgreeGrid();
@@ -1451,6 +1595,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('agree-b').addEventListener('change', (e) => setAgreePair(1, e.target.value));
   populateAgreeSelects();
   refreshAgreement();
+
+  $('admin-acting-as').addEventListener('change', (e) => setActingAs(e.target.value));
+  $('admin-team-load').addEventListener('click', loadAdminTeamAnswers);
 
   // ── stage: pan, draw/adjust the assistant line, zoom ───────────────────
   // The two buttons do two unrelated things, so there's no click-vs-drag
