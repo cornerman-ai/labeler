@@ -728,6 +728,14 @@ function showFrame() {
   renderOverview();          // moves the .cur outline to this slot
   renderAllAdminBlocks();    // no-op until the stack is built — see loadAllAdminData()
   renderAdminLines();        // every labeler's line for THIS frame, color-coded
+  // Moves the Agreement grid's own .cur outline to this slot too — it used
+  // to only repaint on refreshAgreement() (picking a pair, or the post-save
+  // debounce), so clicking a frame anywhere else left it pointing at the
+  // OLD position while every admin-stack Progress grid had already moved.
+  // agreeForSlot() is pure/local (no network), same cost renderOverview()
+  // already pays on every navigation, so this is safe to call every time —
+  // guarded by isAdmin since the card itself is admin-only.
+  if (state.isAdmin) renderAgreement();
   prefetch();
 }
 
@@ -1729,6 +1737,15 @@ async function refreshAgreement() {
     renderAgreement();
     return;
   }
+  // A full listFacingAngle fetch for TWO people (one can have thousands of
+  // rows) is slow enough that the grid would otherwise sit showing the
+  // PREVIOUS pair's agree/disagree colors — a stale answer, not a loading
+  // one — for a couple of seconds after picking a new pair. Clear every
+  // dot back to neutral and say so immediately instead of waiting for the
+  // fetch to resolve.
+  $('agree-summary').textContent = 'Loading…';
+  if (state.agreeDots) for (const d of state.agreeDots) d.className = 'd4';
+  $('agree-grid').classList.add('loading');
   try {
     const [rowsA, rowsB] = await Promise.all([fetchRows(a), fetchRows(b)]);
     state.agreeRows = [
@@ -1736,9 +1753,11 @@ async function refreshAgreement() {
       new Map(rowsB.map((r) => [rowKey(r), rowToLabel(r)])),
     ];
   } catch (e) {
+    $('agree-grid').classList.remove('loading');
     $('agree-summary').textContent = "Couldn't load: " + e.message;
     return;
   }
+  $('agree-grid').classList.remove('loading');
   renderAgreement();
 }
 

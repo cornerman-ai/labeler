@@ -331,6 +331,12 @@ body:not(.ready) #lock { display: block; }
    overview grid uses for its .solo dots. */
 #agree-grid .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 .d4-grid .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+/* While a new agree pair's rows are still loading — see refreshAgreement()
+   — the grid is already cleared to neutral dots; this just signals "still
+   working" rather than "nobody answered anything," same breathing pulse
+   #lock uses while a normal labeler's own rows load. */
+#agree-grid.loading { animation: breathe 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #agree-grid.loading { animation: none; opacity: .55; } }
 .legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px;
           font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
 .legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block;
@@ -671,6 +677,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=16"></script>
+<script src="boxer_facing_angle.js?v=18"></script>
 </body>
 </html>
