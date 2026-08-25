@@ -1974,13 +1974,30 @@ var IMPACT_FRAME_SKIP_REASONS = ['occluded', 'unclear', 'no_punch', 'bad_clip'];
 // labels for the video, re-labels it, and the re-labels append instead of
 // replacing. Same shape as ensureCalloutRawText further down (which guards
 // callout_raw against "1-2" becoming a date).
+// setNumberFormat on the WHOLE column (every row, not just the header) is
+// a genuinely expensive write, and this function runs on every single
+// list/save/delete for every labeler-tab-shaped sheet in the file (see the
+// callers below) — not just once at sheet creation. The format is a
+// persistent per-cell property that doesn't drift back on its own once
+// set, so re-applying it on every request was pure waste after the first
+// time. A single-cell getNumberFormat() read is the cheap way to check
+// first and skip the column-wide write once it's already correct.
 function ensureTextColumn(sh, headerName) {
   var lastCol = sh.getLastColumn();
   if (lastCol < 1) return;
   var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   for (var c = 0; c < header.length; c++) {
     if (String(header[c]) === headerName) {
-      sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+      var maxRows = sh.getMaxRows();
+      // Check the BOTTOM row of the current range, not the header — if the
+      // sheet has grown since the format was last applied, the header cell
+      // would still read '@' even though the newly added rows below the
+      // old getMaxRows() never got formatted. Checking the current bottom
+      // row catches that case and reformats the whole column again; once
+      // the sheet stops growing, this becomes a single cheap read forever.
+      if (sh.getRange(maxRows, c + 1).getNumberFormat() !== '@') {
+        sh.getRange(1, c + 1, maxRows, 1).setNumberFormat('@');
+      }
       return;
     }
   }
@@ -2496,7 +2513,7 @@ function getOrCreateFacingAngleSheet(labelerName) {
     if (want.indexOf(col.toLowerCase()) < 0) { sh.deleteColumn(c + 1); dropped++; }
   }
   if (dropped) existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
-  var lower = existing.map(function (h) { return String(h).toLowerCase(); });
+  var lower = existing.map(function (h) { return String(h).trim().toLowerCase(); });
   var missing = HEADERS.filter(function (h) { return lower.indexOf(h.toLowerCase()) < 0; });
   if (missing.length) {
     var at = existing.length + 1;
@@ -2505,8 +2522,16 @@ function getOrCreateFacingAngleSheet(labelerName) {
     sh.getRange(1, at, 1, missing.length).setValues([missing]);
   }
 
-  var now = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
-              .map(function (h) { return String(h).trim().toLowerCase(); });
+  // The common case — nothing dropped, nothing missing — already has the
+  // reconciled header in `lower`; re-reading it as a separate `now` was a
+  // redundant remote call on every single list/save/delete once a tab's
+  // already settled, which is every request after the first ever made.
+  // Only the `missing` branch actually writes new header cells, so only
+  // that branch needs a fresh read — everything else can reuse `lower`.
+  var now = missing.length
+    ? sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+        .map(function (h) { return String(h).trim().toLowerCase(); })
+    : lower;
   var ordered = true;
   for (var oi = 0; oi < want.length; oi++) { if (now[oi] !== want[oi]) { ordered = false; break; } }
   if (!ordered) {

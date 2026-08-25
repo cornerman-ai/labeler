@@ -732,10 +732,12 @@ function showFrame() {
   // to only repaint on refreshAgreement() (picking a pair, or the post-save
   // debounce), so clicking a frame anywhere else left it pointing at the
   // OLD position while every admin-stack Progress grid had already moved.
-  // agreeForSlot() is pure/local (no network), same cost renderOverview()
-  // already pays on every navigation, so this is safe to call every time —
-  // guarded by isAdmin since the card itself is admin-only.
-  if (state.isAdmin) renderAgreement();
+  // moveAgreementCur() only touches the outline (O(1)-ish) — the actual
+  // agree/disagree colors haven't changed just because the viewed frame
+  // did, so this does NOT recompute them (see moveAgreementCur()'s own
+  // comment for why an earlier version of this called full renderAgreement()
+  // here instead, which was the actual cause of a reported color lag).
+  if (state.isAdmin) moveAgreementCur();
   prefetch();
 }
 
@@ -1798,16 +1800,29 @@ async function refreshAgreement() {
 // skips on the same frame agree (both green), a skip against a bucket
 // disagrees (they gave two different valid answers), and only a frame
 // NEITHER labeler has touched at all counts as "neither answered".
+// SKIP_BUCKET for a can't-tell row, the bucket string for a real pick,
+// null for not yet answered at all. A plain top-level function, not a
+// closure rebuilt inside agreeForSlot() on every one of its ~3,000 calls
+// per renderAgreement() pass — see that function's own comment.
+function agreeAnswerOf(r) {
+  return !r || r.bucket === null || r.bucket === undefined ? null : r.bucket;
+}
+
+// Returns a plain string ('agree'/'disagree'/'solo'/'none'), not an
+// object — this runs once per frame inside renderAgreement()'s full-grid
+// loop (~3,000 calls per pass), so an allocation-free return here plus
+// answerOf() being a shared top-level function instead of a per-call
+// closure. Rebuilt is what let this go from "recomputes 3,000 frames on
+// every navigation" (when renderAgreement() itself used to be called on
+// every showFrame()) down to something worth calling occasionally.
 function agreeForSlot(f) {
   const k = key(f);
-  const [ra, rb] = state.agreeRows.map((m) => m && m.get(k));
-  // SKIP_BUCKET for a can't-tell row, the bucket string for a real pick,
-  // null for not yet answered at all.
-  const answerOf = (r) => !r || r.bucket === null || r.bucket === undefined ? null : r.bucket;
-  const aAns = answerOf(ra), bAns = answerOf(rb);
-  if (aAns !== null && bAns !== null) return { kind: aAns === bAns ? 'agree' : 'disagree' };
-  if (aAns !== null || bAns !== null) return { kind: 'solo' };
-  return { kind: 'none' };
+  const ra = state.agreeRows[0] && state.agreeRows[0].get(k);
+  const rb = state.agreeRows[1] && state.agreeRows[1].get(k);
+  const aAns = agreeAnswerOf(ra), bAns = agreeAnswerOf(rb);
+  if (aAns !== null && bAns !== null) return aAns === bAns ? 'agree' : 'disagree';
+  if (aAns !== null || bAns !== null) return 'solo';
+  return 'none';
 }
 
 function buildAgreeGrid() {
@@ -1842,6 +1857,11 @@ function buildAgreeGrid() {
   gutter.replaceChildren(col);
 }
 
+// The expensive full recompute — every frame's agree/disagree/solo color
+// AND the summary line. Only actually needs to run when state.agreeRows
+// itself changes (a new pair picked, or the post-save debounce), so this
+// is called from refreshAgreement()'s success path, never from frame
+// navigation — see moveAgreementCur() for what showFrame() calls instead.
 function renderAgreement() {
   const [a, b] = state.agreePair;
   const summary = $('agree-summary');
@@ -1849,20 +1869,34 @@ function renderAgreement() {
   if (!state.agreeDots) return;
   let agree = 0, disagree = 0, compared = 0;
   for (let i = 0; i < state.frames.length; i++) {
-    const r = agreeForSlot(state.frames[i]);
+    const kind = agreeForSlot(state.frames[i]);
     let cls = 'd4';
-    if (r.kind === 'agree') { cls += ' agree'; agree++; compared++; }
-    else if (r.kind === 'disagree') { cls += ' disagree'; disagree++; compared++; }
-    else if (r.kind === 'solo') { cls += ' solo'; }
+    if (kind === 'agree') { cls += ' agree'; agree++; compared++; }
+    else if (kind === 'disagree') { cls += ' disagree'; disagree++; compared++; }
+    else if (kind === 'solo') { cls += ' solo'; }
     if (i === state.i) cls += ' cur';
     state.agreeDots[i].className = cls;
-    state.agreeDots[i].title = `#${i + 1} — ${r.kind}`;
+    state.agreeDots[i].title = `#${i + 1} — ${kind}`;
   }
   if (a && b) {
     summary.textContent = compared
       ? `${Math.round(100 * agree / compared)}% agree · ${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
       : 'No frames both have labelled yet.';
   }
+}
+
+// The cheap per-navigation update — just moves the .cur outline, since
+// the agree/disagree/solo COLORS haven't changed just because the viewed
+// frame did. A full renderAgreement() pass here (~3,000 agreeForSlot()
+// calls) was the actual cause of the reported "colors lagging behind" —
+// it used to run on every single frame click just to move one outline.
+function moveAgreementCur() {
+  if (!state.agreeDots) return;
+  const grid = $('agree-grid');
+  const prevCur = grid.querySelector('.d4.cur');
+  if (prevCur) prevCur.classList.remove('cur');
+  const dot = state.agreeDots[state.i];
+  if (dot) dot.classList.add('cur');
 }
 
 // ── bug report console ─────────────────────────────────────────────────────

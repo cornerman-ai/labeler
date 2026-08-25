@@ -90,6 +90,21 @@ reconciliation on every save — drop columns not in the schema, append
 missing ones, reorder the block if it's drifted — and a stats action that
 enumerates every sheet by prefix rather than reading one shared tab).
 
+**Two real slowdowns fixed in that reconciliation path** (shared code —
+`ensureTextColumn()`/`getOrCreateFacingAngleSheet()` in `Code.js` — so
+both fixes help every labeler-tab-shaped sheet in the file, not just this
+one): `ensureTextColumn()` used to `setNumberFormat('@')` the ENTIRE
+column (every row, not just the header) on every single list/save/delete,
+forever — a real, expensive write repeated on a request that had almost
+certainly already set it correctly the first time. Now checks the
+CURRENT bottom row's format first (a single-cell read) and only pays for
+the column-wide write when the sheet has actually grown past where the
+format was last applied. Separately, `getOrCreateFacingAngleSheet()` used
+to re-read the whole header row a second time (as `now`) to check column
+order, even in the by-far-most-common case where nothing had just been
+dropped or added — now reuses the header it already has in memory, and
+only re-reads when a write (new columns appended) actually changed it.
+
 Rows live in the same standalone workbook the torso-angle prototype used
 (`1tRcQeoqr98yvoHldY7B8o2HmuXdisDGSHi20uyYjwyI`, now
 `FACING_ANGLE_SPREADSHEET_ID`) — `openById`, not `getActiveSpreadsheet()`,
@@ -324,7 +339,19 @@ kept only what still made sense, primitively:
   (red), since they're two different valid answers. No kappa panel, no
   PNG export, no threshold controls (the adjustable chin/shoulder
   thresholds and three-axis euclid/height/width grids don't apply — this
-  tool's whole comparison is one exact bucket match).
+  tool's whole comparison is one exact bucket match). `renderAgreement()`
+  (the full ~3,000-frame recompute) only runs when `state.agreeRows`
+  itself changes — picking a pair, or the post-save debounce. Frame
+  navigation calls `moveAgreementCur()` instead, which only moves the
+  `.cur` outline: an earlier version called the FULL recompute from
+  `showFrame()` (to fix the outline lagging behind on click — a real bug,
+  see the git history), which fixed that but meant every arrow-key press
+  or admin-stack click was re-deriving agree/disagree colors for every
+  frame just to move one outline — the actual cause of a reported "colors
+  updating slowly" complaint. `agreeForSlot()` itself also dropped a
+  closure and an array/object allocation it was rebuilding on every one of
+  those ~3,000 calls per pass (`agreeAnswerOf()` is now a shared top-level
+  function, and the return value is a plain string).
 - **Skipped — no live-collision risk to guard against.** Presence
   ping/banner exists in height_guard because admin might start dragging
   the exact point a labeler is also looking at; here admin edits one
