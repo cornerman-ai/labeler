@@ -264,9 +264,30 @@ kept only what still made sense, primitively:
   bucket click — an admin edit **saves immediately on release**: the
   bucket isn't changing, there's no next click to piggyback the save on,
   and the whole point of dragging someone else's line is to fix it right
-  now. Right-drag (drawing a brand-NEW line) is disabled for admin — that
-  has no obvious "for whom" without a delegated identity, and isn't what
-  was asked for; only existing lines are editable.
+  now. Dragging one **clues that person's own dial only** — the wedge
+  their new angle is nearest lights up as `.suggested` and their
+  `#line-read`-style readout (`Line: +45° · nearest +45°`) updates live
+  during the drag (`paintAdminDial()` now takes the angle as a parameter
+  and paints only the one `<svg>`/text pair it's given — never a global
+  suggestion, never another labeler's), exactly like the individual flow's
+  own clue, just scoped to whichever person is actually being edited. A
+  bucket-only click (no line touched) now correctly **preserves** whatever
+  line that person already had — an earlier version of `applyAdminLabel()`
+  hard-set `base`/`end` to `null` on every save regardless, which would
+  have silently deleted a labeler's line the first time admin changed
+  their bucket; fixed to carry the previous row's points over unchanged
+  (skip still clears them, same as the individual flow).
+- **Admin's OWN scratch line — right-drag, exactly like the individual
+  flow's line, but NEVER saved anywhere.** Re-enabled the same
+  `state.rdown`/`drawNewLine()`/`state.line` mechanism for admin instead
+  of disabling it outright: only `applyLabel()` ever sends `state.line` to
+  the backend, and admin's clicks all route through `applyAdminLabel()`
+  instead, which never reads it — so there was nothing to wire OFF to make
+  this safe, it's already structurally disconnected from every admin save
+  path. Purely a visual reference for eyeballing an angle in the moment;
+  clears on every frame change (admin has no "own" row for it to be
+  restored from — see `showFrame()`) and never touches any labeler's own
+  colored line.
 - **No "own" identity at all.** Admin has no personal row full stop now
   (`activeLabeler()` always returns `null` for admin) — the single-
   identity dial/Progress/Distribution cards (`#angle-card`/

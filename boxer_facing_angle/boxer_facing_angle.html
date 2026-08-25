@@ -419,6 +419,11 @@ body:not(.admin) #admin-stack { display: none; }
 .dial-read-mini { margin: 0; text-align: center; font-size: 11.5px; color: var(--ink-dim);
                   font-variant-numeric: tabular-nums; }
 .dial-read-mini b { color: var(--ink); font-weight: 600; }
+/* THIS person's own line only — see paintAdminDial(). */
+.line-read-mini { margin: 4px 0 0; text-align: center; font-size: 10.5px; color: var(--ink-dim);
+                  font-variant-numeric: tabular-nums; }
+.line-read-mini:empty { margin: 0; }
+.line-read-mini b { color: var(--accent); font-weight: 600; }
 
 /* ── everyone's progress + bug report ───────────────────────────────────── */
 @keyframes clue-in {
@@ -543,7 +548,7 @@ body:not(.admin) #admin-stack { display: none; }
       </div>
     </div>
     <div id="hint">left-drag = pan &middot; right-drag = draw a facing line (assistant) &middot; drag a dot = move it &middot; right-click a line = delete it &middot; scroll = zoom &middot; double-click = reset</div>
-    <div id="hint-admin">left-drag = pan &middot; every labeler&rsquo;s line shown, color-coded &mdash; drag anyone&rsquo;s dot to fix it, saves immediately &middot; scroll = zoom &middot; double-click = reset</div>
+    <div id="hint-admin">left-drag = pan &middot; every labeler&rsquo;s line shown, color-coded &mdash; drag anyone&rsquo;s dot to fix it (saves immediately, clues that person&rsquo;s own dial) &middot; right-drag = your own scratch line, never saved &middot; scroll = zoom &middot; double-click = reset</div>
     <div id="zoom-chip"><span id="zoom-pct">100%</span><button id="zoom-reset" type="button">Reset</button></div>
     <div id="line-ctx-menu" class="ctx-menu" role="menu" hidden>
       <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete-line">Delete line</button>
@@ -677,6 +682,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=18"></script>
+<script src="boxer_facing_angle.js?v=19"></script>
 </body>
 </html>

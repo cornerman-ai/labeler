@@ -1096,7 +1096,9 @@ function buildAdminStack() {
     dialWrap.appendChild(svg);
     block.dialReadEl = document.createElement('p');
     block.dialReadEl.className = 'dial-read-mini';
-    dialCard.append(dialEyebrow, dialWrap, block.dialReadEl);
+    block.lineReadEl = document.createElement('p');
+    block.lineReadEl.className = 'line-read-mini';
+    dialCard.append(dialEyebrow, dialWrap, block.dialReadEl, block.lineReadEl);
     wrap.appendChild(dialCard);
     buildDialInto(svg, (store, isSkip) => applyAdminLabel(block, store, isSkip), false);
     block.dialSvg = svg;
@@ -1207,6 +1209,16 @@ function moveAdminDrag(clientX, clientY) {
   const exit = rayExit(base, end);
   els.ext.setAttribute('x1', end[0]); els.ext.setAttribute('y1', end[1]);
   els.ext.setAttribute('x2', exit[0]); els.ext.setAttribute('y2', exit[1]);
+
+  // Live clue on THIS person's own dial only, while dragging — not a
+  // global suggestion, and never another labeler's: paintAdminDial reads
+  // whatever angle is passed in and paints only the one <svg> it's given.
+  const block = state.adminBlocks.find((b) => b.name === d.name);
+  if (block) {
+    const row = state.teamRows.get(d.name).get(key(state.frames[state.i]));
+    const angle = angleOf({ base, end });
+    paintAdminDial(block.dialSvg, block.dialReadEl, block.lineReadEl, row ? row.bucket : null, angle);
+  }
 }
 
 // Unlike the individual flow (a line-drag only rides along on the NEXT
@@ -1253,7 +1265,8 @@ function renderAdminBlock(block) {
   const f = state.frames[state.i];
   const labelsMap = state.teamRows.get(block.name) || new Map();
   const row = f ? labelsMap.get(key(f)) : null;
-  paintAdminDial(block.dialSvg, block.dialReadEl, row ? row.bucket : null);
+  const lineAngle = row && row.base && row.end ? angleOf(row) : null;
+  paintAdminDial(block.dialSvg, block.dialReadEl, block.lineReadEl, row ? row.bucket : null, lineAngle);
   renderAdminOverview(block.ovDots, block.ovGutter, block.barTextEl, labelsMap);
   renderAdminDist(block.distRows, labelsMap);
 }
@@ -1270,7 +1283,14 @@ function applyAdminLabel(block, store, isSkip) {
   let labelsMap = state.teamRows.get(block.name);
   if (!labelsMap) { labelsMap = new Map(); state.teamRows.set(block.name, labelsMap); }
   const prev = labelsMap.get(k);
-  labelsMap.set(k, { bucket: isSkip ? SKIP_BUCKET : store, base: null, end: null });
+  // A bucket click never touches this person's own line — admin isn't
+  // drawing one for them here (see applyAdminLabel's callers vs.
+  // finishAdminDrag(), which is what actually edits a line) — so whatever
+  // they already had carries over unchanged, same as a skip clearing it
+  // in the individual flow.
+  const base = isSkip ? null : (prev ? prev.base : null);
+  const end = isSkip ? null : (prev ? prev.end : null);
+  labelsMap.set(k, { bucket: isSkip ? SKIP_BUCKET : store, base, end });
   renderAdminBlock(block);
   status(`Saving ${block.name}’s ${isSkip ? 'skip' : signed(store)}…`);
 
@@ -1279,7 +1299,8 @@ function applyAdminLabel(block, store, isSkip) {
     round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
     stance: f.stance || '',
     bucket: isSkip ? SKIP_BUCKET : String(store),
-    base_x: '', base_y: '', end_x: '', end_y: '',
+    base_x: base ? String(base[0]) : '', base_y: base ? String(base[1]) : '',
+    end_x: end ? String(end[0]) : '', end_y: end ? String(end[1]) : '',
   }, 'save').then(() => {
     status(`Saved ${block.name}.`, 'ok');
     scheduleTeamRefresh();
@@ -1402,10 +1423,18 @@ function renderAdminDist(distRows, labelsMap) {
   }
 }
 
-// ── admin: per-person dial paint (no suggested-wedge/line — see applyAdminLabel) ──
-function paintAdminDial(svg, dialReadEl, picked) {
+// ── admin: per-person dial paint ─────────────────────────────────────────
+// Mirrors renderDial()'s two-signal shape exactly, scoped to ONE person:
+// `.on` for their committed pick, `.suggested` for wherever THEIR OWN
+// saved line's angle points (never another labeler's, never admin's own
+// scratch line — see moveAdminDrag()/finishAdminDrag(), which only ever
+// pass the angle of the line belonging to `svg`'s own labeler). lineAngle
+// is null whenever this person has no line at all.
+function paintAdminDial(svg, dialReadEl, lineReadEl, picked, lineAngle) {
+  const suggested = lineAngle === null ? null : String(angleBucket(lineAngle));
   for (const el of svg.querySelectorAll('.wedge, .wlabel, .wkey')) {
     el.classList.toggle('on', picked !== null && picked !== SKIP_BUCKET && el.dataset.store === picked);
+    el.classList.toggle('suggested', suggested !== null && el.dataset.store === suggested);
   }
   for (const el of svg.querySelectorAll('.skipw, .skipt, .skipk')) {
     el.classList.toggle('on', picked === SKIP_BUCKET);
@@ -1413,6 +1442,9 @@ function paintAdminDial(svg, dialReadEl, picked) {
   if (picked === null || picked === undefined) dialReadEl.innerHTML = '&mdash;';
   else if (picked === SKIP_BUCKET) dialReadEl.innerHTML = '<b>Skipped</b>';
   else dialReadEl.innerHTML = `<b>${signed(picked)}</b>`;
+
+  lineReadEl.innerHTML = lineAngle === null ? ''
+    : `Line: <b>${signed(lineAngle)}</b> &middot; nearest ${signed(angleBucket(lineAngle))}`;
 }
 
 // ── team data ──────────────────────────────────────────────────────────────
@@ -1991,7 +2023,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   stage.addEventListener('mousedown', (e) => {
     if (!state.ready) return;
     if (e.button === 2) {
-      if (state.isAdmin) { e.preventDefault(); return; }  // no "own" identity to draw a brand-new line for
+      // Admin gets this too — a purely EPHEMERAL scratch line for their
+      // own eyeballing, using the exact same state.line/#line-svg the
+      // individual flow does. It's never saved anywhere for admin: only
+      // applyLabel() ever sends state.line to the backend, and admin's
+      // clicks all route through applyAdminLabel() instead, which never
+      // reads it — so there's nothing to wire OFF here, it's already
+      // disconnected from every admin save path.
       state.rdown = { x: e.clientX, y: e.clientY };
       e.preventDefault();
       return;
@@ -1999,8 +2037,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (e.button !== 0) return;
     closeLineContextMenu();
     state.down = { x: e.clientX, y: e.clientY };
+    // Admin checks BOTH: a roster member's own (colored) line handle
+    // first, then admin's own scratch line — grabbing one must never
+    // start the other.
     if (state.isAdmin) {
       if (startAdminDrag(e.clientX, e.clientY)) { e.preventDefault(); return; }
+      if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
     } else if (startDraw(e.clientX, e.clientY)) { e.preventDefault(); return; }
     state.drag = { x: e.clientX, y: e.clientY, px: state.panX, py: state.panY };
     e.preventDefault();
