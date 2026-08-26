@@ -302,7 +302,24 @@ kept only what still made sense, primitively:
   path. Purely a visual reference for eyeballing an angle in the moment;
   clears on every frame change (admin has no "own" row for it to be
   restored from — see `showFrame()`) and never touches any labeler's own
-  colored line.
+  colored line — except deliberately, via one more thing bolted onto the
+  existing delete-line context menu: right-clicking the scratch line
+  (stationary, same gesture that already opened "Delete line") also lists
+  **"Assign to {name}"** for every roster member who has answered this
+  frame (a real bucket, not a skip — skips never carry a line at all) but
+  has no line of their own yet (`populateLineContextMenu()`, rebuilt fresh
+  on every open since eligibility depends on the current frame). Someone
+  who already has a line is never offered — nothing here overwrites an
+  existing one. Picking a name copies the scratch line's `base`/`end`
+  onto THAT person's row, their existing bucket carried over unchanged,
+  and saves immediately (`assignScratchLineTo()`, the same "no debounce,
+  no next-click-to-piggyback-on" reasoning as dragging an existing line —
+  see the bullet above). The scratch line itself is deliberately NOT
+  cleared afterward — admin may be looking at a frame where SEVERAL
+  people are missing a line and want to assign the same one to each in
+  turn, so it stays put (and stops appearing on the eligible list for
+  whoever it was just assigned to) until admin either draws a new one or
+  right-clicks it away with "Delete line".
 - **No "own" identity at all.** Admin has no personal row full stop now
   (`activeLabeler()` always returns `null` for admin) — the single-
   identity dial/Progress/Distribution cards (`#angle-card`/

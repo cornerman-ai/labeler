@@ -546,12 +546,91 @@ function renderLine(base, end) {
 // the line is never saved on its own (see applyLabel()), so this just
 // means the next save for this frame won't carry one; a row already saved
 // with a line keeps it until the next save overwrites it.
+//
+// Admin-only addition: right-clicking admin's OWN scratch line also offers
+// "Assign to {name}" for every roster member who answered this frame but
+// has no line of their own — see assignScratchLineTo(). Rebuilt fresh on
+// every open since eligibility depends on the CURRENT frame's data, which
+// changes as you navigate.
+function populateLineContextMenu() {
+  const container = $('line-ctx-assign');
+  container.replaceChildren();
+  container.hidden = true;
+  if (!state.isAdmin || !state.line) return;
+  const f = state.frames[state.i];
+  if (!f) return;
+  const k = key(f);
+  const eligible = state.roster.filter((r) => {
+    const labelsMap = state.teamRows && state.teamRows.get(r.labeler);
+    const row = labelsMap && labelsMap.get(k);
+    // Missing a line specifically — they already answered (a real bucket,
+    // not a skip: a skip never carries a line at all), just never drew one.
+    return row && row.bucket !== null && row.bucket !== SKIP_BUCKET && !(row.base && row.end);
+  });
+  if (!eligible.length) return;
+  container.hidden = false;
+  for (const r of eligible) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu-item';
+    btn.setAttribute('role', 'menuitem');
+    btn.textContent = `Assign to ${r.labeler}`;
+    btn.addEventListener('click', () => assignScratchLineTo(r.labeler));
+    container.appendChild(btn);
+  }
+  const sep = document.createElement('div');
+  sep.className = 'menu-sep';
+  container.appendChild(sep);
+}
+
 function openLineContextMenu(clientX, clientY) {
+  populateLineContextMenu();
   const menu = $('line-ctx-menu');
   menu.hidden = false;
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   menu.style.left = Math.max(4, Math.min(clientX, window.innerWidth - mw - 8)) + 'px';
   menu.style.top = Math.max(4, Math.min(clientY, window.innerHeight - mh - 8)) + 'px';
+}
+
+// Copies admin's current scratch line onto ONE labeler who's missing one
+// — their existing bucket carries over unchanged, only base/end change.
+// Deliberately does NOT clear state.line afterward: admin may want to
+// assign the same line to several people who are all missing one on this
+// same frame, one at a time from the same menu.
+function assignScratchLineTo(name) {
+  const f = state.frames[state.i];
+  if (!f || !state.line) return;
+  const k = key(f);
+  const labelsMap = state.teamRows && state.teamRows.get(name);
+  const prevRow = labelsMap && labelsMap.get(k);
+  if (!labelsMap || !prevRow) return;   // eligibility already checked this, but don't trust a stale menu
+  closeLineContextMenu();
+
+  const base = state.line.base.slice(), end = state.line.end.slice();
+  labelsMap.set(k, Object.assign({}, prevRow, { base, end }));
+  const block = state.adminBlocks.find((b) => b.name === name);
+  if (block) renderAdminBlock(block);
+  renderAdminLines();
+  if (state.agreePair.includes(name)) renderAgreement();
+  status(`Assigning the line to ${name}…`);
+
+  call({
+    action: 'saveFacingAngle', labeler: name, video: f.stem,
+    round: String(f.round), frame: String(f.frame), pts_sec: String(f.pts),
+    stance: f.stance || '',
+    bucket: String(prevRow.bucket),
+    base_x: String(base[0]), base_y: String(base[1]),
+    end_x: String(end[0]), end_y: String(end[1]),
+  }, 'save').then(() => {
+    status(`Assigned the line to ${name}.`, 'ok');
+    scheduleTeamRefresh();
+  }).catch((e) => {
+    labelsMap.set(k, prevRow);
+    if (block) renderAdminBlock(block);
+    renderAdminLines();
+    if (state.agreePair.includes(name)) renderAgreement();
+    status(`Couldn't assign to ${name}: ` + e.message, 'err');
+  });
 }
 function closeLineContextMenu() {
   const menu = $('line-ctx-menu');

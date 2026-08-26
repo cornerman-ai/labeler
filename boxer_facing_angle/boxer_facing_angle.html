@@ -185,6 +185,7 @@ body:not(.admin) #hint-admin { display: none; }
 }
 .ctx-menu .menu-item:hover { background: rgba(120,120,128,.14); }
 .ctx-menu .menu-item-danger:hover { color: var(--no); }
+.ctx-menu .menu-sep { height: 1px; margin: 5px 8px; background: var(--line); }
 
 #side { width: 342px; padding-right: 2px; flex: none; height: 100%;
         overflow-y: auto; scrollbar-gutter: stable;
@@ -565,6 +566,11 @@ body:not(.admin) #admin-stack { display: none; }
     <div id="hint-admin">left-drag = pan &middot; every labeler&rsquo;s line shown, color-coded &mdash; drag anyone&rsquo;s dot to fix it (saves immediately, clues that person&rsquo;s own dial) &middot; right-drag = your own scratch line, never saved &middot; scroll = zoom &middot; double-click = reset</div>
     <div id="zoom-chip"><span id="zoom-pct">100%</span><button id="zoom-reset" type="button">Reset</button></div>
     <div id="line-ctx-menu" class="ctx-menu" role="menu" hidden>
+      <!-- Admin only — one "Assign to {name}" button per roster member who
+           has answered this frame but has no line of their own yet, built
+           fresh on every open by populateLineContextMenu(). Empty and
+           hidden for a normal labeler's own line. -->
+      <div id="line-ctx-assign" hidden></div>
       <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete-line">Delete line</button>
     </div>
   </div>
@@ -700,6 +706,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=24"></script>
+<script src="boxer_facing_angle.js?v=25"></script>
 </body>
 </html>
