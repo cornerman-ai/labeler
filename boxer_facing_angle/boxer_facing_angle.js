@@ -163,7 +163,6 @@ const state = {
   rangePending: new Map(),
 
   agreePair: ['', ''],
-  agreeRows: [null, null],
   agreeDots: null,
 
   // ── admin mode — see the header comment above start() ──
@@ -1294,6 +1293,12 @@ function applyAdminLabel(block, store, isSkip) {
   const end = isSkip ? null : (prev ? prev.end : null);
   labelsMap.set(k, { bucket: isSkip ? SKIP_BUCKET : store, base, end });
   renderAdminBlock(block);
+  // Agreement reads state.teamRows directly (see agreeForSlot()), so this
+  // person's own bucket just changed the ANSWER agreement would see —
+  // repaint it immediately, not on whatever debounce the save's success
+  // handler eventually fires. Only when it's actually relevant: an edit to
+  // someone NOT currently picked for comparison can't change the result.
+  if (state.agreePair.includes(block.name)) renderAgreement();
   status(`Saving ${block.name}’s ${isSkip ? 'skip' : signed(store)}…`);
 
   call({
@@ -1309,6 +1314,7 @@ function applyAdminLabel(block, store, isSkip) {
   }).catch((e) => {
     if (prev) labelsMap.set(k, prev); else labelsMap.delete(k);
     renderAdminBlock(block);
+    if (state.agreePair.includes(block.name)) renderAgreement();
     status(`Save failed for ${block.name}: ` + e.message, 'err');
   });
 }
@@ -1757,48 +1763,33 @@ function populateAgreeSelects() {
   }
 }
 
-async function setAgreePair(idx, name) {
+function setAgreePair(idx, name) {
   state.agreePair[idx] = name;
   saveAgreePair();
-  await refreshAgreement();
+  refreshAgreement();
 }
 
-async function refreshAgreement() {
+// No fetch here anymore — see agreeForSlot()'s own comment for why. This
+// is now just a (cheap) alias for renderAgreement(), kept as its own named
+// function since every call site (setAgreePair, start()'s admin branch,
+// scheduleTeamRefresh()'s post-save debounce) is conceptually asking "the
+// agreement DATA may have changed, please reflect that" — renderAgreement()
+// itself is "repaint from whatever's current," a distinction worth keeping
+// even though both do the same thing today.
+function refreshAgreement() {
   if (!state.isAdmin) return;    // admin-only card — see #agree-card's CSS gate
-  const [a, b] = state.agreePair;
-  if (!a || !b) {
-    state.agreeRows = [null, null];
-    renderAgreement();
-    return;
-  }
-  // A full listFacingAngle fetch for TWO people (one can have thousands of
-  // rows) is slow enough that the grid would otherwise sit showing the
-  // PREVIOUS pair's agree/disagree colors — a stale answer, not a loading
-  // one — for a couple of seconds after picking a new pair. Clear every
-  // dot back to neutral and say so immediately instead of waiting for the
-  // fetch to resolve.
-  $('agree-summary').textContent = 'Loading…';
-  if (state.agreeDots) for (const d of state.agreeDots) d.className = 'd4';
-  $('agree-grid').classList.add('loading');
-  try {
-    const [rowsA, rowsB] = await Promise.all([fetchRows(a), fetchRows(b)]);
-    state.agreeRows = [
-      new Map(rowsA.map((r) => [rowKey(r), rowToLabel(r)])),
-      new Map(rowsB.map((r) => [rowKey(r), rowToLabel(r)])),
-    ];
-  } catch (e) {
-    $('agree-grid').classList.remove('loading');
-    $('agree-summary').textContent = "Couldn't load: " + e.message;
-    return;
-  }
-  $('agree-grid').classList.remove('loading');
   renderAgreement();
 }
 
-// Four states only, by design. A SKIP is a valid answer here, same as any
+// Five states, by design. A SKIP is a valid answer here, same as any
 // bucket — "can't tell" is a real judgment call, not a non-answer — so two
-// skips on the same frame agree (both green), a skip against a bucket
-// disagrees (they gave two different valid answers), and only a frame
+// skips on the same frame agree (both green); a skip against a real
+// bucket has no angular position to measure a distance against, so it's
+// always a straight disagreement (red), never "near". Two real buckets
+// that are NEIGHBORS on the compass (45° apart — see bucketDistance())
+// are "near" (amber): a real miss, but not the kind that says the two
+// labelers were looking at two different sides of the boxer. Only 2+
+// buckets apart (90°+) counts as a genuine disagreement, and only a frame
 // NEITHER labeler has touched at all counts as "neither answered".
 // SKIP_BUCKET for a can't-tell row, the bucket string for a real pick,
 // null for not yet answered at all. A plain top-level function, not a
@@ -1808,19 +1799,50 @@ function agreeAnswerOf(r) {
   return !r || r.bucket === null || r.bucket === undefined ? null : r.bucket;
 }
 
-// Returns a plain string ('agree'/'disagree'/'solo'/'none'), not an
+// Returns a plain string ('agree'/'near'/'disagree'/'solo'/'none'), not an
 // object — this runs once per frame inside renderAgreement()'s full-grid
 // loop (~3,000 calls per pass), so an allocation-free return here plus
 // answerOf() being a shared top-level function instead of a per-call
 // closure. Rebuilt is what let this go from "recomputes 3,000 frames on
 // every navigation" (when renderAgreement() itself used to be called on
 // every showFrame()) down to something worth calling occasionally.
+//
+// Reads straight from state.teamRows — the SAME per-labeler cache
+// applyAdminLabel() updates optimistically the instant admin picks a
+// wedge — instead of a separate state.agreeRows fetched independently for
+// just the two picked names. That separate cache is what caused a real
+// lag: admin's own correction updated teamRows (so the per-person dial/
+// progress/dist all moved right away) but the Agreement grid kept reading
+// its OWN stale snapshot until the next background refresh caught up,
+// sometimes several seconds later. Reading teamRows directly means there
+// is nothing left to go stale — and since loadAllAdminData() already
+// fetched every roster member up front, picking a new pair needs no fetch
+// either now, just a re-render (see refreshAgreement()).
+// Circular distance between two bucket VALUES (degrees: 0/45/90/135/180/
+// -135/-90/-45), in units of 45°-buckets — 0 = same bucket, 1 =
+// neighboring, up to 4 (the two opposite buckets, 180° apart). Reuses
+// norm180()'s wrap-at-180 math, so 180 and -135 come out 1 apart, not 2,
+// matching how the compass actually joins up (see BINS' own ordering).
+function bucketDistance(b1, b2) {
+  return Math.round(Math.abs(norm180(Number(b1) - Number(b2))) / 45);
+}
+
 function agreeForSlot(f) {
   const k = key(f);
-  const ra = state.agreeRows[0] && state.agreeRows[0].get(k);
-  const rb = state.agreeRows[1] && state.agreeRows[1].get(k);
+  const [a, b] = state.agreePair;
+  const mapA = state.teamRows && state.teamRows.get(a);
+  const mapB = state.teamRows && state.teamRows.get(b);
+  const ra = mapA && mapA.get(k);
+  const rb = mapB && mapB.get(k);
   const aAns = agreeAnswerOf(ra), bAns = agreeAnswerOf(rb);
-  if (aAns !== null && bAns !== null) return aAns === bAns ? 'agree' : 'disagree';
+  if (aAns !== null && bAns !== null) {
+    if (aAns === bAns) return 'agree';
+    // A skip against a real pick has no bucket to measure a distance
+    // from — two different KINDS of answer, always a real disagreement,
+    // never "near".
+    if (aAns === SKIP_BUCKET || bAns === SKIP_BUCKET) return 'disagree';
+    return bucketDistance(aAns, bAns) === 1 ? 'near' : 'disagree';
+  }
   if (aAns !== null || bAns !== null) return 'solo';
   return 'none';
 }
@@ -1853,36 +1875,43 @@ function buildAgreeGrid() {
     num.textContent = b + 1;
     const g = document.createElement('span');
     g.className = 'ovn-g';
+    const y = document.createElement('span');
+    y.className = 'ovn-y';
     const r = document.createElement('span');
     r.className = 'ovn-r';
-    n.append(num, g, r);
+    n.append(num, g, y, r);
     n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
     n.style.lineHeight = '9px';
     if (b) n.style.marginTop = '10px';
     col.appendChild(n);
-    state.agreeGutter.push({ g, r, start: b * BATCH, end: b * BATCH + count, node: n });
+    state.agreeGutter.push({ g, y, r, start: b * BATCH, end: b * BATCH + count, node: n });
   }
   gutter.replaceChildren(col);
 }
 
 // The expensive full recompute — every frame's agree/disagree/solo color
-// AND the summary line. Only actually needs to run when state.agreeRows
-// itself changes (a new pair picked, or the post-save debounce), so this
-// is called from refreshAgreement()'s success path, never from frame
-// navigation — see moveAgreementCur() for what showFrame() calls instead.
+// AND the summary line. Only actually needs to run when the underlying
+// data (state.teamRows, for whichever two names are picked) changes — a
+// new pair picked, admin correcting one of the two picked people's own
+// answer (applyAdminLabel() calls this directly, immediately, when that
+// happens — see its own comment), or the post-save debounce for anyone
+// else's edits. Never called from plain frame navigation — see
+// moveAgreementCur() for the cheap thing showFrame() calls instead.
 function renderAgreement() {
   const [a, b] = state.agreePair;
   const summary = $('agree-summary');
   if (!a || !b) { summary.textContent = 'Pick two labelers to compare.'; }
   if (!state.agreeDots) return;
-  let agree = 0, disagree = 0, compared = 0;
-  // Per-batch agree/disagree tallies (gutter's .ovn-g/.ovn-r) — accumulated
-  // in this SAME pass rather than a second loop over all ~3,000 frames.
-  const batchCounts = state.agreeGutter ? state.agreeGutter.map(() => ({ g: 0, r: 0 })) : null;
+  let agree = 0, near = 0, disagree = 0, compared = 0;
+  // Per-batch agree/near/disagree tallies (gutter's .ovn-g/.ovn-y/.ovn-r)
+  // — accumulated in this SAME pass rather than a second loop over all
+  // ~3,000 frames.
+  const batchCounts = state.agreeGutter ? state.agreeGutter.map(() => ({ g: 0, y: 0, r: 0 })) : null;
   for (let i = 0; i < state.frames.length; i++) {
     const kind = agreeForSlot(state.frames[i]);
     let cls = 'd4';
     if (kind === 'agree') { cls += ' agree'; agree++; compared++; }
+    else if (kind === 'near') { cls += ' near'; near++; compared++; }
     else if (kind === 'disagree') { cls += ' disagree'; disagree++; compared++; }
     else if (kind === 'solo') { cls += ' solo'; }
     if (i === state.i) cls += ' cur';
@@ -1891,20 +1920,23 @@ function renderAgreement() {
     if (batchCounts) {
       const bi = (i / BATCH) | 0;
       if (kind === 'agree') batchCounts[bi].g++;
+      else if (kind === 'near') batchCounts[bi].y++;
       else if (kind === 'disagree') batchCounts[bi].r++;
     }
   }
   if (batchCounts) {
     state.agreeGutter.forEach((gu, bi) => {
-      const { g, r } = batchCounts[bi];
+      const { g, y, r } = batchCounts[bi];
       gu.g.textContent = g || '';
+      gu.y.textContent = y || '';
       gu.r.textContent = r || '';
-      gu.node.title = `frames ${gu.start + 1}–${gu.end} — ${g} agree, ${r} disagree`;
+      gu.node.title = `frames ${gu.start + 1}–${gu.end} — ${g} agree, ${y} neighboring bucket, ${r} 2+ buckets off`;
     });
   }
   if (a && b) {
     summary.textContent = compared
-      ? `${Math.round(100 * agree / compared)}% agree · ${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
+      ? `${Math.round(100 * agree / compared)}% agree · ${Math.round(100 * near / compared)}% neighboring · `
+        + `${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
       : 'No frames both have labelled yet.';
   }
 }
@@ -1923,12 +1955,13 @@ function moveAgreementCur() {
   if (dot) dot.classList.add('cur');
 }
 
-// Same four states/colors the on-screen CSS paints (#agree-grid .d4.agree
+// Same five states/colors the on-screen CSS paints (#agree-grid .d4.agree
 // etc.) — hardcoded here rather than read from computed styles since an
 // exported PNG has to look right regardless of the viewer's OS theme, the
 // same reason height_guard's own exports fix to the light palette.
 function agreeFillColor(kind) {
   if (kind === 'agree') return '#34c759';
+  if (kind === 'near') return '#ff9f0a';
   if (kind === 'disagree') return '#ff3b30';
   if (kind === 'solo') return 'rgba(0,113,227,.35)';
   return 'rgba(120,120,128,.22)';
@@ -1938,8 +1971,8 @@ function agreeFillColor(kind) {
 // exportDisagreementPNG() — that one lays out three metrics side by side
 // with per-point chin/shoulder distance stats, because height_guard's
 // agreement is a continuous distance on two different points. This tool's
-// whole comparison is one exact bucket match, already fully described by
-// the same four states the on-screen grid and legend show, so the export
+// whole comparison is a bucket-distance check, already fully described by
+// the same five states the on-screen grid and legend show, so the export
 // is just that grid + legend + the same summary line, rendered to a
 // downloadable PNG — no metrics to pick between, no distance stats to
 // print.
@@ -1950,17 +1983,17 @@ function exportAgreementPNG() {
 
   const kinds = state.frames.map((f) => agreeForSlot(f));
   const nBatches = Math.max(1, Math.ceil(state.frames.length / BATCH));
-  // Per-batch agree/disagree tallies — same idea as the on-screen gutter's
-  // own .ovn-g/.ovn-r, printed into this export too.
+  // Per-batch agree/near/disagree tallies — same idea as the on-screen
+  // gutter's own .ovn-g/.ovn-y/.ovn-r, printed into this export too.
   const batchG = new Array(nBatches).fill(0);
+  const batchY = new Array(nBatches).fill(0);
   const batchR = new Array(nBatches).fill(0);
-  let agree = 0, compared = 0;
+  let agree = 0, near = 0, compared = 0;
   kinds.forEach((kind, i) => {
-    if (kind === 'agree' || kind === 'disagree') {
-      compared++;
-      if (kind === 'agree') { agree++; batchG[(i / BATCH) | 0]++; }
-      else batchR[(i / BATCH) | 0]++;
-    }
+    const bi = (i / BATCH) | 0;
+    if (kind === 'agree') { agree++; compared++; batchG[bi]++; }
+    else if (kind === 'near') { near++; compared++; batchY[bi]++; }
+    else if (kind === 'disagree') { compared++; batchR[bi]++; }
   });
 
   const DOT = 9, GAP = 3, GUTTER = 30, MARGIN = 16, BATCH_GAP = 12, LINE_H = 10;
@@ -2001,13 +2034,14 @@ function exportAgreementPNG() {
   ctx.fillStyle = '#1d1d1f';
   ctx.fillText(
     compared
-      ? `${Math.round(100 * agree / compared)}% agree · ${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
+      ? `${Math.round(100 * agree / compared)}% agree · ${Math.round(100 * near / compared)}% neighboring · `
+        + `${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
       : 'No frames both have labelled yet.',
     MARGIN, statY);
 
-  // Same four legend entries as #agree-card's own .legend, same order.
+  // Same five legend entries as #agree-card's own .legend, same order.
   const legendItems = [
-    ['#34c759', 'agree'], ['#ff3b30', 'disagree'],
+    ['#34c759', 'agree'], ['#ff9f0a', 'neighboring bucket'], ['#ff3b30', '2+ buckets off'],
     ['rgba(0,113,227,.35)', 'one answered'], ['rgba(120,120,128,.22)', 'neither answered'],
   ];
   let lx = MARGIN;
@@ -2032,13 +2066,13 @@ function exportAgreementPNG() {
     ctx.fillStyle = '#1d1d1f';
     ctx.fillText(String(bi + 1), MARGIN, rowTop);
 
-    // This batch's own agree/disagree tally, right-aligned just left of
-    // its dot grid — zero entries skipped rather than printed as "0", so
-    // the eye is drawn to batches with something to point at.
+    // This batch's own agree/near/disagree tally, right-aligned just left
+    // of its dot grid — zero entries skipped rather than printed as "0",
+    // so the eye is drawn to batches with something to point at.
     ctx.font = `700 9px ${FONT}`;
     ctx.textAlign = 'right';
     let ty = rowTop;
-    for (const [val, color] of [[batchG[bi], '#34c759'], [batchR[bi], '#ff3b30']]) {
+    for (const [val, color] of [[batchG[bi], '#34c759'], [batchY[bi], '#ff9f0a'], [batchR[bi], '#ff3b30']]) {
       if (!val) continue;
       ctx.fillStyle = color;
       ctx.fillText(String(val), dotsX - 3, ty);

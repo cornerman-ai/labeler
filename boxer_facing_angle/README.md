@@ -319,39 +319,62 @@ kept only what still made sense, primitively:
 - **Agreement (moved here from every-labeler)** — two `<select>` pickers
   over the roster (`state.agreePair`, defaulting to `['Arianne', 'John']`
   — chin_tuck_4.0's own default pair — persisted the same way chin_tuck's
-  own `agreePair` is), fetched **on demand** — two `listFacingAngle` calls,
-  one per picked name, not chin_tuck's `loadTeamRows()` fan-out over the
-  whole roster. Originally open to every labeler; moved admin-only since
-  a normal labeler comparing two OTHER people's answers isn't part of
-  their own job, and it was firing two extra fetches on every page load
-  for everyone (`refreshAgreement()`'s own `!state.isAdmin` guard is what
-  stops that now, same gate the CSS uses to hide `#agree-card`). Compares
-  the **stored answer directly** — exact match, nothing derived from a
-  line — so a labeler who never draws one is compared exactly the same
-  way as one who always does. Reuses the `.d4-grid`/`.ovn` overview
-  machinery. Four states, deliberately no more: **green** = both gave the
-  SAME answer, **red** = both answered but differently, **light blue**
+  own `agreePair` is). Reads **straight from `state.teamRows`**
+  (`agreeForSlot()`) — the same per-labeler cache the admin stack itself
+  is built from, already fully loaded for every roster member by
+  `loadAllAdminData()` — rather than a separate fetch for just the two
+  picked names. An earlier version DID fetch separately
+  (`state.agreeRows`, two `listFacingAngle` calls per pick), and that
+  second cache was a real bug, not just slower than necessary: admin
+  correcting someone's answer updated `teamRows` immediately (so that
+  person's own dial/progress/dist all moved right away) but the Agreement
+  grid kept reading its OWN stale snapshot until the next background
+  refresh caught up — sometimes several seconds later, sometimes not
+  until the next manual pair-pick. Reading `teamRows` directly means
+  there's nothing left to go stale: `applyAdminLabel()` now calls
+  `renderAgreement()` immediately, synchronously, whenever the person it
+  just edited is one of the two currently picked — the instant a wedge
+  click resolves disagreement into agreement, that frame's dot is green,
+  no debounce, no save round-trip to wait for. Picking a new pair is now
+  instant too, for the same reason — no fetch to wait on, just a
+  re-render from data that was already there. Compares the **stored
+  answer directly** — nothing derived from a line — so a labeler who
+  never draws one is compared exactly the same way as one who always
+  does. Reuses the `.d4-grid`/`.ovn` overview machinery. Five states:
+  **green** (`.agree`) = both gave the SAME bucket; **amber** (`.near`,
+  `--maybe`) = two REAL buckets that are NEIGHBORS on the compass — 45°
+  apart, `bucketDistance()` — a real miss, but not the kind that says the
+  two labelers were reading two different sides of the boxer; **red**
+  (`.disagree`) = 2+ buckets apart (90° or more), or a skip against a real
+  bucket (a skip has no angular position to measure a distance against,
+  so it's always a straight disagreement, never "near"); **light blue**
   (`.solo`, the same faded-accent chin_tuck_4.0 uses for its own solo
-  dots) = exactly one of the two has answered, **grey** = neither has. A
-  skip counts as a real answer here — "can't tell" is a judgment call, not
-  a non-answer — so two skips on the same frame agree (green) exactly
-  like two matching buckets would, and a skip against a bucket disagrees
-  (red), since they're two different valid answers. No kappa panel, no
-  PNG export, no threshold controls (the adjustable chin/shoulder
-  thresholds and three-axis euclid/height/width grids don't apply — this
-  tool's whole comparison is one exact bucket match). `renderAgreement()`
-  (the full ~3,000-frame recompute) only runs when `state.agreeRows`
-  itself changes — picking a pair, or the post-save debounce. Frame
-  navigation calls `moveAgreementCur()` instead, which only moves the
-  `.cur` outline: an earlier version called the FULL recompute from
-  `showFrame()` (to fix the outline lagging behind on click — a real bug,
-  see the git history), which fixed that but meant every arrow-key press
-  or admin-stack click was re-deriving agree/disagree colors for every
-  frame just to move one outline — the actual cause of a reported "colors
-  updating slowly" complaint. `agreeForSlot()` itself also dropped a
-  closure and an array/object allocation it was rebuilding on every one of
-  those ~3,000 calls per pass (`agreeAnswerOf()` is now a shared top-level
-  function, and the return value is a plain string).
+  dots) = exactly one of the two has answered; **grey** = neither has.
+  Two skips on the same frame still agree (green) — "can't tell" is a
+  judgment call, not a non-answer, same reasoning as before this only had
+  agree/disagree. `bucketDistance()` reuses `norm180()`'s own wrap-at-180
+  math, so 180° and -135° come out 1 bucket apart, not 2, matching how the
+  compass actually joins up. An earlier version of this session tried a
+  SECOND grid/card for the loosened comparison, sitting right below the
+  first — reverted before it was ever wired up: recoloring the ONE grid
+  three ways said the same thing with half the UI. `renderAgreement()`
+  (the full ~3,000-frame recompute, plus the per-batch agree/near/
+  disagree gutter counts, `.ovn-g`/`.ovn-y`/`.ovn-r`) only runs when the
+  underlying data actually changes — picking a pair, admin correcting one
+  of the two picked people (as above), or the post-save debounce for
+  anyone else's edits. Frame navigation calls `moveAgreementCur()`
+  instead, which only moves the `.cur` outline: an earlier version called
+  the FULL recompute from `showFrame()` (to fix the outline lagging behind
+  on click — a real bug, see the git history), which fixed that but meant
+  every arrow-key press or admin-stack click was re-deriving agree/
+  disagree colors for every frame just to move one outline.
+  `agreeForSlot()` itself also dropped a closure and an array/object
+  allocation it was rebuilding on every one of those ~3,000 calls per pass
+  (`agreeAnswerOf()` is now a shared top-level function, and the return
+  value is a plain string). No kappa panel, no threshold controls (the
+  adjustable chin/shoulder thresholds and three-axis euclid/height/width
+  grids don't apply — this tool's whole comparison is a bucket-distance
+  check, already fully captured by the five states above).
 - **Skipped — no live-collision risk to guard against.** Presence
   ping/banner exists in height_guard because admin might start dragging
   the exact point a labeler is also looking at; here admin edits one
@@ -362,19 +385,19 @@ kept only what still made sense, primitively:
   That one lays out three metrics side by side with per-point chin/
   shoulder distance stats, because height_guard's agreement is a
   continuous distance on two different points; this tool's whole
-  comparison is one exact bucket match, already fully described by the
-  same four states the on-screen grid and legend show, so the export is
+  comparison is a bucket-distance check, already fully described by the
+  same five states the on-screen grid and legend show, so the export is
   just that grid + legend + the same summary line rendered to a
   downloadable PNG (`<canvas>` → `toBlob` → a clicked, revoked object URL)
   — no metric to pick between, no distance stats to print. Both the
-  on-screen gutter (`.ovn-g`/`.ovn-r`, added alongside the export — the
-  Progress grid's own `.ovn-g`/`.ovn-s` pattern, agree/disagree instead of
-  labelled/skipped) and the PNG print each batch's own agree/disagree
+  on-screen gutter (`.ovn-g`/`.ovn-y`/`.ovn-r`, added alongside the export
+  — the Progress grid's own `.ovn-g`/`.ovn-s` pattern, agree/near/
+  disagree instead of labelled/skipped) and the PNG print each batch's own
   tally, computed in the SAME pass as the dot colors themselves
   (`renderAgreement()`'s loop accumulates `batchCounts` alongside painting
-  each dot; the export precomputes `batchG`/`batchR` the same way) rather
-  than a second full pass over every frame. Zero entries are skipped
-  rather than printed as "0", so the eye is drawn to batches with
+  each dot; the export precomputes `batchG`/`batchY`/`batchR` the same
+  way) rather than a second full pass over every frame. Zero entries are
+  skipped rather than printed as "0", so the eye is drawn to batches with
   something to point at. Colors are hardcoded to the light palette rather
   than read from computed styles, same reason height_guard's own exports do:
   a downloaded image has to read correctly

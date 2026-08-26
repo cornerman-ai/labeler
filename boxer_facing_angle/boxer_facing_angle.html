@@ -316,11 +316,12 @@ body:not(.ready) #lock { display: block; }
 .ovn-g { color: var(--yes); font-weight: 700; }
 .ovn-s { color: var(--ink-dim); font-weight: 700; }
 .ovn-g:empty, .ovn-s:empty { display: none; }
-/* Agreement grid's own gutter reuses .ovn-g (agree) and adds .ovn-r
-   (disagree) — same idea as Progress's g/s pair, just agree/disagree
-   instead of labelled/skipped. */
+/* Agreement grid's own gutter reuses .ovn-g (agree) and adds .ovn-y
+   (neighboring bucket) and .ovn-r (2+ buckets off) — same idea as
+   Progress's g/s pair, just three agreement outcomes instead of two. */
+.ovn-y { color: var(--maybe); font-weight: 700; }
 .ovn-r { color: var(--no); font-weight: 700; }
-.ovn-r:empty { display: none; }
+.ovn-y:empty, .ovn-r:empty { display: none; }
 .d4-grid { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px;
            align-content: start; }
 .d4-grid .d4 {
@@ -331,17 +332,14 @@ body:not(.ready) #lock { display: block; }
 .d4-grid .d4.dn { background: var(--yes); }
 .d4-grid .d4.sk { background: var(--ink-dim); }
 #agree-grid .d4.agree { background: var(--yes); }
+/* Neighboring bucket (45° apart) — a real miss, but not the kind that
+   says the two labelers were reading two different sides of the boxer. */
+#agree-grid .d4.near { background: var(--maybe); }
 #agree-grid .d4.disagree { background: var(--no); }
 /* Same "faded accent = one opinion so far" language chin_tuck_4.0's own
    overview grid uses for its .solo dots. */
 #agree-grid .d4.solo { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 .d4-grid .d4.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
-/* While a new agree pair's rows are still loading — see refreshAgreement()
-   — the grid is already cleared to neutral dots; this just signals "still
-   working" rather than "nobody answered anything," same breathing pulse
-   #lock uses while a normal labeler's own rows load. */
-#agree-grid.loading { animation: breathe 1.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { #agree-grid.loading { animation: none; opacity: .55; } }
 .legend { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 6px;
           font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
 .legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block;
@@ -672,7 +670,8 @@ body:not(.admin) #admin-stack { display: none; }
       <div class="ovw"><div class="ovn"></div><div id="agree-grid" class="d4-grid"></div></div>
       <div class="legend">
         <span><b style="background:var(--yes)"></b>agree</span>
-        <span><b style="background:var(--no)"></b>disagree</span>
+        <span><b style="background:var(--maybe)"></b>neighboring bucket</span>
+        <span><b style="background:var(--no)"></b>2+ buckets off</span>
         <span><b style="background:color-mix(in srgb, var(--accent) 35%, transparent)"></b>one answered</span>
         <span><b style="background:color-mix(in srgb, var(--ink-dim) 22%, transparent)"></b>neither answered</span>
       </div>
@@ -701,6 +700,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=22"></script>
+<script src="boxer_facing_angle.js?v=24"></script>
 </body>
 </html>
