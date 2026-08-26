@@ -357,10 +357,31 @@ kept only what still made sense, primitively:
   the exact point a labeler is also looking at; here admin edits one
   identity at a time, sequentially, never simultaneously with the real
   labeler, so there's nothing to warn anyone about.
-- **Skipped — real complexity for a "keep it primitive" ask.** PNG export
-  (~400 lines of hand-drawn canvas layout in height_guard) and the
-  manual re-push button (nothing here holds a teammate's unsent draft row
-  to re-send — every save, admin's or not, lands immediately).
+- **PNG export (`#agree-export`, `exportAgreementPNG()`)** — added later,
+  a single-column cut of height_guard's own `exportDisagreementPNG()`.
+  That one lays out three metrics side by side with per-point chin/
+  shoulder distance stats, because height_guard's agreement is a
+  continuous distance on two different points; this tool's whole
+  comparison is one exact bucket match, already fully described by the
+  same four states the on-screen grid and legend show, so the export is
+  just that grid + legend + the same summary line rendered to a
+  downloadable PNG (`<canvas>` → `toBlob` → a clicked, revoked object URL)
+  — no metric to pick between, no distance stats to print. Both the
+  on-screen gutter (`.ovn-g`/`.ovn-r`, added alongside the export — the
+  Progress grid's own `.ovn-g`/`.ovn-s` pattern, agree/disagree instead of
+  labelled/skipped) and the PNG print each batch's own agree/disagree
+  tally, computed in the SAME pass as the dot colors themselves
+  (`renderAgreement()`'s loop accumulates `batchCounts` alongside painting
+  each dot; the export precomputes `batchG`/`batchR` the same way) rather
+  than a second full pass over every frame. Zero entries are skipped
+  rather than printed as "0", so the eye is drawn to batches with
+  something to point at. Colors are hardcoded to the light palette rather
+  than read from computed styles, same reason height_guard's own exports do:
+  a downloaded image has to read correctly
+  regardless of the viewer's OS theme.
+- **Skipped — real complexity with no clear ask.** The manual re-push
+  button — nothing here holds a teammate's unsent draft row to re-send,
+  every save (admin's or not) lands immediately.
 - **Not admin-gated.** "Everyone's progress" stays open to every
   labeler — it's each person's own read on where the whole team stands,
   not an admin-only view.

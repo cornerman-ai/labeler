@@ -316,6 +316,11 @@ body:not(.ready) #lock { display: block; }
 .ovn-g { color: var(--yes); font-weight: 700; }
 .ovn-s { color: var(--ink-dim); font-weight: 700; }
 .ovn-g:empty, .ovn-s:empty { display: none; }
+/* Agreement grid's own gutter reuses .ovn-g (agree) and adds .ovn-r
+   (disagree) — same idea as Progress's g/s pair, just agree/disagree
+   instead of labelled/skipped. */
+.ovn-r { color: var(--no); font-weight: 700; }
+.ovn-r:empty { display: none; }
 .d4-grid { display: grid; grid-template-columns: repeat(20, 9px); gap: 3px;
            align-content: start; }
 .d4-grid .d4 {
@@ -391,6 +396,17 @@ body:not(.admin) #admin-stack { display: none; }
 }
 #admin-refresh:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
 #admin-note { font-size: 11.5px; color: var(--ink-dim); margin: 6px 0 0; }
+
+#agree-head { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: 9px; }
+#agree-head .card-eyebrow { margin: 0; }
+#agree-export {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 11.5px; font-weight: 500; color: var(--ink-dim);
+}
+#agree-export:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink); }
+#agree-export:disabled { opacity: .4; }
 
 /* ── the per-person stack ─────────────────────────────────────────────────
    One block per roster member (buildAdminStack()): a name heading, then
@@ -643,7 +659,10 @@ body:not(.admin) #admin-stack { display: none; }
     </div>
 
     <div class="card" id="agree-card">
-      <p class="card-eyebrow">Agreement</p>
+      <div id="agree-head">
+        <p class="card-eyebrow">Agreement</p>
+        <button type="button" id="agree-export">Export PNG</button>
+      </div>
       <div id="agree-pickers">
         <select id="agree-a"></select>
         <span>vs</span>
@@ -682,6 +701,6 @@ body:not(.admin) #admin-stack { display: none; }
 </div>
 
 <script src="../shared/labeler_name.js"></script>
-<script src="boxer_facing_angle.js?v=20"></script>
+<script src="boxer_facing_angle.js?v=22"></script>
 </body>
 </html>

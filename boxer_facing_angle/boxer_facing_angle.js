@@ -1844,15 +1844,23 @@ function buildAgreeGrid() {
   };
   const gutter = document.querySelector('#agree-card .ovn');
   const col = document.createDocumentFragment();
+  state.agreeGutter = [];
   for (let b = 0; b * BATCH < state.frames.length; b++) {
     const count = Math.min(BATCH, state.frames.length - b * BATCH);
     const rows = Math.ceil(count / BATCH_COLS);
     const n = document.createElement('b');
-    n.textContent = b + 1;
+    const num = document.createElement('span');
+    num.textContent = b + 1;
+    const g = document.createElement('span');
+    g.className = 'ovn-g';
+    const r = document.createElement('span');
+    r.className = 'ovn-r';
+    n.append(num, g, r);
     n.style.height = `${rows * 9 + (rows - 1) * 3}px`;
     n.style.lineHeight = '9px';
     if (b) n.style.marginTop = '10px';
     col.appendChild(n);
+    state.agreeGutter.push({ g, r, start: b * BATCH, end: b * BATCH + count, node: n });
   }
   gutter.replaceChildren(col);
 }
@@ -1868,6 +1876,9 @@ function renderAgreement() {
   if (!a || !b) { summary.textContent = 'Pick two labelers to compare.'; }
   if (!state.agreeDots) return;
   let agree = 0, disagree = 0, compared = 0;
+  // Per-batch agree/disagree tallies (gutter's .ovn-g/.ovn-r) — accumulated
+  // in this SAME pass rather than a second loop over all ~3,000 frames.
+  const batchCounts = state.agreeGutter ? state.agreeGutter.map(() => ({ g: 0, r: 0 })) : null;
   for (let i = 0; i < state.frames.length; i++) {
     const kind = agreeForSlot(state.frames[i]);
     let cls = 'd4';
@@ -1877,6 +1888,19 @@ function renderAgreement() {
     if (i === state.i) cls += ' cur';
     state.agreeDots[i].className = cls;
     state.agreeDots[i].title = `#${i + 1} — ${kind}`;
+    if (batchCounts) {
+      const bi = (i / BATCH) | 0;
+      if (kind === 'agree') batchCounts[bi].g++;
+      else if (kind === 'disagree') batchCounts[bi].r++;
+    }
+  }
+  if (batchCounts) {
+    state.agreeGutter.forEach((gu, bi) => {
+      const { g, r } = batchCounts[bi];
+      gu.g.textContent = g || '';
+      gu.r.textContent = r || '';
+      gu.node.title = `frames ${gu.start + 1}–${gu.end} — ${g} agree, ${r} disagree`;
+    });
   }
   if (a && b) {
     summary.textContent = compared
@@ -1897,6 +1921,153 @@ function moveAgreementCur() {
   if (prevCur) prevCur.classList.remove('cur');
   const dot = state.agreeDots[state.i];
   if (dot) dot.classList.add('cur');
+}
+
+// Same four states/colors the on-screen CSS paints (#agree-grid .d4.agree
+// etc.) — hardcoded here rather than read from computed styles since an
+// exported PNG has to look right regardless of the viewer's OS theme, the
+// same reason height_guard's own exports fix to the light palette.
+function agreeFillColor(kind) {
+  if (kind === 'agree') return '#34c759';
+  if (kind === 'disagree') return '#ff3b30';
+  if (kind === 'solo') return 'rgba(0,113,227,.35)';
+  return 'rgba(120,120,128,.22)';
+}
+
+// A single-column, single-metric cut of height_guard's own
+// exportDisagreementPNG() — that one lays out three metrics side by side
+// with per-point chin/shoulder distance stats, because height_guard's
+// agreement is a continuous distance on two different points. This tool's
+// whole comparison is one exact bucket match, already fully described by
+// the same four states the on-screen grid and legend show, so the export
+// is just that grid + legend + the same summary line, rendered to a
+// downloadable PNG — no metrics to pick between, no distance stats to
+// print.
+function exportAgreementPNG() {
+  if (!state.isAdmin || !state.frames.length) return;
+  const [a, b] = state.agreePair;
+  if (!a || !b) { status('Pick two labelers to compare first.', 'err'); return; }
+
+  const kinds = state.frames.map((f) => agreeForSlot(f));
+  const nBatches = Math.max(1, Math.ceil(state.frames.length / BATCH));
+  // Per-batch agree/disagree tallies — same idea as the on-screen gutter's
+  // own .ovn-g/.ovn-r, printed into this export too.
+  const batchG = new Array(nBatches).fill(0);
+  const batchR = new Array(nBatches).fill(0);
+  let agree = 0, compared = 0;
+  kinds.forEach((kind, i) => {
+    if (kind === 'agree' || kind === 'disagree') {
+      compared++;
+      if (kind === 'agree') { agree++; batchG[(i / BATCH) | 0]++; }
+      else batchR[(i / BATCH) | 0]++;
+    }
+  });
+
+  const DOT = 9, GAP = 3, GUTTER = 30, MARGIN = 16, BATCH_GAP = 12, LINE_H = 10;
+  const ROWS = Math.ceil(BATCH / BATCH_COLS);
+  const colW = BATCH_COLS * DOT + (BATCH_COLS - 1) * GAP;
+  const batchH = ROWS * DOT + (ROWS - 1) * GAP;
+  const dotsX = MARGIN + GUTTER;
+
+  const titleY = 24, subY = 44, statY = 64, legendY = 88;
+  const gridTop = legendY + 16;
+  const W = MARGIN * 2 + GUTTER + colW;
+  const H = gridTop + nBatches * batchH + (nBatches - 1) * BATCH_GAP + MARGIN;
+
+  const scale = 2; // crisp on a retina display without the file ballooning
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+
+  ctx.fillStyle = '#f5f5f7';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#1d1d1f';
+  ctx.font = `600 15px ${FONT}`;
+  ctx.fillText(`Agreement — ${a} × ${b}`, MARGIN, titleY);
+
+  const stamp = new Date().toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  ctx.font = `400 12px ${FONT}`;
+  ctx.fillStyle = '#6e6e73';
+  ctx.fillText(`${state.frames.length.toLocaleString()} frames, ${nBatches} batches — exported ${stamp}`,
+               MARGIN, subY);
+
+  ctx.font = `600 12px ${FONT}`;
+  ctx.fillStyle = '#1d1d1f';
+  ctx.fillText(
+    compared
+      ? `${Math.round(100 * agree / compared)}% agree · ${compared.toLocaleString()} of ${state.frames.length.toLocaleString()} compared`
+      : 'No frames both have labelled yet.',
+    MARGIN, statY);
+
+  // Same four legend entries as #agree-card's own .legend, same order.
+  const legendItems = [
+    ['#34c759', 'agree'], ['#ff3b30', 'disagree'],
+    ['rgba(0,113,227,.35)', 'one answered'], ['rgba(120,120,128,.22)', 'neither answered'],
+  ];
+  let lx = MARGIN;
+  ctx.font = `400 11px ${FONT}`;
+  for (const [color, label] of legendItems) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(lx, legendY - 8, 8, 8, 2);
+    ctx.fill();
+    lx += 12;
+    ctx.fillStyle = '#6e6e73';
+    ctx.fillText(label, lx, legendY);
+    lx += ctx.measureText(label).width + 14;
+  }
+
+  ctx.textBaseline = 'top';
+  for (let bi = 0; bi < nBatches; bi++) {
+    const rowTop = gridTop + bi * (batchH + BATCH_GAP);
+    const start = bi * BATCH, end = Math.min(start + BATCH, state.frames.length);
+
+    ctx.font = `600 9px ${FONT}`;
+    ctx.fillStyle = '#1d1d1f';
+    ctx.fillText(String(bi + 1), MARGIN, rowTop);
+
+    // This batch's own agree/disagree tally, right-aligned just left of
+    // its dot grid — zero entries skipped rather than printed as "0", so
+    // the eye is drawn to batches with something to point at.
+    ctx.font = `700 9px ${FONT}`;
+    ctx.textAlign = 'right';
+    let ty = rowTop;
+    for (const [val, color] of [[batchG[bi], '#34c759'], [batchR[bi], '#ff3b30']]) {
+      if (!val) continue;
+      ctx.fillStyle = color;
+      ctx.fillText(String(val), dotsX - 3, ty);
+      ty += LINE_H;
+    }
+    ctx.textAlign = 'left';
+
+    for (let i = start; i < end; i++) {
+      const local = i - start;
+      const col = local % BATCH_COLS, row = (local / BATCH_COLS) | 0;
+      const x = dotsX + col * (DOT + GAP), y = rowTop + row * (DOT + GAP);
+      ctx.fillStyle = agreeFillColor(kinds[i]);
+      ctx.beginPath();
+      ctx.roundRect(x, y, DOT, DOT, 2);
+      ctx.fill();
+    }
+  }
+  ctx.textBaseline = 'alphabetic';
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const stampFile = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `agreement-boxer_facing_angle-${a.toLowerCase()}-${b.toLowerCase()}-${stampFile}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
 }
 
 // ── bug report console ─────────────────────────────────────────────────────
@@ -2038,6 +2209,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshAgreement();
 
   $('admin-refresh').addEventListener('click', loadAllAdminData);
+  $('agree-export').addEventListener('click', exportAgreementPNG);
 
   // ── stage: pan, draw/adjust the assistant line, zoom ───────────────────
   // The two buttons do two unrelated things, so there's no click-vs-drag
