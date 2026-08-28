@@ -72,6 +72,17 @@ Swap `boxer_facing_angle_frames.json` for a fresh run (same shape:
 `{stem, round, frame, pts, stance}[]`) if the gate or targets ever change,
 and bump the `?v=` on the script tag.
 
+**Addendum (2026-08-28):** 4,926 frames from 8 known-facing-angle test clips
+(`alex_angle_test_clips`, shot specifically to stress-test this tool) were
+appended at the end of the queue — 2,976 → 7,902 total. `round` is always
+`0` for these (they have no Sheet/BlazePose-round data); `stance` is
+`"Unknown"` for all of them, unlike every original-build row. The true
+angle is deliberately NOT in this file — labelers answer these blind like
+everything else — it's tracked only in cornerman-backend's
+`ml/research/boxer_facing_angle/v1/alex_angle_frames_manifest.json` for
+later scoring. See that folder's README for the build
+(`add_alex_angle_frames.py`).
+
 ⚠ The queue's LENGTH is the version stamp for the cached team ranges
 (`fa_range_cache`) — a rebuilt queue of a different size drops the cache by
 itself, but a rebuild that happens to keep the same count would leave stale
