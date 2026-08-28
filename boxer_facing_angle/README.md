@@ -83,6 +83,12 @@ everything else — it's tracked only in cornerman-backend's
 later scoring. See that folder's README for the build
 (`add_alex_angle_frames.py`).
 
+**Batch 2 (2026-08-28, same day):** 2,599 more frames appended — all of two
+new clips, `IMG_1825_-135` (-135°) and `IMG_1826_0` (0°), filling the
+compass buckets that were still thinnest after batch 1. 7,902 → 10,501
+total. Same round=0/stance=Unknown/no-angle conventions as batch 1
+(`add_alex_angle_frames_batch2.py`).
+
 ⚠ The queue's LENGTH is the version stamp for the cached team ranges
 (`fa_range_cache`) — a rebuilt queue of a different size drops the cache by
 itself, but a rebuild that happens to keep the same count would leave stale
