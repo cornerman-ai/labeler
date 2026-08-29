@@ -79,9 +79,12 @@ appended at the end of the queue — 2,976 → 7,902 total. `round` is always
 `"Unknown"` for all of them, unlike every original-build row. The true
 angle is deliberately NOT in this file — labelers answer these blind like
 everything else — it's tracked only in cornerman-backend's
-`ml/research/boxer_facing_angle/v1/alex_angle_frames_manifest.json` for
-later scoring. See that folder's README for the build
-(`add_alex_angle_frames.py`).
+`ml/research/boxer_facing_angle/v1/alex_angle_test_clips/alex_angle_frames_manifest.json`
+for later scoring. See that folder's README for the build
+(`add_alex_angle_frames.py`) **and the retrain verdict — this data was
+tried and rejected for training** (made accuracy worse in every
+configuration tested); the queue addition itself stands regardless, this
+is only about whether it should feed the production model.
 
 **Batch 2 (2026-08-28, same day):** 2,599 more frames appended — all of two
 new clips, `IMG_1825_-135` (-135°) and `IMG_1826_0` (0°), filling the
