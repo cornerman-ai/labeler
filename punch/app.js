@@ -867,42 +867,128 @@ function kappaBand(k) {
   return { word: 'very good', tone: 'ok' };
 }
 
+// Spread, not just a mean. A mean IoU of 0.7 can be twenty tight pairs or
+// ten perfect ones and ten scrapes past the 0.3 floor, and those call for
+// different action — the second is a boundary convention that needs
+// agreeing, the first is just noise. Median plus min/max says which.
+function iouStats(values) {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length % 2
+    ? s[(s.length - 1) / 2]
+    : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  return {
+    n: s.length,
+    mean: +(s.reduce((a, b) => a + b, 0) / s.length).toFixed(2),
+    median: +mid.toFixed(2),
+    min: +s[0].toFixed(2),
+    max: +s[s.length - 1].toFixed(2),
+  };
+}
+
+// Everything derivable from one set of matched pairs plus the two solo
+// lists. Factored out because it is computed three times over — for the
+// video as a whole, and again inside each round.
+function pairStats(pairs, onlyA, onlyB) {
+  const agreedPairs = pairs.filter(p => p.a.punch === p.b.punch);
+  const kappa = cohensKappa(pairs);
+  return {
+    matched: pairs.length,
+    typeAgree: agreedPairs.length,
+    // Of the punches BOTH found, how often did they call it the same move.
+    // Kept separate from the count because "we both saw a punch here" and
+    // "we both think it was a jab" fail differently.
+    typePct: pairs.length ? Math.round((agreedPairs.length / pairs.length) * 100) : null,
+    // Timing spread over the pairs they AGREED on — averaging in a
+    // jab-vs-cross pair would be measuring the wrong thing.
+    iou: iouStats(agreedPairs.map(p => p.iou)),
+    kappa: kappa === null ? null : +kappa.toFixed(2),
+    kappaBand: kappaBand(kappa),
+    // Signed, so it reads as a direction rather than a magnitude: a
+    // consistent offset is a habit one of them can correct, which a mean
+    // absolute error would have hidden.
+    offsetMs: pairs.length
+      ? Math.round((pairs.reduce((s, p) => s + (p.a.start - p.b.start), 0) / pairs.length) * 1000)
+      : null,
+    onlyA: onlyA.length,
+    onlyB: onlyB.length,
+    // Punches exactly one person marked. The headline number for coverage:
+    // high here means the two are not even looking at the same events, which
+    // no amount of type agreement makes up for.
+    solo: onlyA.length + onlyB.length,
+  };
+}
+
 // Per-move agreement. The single headline mean hides the thing you'd
 // actually act on: a taxonomy usually fails on ONE distinction, and a
 // timing problem is usually specific to one kind of move (uppercuts start
 // ambiguously; jabs don't). A move counts toward `both` when EITHER labeler
 // called it that, and toward `agreed` only when both did — so a move that
 // one person always sees and the other never does shows up as a low
-// percentage rather than silently vanishing.
-function perMoveBreakdown(pairs) {
+// percentage rather than silently vanishing. Solo punches are counted per
+// move too, which is what answers "how many did just one of us catch".
+function perMoveBreakdown(pairs, onlyA, onlyB) {
   const acc = {};
-  const bump = (id, key) => {
-    if (!acc[id]) acc[id] = { move: id, both: 0, agreed: 0, iouSum: 0 };
-    acc[id][key]++;
-  };
+  const get = (id) => (acc[id] || (acc[id] = { move: id, both: 0, agreed: 0, ious: [], onlyA: 0, onlyB: 0 }));
   pairs.forEach(p => {
-    const same = p.a.punch === p.b.punch;
-    if (same) {
-      bump(p.a.punch, 'both');
-      bump(p.a.punch, 'agreed');
-      acc[p.a.punch].iouSum += p.iou;
+    if (p.a.punch === p.b.punch) {
+      const r = get(p.a.punch);
+      r.both++; r.agreed++; r.ious.push(p.iou);
     } else {
-      bump(p.a.punch, 'both');
-      bump(p.b.punch, 'both');
+      get(p.a.punch).both++;
+      get(p.b.punch).both++;
     }
   });
+  onlyA.forEach(l => get(l.punch).onlyA++);
+  onlyB.forEach(l => get(l.punch).onlyB++);
   return Object.values(acc)
     .map(r => ({
-      move: r.move,
+      ...r,
       label: punchLabel(r.move),
-      both: r.both,
-      agreed: r.agreed,
-      pct: Math.round((r.agreed / r.both) * 100),
-      // Timing overlap only over the pairs they AGREED were this move —
-      // averaging in a jab-vs-cross pair would be measuring the wrong thing.
-      meanIoU: r.agreed ? +(r.iouSum / r.agreed).toFixed(2) : null,
+      total: r.both + r.onlyA + r.onlyB,
+      pct: r.both ? Math.round((r.agreed / r.both) * 100) : null,
+      iou: iouStats(r.ious),
     }))
-    .sort((x, y) => y.both - x.both || x.label.localeCompare(y.label));
+    .sort((x, y) => y.total - x.total || x.label.localeCompare(y.label));
+}
+
+// Which round a moment falls in — index, or -1 for outside every round.
+function roundIndexAt(t, spans) {
+  for (let i = 0; i < spans.length; i++) {
+    if (t >= spans[i].start && t <= spans[i].end) return i;
+  }
+  return -1;
+}
+
+// The same comparison, sliced per round. Rounds are the unit the pipeline
+// actually consumes, and agreement is rarely uniform across them — the
+// round where someone was still finding their feet is the one worth
+// re-watching, and an average over the whole video buries it.
+function perRoundBreakdown(pairs, onlyA, onlyB) {
+  const spans = roundSpans();
+  if (!spans.length) return [];
+  const bucket = new Map();
+  const slot = (i) => {
+    if (!bucket.has(i)) bucket.set(i, { pairs: [], onlyA: [], onlyB: [] });
+    return bucket.get(i);
+  };
+  // A matched pair is placed by the midpoint of the two starts, so a pair
+  // straddling a boundary lands on one side rather than being dropped.
+  pairs.forEach(p => slot(roundIndexAt((p.a.start + p.b.start) / 2, spans)).pairs.push(p));
+  onlyA.forEach(l => slot(roundIndexAt(l.start, spans)).onlyA.push(l));
+  onlyB.forEach(l => slot(roundIndexAt(l.start, spans)).onlyB.push(l));
+
+  const out = [];
+  for (let i = 0; i < spans.length; i++) {
+    const b = bucket.get(i);
+    if (!b) continue;
+    out.push({ name: 'Round ' + (i + 1), outside: false, ...pairStats(b.pairs, b.onlyA, b.onlyB) });
+  }
+  const o = bucket.get(-1);
+  // Punches outside every round are the ones the pipeline discards, so they
+  // get their own row rather than being folded into a round they aren't in.
+  if (o) out.push({ name: 'Outside rounds', outside: true, ...pairStats(o.pairs, o.onlyA, o.onlyB) });
+  return out;
 }
 
 function computeAgreement() {
@@ -919,31 +1005,12 @@ function computeAgreement() {
     for (let j = i + 1; j < names.length; j++) {
       const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
       const m = matchPunchSets(A, B);
-      const typeAgree = m.pairs.filter(p => p.a.punch === p.b.punch).length;
-      const kappa = cohensKappa(m.pairs);
-      // Signed, so it reads as a direction rather than a magnitude: a
-      // consistent offset is a habit one of them can correct, which a mean
-      // absolute error would have hidden.
-      const offsetMs = m.pairs.length
-        ? Math.round((m.pairs.reduce((s, p) => s + (p.a.start - p.b.start), 0) / m.pairs.length) * 1000)
-        : null;
       rows.push({
         a: names[i], b: names[j],
         aCount: A.length, bCount: B.length,
-        matched: m.pairs.length,
-        typeAgree,
-        // Of the punches BOTH found, how often did they call it the same
-        // move. Kept separate from the count above because "we both saw a
-        // punch here" and "we both think it was a jab" fail differently.
-        typePct: m.pairs.length ? Math.round((typeAgree / m.pairs.length) * 100) : null,
-        meanIoU: m.pairs.length
-          ? +(m.pairs.reduce((s, p) => s + p.iou, 0) / m.pairs.length).toFixed(2) : null,
-        kappa: kappa === null ? null : +kappa.toFixed(2),
-        kappaBand: kappaBand(kappa),
-        offsetMs,
-        onlyA: m.onlyA.length,
-        onlyB: m.onlyB.length,
-        perMove: perMoveBreakdown(m.pairs),
+        ...pairStats(m.pairs, m.onlyA, m.onlyB),
+        perMove: perMoveBreakdown(m.pairs, m.onlyA, m.onlyB),
+        perRound: perRoundBreakdown(m.pairs, m.onlyA, m.onlyB),
         // Every move pair they disagreed on, commonest first — this is the
         // part that tells you WHICH distinction the taxonomy is failing.
         confusions: (() => {
@@ -994,44 +1061,93 @@ function renderAgreement() {
   // just something to look past to reach the numbers.
   const cell = (value, label, hint, cls) =>
     `<div${cls ? ` class="${cls}"` : ''} title="${hint}"><b>${value}</b><span>${label}</span></div>`;
+  const num = (v) => (v === null || v === undefined ? '—' : v);
+  const iouCols = (s) => s
+    ? `<td>${s.mean}</td><td>${s.median}</td><td class="agr-range">${s.min}–${s.max}</td>`
+    : '<td>—</td><td>—</td><td class="agr-range">—</td>';
 
   body.innerHTML = rows.map(r => `
-    <div class="agr-pair">
-      <div class="agr-pair-head">
+    <section class="agr-pair">
+      <header class="agr-pair-head">
         <span class="agr-who" style="--who: ${labelerColor(r.a)}">${r.a} <b>${r.aCount}</b></span>
         <span class="agr-vs">vs</span>
         <span class="agr-who" style="--who: ${labelerColor(r.b)}">${r.b} <b>${r.bCount}</b></span>
-      </div>
+        ${offsetLine(r) ? `<span class="agr-offset">${offsetLine(r)}</span>` : ''}
+      </header>
+
       <div class="agr-stats">
-        ${cell(r.matched, 'both', `Punches both found — paired when they overlap by at least ${Math.round(AGREE_IOU_FLOOR * 100)}%.`)}
-        ${cell(r.typePct === null ? '—' : r.typePct + '%', 'agree', 'Of the punches both found, how often they called it the same move.')}
-        ${cell(r.meanIoU === null ? '—' : r.meanIoU, 'IoU',
-               'Mean timing overlap: intersection ÷ union of the two punches. 1.0 = identical timing.')}
+        ${cell(r.matched, 'both found', `Punches both marked — paired when they overlap by at least ${Math.round(AGREE_IOU_FLOOR * 100)}%.`)}
+        ${cell(r.typePct === null ? '—' : r.typePct + '%', 'agree on move', 'Of the punches both found, how often they called it the same move.')}
+        ${cell(r.iou ? r.iou.mean : '—', 'mean IoU',
+               'Timing overlap: intersection ÷ union. 1.0 = identical timing. Averaged over pairs they agreed the move of.')}
+        ${cell(r.iou ? r.iou.median : '—', 'median IoU', 'The middle overlap — less swayed by one bad pair than the mean.')}
         ${cell(r.kappa === null ? 'n/a' : r.kappa, 'κ',
                r.kappa === null
                  ? 'Cohen\'s kappa is undefined here — only one move in common, so chance already explains all of it.'
                  : `Cohen's kappa — agreement on the move corrected for chance (${r.kappaBand.word}). A plain percentage flatters a video that is mostly jabs.`,
                'agr-k agr-tone-' + r.kappaBand.tone)}
-        ${cell(r.onlyA, 'only ' + r.a, `${r.matched + r.onlyA} punches from ${r.a}, of which ${r.onlyA} ${r.b} did not mark.`)}
-        ${cell(r.onlyB, 'only ' + r.b, `${r.matched + r.onlyB} punches from ${r.b}, of which ${r.onlyB} ${r.a} did not mark.`)}
+        ${cell(r.solo, 'caught by one', `Punches exactly one of them marked: ${r.onlyA} only ${r.a}, ${r.onlyB} only ${r.b}.`,
+               'agr-solo')}
       </div>
-      ${offsetLine(r) ? `<p class="agr-offset">${offsetLine(r)}</p>` : ''}
+
       ${r.perMove.length ? `
-        <table class="agr-moves">
-          <thead><tr><th>Move</th><th>Seen</th><th>Agreed</th><th>IoU</th></tr></thead>
+        <h3 class="agr-h">By move</h3>
+        <table class="agr-table">
+          <thead><tr>
+            <th>Move</th>
+            <th title="Marked by both, whether or not they agreed what it was">Both</th>
+            <th title="Both called it this move">Agreed</th>
+            <th colspan="3" class="agr-grp" title="Timing overlap across the pairs they agreed on">IoU</th>
+            <th title="Marked by ${r.a} alone">${r.a}</th>
+            <th title="Marked by ${r.b} alone">${r.b}</th>
+          </tr><tr class="agr-sub">
+            <th></th><th></th><th></th>
+            <th>avg</th><th>med</th><th>min–max</th>
+            <th class="agr-solo-h" colspan="2">caught alone</th>
+          </tr></thead>
           <tbody>${r.perMove.map(m => `
-            <tr class="${m.pct < 60 ? 'agr-weak' : ''}">
+            <tr class="${m.pct !== null && m.pct < 60 ? 'agr-weak' : ''}">
               <td><span class="agr-swatch" style="background:${getPunchColor(m.move)}"></span>${m.label}</td>
               <td>${m.both}</td>
-              <td>${m.agreed} <i>${m.pct}%</i></td>
-              <td>${m.meanIoU === null ? '—' : m.meanIoU}</td>
+              <td>${m.agreed}${m.pct === null ? '' : ` <i>${m.pct}%</i>`}</td>
+              ${iouCols(m.iou)}
+              <td class="agr-solo-c">${m.onlyA || '·'}</td>
+              <td class="agr-solo-c">${m.onlyB || '·'}</td>
             </tr>`).join('')}
           </tbody>
         </table>` : ''}
-      ${r.confusions.length ? `<ul class="agr-conf">${
-        r.confusions.slice(0, 5).map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
-      }</ul>` : ''}
-    </div>`).join('');
+
+      ${r.perRound.length ? `
+        <h3 class="agr-h">By round</h3>
+        <table class="agr-table">
+          <thead><tr>
+            <th>Round</th><th>Both</th><th>Agree</th><th>κ</th>
+            <th colspan="3" class="agr-grp">IoU</th>
+            <th>${r.a}</th><th>${r.b}</th>
+          </tr><tr class="agr-sub">
+            <th></th><th></th><th></th><th></th>
+            <th>avg</th><th>med</th><th>min–max</th>
+            <th class="agr-solo-h" colspan="2">caught alone</th>
+          </tr></thead>
+          <tbody>${r.perRound.map(q => `
+            <tr class="${q.outside ? 'agr-outside' : ''}">
+              <td>${q.name}</td>
+              <td>${q.matched}</td>
+              <td>${q.typePct === null ? '—' : q.typePct + '%'}</td>
+              <td>${q.kappa === null ? '—' : q.kappa}</td>
+              ${iouCols(q.iou)}
+              <td class="agr-solo-c">${q.onlyA || '·'}</td>
+              <td class="agr-solo-c">${q.onlyB || '·'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : ''}
+
+      ${r.confusions.length ? `
+        <h3 class="agr-h">Confused with</h3>
+        <ul class="agr-conf">${
+          r.confusions.map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
+        }</ul>` : ''}
+    </section>`).join('');
 }
 
 // Clicking a row in the Labels panel lights that row AND its strip on the

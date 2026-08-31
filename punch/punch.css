@@ -1665,12 +1665,22 @@ kbd {
 .fvd-actions .fvd-primary { background: var(--accent-solid); color: #fff; font-weight: 590; }
 
 /* ── agreement sheet (admin) ─────────────────────────────────────────────── */
+/* Wide and tall: this is a review instrument, not a notification. Flex
+   column with a bounded height so the HEAD stays put and only the body
+   scrolls — a table this long is unusable if its own headings scroll away
+   with it. */
 #agr-dialog {
-  width: min(520px, calc(100vw - 32px));
+  width: min(1020px, calc(100vw - 40px));
+  max-height: 88vh;
+  display: flex; flex-direction: column;
   padding: 0; border: none; border-radius: 16px;
   background: var(--card); color: var(--ink);
   box-shadow: 0 24px 64px rgba(0,0,0,.28);
 }
+#agr-dialog .sc-head { flex: none; }
+/* Overrides .sc-body's own 65vh cap — here the dialog's max-height is what
+   bounds it, and the body takes whatever is left. */
+#agr-dialog .sc-body { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 #agr-dialog::backdrop {
   background: rgba(0,0,0,.28);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
@@ -1715,28 +1725,56 @@ kbd {
 @media (prefers-color-scheme: dark) {
   .agr-stats .agr-k.agr-tone-mid b { color: #f0b355; background: color-mix(in srgb, #f0b355 22%, transparent); }
 }
-/* One short line, and only when the two actually lean — see offsetLine(). */
-.agr-offset { margin-top: 10px; font-size: 11.5px; color: var(--ink-dim); }
+/* One short line, on the pair header rather than a row of its own. */
+.agr-offset { margin-left: auto; font-size: 11.5px; color: var(--ink-dim); }
+/* Coverage is the number that invalidates the others — two people who did
+   not mark the same events have nothing to agree about — so it gets the
+   one non-neutral treatment in the grid besides kappa. */
+.agr-stats .agr-solo b { color: var(--ink); }
 
-/* Per-move breakdown — where a single headline mean hides the one move the
-   two actually disagree about. */
-.agr-moves {
-  width: 100%; margin-top: 10px; border-collapse: collapse;
-  font-size: 11.5px; font-variant-numeric: tabular-nums;
+.agr-h {
+  margin: 20px 0 8px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-dim);
 }
-.agr-moves th {
-  text-align: right; padding: 3px 6px; font-size: 9.5px; font-weight: 650;
-  letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim);
-  border-bottom: 1px solid var(--line);
+
+/* Shared by the by-move and by-round tables. */
+.agr-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px; font-variant-numeric: tabular-nums;
 }
-.agr-moves th:first-child, .agr-moves td:first-child { text-align: left; }
-.agr-moves td { padding: 4px 6px; text-align: right; }
-.agr-moves tbody tr + tr td { border-top: 1px solid var(--line); }
-.agr-moves td i { color: var(--ink-dim); font-style: normal; margin-left: 3px; }
+.agr-table th {
+  position: sticky; top: 0; z-index: 1; background: var(--card);
+  text-align: right; padding: 4px 7px;
+  font-size: 9.5px; font-weight: 650; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-dim);
+  white-space: nowrap;
+}
+.agr-table thead tr:last-child th { border-bottom: 1px solid var(--line); }
+/* The two-row head groups avg/med/min–max under one "IoU" — three columns
+   of bare numbers otherwise read as three unrelated statistics. */
+.agr-table th.agr-grp, .agr-table th.agr-solo-h {
+  text-align: center; border-bottom: 1px solid var(--line);
+}
+.agr-table tr.agr-sub th { font-size: 9px; letter-spacing: .02em; }
+.agr-table th:first-child, .agr-table td:first-child { text-align: left; }
+.agr-table td { padding: 5px 7px; text-align: right; white-space: nowrap; }
+.agr-table tbody tr + tr td { border-top: 1px solid var(--line); }
+.agr-table td i { color: var(--ink-dim); font-style: normal; margin-left: 3px; }
+.agr-range { color: var(--ink-dim); }
+.agr-solo-c { color: var(--ink-dim); }
 /* The rows worth looking at. Under 60% agreement on a move is the signal
    that the distinction, not the labeler, is the problem. */
-.agr-moves tr.agr-weak td { background: var(--no-wash); }
-.agr-moves tr.agr-weak td i { color: var(--no-on-wash); font-weight: 650; }
+.agr-table tr.agr-weak td { background: var(--no-wash); }
+.agr-table tr.agr-weak td i { color: var(--no-on-wash); font-weight: 650; }
+/* Punches outside every round — the pipeline discards these, so the row is
+   marked the same amber the Labels panel uses for them. */
+.agr-table tr.agr-outside td {
+  background: color-mix(in srgb, #b26a00 10%, transparent); color: #8a5200;
+}
+@media (prefers-color-scheme: dark) {
+  .agr-table tr.agr-outside td { color: #f0b355; background: color-mix(in srgb, #f0b355 13%, transparent); }
+}
 .agr-swatch {
   display: inline-block; width: 8px; height: 8px; border-radius: 2px;
   margin-right: 6px; vertical-align: middle;
