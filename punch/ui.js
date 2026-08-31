@@ -54,6 +54,9 @@
       b.role = 'radio';
       b.dataset.value = opt.value;
       b.textContent = opt.textContent;
+      // A narrow segmented control (the sidebar's Session block) can
+      // truncate a long option with ellipsis — the tooltip is the fallback.
+      b.title = opt.textContent;
       b.onclick = () => {
         if (sel.value === opt.value) return;
         sel.value = opt.value;
@@ -814,10 +817,26 @@
         field.title = 'Labels are being filed under this link.';
       } else {
         field.classList.add('err');
-        out.innerHTML = GLYPH.err + '<span>' + (detail || 'Not saved') + '</span>';
+        // A dead end otherwise: the sheet being slow is usually transient,
+        // and re-triggering the lookup used to mean editing the link to make
+        // app.js's `input` debounce fire again.
+        out.innerHTML = GLYPH.err + '<span>' + (detail || 'Not saved') +
+          '</span><button type="button" class="link-retry">Retry</button>';
         field.title = 'This link did not reach the sheet — labels may not be filed.';
       }
     };
+
+    // Delegated, because setLinkStatus() rewrites this subtree on every
+    // state change. preventDefault matters: the chip lives inside the
+    // <label for="drive-link">, so an unhandled click would just focus the
+    // input instead.
+    out.addEventListener('click', (e) => {
+      const retry = e.target.closest('.link-retry');
+      if (!retry) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof fetchLabelsFromSheet === 'function') fetchLabelsFromSheet(true);
+    });
 
     // Typing invalidates whatever the chip last said. app.js debounces the
     // lookup by 500ms and will put it back into 'syncing' when it fires.
@@ -867,26 +886,6 @@
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    });
-  }
-
-  // ── tools menu ────────────────────────────────────────────────────────
-  function setupMenu() {
-    const btn = $('tools-btn'), panel = $('tools-panel');
-    if (!btn || !panel) return;
-
-    const close = () => { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-    const open  = () => { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); };
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      panel.hidden ? open() : close();
-    });
-    document.addEventListener('click', (e) => {
-      if (!panel.hidden && !panel.contains(e.target)) close();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !panel.hidden) close();
     });
   }
 
@@ -970,7 +969,6 @@
     // the time that request comes back.
     setupLinkStatus();
     setupName();
-    setupMenu();
     setupShortcuts();
     setupCancel();
     setupVideoName();

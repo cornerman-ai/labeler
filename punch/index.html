@@ -7,7 +7,14 @@
   <title>Punch &amp; Defense Labeler</title>
   <!-- Own stylesheet, not ../shared/style.css — see the head comment in
        punch.css for why the shared sheet had to be left alone. -->
-  <link rel="stylesheet" href="punch.css">
+  <!-- ?v= is a cache-buster, and it is load-bearing. GitHub Pages serves
+       every asset with `Cache-Control: max-age=600`, so after a deploy a
+       browser can keep running the PREVIOUS punch.css/app.js/ui.js for up
+       to ten minutes — which has already shown up twice as "the new control
+       isn't there" and as a page half-running old code against new markup.
+       Bump this string whenever any of the four assets below change; the
+       query makes the URL new, so the browser has to re-fetch. -->
+  <link rel="stylesheet" href="punch.css?v=20260831b">
 </head>
 <body>
   <div id="app">
@@ -16,14 +23,6 @@
     <header id="top-bar">
       <div class="nav-lead">
         <h1 class="nav-title">Punch &amp; Defense</h1>
-        <div id="video-loader">
-          <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
-            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
-            Open Video
-          </button>
-          <input type="file" id="video-file" accept="video/*" hidden>
-          <span id="video-name">No video loaded</span>
-        </div>
       </div>
 
       <div class="nav-actions">
@@ -44,24 +43,6 @@
           <select id="lang-select" aria-label="Punch/defense language"></select>
         </div>
 
-        <div class="menu">
-          <button class="icon-btn" id="tools-btn" aria-haspopup="menu"
-                  aria-expanded="false" aria-controls="tools-panel"
-                  title="Other labelers">
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="3" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="13" cy="8" r="1.4" fill="currentColor"/></svg>
-          </button>
-          <div class="menu-panel" id="tools-panel" role="menu" hidden>
-            <a class="menu-item" role="menuitem" href="../callout/callout.html">Callout labeler</a>
-            <a class="menu-item" role="menuitem" href="../hip_rotation/hip_rotation_label.html">Hip rotation labeler</a>
-            <a class="menu-item" role="menuitem" href="../impact/impact_frame.html">Impact frame labeler</a>
-            <a class="menu-item" role="menuitem" href="../guard_drop/guard_drop_label.html">Guard drop labeler</a>
-            <a class="menu-item" role="menuitem" href="../chin_tuck_4.0/height_guard/height_guard.html">Chin point 4.0</a>
-            <a class="menu-item" role="menuitem" href="../bladedness/coach_review.html">Coaching review</a>
-            <div class="menu-sep"></div>
-            <a class="menu-item" role="menuitem" href="../index.html">All labelers&hellip;</a>
-          </div>
-        </div>
-
         <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
                 aria-haspopup="dialog">
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
@@ -76,38 +57,36 @@
       <input type="hidden" id="script-url">
     </header>
 
-    <!-- ── source toolbar: what this video IS ───────────────────────────── -->
-    <div id="drive-link-bar">
+    <!-- ── video source: the local file AND the sheet-key link, grouped as
+         one thing because they answer the same question — "what video is
+         this" — instead of one living in the nav bar and the other in a
+         separate strip below it. ─────────────────────────────────────── -->
+    <div id="video-source-bar">
+      <div id="video-loader">
+        <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
+          Open Video
+        </button>
+        <input type="file" id="video-file" accept="video/*" hidden>
+        <!-- Real, selectable text — not truncated in JS, only visually via
+             CSS ellipsis, so the full name is still there to copy. -->
+        <span id="video-name">No video loaded</span>
+      </div>
+
       <label class="src-field" for="drive-link">
         <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         <input type="text" id="drive-link" placeholder="Paste the video link">
+        <!-- Shown once there's a link to copy — app.js's setupDriveLink()/
+             copyDriveLink(). The field is already a real, selectable
+             <input>; this is the one-click affordance on top of that. -->
+        <button type="button" id="btn-copy-link" title="Copy link" hidden>
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
         <!-- Filled by ui.js from the status app.js reports as it talks to the
              sheet: this link is the key every label is filed under, and until
              now nothing on screen said whether it had registered. -->
         <span id="link-status" hidden></span>
       </label>
-
-      <span class="tdiv"></span>
-
-      <!-- No "TYPE" / "STANCE" labels: the segment names already say what they
-           are, and the hairline is what keeps the two controls from reading as
-           one five-segment control. ui.js builds each from its <select>'s
-           options and keeps the two in step, so app.js goes on reading .value
-           and hearing `change` exactly as before. -->
-      <div class="seg" id="seg-type" role="radiogroup" aria-label="Training type"></div>
-      <select id="training-type" class="sr-only" tabindex="-1" aria-hidden="true">
-        <option value="shadowboxing">Shadowboxing</option>
-        <option value="sparring">Sparring</option>
-        <option value="bagwork">Bagwork</option>
-      </select>
-
-      <span class="tdiv"></span>
-
-      <div class="seg" id="seg-stance" role="radiogroup" aria-label="Stance"></div>
-      <select id="stance-select" class="sr-only" tabindex="-1" aria-hidden="true">
-        <option value="Orthodox">Orthodox</option>
-        <option value="Southpaw">Southpaw</option>
-      </select>
     </div>
 
     <!-- ── main layout ──────────────────────────────────────────────────── -->
@@ -117,6 +96,41 @@
       <aside id="punch-panel">
         <p class="card-eyebrow">Move Type</p>
         <div id="punch-buttons"></div>
+        <!-- Shown by app.js's setLoadingLocked() while a just-opened video's
+             labels are still coming in from the sheet — blocks picking a
+             move type until the list that's about to render is the real
+             one, not "before the fetch landed". -->
+        <div id="punch-loading" hidden>
+          <div class="spinner"></div>
+          <span>Loading labels&hellip;</span>
+        </div>
+
+        <!-- Training type + stance: usually the same for a whole video, but
+             not always — living here next to the moves themselves, not
+             buried in the toolbar above the video, is what makes changing
+             one mid-session feel like a normal thing to do instead of a
+             detour. ui.js's buildSegment() still drives each from its own
+             <select> below, unchanged by the move. -->
+        <div id="punch-session">
+          <p class="card-eyebrow">Session</p>
+          <div class="session-row">
+            <span class="session-label">Training</span>
+            <div class="seg" id="seg-type" role="radiogroup" aria-label="Training type"></div>
+          </div>
+          <div class="session-row">
+            <span class="session-label">Stance</span>
+            <div class="seg" id="seg-stance" role="radiogroup" aria-label="Stance"></div>
+          </div>
+          <select id="training-type" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="shadowboxing">Shadowboxing</option>
+            <option value="sparring">Sparring</option>
+            <option value="bagwork">Bagwork</option>
+          </select>
+          <select id="stance-select" class="sr-only" tabindex="-1" aria-hidden="true">
+            <option value="Orthodox">Orthodox</option>
+            <option value="Southpaw">Southpaw</option>
+          </select>
+        </div>
       </aside>
 
       <!-- Centre: the video and its timeline -->
@@ -280,7 +294,18 @@
         <section class="card labels-card">
           <p class="card-eyebrow">
             Labels <span id="label-count">(0)</span>
-            <button id="btn-foreign-filter" onclick="toggleForeignFilter()">Others: hidden</button>
+            <!-- Master show/hide plus a per-labeler breakdown — app.js's
+                 setupForeignFilterMenu()/renderForeignFilterMenu() build the
+                 rows below from whoever currently has foreign rows on this
+                 video, so the list is never stale. -->
+            <div id="foreign-filter">
+              <button id="btn-foreign-filter" type="button" aria-haspopup="menu"
+                      aria-expanded="false" aria-controls="foreign-filter-menu">
+                <span id="foreign-filter-label">Others: hidden</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="foreign-filter-menu" role="menu" hidden></div>
+            </div>
             <button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none">Unsure only: off</button>
           </p>
           <!-- Offense / defense punches sorted by time in one list used to mean
@@ -367,12 +392,13 @@
     </div>
   </dialog>
 
-  <script src="../shared/labeler_name.js"></script>
-  <script src="../shared/player.js"></script>
-  <script src="app.js"></script>
+  <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
+  <script src="../shared/labeler_name.js?v=20260831b"></script>
+  <script src="../shared/player.js?v=20260831b"></script>
+  <script src="app.js?v=20260831b"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js"></script>
+  <script src="ui.js?v=20260831b"></script>
 </body>
 </html>

@@ -168,27 +168,41 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 17px; font-weight: 640; letter-spacing: -.02em;
   white-space: nowrap; flex: none;
 }
-#video-loader { display: flex; align-items: center; gap: 10px; min-width: 0; }
-
-/* Secondary button: the file picker is how you get started, but the Drive link
-   below it is what the sheet actually keys on, so neither outranks the other
-   enough to be filled accent. */
+/* One filled pill — button then name, no internal border — so it reads as a
+   single field, the way #name-field/#lang-field already read as pills in
+   the nav bar. Stacked above the Drive-link pill in #video-source-bar
+   (each its own full-width row), not beside it: side by side left the file
+   name squeezed into a couple hundred pixels. Used to be a bare button plus
+   loose text in the nav bar; grouping it with the link is the point. */
+#video-loader {
+  width: 100%;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  height: 32px; padding: 0 4px; border-radius: 8px;
+  background: var(--fill);
+}
 #btn-pick-file {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
-  height: 32px; padding: 0 12px; border-radius: 8px;
-  border: 1px solid var(--line); background: var(--card);
-  font-size: 13px; font-weight: 510; white-space: nowrap;
+  height: 26px; padding: 0 8px; border-radius: 6px;
+  border: 0; background: transparent; color: var(--ink-on-fill);
+  font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
-#btn-pick-file:hover { border-color: var(--ink-dim); }
-#btn-pick-file svg { width: 14px; height: 14px; flex: none; }
+#btn-pick-file:hover { background: rgba(0,0,0,.06); color: var(--ink); }
+#btn-pick-file svg { width: 13px; height: 13px; flex: none; }
 
 /* Dim while it still reads "No video loaded", green once a file has actually
    decoded — the difference between a placeholder and a fact. ui.js adds the
-   class on `loadedmetadata`; player.js writes the text. */
+   class on `loadedmetadata`; player.js writes the FULL name as real text
+   (never truncated in JS) — this ellipsis is purely visual, so the whole
+   name is still there to select and copy even where it's cut off on screen. */
 #video-name {
-  font-size: 12.5px; color: var(--ink-dim);
+  flex: 1; min-width: 0;
+  font-size: 12.5px; color: var(--ink-on-fill);
+  /* No max-width cap — the whole point is showing the full name (this is
+     how you confirm you opened the right clip). overflow/ellipsis stay on
+     only as a safety net for a name that's still too long for the window,
+     not as the normal case. */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 260px;
+  padding-right: 6px;
 }
 #video-name.loaded { color: var(--yes); font-weight: 510; }
 
@@ -252,27 +266,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .icon-btn svg { width: 16px; height: 16px; }
 
-/* Pull-down menu — the other labelers in the suite. A menu rather than the
-   old row of six bordered links: they are navigation away from this tool, and
-   six of them across the top competed with the tool's own controls. */
-.menu { position: relative; }
-.menu-panel {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
-  min-width: 232px; padding: 6px; border-radius: 12px;
-  background: var(--chrome);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border: 1px solid var(--line);
-  box-shadow: 0 8px 32px rgba(0,0,0,.18);
-}
-.menu-panel[hidden] { display: none; }
+/* .menu-item is the shared row style for .ctx-menu below (the timeline
+   right-click menu) — the pull-down "other labelers" menu that used to be
+   the other consumer (.menu/.menu-panel/.menu-sep) was removed along with
+   its button. */
 .menu-item {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-radius: 7px;
   font-size: 13px; color: var(--ink); text-decoration: none;
 }
 .menu-item:hover { background: var(--fill); }
-.menu-sep { height: 1px; margin: 5px 10px; background: var(--line); }
 .menu-item svg { width: 13px; height: 13px; color: var(--ink-dim); flex: none; }
 
 /* Right-click menu on a timeline chip — same chrome as .menu-panel above, but
@@ -296,27 +299,30 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .ctx-menu .menu-item-danger:hover { color: var(--no); background: var(--fill-2); }
 
-/* ── source toolbar ──────────────────────────────────────────────────────── */
-/* What this video IS — its link, how it was shot, which stance.
-   LEFT-GROUPED, and that is the whole point of this block. The link field used
-   to be `flex: 1` across the full window, which made a 60-character URL sit in
-   a 1350px trough and shoved Type and Stance against the opposite edge — three
-   related fields as far apart as the screen allows, with the eye crossing an
-   empty metre between them. Capped at 520 and followed immediately by the two
-   controls, they read as one group; the leftover space stays empty, which is
-   what a Mac toolbar does with space it has no use for. */
-#drive-link-bar {
+/* ── video source ─────────────────────────────────────────────────────────── */
+/* What this video IS — the local file AND the Drive link that keys the
+   sheet, grouped as one bar (each its own pill) instead of one living in
+   the nav bar and the other in a strip below it. Training type and stance
+   used to live here too; they're per-session context you set once and
+   rarely revisit, so they moved down next to the move catalogue itself —
+   see #punch-session — leaving this bar for just the two things that
+   answer "what video is this".
+   Stacked, each pill on its own full-width row: side by side left the file
+   name squeezed into a couple hundred pixels and ellipsis-truncated even at
+   a reasonable length, which is exactly the text most worth reading in
+   full — it's how you confirm you opened the right clip. */
+#video-source-bar {
   flex: none;
-  display: flex; align-items: center; gap: 12px;
-  padding: 0 16px; height: 48px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 16px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   position: relative; z-index: 20;
 }
 .src-field {
-  flex: 0 1 520px; min-width: 180px;
+  width: 100%;
   display: flex; align-items: center; gap: 8px;
-  height: 32px; padding: 0 12px; border-radius: 8px;
+  height: 32px; padding: 0 8px 0 12px; border-radius: 8px;
   background: var(--fill); color: var(--ink-on-fill);
 }
 .src-field svg { width: 13px; height: 13px; flex: none; }
@@ -327,6 +333,21 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 #drive-link:focus { outline: none; }
 #drive-link::placeholder { color: var(--ink-on-fill); }
+
+/* One-click copy on top of the field already being a real, selectable
+   <input> — shown only once there's something worth copying (ui.js's
+   setupCopyLink() toggles [hidden] on input). Briefly turns green + swaps
+   to a checkmark on click, the same "it happened" language #name-field's
+   save flash and the round markers' colors already use elsewhere. */
+#btn-copy-link {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; border: 0;
+  background: transparent; color: inherit; opacity: .65;
+}
+#btn-copy-link:hover { opacity: 1; background: rgba(0,0,0,.08); }
+#btn-copy-link[hidden] { display: none; }
+#btn-copy-link svg { width: 12px; height: 12px; }
+#btn-copy-link.copied { opacity: 1; color: var(--yes); }
 
 /* Whether this link has registered. The field itself carries the state — the
    whole control tints, leading icon included — because the question being
@@ -340,6 +361,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 #link-status[hidden] { display: none; }
 #link-status svg { width: 12px; height: 12px; flex: none; }
+/* Only rendered in the error state — see setLinkStatus() in ui.js. */
+.link-retry {
+  flex: none; margin-left: 2px; padding: 2px 8px; border-radius: 5px;
+  border: 0; background: currentColor; color: var(--card);
+  font-size: 11px; font-weight: 620; letter-spacing: 0;
+}
+.link-retry:hover { opacity: .85; }
 .src-field.ok      { background: var(--yes-wash); color: var(--yes-on-wash); }
 .src-field.err     { background: var(--no-wash);  color: var(--no-on-wash); }
 .src-field.syncing { color: var(--ink-on-fill); }
@@ -415,10 +443,61 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 16px; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--track) transparent;
+  /* Positions #punch-loading below — an absolutely placed overlay pinned to
+     this panel's own box rather than scrolling away with its content. */
+  position: relative;
 }
 #punch-panel::-webkit-scrollbar { width: 8px; }
 #punch-panel::-webkit-scrollbar-thumb { background: var(--track); border-radius: 4px; }
 #punch-buttons { display: flex; flex-direction: column; }
+
+/* Blocks the move catalogue while a just-opened video's labels are still in
+   flight — see setLoadingLocked() in app.js. Sits over #punch-buttons
+   (not replacing it) so the layout doesn't jump once it's gone. */
+#punch-loading {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  font-size: 12.5px; font-weight: 510; color: var(--ink-dim);
+}
+.spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid var(--fill); border-top-color: var(--accent-solid);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* ── session: training type + stance ─────────────────────────────────────── */
+/* Moved down here from the toolbar above the video — see the comment on
+   #video-source-bar. A hairline (not another card) separates it from the
+   move catalogue above: same panel, a different kind of choice. Caption
+   stacked above each segmented control rather than beside it — beside would
+   put "Shadowboxing | Sparring | Bagwork" in under half the sidebar's
+   width, which is the same overflow #punch-btn's min-width:0 fix exists to
+   prevent elsewhere; stacked, each control gets the panel's full width. */
+#punch-session {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.session-row { margin-top: 12px; }
+.session-row:first-of-type { margin-top: 6px; }
+.session-label {
+  display: block; margin-bottom: 6px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-dim);
+}
+#punch-session .seg { width: 100%; }
+/* "Shadowboxing" still doesn't fit a third of the panel's width on one
+   line — wrapping (with hyphenation, since <html lang="en"> makes it
+   available) reads better than losing the tail of the word to an ellipsis;
+   min-width:0 is what lets the button shrink to its column at all, same
+   fix .punch-btn needed for the same reason. */
+#punch-session .seg button {
+  flex: 1 1 0; min-width: 0;
+  white-space: normal; overflow-wrap: break-word; hyphens: auto;
+  line-height: 1.2; text-align: center;
+}
 
 .punch-group-header {
   font-size: 11px; font-weight: 590; letter-spacing: .04em;
@@ -458,6 +537,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border: 1px solid var(--line); background: transparent;
   font-size: 12.5px; font-weight: 500; text-align: left;
   transition: background .12s ease, border-color .12s ease, transform .1s ease;
+  /* Without this, a .pgrid2/.pgrid1 button (a grid item) won't shrink below
+     its unwrapped text width — a grid item's automatic minimum size is its
+     max-content size unless something resets it, so a long translated label
+     ("Задний слип") pushed the button past its column and into the video
+     panel instead of letting .pname's ellipsis (below) actually kick in. */
+  min-width: 0;
 }
 .punch-btn:hover { border-color: var(--ink-dim); }
 /* Matrix cells hold a dot and a keycap only — the punch's name is the row
@@ -1181,15 +1266,58 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding-bottom: 8px;
 }
 #label-count { color: var(--ink); font-variant-numeric: tabular-nums; }
+#foreign-filter { position: relative; margin-left: auto; }
 #btn-foreign-filter, #btn-unsure-filter {
+  display: flex; align-items: center; gap: 4px;
   padding: 3px 8px; border-radius: 6px; border: none;
   background: var(--fill); color: var(--ink-on-fill);
   font-size: 10.5px; font-weight: 590; letter-spacing: 0; text-transform: none;
 }
-#btn-foreign-filter { margin-left: auto; }
 #btn-foreign-filter.on, #btn-unsure-filter.on {
   background: var(--accent-wash); color: var(--accent-on-wash);
 }
+#btn-foreign-filter svg {
+  width: 8px; height: 8px; opacity: .7; transition: transform .15s ease;
+}
+#btn-foreign-filter[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* Same pop-up chrome and checkmark-row idiom as #speed-menu — a master
+   "Show others" row, then one row per foreign owner currently on this
+   video, each independently toggleable (see isLabelerHidden() in app.js).
+   Rebuilt on open from whoever's actually present, so it never goes stale
+   the way a fixed list would as labelers come and go video to video. */
+#foreign-filter-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  min-width: 190px; max-width: 240px; padding: 6px; border-radius: 12px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  text-transform: none; letter-spacing: 0;
+}
+#foreign-filter-menu[hidden] { display: none; }
+.ffm-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 8px; border-radius: 7px; border: 0; background: none;
+  font-size: 12.5px; font-weight: 500; color: var(--ink); text-align: left;
+}
+.ffm-row:hover { background: var(--fill); }
+/* Greyed out while the master "Show others" switch is off — see
+   renderForeignFilterMenu() in app.js. */
+.ffm-row:disabled { opacity: .4; }
+.ffm-row:disabled:hover { background: none; }
+.ffm-row::before {
+  content: '\2713'; width: 12px; flex: none; font-size: 11px;
+  color: var(--accent); opacity: 0;
+}
+.ffm-row[aria-checked="true"]::before { opacity: 1; }
+.ffm-row .ffm-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ffm-row .ffm-count { flex: none; color: var(--ink-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.ffm-sep { height: 1px; margin: 5px 4px; background: var(--line); }
+.ffm-empty { padding: 10px 8px; font-size: 12px; color: var(--ink-dim); }
 
 #label-log {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -1438,7 +1566,7 @@ kbd {
    The one exception is .icon-btn, which pads its hit area out to 44 with a
    ::before on every device — it is small enough that a stylus would miss it. */
 @media (pointer: coarse) {
-  #btn-pick-file, #name-field, .src-field,
+  #video-loader, #name-field, .src-field,
   .tbtn, .seg-static button, #speed-btn, #time-wrap { height: 44px; }
   /* Width matters as much as height for the glyph-only controls — play, mute,
      the frame steppers and the zoom pair are all 32px wide by default. */
@@ -1447,7 +1575,7 @@ kbd {
   /* Pop-up menu rows are targets too, and 27px was the tightest thing left.
      min-height rather than padding: the row's line-height is 1, so padding
      alone lands at 39 and would need re-deriving if the type size ever moves. */
-  #speed-menu button { min-height: 44px; padding: 0 12px; }
+  #speed-menu button, .ffm-row { min-height: 44px; padding: 0 12px; }
   /* The zoom badge is a reset button, not just a readout. */
   #video-zoom-badge { min-width: 56px; min-height: 44px; }
   /* No hover on a touch screen, so the volume slider cannot be something you
@@ -1498,6 +1626,13 @@ kbd {
 }
 @media (max-width: 720px) {
   #top-bar { height: auto; flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
-  #drive-link-bar { flex-wrap: wrap; gap: 10px; }
   .nav-title { font-size: 15px; }
+  /* .nav-actions itself is flex:none (never shrinks) — fine at desktop
+     widths, but on a narrow screen its own children (name field, language
+     field, help button) can add up to more than the row has room for. That
+     used to just barely fit; a wider language name (e.g. "Nederlands") was
+     enough to push the help button off the edge. Letting the row wrap keeps
+     every control reachable instead of clipping whatever runs off the
+     right. */
+  .nav-actions { flex-wrap: wrap; justify-content: flex-end; row-gap: 8px; }
 }

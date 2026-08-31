@@ -68,7 +68,7 @@ const PUNCH_TYPES = [
 // punch ids, PUNCH_COLORS keys — stays English regardless of state.lang;
 // only what a labeler actually reads (button names, tooltips, the label
 // list, the video overlay tags) changes. See punchLabel()/punchDesc().
-const LANGUAGES = { en: 'English', ru: 'Русский', be: 'Беларуская', tl: 'Filipino' };
+const LANGUAGES = { en: 'English', ru: 'Русский', nl: 'Nederlands', tl: 'Filipino' };
 const PUNCH_I18N = {
   ru: {
     jab_head:           { label: 'Джеб (голова)', desc: 'Быстрый прямой удар передней рукой в голову' },
@@ -92,27 +92,27 @@ const PUNCH_I18N = {
     duck:               { label: 'Нырок', desc: 'Сгибание ног, чтобы увести голову вниз от удара' },
     unsure:             { label: 'Не уверен', desc: 'Разметчик не смог точно определить движение' },
   },
-  be: {
-    jab_head:           { label: 'Джэб (галава)', desc: 'Хуткі прамы ўдар пярэдняй рукой у галаву' },
-    cross_head:         { label: 'Крос (галава)', desc: 'Магутны прамы ўдар задняй рукой у галаву' },
-    lead_hook_head:     { label: 'Пярэдні хук', desc: 'Кругавы ўдар пярэдняй рукой у галаву' },
-    rear_hook_head:     { label: 'Задні хук', desc: 'Кругавы ўдар задняй рукой у галаву' },
-    lead_uppercut_head: { label: 'Пярэдні апперкот', desc: 'Узыходзячы ўдар пярэдняй рукой у галаву' },
-    rear_uppercut_head: { label: 'Задні апперкот', desc: 'Узыходзячы ўдар задняй рукой у галаву' },
-    jab_body:           { label: 'Джэб (корпус)', desc: 'Хуткі прамы ўдар пярэдняй рукой у корпус' },
-    cross_body:         { label: 'Крос (корпус)', desc: 'Магутны прамы ўдар задняй рукой у корпус' },
-    lead_hook_body:     { label: 'Пярэдні хук (корпус)', desc: 'Кругавы ўдар пярэдняй рукой у корпус' },
-    rear_hook_body:     { label: 'Задні хук (корпус)', desc: 'Кругавы ўдар задняй рукой у корпус' },
-    lead_uppercut_body: { label: 'Пярэдні апперкот (корпус)', desc: 'Узыходзячы ўдар пярэдняй рукой у корпус' },
-    rear_uppercut_body: { label: 'Задні апперкот (корпус)', desc: 'Узыходзячы ўдар задняй рукой у корпус' },
-    lead_slip:          { label: 'Пярэдні сліп', desc: 'Ухіленне галавы ў бок пярэдняй рукі ад удару' },
-    rear_slip:          { label: 'Задні сліп', desc: 'Ухіленне галавы ў бок задняй рукі ад удару' },
-    lead_roll:          { label: 'Пярэдні ролл', desc: 'Нырок пад хук з выхадам у бок пярэдняй рукі' },
-    rear_roll:          { label: 'Задні ролл', desc: 'Нырок пад хук з выхадам у бок задняй рукі' },
-    pull_back:          { label: 'Адхіленне назад', desc: 'Нахіл корпуса назад, каб вывесці галаву з зоны ўдару' },
-    step_back:          { label: 'Крок назад', desc: 'Адступальны крок для павелічэння дыстанцыі (састарэла — звычайна ненаўмысная праца ног)' },
-    duck:               { label: 'Нырок', desc: 'Згінанне ног, каб увесці галаву ўніз ад удару' },
-    unsure:             { label: 'Не ўпэўнены', desc: 'Разметчык не змог дакладна вызначыць рух' },
+  nl: {
+    jab_head:           { label: 'Jab (Hoofd)', desc: 'Snelle rechte stoot met de voorste hand, naar het hoofd' },
+    cross_head:         { label: 'Cross (Hoofd)', desc: 'Krachtige rechte stoot met de achterste hand, naar het hoofd' },
+    lead_hook_head:     { label: 'Voorste Hoek', desc: 'Cirkelvormige stoot met de voorste hand, naar het hoofd' },
+    rear_hook_head:     { label: 'Achterste Hoek', desc: 'Cirkelvormige stoot met de achterste hand, naar het hoofd' },
+    lead_uppercut_head: { label: 'Voorste Uppercut', desc: 'Opwaartse stoot met de voorste hand, naar het hoofd' },
+    rear_uppercut_head: { label: 'Achterste Uppercut', desc: 'Opwaartse stoot met de achterste hand, naar het hoofd' },
+    jab_body:           { label: 'Jab (Lichaam)', desc: 'Snelle rechte stoot met de voorste hand, naar het lichaam' },
+    cross_body:         { label: 'Cross (Lichaam)', desc: 'Krachtige rechte stoot met de achterste hand, naar het lichaam' },
+    lead_hook_body:     { label: 'Voorste Hoek (Lichaam)', desc: 'Cirkelvormige stoot met de voorste hand, naar het lichaam' },
+    rear_hook_body:     { label: 'Achterste Hoek (Lichaam)', desc: 'Cirkelvormige stoot met de achterste hand, naar het lichaam' },
+    lead_uppercut_body: { label: 'Voorste Uppercut (Lichaam)', desc: 'Opwaartse stoot met de voorste hand, naar het lichaam' },
+    rear_uppercut_body: { label: 'Achterste Uppercut (Lichaam)', desc: 'Opwaartse stoot met de achterste hand, naar het lichaam' },
+    lead_slip:          { label: 'Voorste Slip', desc: 'Hoofdbeweging naar de voorste kant om een stoot te ontwijken' },
+    rear_slip:          { label: 'Achterste Slip', desc: 'Hoofdbeweging naar de achterste kant om een stoot te ontwijken' },
+    lead_roll:          { label: 'Voorste Rol', desc: 'Duiken onder een hoekstoot en opkomen aan de voorste kant' },
+    rear_roll:          { label: 'Achterste Rol', desc: 'Duiken onder een hoekstoot en opkomen aan de achterste kant' },
+    pull_back:          { label: 'Achteruitleunen', desc: 'Leun met de romp naar achteren om het hoofd buiten bereik te houden' },
+    step_back:          { label: 'Stap Achteruit', desc: 'Achteruit stappen om afstand te creëren (verouderd — meestal onbedoeld voetenwerk)' },
+    duck:               { label: 'Duiken', desc: 'Buig de knieën om het hoofd onder een stoot te laten zakken' },
+    unsure:             { label: 'Niet zeker', desc: 'De labelaar kon de beweging niet met zekerheid herkennen' },
   },
   tl: {
     // Filipino boxing commentary keeps jab/cross/hook/uppercut/slip/roll as
@@ -162,7 +162,7 @@ function punchDesc(id) {
 const HEAD_SUFFIX_STRIP = {
   en: /\s*\(Head\)$/,
   ru: /\s*\(голова\)$/,
-  be: /\s*\(галава\)$/,
+  nl: /\s*\(Hoofd\)$/,
   tl: /\s*\(Ulo\)$/,
 };
 function punchFamilyLabel(headId) {
@@ -231,6 +231,13 @@ Object.assign(state, {
   // PUNCH_I18N, punchLabel(), punchDesc(). Purely a display-layer choice:
   // the sheet always gets the English punch id regardless of this.
   lang: 'en',
+  // True from the moment a video's initial fetchLabelsFromSheet(true) goes
+  // out until it settles — see setLoadingLocked().
+  labelsLoading: false,
+  // Foreign owners individually folded away — see isLabelerHidden(). A
+  // fresh Set per page load; not persisted, since who's labeling a given
+  // video changes video to video and a stale hide would just be confusing.
+  hiddenLabelers: new Set(),
 });
 
 // ============================================================
@@ -293,6 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.showForeign = true;
   }
   updateForeignFilterButton();
+  setupForeignFilterMenu();
   setupForeignVideoDialog();
 });
 
@@ -339,11 +347,103 @@ function toggleForeignFilter() {
   updateVideoOverlay();
 }
 
+// Per-owner mute on top of the master switch above — see isLabelerHidden().
+// Not persisted: who's labeling a given video changes video to video, and a
+// stale hide carried over from a different video would just be confusing.
+function toggleLabelerHidden(who) {
+  if (state.hiddenLabelers.has(who)) state.hiddenLabelers.delete(who);
+  else state.hiddenLabelers.add(who);
+  updateForeignFilterButton();
+  renderLabels();
+  updateVideoOverlay();
+}
+
 function updateForeignFilterButton() {
+  const label = document.getElementById('foreign-filter-label');
   const btn = document.getElementById('btn-foreign-filter');
-  if (!btn) return;
-  btn.textContent = state.showForeign ? 'Others: shown' : 'Others: hidden';
-  btn.classList.toggle('on', state.showForeign);
+  if (!label || !btn) return;
+  const hiddenCount = state.hiddenLabelers.size;
+  label.textContent = !state.showForeign ? 'Others: hidden'
+    : hiddenCount > 0 ? `Others: ${hiddenCount} hidden`
+    : 'Others: shown';
+  btn.classList.toggle('on', state.showForeign && hiddenCount === 0);
+}
+
+// Master "Show others" row + one row per foreign owner currently on this
+// video, each independently toggleable — same open/close pattern as
+// ui.js's #speed-menu. Rebuilt fresh on every open (renderForeignFilterMenu)
+// rather than kept live, so it's never stale as labelers come and go
+// video to video.
+function setupForeignFilterMenu() {
+  const btn = document.getElementById('btn-foreign-filter');
+  const menu = document.getElementById('foreign-filter-menu');
+  if (!btn || !menu) return;
+
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    renderForeignFilterMenu(menu);
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden ? open() : close();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.hidden) close();
+  });
+}
+
+function renderForeignFilterMenu(menu) {
+  const counts = {};
+  for (const l of state.labels) {
+    if (!l.foreign) continue;
+    const who = foreignOwnerName(l);
+    counts[who] = (counts[who] || 0) + 1;
+  }
+  const owners = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+  menu.innerHTML = '';
+
+  const masterRow = document.createElement('button');
+  masterRow.type = 'button';
+  masterRow.className = 'ffm-row';
+  masterRow.setAttribute('role', 'menuitemcheckbox');
+  masterRow.setAttribute('aria-checked', String(state.showForeign));
+  masterRow.innerHTML = '<span class="ffm-name">Show others</span>';
+  masterRow.onclick = () => { toggleForeignFilter(); renderForeignFilterMenu(menu); };
+  menu.appendChild(masterRow);
+
+  if (!owners.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ffm-empty';
+    empty.textContent = 'No other labelers on this video yet';
+    menu.appendChild(empty);
+    return;
+  }
+
+  const sep = document.createElement('div');
+  sep.className = 'ffm-sep';
+  menu.appendChild(sep);
+
+  for (const who of owners) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'ffm-row';
+    row.setAttribute('role', 'menuitemcheckbox');
+    // Greyed out and inert while the master switch is off — an individual
+    // hide has nothing to do until "Show others" is on (shouldHideByTab()
+    // hides every foreign row on that switch alone, regardless of this).
+    row.disabled = !state.showForeign;
+    row.setAttribute('aria-checked', String(!state.hiddenLabelers.has(who)));
+    row.innerHTML = `<span class="ffm-name">${who}</span><span class="ffm-count">${counts[who]}</span>`;
+    row.onclick = () => { toggleLabelerHidden(who); renderForeignFilterMenu(menu); };
+    menu.appendChild(row);
+  }
 }
 
 function toggleUnsureFilter() {
@@ -405,6 +505,23 @@ function foreignOwnerLabelerParam(label) {
   return null;
 }
 
+// Display name for a foreign label's owner — "Labeled Data John" -> "John".
+// Used everywhere a foreign row needs to say whose it is: the label log,
+// the timeline tooltip, the "already labeled" popup, and the per-labeler
+// show/hide list below.
+function foreignOwnerName(label) {
+  return String((label && label.sheetName) || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+}
+
+// Which foreign owners are individually hidden — see setupLabelerVisibilityMenu().
+// Independent of state.showForeign: the master switch decides whether
+// foreign rows show AT ALL, this decides which of THOSE owners are folded
+// away once they do. Keyed by foreignOwnerName()'s display string, which is
+// unique per sheet the way the app already treats labeler identity.
+function isLabelerHidden(label) {
+  return state.hiddenLabelers.has(foreignOwnerName(label));
+}
+
 // The "Unsure only" filter (review labeler only) — governs the tags floating
 // over the video during playback and Shift+Arrow nav. The lanes and the
 // minimap use shouldHideByTab()'s own copy of this same check instead, so
@@ -432,10 +549,13 @@ function punchBucket(punchId) {
 // and the Unsure-only filter is the one thing that decides what the video
 // shows.
 function shouldHideByTab(label) {
-  if (label.isRoundMarker) return false;
+  // Round markers are exempt from the master "Others" switch — those have
+  // always shown, as shared context — but an individually hidden labeler
+  // (see isLabelerHidden) mutes them too.
+  if (label.isRoundMarker) return isLabelerHidden(label);
   // Someone else's punch/defense row, folded away until "Others: shown" is
-  // toggled on — round markers are exempt, those have always shown.
-  if (label.foreign && !state.showForeign) return true;
+  // toggled on, or its owner is individually hidden.
+  if (label.foreign && (!state.showForeign || isLabelerHidden(label))) return true;
   // 'combined' skips the bucket check entirely — every punch shows, same as
   // before the tabs existed. 'offense'/'defense' still filter by bucket.
   if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
@@ -585,6 +705,17 @@ function selectPunch(punchId) {
 // ============================================================
 function updateTimestampButton() {
   const btn = document.getElementById('btn-timestamp');
+
+  // Overrides everything below while the video's labels are still loading
+  // — see setLoadingLocked(). Otherwise 'start' mode's own branch would
+  // leave this clickable and let a label get started against a list that
+  // hasn't finished coming in yet.
+  if (state.labelsLoading) {
+    btn.textContent = 'Loading…';
+    btn.className = '';
+    btn.disabled = true;
+    return;
+  }
 
   // The class on this button is also what the step pips in punch.css read
   // (via :has()) to show where you are in start → type → end. Keep 'ready' /
@@ -739,10 +870,15 @@ function setupDriveLink() {
   const input = document.getElementById('drive-link');
   const trainingType = document.getElementById('training-type');
   const stance = document.getElementById('stance-select');
+  const copyBtn = document.getElementById('btn-copy-link');
 
   const prefix = labelerId() ? 'labeler_' + labelerId() + '_' : 'labeler_';
   const saved = localStorage.getItem(prefix + 'drive_link');
   if (saved) input.value = saved;
+  if (copyBtn) {
+    copyBtn.hidden = !input.value.trim();
+    copyBtn.addEventListener('click', () => copyDriveLink(input, copyBtn));
+  }
 
   const savedType = localStorage.getItem(prefix + 'training_type');
   const savedStance = localStorage.getItem(prefix + 'stance');
@@ -759,6 +895,7 @@ function setupDriveLink() {
   let debounceTimer;
   input.addEventListener('input', () => {
     localStorage.setItem(prefix + 'drive_link', normalizeDriveUrl(input.value.trim()));
+    if (copyBtn) copyBtn.hidden = !input.value.trim();
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       if (input.value.trim()) {
@@ -773,6 +910,30 @@ function setupDriveLink() {
   }
 }
 
+// One click on top of the field already being a real, selectable <input> —
+// see the comment on #btn-copy-link. Clipboard API needs a secure context
+// (https, or localhost); execCommand('copy') is the fallback for a plain
+// http:// preview.
+async function copyDriveLink(input, btn) {
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      input.select();
+      document.execCommand('copy');
+      input.setSelectionRange(0, 0);
+    }
+    btn.classList.add('copied');
+    const prevTitle = btn.title;
+    btn.title = 'Copied!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.title = prevTitle; }, 1200);
+  } catch (e) {
+    showToast('Copy failed — select the link and copy manually', 'error');
+  }
+}
+
 // ============================================================
 // Fetch existing labels from Google Sheet
 // ============================================================
@@ -783,6 +944,39 @@ function linkStatus(kind, detail) {
   if (typeof window.setLinkStatus === 'function') window.setLinkStatus(kind, detail);
 }
 
+// `fetch` with a hard ceiling. Nothing on this page may wait forever: a
+// hung request used to leave the move catalogue blocked behind its spinner
+// with no way back. Rejects with an AbortError the callers translate into
+// an honest "timed out".
+async function fetchJson(url, ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const resp = await fetch(url, { signal: ctl.signal });
+    return await resp.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Every load takes a ticket. Only the newest one may touch state or the UI,
+// so an older response landing late (a slow first request finishing after
+// the user has already pasted a different link) can neither overwrite the
+// newer video's labels nor unlock/relock the panel out from under it. This
+// is what the previous plain boolean got wrong in both directions: it
+// unlocked while another request was still running, and could leave the
+// spinner up after one finished out of order.
+let _loadToken = 0;
+
+// Loading a video's labels, in two phases against two endpoints:
+//   1. `list`        — this labeler's OWN rows. One sheet, quick. The page
+//                      renders and UNLOCKS on this.
+//   2. `listForeign` — everyone else's rows. Walks every labeler sheet and
+//                      is slow enough (~40s uncached) that making the page
+//                      wait on it is what made it look permanently broken.
+//                      Folded in whenever it arrives; failure here is not
+//                      fatal, it just means others' rows aren't shown.
+// See the matching split in apps_script/Code.js's doGet.
 async function fetchLabelsFromSheet(isFreshLoad = false) {
   if (_pendingDeletes > 0) return;
   const driveLink = normalizeDriveUrl(document.getElementById('drive-link').value.trim());
@@ -793,11 +987,19 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // different — that link is still live, the lookup is just deferred.)
   if (!state.scriptUrl || !driveLink) { linkStatus('idle'); return; }
 
+  const token = ++_loadToken;
+  const current = () => token === _loadToken;
+
   linkStatus('syncing');
+  // Locked only for the load that just opened this video — not for the
+  // quiet re-fetch after this labeler's own add/edit/delete, which
+  // shouldn't block anything the labeler is already mid-way through.
+  if (isFreshLoad) setLoadingLocked(true);
+
+  // ── phase 1: own rows ────────────────────────────────────────────────
   try {
-    const url = sheetUrl({ action: 'list', video: driveLink });
-    const response = await fetch(url);
-    const result = await response.json();
+    const result = await fetchJson(sheetUrl({ action: 'list', video: driveLink }), 30000);
+    if (!current()) return;                    // superseded — drop it
 
     if (result.status === 'error') {
       console.error('Sheet fetch error:', result.message);
@@ -806,66 +1008,108 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
       return;
     }
 
-    state.labels = state.labels.filter(l => !l.fromSheet);
+    // Own rows only; the foreign ones are replaced separately in phase 2 so
+    // a failure there can't wipe what phase 1 just rendered.
+    state.labels = state.labels.filter(l => !(l.fromSheet && !l.foreign));
 
-    if (result.labels && result.labels.length > 0) {
-      const sheetLabels = result.labels.map(l => {
-        const punch = mapPunchType(l.punch);
-        const isRound = punch === 'round_start' || punch === 'round_end';
-        return {
-          id: l.id,
-          punch_uuid: l.punch_uuid || '',
-          punch: punch,
-          angle: l.angle || '',
-          start: typeof l.startTime === 'number' ? l.startTime : parseSheetTime(l.startTime),
-          end: typeof l.endTime === 'number' ? l.endTime : parseSheetTime(l.endTime),
-          videoName: l.videoName,
-          fromSheet: true,
-          sheetName: l.sheet,
-          isRoundMarker: isRound,
-        };
-      });
-
-      for (const sl of sheetLabels) {
-        const isDuplicate = state.labels.some(ll =>
-          ll.id === sl.id ||
-          (ll.punch === sl.punch &&
-           Math.abs(ll.start - sl.start) < 0.01 &&
-           Math.abs(ll.end - sl.end) < 0.01)
-        );
-        if (!isDuplicate) {
-          state.labels.push(sl);
-        }
-      }
-
-      mergeForeignRoundMarkers(result, driveLink);
-      mergeForeignPunchLabels(result, driveLink);
-      syncRoundActiveFromLabels();
-      renderLabels();
-      showToast(`Loaded ${result.labels.length} existing labels from sheet`, 'info');
-      // Both branches say the same thing, because the only question the chip
-      // answers is "did this link register" — and it did either way. How much
-      // is filed under it is the label list's job, one panel over.
-      linkStatus('ok');
-    } else {
-      mergeForeignRoundMarkers(result, driveLink);
-      mergeForeignPunchLabels(result, driveLink);
-      syncRoundActiveFromLabels();
-      showToast('No existing labels for this video', 'info');
-      renderLabels();
-      linkStatus('ok');
+    const sheetLabels = (result.labels || []).map(l => {
+      const punch = mapPunchType(l.punch);
+      const isRound = punch === 'round_start' || punch === 'round_end';
+      return {
+        id: l.id,
+        punch_uuid: l.punch_uuid || '',
+        punch: punch,
+        angle: l.angle || '',
+        start: typeof l.startTime === 'number' ? l.startTime : parseSheetTime(l.startTime),
+        end: typeof l.endTime === 'number' ? l.endTime : parseSheetTime(l.endTime),
+        videoName: l.videoName,
+        fromSheet: true,
+        sheetName: l.sheet,
+        isRoundMarker: isRound,
+      };
+    });
+    for (const sl of sheetLabels) {
+      const isDuplicate = state.labels.some(ll =>
+        ll.id === sl.id ||
+        (ll.punch === sl.punch &&
+         Math.abs(ll.start - sl.start) < 0.01 &&
+         Math.abs(ll.end - sl.end) < 0.01)
+      );
+      if (!isDuplicate) state.labels.push(sl);
     }
 
+    syncRoundActiveFromLabels();
+    renderLabels();
+    linkStatus('ok');
+  } catch (e) {
+    if (!current()) return;
+    reportLoadFailure(e, 'labels');
+    return;
+  } finally {
+    // Unlock as soon as the labeler's OWN rows are in — the slow half runs
+    // in the background. Guarded on `current()` so a superseded load can
+    // never unlock the newer one's spinner.
+    if (isFreshLoad && current()) setLoadingLocked(false);
+  }
+
+  // ── phase 2: everyone else's rows, in the background ─────────────────
+  // Deliberately not awaited by the caller's critical path and never
+  // blocking: the page is already usable at this point.
+  try {
+    const fgn = await fetchJson(sheetUrl({ action: 'listForeign', video: driveLink }), 60000);
+    if (!current()) return;
+    if (fgn.status === 'error') {
+      console.error('Foreign fetch error:', fgn.message);
+      return;
+    }
+    state.labels = state.labels.filter(l => !l.foreign);
+    mergeForeignRoundMarkers(fgn, driveLink);
+    mergeForeignPunchLabels(fgn, driveLink);
+    syncRoundActiveFromLabels();
+    renderLabels();
+    updateForeignFilterButton();
     // Only the caller who just opened this video (a pasted link, or the one
     // restored on page load — see setupDriveLink()) asks for the popup; a
-    // routine re-fetch after this labeler's own add/edit/delete passes
-    // nothing and stays quiet.
+    // routine re-fetch after this labeler's own add/edit/delete stays quiet.
     if (isFreshLoad) maybeShowForeignVideoPopup();
   } catch (e) {
-    console.error('Failed to fetch labels:', e);
-    showToast('Failed to load labels from sheet', 'error');
+    if (!current()) return;
+    // Non-fatal by design — the labeler's own rows are already on screen and
+    // editable. Says so in the corner rather than taking the page down.
+    console.error('Failed to load other labelers’ rows:', e);
+    showToast(e.name === 'AbortError'
+      ? 'Other labelers’ labels timed out — yours are loaded and safe to edit.'
+      : 'Could not load other labelers’ labels — yours are loaded and safe to edit.', 'error');
+  }
+}
+
+// One place that turns a thrown fetch into what the labeler sees, so the
+// timeout and the offline case can't drift apart between call sites.
+function reportLoadFailure(e, what) {
+  if (e && e.name === 'AbortError') {
+    console.error('Sheet fetch timed out:', what);
+    showToast('Loading timed out — the sheet is slow right now. Press Retry.', 'error');
+    linkStatus('error', 'Timed out');
+  } else {
+    console.error('Failed to fetch ' + what + ':', e);
+    showToast('Could not reach the sheet. Press Retry.', 'error');
     linkStatus('error', 'Not reaching sheet');
   }
+}
+
+// Blocks starting a new label (the punch-type buttons and "Set Start Time")
+// while a just-opened video's labels are still in flight — the fetch can
+// take a few seconds against a cold Apps Script backend, and starting a
+// label against a list that hasn't finished loading risks a duplicate a
+// moment later when the real data lands. #punch-loading is the visible
+// spinner over the move catalogue; updateTimestampButton() reads the flag
+// too, since disabling the buttons alone still left the OTHER way to start
+// a label (the Set Start Time button) live.
+function setLoadingLocked(locked) {
+  state.labelsLoading = locked;
+  const overlay = document.getElementById('punch-loading');
+  if (overlay) overlay.hidden = !locked;
+  updateTimestampButton();
 }
 
 // "This video is already being labeled by someone else" — pops up the
@@ -878,7 +1122,7 @@ function maybeShowForeignVideoPopup() {
   const counts = {};
   for (const l of state.labels) {
     if (!l.foreign) continue;
-    const who = String(l.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'another labeler';
+    const who = foreignOwnerName(l);
     counts[who] = (counts[who] || 0) + 1;
   }
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -1066,7 +1310,7 @@ function renderLabels() {
       // rm-foreign keeps it at the old muted, colourless look, since the
       // tint is reserved for a boundary this labeler can actually act on.
       const isStart = label.punch === 'round_start';
-      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      const who = foreignOwnerName(label);
       entry.className = 'label-entry round-marker ' + (isStart ? 'rm-start' : 'rm-end') +
         (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
       const icon = isStart ? '\u25B6' : '\u25A0';
@@ -1100,7 +1344,7 @@ function renderLabels() {
       // Read-only, same treatment as a foreign round marker: no edit pencil,
       // no delete — this row belongs to another labeler's sheet and
       // isForeignLabel()/refuseForeign() would refuse the mutation anyway.
-      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      const who = foreignOwnerName(label);
       entry.className = 'label-entry label-foreign';
       entry.style.borderLeftColor = getPunchColor(label.punch);
       entry.innerHTML = `
@@ -1118,9 +1362,7 @@ function renderLabels() {
       // read-only branch above already handled every non-admin case) —
       // saveEditLabel/deleteLabel still write it into THEIR sheet, via
       // foreignOwnerLabelerParam().
-      const who = label.foreign
-        ? String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler'
-        : '';
+      const who = label.foreign ? foreignOwnerName(label) : '';
       entry.className = 'label-entry';
       entry.style.borderLeftColor = getPunchColor(label.punch);
       // The pencil is the only thing that ever said these rows are editable.
@@ -1725,6 +1967,11 @@ function renderTimelineOverlay() {
     const seekFn = (label) => (e) => { e.stopPropagation(); video.currentTime = label.start; };
     state.labels.forEach((label) => {
       if (!label.isRoundMarker) return;
+      // Round markers are otherwise exempt from state.showForeign (shared
+      // context, shown regardless) — but an individually hidden labeler
+      // (isLabelerHidden) is a stronger, per-person mute that DOES reach
+      // round markers too.
+      if (isLabelerHidden(label)) return;
       const isStart = label.punch === 'round_start' || label.punch?.includes?.('start');
       const cls = 'round-mark ' + (isStart ? 'rm-start' : 'rm-end') + (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
       const title = (isStart ? 'Round start' : 'Round end') + ' — ' + formatTime(label.start) +
@@ -1763,7 +2010,7 @@ function renderTimelineOverlay() {
   // up by index on each mousemove.
   state.labels.forEach((label, idx) => {
     if (label.isRoundMarker) return;
-    if (label.foreign && !state.showForeign) return;
+    if (label.foreign && (!state.showForeign || isLabelerHidden(label))) return;
     // Inlined rather than calling shouldHideByUnsure() — this loop runs
     // per-frame during drag, and only the unsure-filter half applies here;
     // offense/defense already have their own separate lanes.
@@ -1787,7 +2034,7 @@ function renderTimelineOverlay() {
     const punchDescText = punchDesc(label.punch);
     const moveTitle = punchDescText ? `${punchLabel(label.punch)} — ${punchDescText}` : punchLabel(label.punch);
     if (label.foreign) {
-      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      const who = foreignOwnerName(label);
       seg.title = moveTitle + '\n' + (state.isAdmin ? who : who + ' (read-only)');
     } else {
       seg.title = moveTitle;
@@ -1810,7 +2057,7 @@ function renderMinimap() {
 
   for (const label of state.labels) {
     if (label.isRoundMarker) continue;
-    if (label.foreign && !state.showForeign) continue;
+    if (label.foreign && (!state.showForeign || isLabelerHidden(label))) continue;
     // Same reasoning as the lane loop above: this overview strip should show
     // exactly what the lanes show, not fewer segments because of a toggle
     // that used to matter for a single combined lane and no longer does.
@@ -1863,7 +2110,7 @@ function updateVideoOverlay() {
   }
 
   const activeLabels = state.labels.filter(l =>
-    !l.isRoundMarker && (state.showForeign || !l.foreign) &&
+    !l.isRoundMarker && (!l.foreign || (state.showForeign && !isLabelerHidden(l))) &&
     t >= l.start && t <= l.end && !shouldHideByUnsure(l)
   );
 

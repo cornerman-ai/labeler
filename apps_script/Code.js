@@ -422,10 +422,10 @@ function doGet(e) {
   // Admin (punch/app.js's state.isAdmin) never gets a "Labeled Data Admin"
   // sheet of its own — it only edits rows that already belong to someone
   // else. "Labeled Data Admin" below is used purely as a sentinel name: it
-  // is never actually created, so collectForeignRoundMarkers()'s /
-  // collectForeignPunchLabels()'s "exclude my own sheet" check never
-  // matches a real sheet, and every labeler's rows come back as foreign to
-  // Admin, which is exactly what Admin's client wants to see.
+  // is never actually created, so collectForeignRows()'s "exclude my own
+  // sheet" check never matches a real sheet, and every labeler's rows come
+  // back as foreign to Admin, which is exactly what Admin's client wants
+  // to see.
   var isAdminCaller = labelerLc === 'admin';
   if (labelerLc === 'combined') {
     sheetName = 'Combined Data';
@@ -441,14 +441,25 @@ function doGet(e) {
 
   var pss = punchSpreadsheet();
 
-  // === Admin / LIST: Admin owns no rows, so the whole response is the
-  // foreign-row scan — nothing else below applies. ===
-  if (isAdminCaller && action === 'list' && p.video) {
+  // === LIST FOREIGN: every OTHER labeler's rows for this video. ===
+  // Split out of `list` on purpose. This is the expensive half — it walks
+  // every labeler sheet (see collectForeignRows) — and making the page wait
+  // on it meant a video took ~41s to become usable, past any reasonable
+  // client timeout. The punch page now asks for `list` first (one sheet,
+  // fast, unlocks the UI) and folds this in whenever it arrives.
+  if (action === 'listForeign' && p.video) {
+    var fgn = collectForeignRows(pss, p.video, sheetName);
     return jsonOut({
-      status: 'ok', labels: [],
-      foreign_round_markers: collectForeignRoundMarkers(p.video, sheetName),
-      foreign_punch_labels: collectForeignPunchLabels(p.video, sheetName),
+      status: 'ok',
+      foreign_round_markers: fgn.roundMarkers,
+      foreign_punch_labels: fgn.punchLabels,
     });
+  }
+
+  // === Admin / LIST: Admin owns no rows of its own, so its own-row list is
+  // empty by definition; everything it sees arrives via listForeign. ===
+  if (isAdminCaller && action === 'list' && p.video) {
+    return jsonOut({ status: 'ok', labels: [] });
   }
 
   var sheet;
@@ -458,7 +469,7 @@ function doGet(e) {
     // resolveMajorityLabelerSheet(). punch/app.js's captureTimestamp() /
     // addRoundMarker() don't (and can't) know who that is client-side, so
     // this is the one place the assignment gets decided.
-    sheetName = resolveMajorityLabelerSheet(p.videoName);
+    sheetName = resolveMajorityLabelerSheet(pss, p.videoName);
     if (!sheetName) {
       return jsonOut({ status: 'error', message:
         'No existing labeler for this video yet — Admin can only add to a video someone else has already started labeling.' });
@@ -524,17 +535,13 @@ function doGet(e) {
         });
       }
     }
-    // Round markers from OTHER labelers (and the frozen Archive) ride along
-    // read-only, so a second labeler sees the video's round structure
-    // without being able to edit or duplicate it. Punch rows deliberately
-    // stay own-sheet-only.
-    var foreignMarkers = collectForeignRoundMarkers(p.video, sheetName);
-    var foreignPunches = collectForeignPunchLabels(p.video, sheetName);
+    // Own rows only — deliberately just this one sheet. Everyone else's rows
+    // (and the shared round markers) come from the separate `listForeign`
+    // action above, which the page requests right after this one; keeping
+    // them out of here is what lets a video become labelable in about a
+    // second instead of waiting on a full-spreadsheet walk.
     return ContentService
-      .createTextOutput(JSON.stringify({
-        status: 'ok', labels: labels, foreign_round_markers: foreignMarkers,
-        foreign_punch_labels: foreignPunches,
-      }))
+      .createTextOutput(JSON.stringify({ status: 'ok', labels: labels }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -593,6 +600,9 @@ function doGet(e) {
     if (cols.start >= 0) sheet.getRange(targetRow, cols.start + 1).setNumberFormat('@');
     if (cols.end >= 0) sheet.getRange(targetRow, cols.end + 1).setNumberFormat('@');
     sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+    // This video's cross-labeler row cache now describes the sheet as it was
+    // a moment ago — drop it so the next listForeign re-scans.
+    invalidateVideoRowCache(p.videoName);
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'ok', action: 'added', id: newId,
@@ -619,6 +629,7 @@ function doGet(e) {
     if (p.fighter && cols.fighter >= 0) { sheet.getRange(row, cols.fighter + 1).setValue(p.fighter); updated.push('fighter'); }
     if (p.startTime && cols.start >= 0) { var sc = sheet.getRange(row, cols.start + 1); sc.setNumberFormat('@'); sc.setValue(secondsToSheetTime(toSeconds(p.startTime))); updated.push('start'); }
     if (p.endTime && cols.end >= 0) { var ec = sheet.getRange(row, cols.end + 1); ec.setNumberFormat('@'); ec.setValue(secondsToSheetTime(toSeconds(p.endTime))); updated.push('end'); }
+    invalidateVideoRowCache(p.video);
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'updated', sheet: sheetName, row: row, cols: cols, updated: updated }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -635,6 +646,7 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     sheet.deleteRow(row);
+    invalidateVideoRowCache(p.video);
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'deleted', sheet: sheetName, row: row }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -1591,15 +1603,121 @@ function punchDirHeaderIndex(headerRow) {
 // Round-marker labels in Combined Data — never labelable as punches.
 var NON_PUNCH_LABELS = ['round_start', 'round_end', 'rest_start', 'rest_end'];
 
-// Round markers for a video across every OTHER labeler sheet + the frozen
-// Combined Data Archive (whose source sheets were deleted). Serves the
-// labeler's read-only round display — rounds are shared context, punches
-// are per-labeler.
-function collectForeignRoundMarkers(video, ownSheetName) {
-  var ss = punchSpreadsheet();
+// Round markers AND punch/defense rows for a video across every OTHER
+// labeler sheet + the frozen Combined Data Archive, in ONE pass per sheet.
+// Used to be two separate functions (collectForeignRoundMarkers /
+// collectForeignPunchLabels), each independently calling
+// sheet.getDataRange().getValues() on every "Labeled Data" sheet — on a
+// spreadsheet with a dozen labelers and thousands of rows apiece, that
+// meant paying for the same full-sheet read TWICE on every single video
+// load, which is most of what made loading feel slow. Reads each sheet
+// once and splits the result by row type instead — same inclusion rules
+// and output shape as the two functions had (Archive rows included in
+// both; a sheet with no end-time column contributes round markers but no
+// punch rows, exactly as it did when that was collectForeignPunchLabels
+// skipping the whole sheet).
+//
+// The row `id` (used by both arrays) is what lets an admin caller
+// (?labeler=Admin) write back to a foreign row: the client re-issues the
+// update/delete with `labeler` overridden to the row's own owner, landing
+// the edit in that person's sheet exactly as if they'd made it, no
+// separate admin bookkeeping. Everyone else's client still refuses the
+// mutation locally (state.isAdmin gates it), so the id riding along here
+// is inert for them.
+//
+// Takes the caller's already-open `pss` (doGet's own punchSpreadsheet())
+// instead of opening it again — SpreadsheetApp.openById() is itself a real
+// round trip, and this is on the hot path of every video load.
+//
+// THE COST, and why it is no longer on the critical path. This walks EVERY
+// labeler sheet's entire data range. Measured at ~41s on the real
+// spreadsheet, which is longer than any sane client timeout — so the punch
+// page no longer waits on it to become usable: `list` returns the caller's
+// OWN rows (one sheet, fast) and the page unlocks, then `listForeign` (this)
+// arrives separately and merges in. See cachedAllRowsForVideo() below for
+// the caching that makes the second and later loads of the same video
+// instant.
+function collectForeignRows(pss, video, ownSheetName) {
+  var all = cachedAllRowsForVideo(pss, video);
+  var roundMarkers = [];
+  var punchLabels = [];
+  for (var i = 0; i < all.length; i++) {
+    var row = all[i];
+    // The own-sheet exclusion happens HERE, not in the scan, so the cached
+    // payload is caller-independent: one cache entry per video serves every
+    // labeler (and Admin, whose sentinel sheet name matches nothing).
+    if (row.sheet === ownSheetName) continue;
+    if (row.punch === 'round_start' || row.punch === 'round_end') {
+      roundMarkers.push({ id: row.id, punch: row.punch, startTime: row.startTime, sheet: row.sheet });
+    } else if (row.endTime !== null) {
+      punchLabels.push({
+        id: row.id, punch: row.punch, startTime: row.startTime,
+        endTime: row.endTime, sheet: row.sheet,
+      });
+    }
+  }
+  return { roundMarkers: roundMarkers, punchLabels: punchLabels };
+}
+
+// ── the cross-sheet scan, and its cache ──────────────────────────────────
+// One cache entry per VIDEO holding every labeler's rows for it, tagged
+// with the sheet they came from. Deliberately caller-independent (no
+// own-sheet exclusion baked in) so all labelers share one entry and a write
+// can invalidate it with a single key — see invalidateVideoRowCache(),
+// called from add/update/delete below.
+function videoRowCacheKey(video) {
+  var target = normalizeDriveUrl(video);
+  // Digest, not the URL: cache keys cap at 250 chars and a Drive URL with
+  // query junk can run past that.
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, target);
+  var hex = '';
+  for (var i = 0; i < digest.length; i++) {
+    var b = (digest[i] + 256) % 256;
+    hex += (b < 16 ? '0' : '') + b.toString(16);
+  }
+  return 'pv1:' + hex;
+}
+
+function invalidateVideoRowCache(video) {
+  if (!video) return;
+  try { CacheService.getScriptCache().remove(videoRowCacheKey(video)); } catch (e) {}
+}
+
+// Cache read-through around scanAllRowsForVideo(). Everything here is
+// best-effort: a cache miss, an over-size payload or a CacheService outage
+// all just fall back to scanning, never to failing.
+function cachedAllRowsForVideo(pss, video) {
+  var key = videoRowCacheKey(video);
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  if (cache) {
+    try {
+      var hit = cache.get(key);
+      if (hit) return JSON.parse(hit);
+    } catch (e) {}
+  }
+  var rows = scanAllRowsForVideo(pss, video);
+  if (cache) {
+    try {
+      var payload = JSON.stringify(rows);
+      // CacheService caps a value at 100KB. A video with an unusually large
+      // number of rows just goes uncached rather than throwing.
+      if (payload.length < 90000) cache.put(key, payload, 300);
+    } catch (e) {}
+  }
+  return rows;
+}
+
+// The actual walk: every "Labeled Data …" sheet plus the frozen Combined
+// Data Archive, one getValues() per sheet, keeping only rows for this
+// video. `endTime` is null for a sheet with no end-time column, which is
+// what makes collectForeignRows() treat those as round-markers-only —
+// exactly what the old collectForeignPunchLabels() did by skipping such a
+// sheet outright.
+function scanAllRowsForVideo(pss, video) {
   var target = normalizeDriveUrl(video);
   var out = [];
-  var sheets = ss.getSheets();
+  var sheets = pss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
     var name = sheet.getName();
@@ -1607,64 +1725,21 @@ function collectForeignRoundMarkers(video, ownSheetName) {
     if (!isArchive) {
       if (name.indexOf(LABELER_PREFIX) !== 0) continue;
       if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
-      if (name === ownSheetName) continue;
     }
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
     if (cols.punch < 0 || cols.video < 0 || cols.start < 0) continue;
+    var hasEnd = cols.end >= 0;
     for (var r = 1; r < data.length; r++) {
       var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
-      if (lbl !== 'round_start' && lbl !== 'round_end') continue;
+      if (!lbl) continue;
       if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
       out.push({
         id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
         punch: lbl,
         startTime: toSeconds(data[r][cols.start]),
-        sheet: name,
-      });
-    }
-  }
-  return out;
-}
-
-// Every non-round punch/defense row for a video across every OTHER labeler
-// sheet + the frozen Combined Data Archive. Read-only for a normal labeler
-// — same "look, don't touch" contract as collectForeignRoundMarkers, shows
-// the punch segments instead of just the round boundaries — but carries the
-// row `id` so an admin caller (?labeler=Admin) CAN write back to it: the
-// client re-issues the update/delete with `labeler` overridden to this
-// row's own owner, landing the edit in that person's sheet exactly as if
-// they'd made it, no separate admin bookkeeping. Everyone else's client
-// still refuses the mutation locally (state.isAdmin gates it), so the id
-// riding along here is inert for them.
-function collectForeignPunchLabels(video, ownSheetName) {
-  var ss = punchSpreadsheet();
-  var target = normalizeDriveUrl(video);
-  var out = [];
-  var sheets = ss.getSheets();
-  for (var s = 0; s < sheets.length; s++) {
-    var sheet = sheets[s];
-    var name = sheet.getName();
-    var isArchive = name === COMBINED_ARCHIVE_NAME;
-    if (!isArchive) {
-      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
-      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
-      if (name === ownSheetName) continue;
-    }
-    if (sheet.getLastRow() < 2) continue;
-    var data = sheet.getDataRange().getValues();
-    var cols = findColumns(data[0]);
-    if (cols.punch < 0 || cols.video < 0 || cols.start < 0 || cols.end < 0) continue;
-    for (var r = 1; r < data.length; r++) {
-      var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
-      if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
-      if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
-      out.push({
-        id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
-        punch: lbl,
-        startTime: toSeconds(data[r][cols.start]),
-        endTime: toSeconds(data[r][cols.end]),
+        endTime: hasEnd ? toSeconds(data[r][cols.end]) : null,
         sheet: name,
       });
     }
@@ -1679,27 +1754,25 @@ function collectForeignPunchLabels(video, ownSheetName) {
 // as a source of *foreign* rows elsewhere: its source sheets are gone, so
 // there's nowhere live to append a new one even if it "wins" on count.
 // Returns null for a video nobody has labeled yet — there's no majority to
-// infer, so the caller has to refuse rather than guess.
-function resolveMajorityLabelerSheet(video) {
+// infer, so the caller has to refuse rather than guess. Takes the caller's
+// already-open `pss` for the same reason collectForeignRows() does.
+function resolveMajorityLabelerSheet(pss, video) {
   var target = normalizeDriveUrl(video);
   if (!target) return null;
-  var ss = punchSpreadsheet();
-  var sheets = ss.getSheets();
+  // Shares cachedAllRowsForVideo()'s single scan rather than walking every
+  // sheet again — this used to be a second full-spreadsheet read on the
+  // Admin add path.
+  var all = cachedAllRowsForVideo(pss, video);
+  var counts = {};
   var best = null, bestCount = 0;
-  for (var s = 0; s < sheets.length; s++) {
-    var sheet = sheets[s];
-    var name = sheet.getName();
-    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
-    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
-    if (sheet.getLastRow() < 2) continue;
-    var data = sheet.getDataRange().getValues();
-    var cols = findColumns(data[0]);
-    if (cols.video < 0) continue;
-    var count = 0;
-    for (var r = 1; r < data.length; r++) {
-      if (normalizeDriveUrl(data[r][cols.video]) === target) count++;
-    }
-    if (count > bestCount) { bestCount = count; best = name; }
+  for (var i = 0; i < all.length; i++) {
+    var name = all[i].sheet;
+    // The Archive counts as a source of foreign rows elsewhere, but its
+    // source sheets are gone — there is nowhere live to append to even if
+    // it wins on count.
+    if (name === COMBINED_ARCHIVE_NAME) continue;
+    counts[name] = (counts[name] || 0) + 1;
+    if (counts[name] > bestCount) { bestCount = counts[name]; best = name; }
   }
   return best;
 }
