@@ -982,43 +982,43 @@ function renderAgreement() {
     return;
   }
 
-  const roster = names.map((n, i) =>
-    `<span class="agr-who" style="--who: ${labelerColor(n)}">${n} <b>${counts[i]}</b></span>`).join('');
-
-  // Which way the timing offset leans, said in words — a signed number
-  // alone makes you re-derive who "+" refers to every time.
+  // Which way the timing leans, in words — a signed number alone makes you
+  // re-derive who "+" refers to every time. Silent when it's negligible.
   const offsetLine = (r) => {
-    if (r.offsetMs === null || Math.abs(r.offsetMs) < 10) return 'timing aligned';
-    const who = r.offsetMs > 0 ? r.a : r.b;
-    return `${who} marks ${Math.abs(r.offsetMs)} ms later`;
+    if (r.offsetMs === null || Math.abs(r.offsetMs) < 10) return '';
+    return `${r.offsetMs > 0 ? r.a : r.b} marks ${Math.abs(r.offsetMs)} ms later`;
   };
 
-  const table = rows.map(r => `
+  // Every explanation lives in a tooltip rather than on screen. The panel is
+  // read repeatedly by the same person; prose they have already read is
+  // just something to look past to reach the numbers.
+  const cell = (value, label, hint, cls) =>
+    `<div${cls ? ` class="${cls}"` : ''} title="${hint}"><b>${value}</b><span>${label}</span></div>`;
+
+  body.innerHTML = rows.map(r => `
     <div class="agr-pair">
       <div class="agr-pair-head">
-        <span class="agr-who" style="--who: ${labelerColor(r.a)}">${r.a}</span>
+        <span class="agr-who" style="--who: ${labelerColor(r.a)}">${r.a} <b>${r.aCount}</b></span>
         <span class="agr-vs">vs</span>
-        <span class="agr-who" style="--who: ${labelerColor(r.b)}">${r.b}</span>
+        <span class="agr-who" style="--who: ${labelerColor(r.b)}">${r.b} <b>${r.bCount}</b></span>
       </div>
       <div class="agr-stats">
-        <div><b>${r.matched}</b><span>both found</span></div>
-        <div><b>${r.typePct === null ? '—' : r.typePct + '%'}</b><span>same move</span></div>
-        <div><b>${r.meanIoU === null ? '—' : r.meanIoU}</b><span>mean overlap</span></div>
-        <div><b>${r.onlyA}</b><span>only ${r.a}</span></div>
-        <div><b>${r.onlyB}</b><span>only ${r.b}</span></div>
+        ${cell(r.matched, 'both', `Punches both found — paired when they overlap by at least ${Math.round(AGREE_IOU_FLOOR * 100)}%.`)}
+        ${cell(r.typePct === null ? '—' : r.typePct + '%', 'agree', 'Of the punches both found, how often they called it the same move.')}
+        ${cell(r.meanIoU === null ? '—' : r.meanIoU, 'IoU',
+               'Mean timing overlap: intersection ÷ union of the two punches. 1.0 = identical timing.')}
+        ${cell(r.kappa === null ? 'n/a' : r.kappa, 'κ',
+               r.kappa === null
+                 ? 'Cohen\'s kappa is undefined here — only one move in common, so chance already explains all of it.'
+                 : `Cohen's kappa — agreement on the move corrected for chance (${r.kappaBand.word}). A plain percentage flatters a video that is mostly jabs.`,
+               'agr-k agr-tone-' + r.kappaBand.tone)}
+        ${cell(r.onlyA, 'only ' + r.a, `${r.matched + r.onlyA} punches from ${r.a}, of which ${r.onlyA} ${r.b} did not mark.`)}
+        ${cell(r.onlyB, 'only ' + r.b, `${r.matched + r.onlyB} punches from ${r.b}, of which ${r.onlyB} ${r.a} did not mark.`)}
       </div>
-      <p class="agr-sub">
-        <span class="agr-kappa agr-tone-${r.kappaBand.tone}"
-              title="Agreement on the move, corrected for what chance alone would give.">
-          ${r.kappa === null
-            ? 'κ n/a · only one move in common'
-            : `κ ${r.kappa} · ${r.kappaBand.word}`}
-        </span>
-        <span class="agr-offset">${offsetLine(r)}</span>
-      </p>
+      ${offsetLine(r) ? `<p class="agr-offset">${offsetLine(r)}</p>` : ''}
       ${r.perMove.length ? `
         <table class="agr-moves">
-          <thead><tr><th>Move</th><th>Seen</th><th>Agreed</th><th>Overlap</th></tr></thead>
+          <thead><tr><th>Move</th><th>Seen</th><th>Agreed</th><th>IoU</th></tr></thead>
           <tbody>${r.perMove.map(m => `
             <tr class="${m.pct < 60 ? 'agr-weak' : ''}">
               <td><span class="agr-swatch" style="background:${getPunchColor(m.move)}"></span>${m.label}</td>
@@ -1032,14 +1032,6 @@ function renderAgreement() {
         r.confusions.slice(0, 5).map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
       }</ul>` : ''}
     </div>`).join('');
-
-  body.innerHTML = `
-    <p class="agr-lede">Punches are paired when they overlap in time by at least
-      ${Math.round(AGREE_IOU_FLOOR * 100)}%. <b>κ</b> is agreement on the move
-      corrected for chance — a plain percentage flatters a video that is mostly
-      jabs. <b>Overlap</b> is 1.0 for identical timing.</p>
-    <div class="agr-roster">${roster}</div>
-    ${table}`;
 }
 
 // Clicking a row in the Labels panel lights that row AND its strip on the

@@ -1675,22 +1675,27 @@ kbd {
   background: rgba(0,0,0,.28);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }
-.agr-lede { font-size: 12.5px; color: var(--ink-dim); margin: 4px 0 12px; line-height: 1.45; }
 .agr-empty { font-size: 13px; color: var(--ink-dim); padding: 12px 0; }
-.agr-roster { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 /* Same colour a labeler has on the timeline and on their rows — the point
    of the panel is comparing people, so they have to be identifiable at a
-   glance in all three places. */
+   glance in all three places. The count rides along here, which is why
+   there is no separate roster block above. */
 .agr-who {
   padding: 2px 8px; border-radius: 999px;
   background: var(--who, var(--ink-dim)); color: #fff;
   font-size: 11px; font-weight: 650;
 }
 .agr-who b { font-weight: 750; opacity: .85; margin-left: 3px; }
-.agr-pair { padding: 12px 0; border-top: 1px solid var(--line); }
-.agr-pair-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.agr-pair { padding: 2px 0 12px; }
+.agr-pair + .agr-pair { padding-top: 14px; border-top: 1px solid var(--line); }
+.agr-pair-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .agr-vs { font-size: 11px; color: var(--ink-dim); font-weight: 590; }
-.agr-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+/* auto-fit rather than a fixed six columns: the last two cells are named
+   after the labelers, and a long name would otherwise crush the numbers. */
+.agr-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 10px 8px;
+}
 .agr-stats div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .agr-stats b {
   font-size: 17px; font-weight: 640; letter-spacing: -.02em;
@@ -1698,27 +1703,20 @@ kbd {
 }
 .agr-stats span {
   font-size: 10px; color: var(--ink-dim); line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* The two secondary numbers, on one line under the headline grid: chance-
-   corrected agreement, and which way the timing leans. */
-.agr-sub {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-top: 10px; font-size: 11.5px;
-}
-.agr-kappa {
-  padding: 2px 8px; border-radius: 999px; font-weight: 650;
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-/* Banded, so the number carries a verdict without needing one looked up. */
-.agr-tone-ok  { background: var(--yes-wash); color: var(--yes-on-wash); }
-.agr-tone-mid { background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200; }
-.agr-tone-bad { background: var(--no-wash); color: var(--no-on-wash); }
-.agr-tone-na  { background: var(--fill); color: var(--ink-dim); }
+/* Kappa is the one cell carrying a verdict, so it is the one that gets a
+   colour — everything else is a plain number. */
+.agr-stats .agr-k b { padding: 0 5px; border-radius: 5px; }
+.agr-stats .agr-k.agr-tone-ok  b { background: var(--yes-wash); color: var(--yes-on-wash); }
+.agr-stats .agr-k.agr-tone-mid b { background: color-mix(in srgb, #b26a00 18%, transparent); color: #8a5200; }
+.agr-stats .agr-k.agr-tone-bad b { background: var(--no-wash); color: var(--no-on-wash); }
+.agr-stats .agr-k.agr-tone-na  b { color: var(--ink-dim); }
 @media (prefers-color-scheme: dark) {
-  .agr-tone-mid { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
+  .agr-stats .agr-k.agr-tone-mid b { color: #f0b355; background: color-mix(in srgb, #f0b355 22%, transparent); }
 }
-.agr-offset { color: var(--ink-dim); }
+/* One short line, and only when the two actually lean — see offsetLine(). */
+.agr-offset { margin-top: 10px; font-size: 11.5px; color: var(--ink-dim); }
 
 /* Per-move breakdown — where a single headline mean hides the one move the
    two actually disagree about. */
