@@ -186,7 +186,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border: 0; background: transparent; color: var(--ink-on-fill);
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
-#btn-pick-file:hover { background: rgba(0,0,0,.06); color: var(--ink); }
+/* --fill-2, not a black tint: this sits ON --fill, and a black wash over an
+   already-dark surface is invisible in dark mode. The systemFill greys are
+   defined to read in both schemes. */
+#btn-pick-file:hover { background: var(--fill-2); color: var(--ink); }
 #btn-pick-file svg { width: 13px; height: 13px; flex: none; }
 
 /* Dim while it still reads "No video loaded", green once a file has actually
@@ -344,7 +347,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   width: 22px; height: 22px; border-radius: 6px; border: 0;
   background: transparent; color: inherit; opacity: .65;
 }
-#btn-copy-link:hover { opacity: 1; background: rgba(0,0,0,.08); }
+#btn-copy-link:hover { opacity: 1; background: var(--fill-2); }
 #btn-copy-link[hidden] { display: none; }
 #btn-copy-link svg { width: 12px; height: 12px; }
 #btn-copy-link.copied { opacity: 1; color: var(--yes); }
@@ -450,18 +453,24 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #punch-panel::-webkit-scrollbar { width: 8px; }
 #punch-panel::-webkit-scrollbar-thumb { background: var(--track); border-radius: 4px; }
 #punch-buttons { display: flex; flex-direction: column; }
+/* The positioning context for #punch-loading — scoped to the catalogue so
+   the overlay covers the move buttons and nothing else. On #punch-panel it
+   also covered Session below, and (the panel being a scroll container)
+   stretched to the full scroll height rather than the visible box. */
+#punch-catalogue { position: relative; }
 
-/* Blocks the move catalogue while a just-opened video's labels are still in
-   flight — see setLoadingLocked() in app.js. Sits over #punch-buttons
-   (not replacing it) so the layout doesn't jump once it's gone. */
+/* Blocks the move catalogue while a just-opened video's own labels are still
+   in flight — see setLoadingLocked() in app.js. Sits over #punch-buttons
+   rather than replacing it, so nothing reflows when it clears. */
 #punch-loading {
-  position: absolute; inset: 0; z-index: 5;
+  position: absolute; inset: -6px -4px; z-index: 5;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; border-radius: var(--radius);
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  gap: 10px; border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   font-size: 12.5px; font-weight: 510; color: var(--ink-dim);
 }
+#punch-loading[hidden] { display: none; }
 .spinner {
   width: 22px; height: 22px; border-radius: 50%;
   border: 2.5px solid var(--fill); border-top-color: var(--accent-solid);

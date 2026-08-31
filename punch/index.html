@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260831b">
+  <link rel="stylesheet" href="punch.css?v=20260831c">
 </head>
 <body>
   <div id="app">
@@ -95,14 +95,18 @@
       <!-- Left: the move catalogue -->
       <aside id="punch-panel">
         <p class="card-eyebrow">Move Type</p>
-        <div id="punch-buttons"></div>
-        <!-- Shown by app.js's setLoadingLocked() while a just-opened video's
-             labels are still coming in from the sheet — blocks picking a
-             move type until the list that's about to render is the real
-             one, not "before the fetch landed". -->
-        <div id="punch-loading" hidden>
-          <div class="spinner"></div>
-          <span>Loading labels&hellip;</span>
+        <!-- The overlay below covers THIS box only, not the whole panel:
+             picking a move type is the one thing that must wait for the
+             sheet, while Session (stance/training) underneath stays usable. -->
+        <div id="punch-catalogue">
+          <div id="punch-buttons"></div>
+          <!-- Shown by app.js's setLoadingLocked() while a just-opened
+               video's own labels are still in flight — starting a label
+               against a list that hasn't landed risks duplicating one. -->
+          <div id="punch-loading" hidden>
+            <div class="spinner"></div>
+            <span>Loading labels&hellip;</span>
+          </div>
         </div>
 
         <!-- Training type + stance: usually the same for a whole video, but
@@ -393,12 +397,12 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260831b"></script>
-  <script src="../shared/player.js?v=20260831b"></script>
-  <script src="app.js?v=20260831b"></script>
+  <script src="../shared/labeler_name.js?v=20260831c"></script>
+  <script src="../shared/player.js?v=20260831c"></script>
+  <script src="app.js?v=20260831c"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260831b"></script>
+  <script src="ui.js?v=20260831c"></script>
 </body>
 </html>
