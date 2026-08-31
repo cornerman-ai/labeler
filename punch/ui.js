@@ -14,6 +14,15 @@
 (function () {
   const $ = (id) => document.getElementById(id);
 
+  // Status glyphs for the two .src-field rows — the video file's "Loaded"
+  // and the link's "Saved" / "Checking…" / error. Shared so the two rows
+  // can't drift apart visually.
+  const GLYPH = {
+    ok:   '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.4 6.3 4.7 8.6 9.6 3.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    err:  '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.4 11.4 10.6H.6L6 1.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 5v2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="8.8" r=".75" fill="currentColor"/></svg>',
+    sync: '<svg class="spin" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="20 7"/></svg>',
+  };
+
   // Replace a global from player.js with a version that also repaints our
   // chrome. player.js declares these with `function`, so they live on window
   // and every caller — app.js's keyboard handler, the inline onclick
@@ -788,16 +797,13 @@
   // my link being counted" is a question you can ask at any moment, so the
   // answer has to still be on screen when you look.
   function setupLinkStatus() {
-    const field = document.querySelector('.src-field');
     const input = $('drive-link');
+    // .closest, NOT document.querySelector('.src-field'): the video row is
+    // the same component and sits FIRST in the DOM, so a bare class lookup
+    // would tint that row on every link status change.
+    const field = input && input.closest('.src-field');
     const out = $('link-status');
     if (!field || !input || !out) return;
-
-    const GLYPH = {
-      ok:   '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.4 6.3 4.7 8.6 9.6 3.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      err:  '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.4 11.4 10.6H.6L6 1.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 5v2.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="8.8" r=".75" fill="currentColor"/></svg>',
-      sync: '<svg class="spin" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="20 7"/></svg>',
-    };
 
     window.setLinkStatus = (kind, detail) => {
       field.classList.remove('ok', 'err', 'syncing');
@@ -941,13 +947,45 @@
 
   // ── loaded-video confirmation ─────────────────────────────────────────
   // player.js drops the file name into #video-name and otherwise leaves
-  // "No video loaded" sitting there. Colour is the difference between a
-  // placeholder and a fact.
+  // "No video loaded" sitting there. This gives that row the same three
+  // pieces of feedback the link row below it already had — the field tints
+  // green, a checkmark chip names the state, and a copy button appears —
+  // so the two read as one component in two states rather than two
+  // different-looking things. setLinkStatus() is the equivalent for the link.
   function setupVideoName() {
     const video = $('video-player'), name = $('video-name');
+    const field = $('video-loader'), out = $('video-status'), copy = $('btn-copy-name');
     if (!video || !name) return;
-    video.addEventListener('loadedmetadata', () => name.classList.add('loaded'));
-    video.addEventListener('error', () => name.classList.remove('loaded'));
+
+    const paint = (loaded) => {
+      name.classList.toggle('loaded', loaded);
+      if (field) {
+        field.classList.toggle('ok', loaded);
+        field.title = loaded ? 'This video is open. Click to copy its file name.'
+                             : 'No video open yet.';
+      }
+      if (out) {
+        out.hidden = !loaded;
+        out.innerHTML = loaded ? GLYPH.ok + '<span>Loaded</span>' : '';
+      }
+      if (copy) copy.hidden = !loaded;
+    };
+
+    video.addEventListener('loadedmetadata', () => paint(true));
+    video.addEventListener('error', () => paint(false));
+    // The name is the file's, not the link's — that is what someone
+    // cross-checking a clip against the sheet actually needs on the
+    // clipboard. app.js owns the copy plumbing; see copyTextToClipboard().
+    if (copy) {
+      copy.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.copyTextToClipboard === 'function') {
+          window.copyTextToClipboard(name.textContent, copy, 'file name');
+        }
+      });
+    }
+    paint(false);
   }
 
   document.addEventListener('DOMContentLoaded', () => {

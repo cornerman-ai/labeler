@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260831e">
+  <link rel="stylesheet" href="punch.css?v=20260831f">
 </head>
 <body>
   <div id="app">
@@ -62,7 +62,12 @@
          this" — instead of one living in the nav bar and the other in a
          separate strip below it. ─────────────────────────────────────── -->
     <div id="video-source-bar">
-      <div id="video-loader">
+      <!-- Same .src-field component as the link row below it — same height,
+           fill, radius, trailing copy button and confirmation chip, and the
+           same green once it holds something real. The only thing that
+           differs is the leading control: this row opens a file, that one
+           takes a pasted URL. -->
+      <div id="video-loader" class="src-field">
         <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
           <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
           Open Video
@@ -71,6 +76,12 @@
         <!-- Real, selectable text — not truncated in JS, only visually via
              CSS ellipsis, so the full name is still there to copy. -->
         <span id="video-name">No video loaded</span>
+        <!-- Copies the file name. Shown only once a video has decoded —
+             ui.js's setupVideoName(), mirroring the link row's copy button. -->
+        <button type="button" id="btn-copy-name" title="Copy video name" hidden>
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+        <span id="video-status" class="field-status" hidden></span>
       </div>
 
       <label class="src-field" for="drive-link">
@@ -85,7 +96,7 @@
         <!-- Filled by ui.js from the status app.js reports as it talks to the
              sheet: this link is the key every label is filed under, and until
              now nothing on screen said whether it had registered. -->
-        <span id="link-status" hidden></span>
+        <span id="link-status" class="field-status" hidden></span>
       </label>
     </div>
 
@@ -397,12 +408,12 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260831e"></script>
-  <script src="../shared/player.js?v=20260831e"></script>
-  <script src="app.js?v=20260831e"></script>
+  <script src="../shared/labeler_name.js?v=20260831f"></script>
+  <script src="../shared/player.js?v=20260831f"></script>
+  <script src="app.js?v=20260831f"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260831e"></script>
+  <script src="ui.js?v=20260831f"></script>
 </body>
 </html>

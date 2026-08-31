@@ -168,46 +168,42 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 17px; font-weight: 640; letter-spacing: -.02em;
   white-space: nowrap; flex: none;
 }
-/* One filled pill — button then name, no internal border — so it reads as a
-   single field, the way #name-field/#lang-field already read as pills in
-   the nav bar. Stacked above the Drive-link pill in #video-source-bar
-   (each its own full-width row), not beside it: side by side left the file
-   name squeezed into a couple hundred pixels. Used to be a bare button plus
-   loose text in the nav bar; grouping it with the link is the point. */
-#video-loader {
-  width: 100%;
-  display: flex; align-items: center; gap: 6px; min-width: 0;
-  height: 32px; padding: 0 4px; border-radius: 8px;
-  background: var(--fill);
-}
+/* The video row IS a .src-field (see the block further down) — same height,
+   fill, radius, trailing copy button and confirmation chip, and the same
+   green wash once it holds something real. Only the leading control differs:
+   a file-picker button here, a pasted URL there. Everything below is just
+   that difference. Left padding drops to 4px because the button carries its
+   own. */
+/* Only the left padding differs — the picker button carries its own. Gap is
+   deliberately NOT overridden: it has to match .src-field's, or the trailing
+   copy button lands a couple of px off the one in the row below. */
+#video-loader { padding-left: 4px; }
 #btn-pick-file {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   height: 26px; padding: 0 8px; border-radius: 6px;
-  border: 0; background: transparent; color: var(--ink-on-fill);
+  border: 0; background: transparent; color: inherit;
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
 /* --fill-2, not a black tint: this sits ON --fill, and a black wash over an
    already-dark surface is invisible in dark mode. The systemFill greys are
    defined to read in both schemes. */
-#btn-pick-file:hover { background: var(--fill-2); color: var(--ink); }
+#btn-pick-file:hover { background: var(--fill-2); }
 #btn-pick-file svg { width: 13px; height: 13px; flex: none; }
 
-/* Dim while it still reads "No video loaded", green once a file has actually
-   decoded — the difference between a placeholder and a fact. ui.js adds the
-   class on `loadedmetadata`; player.js writes the FULL name as real text
-   (never truncated in JS) — this ellipsis is purely visual, so the whole
-   name is still there to select and copy even where it's cut off on screen. */
+/* player.js writes the FULL name as real text (never truncated in JS) — the
+   ellipsis here is purely visual, so the whole name is still there to select
+   and copy even where it's cut off on screen. No max-width cap: reading the
+   whole name is how you confirm you opened the right clip. */
 #video-name {
   flex: 1; min-width: 0;
-  font-size: 12.5px; color: var(--ink-on-fill);
-  /* No max-width cap — the whole point is showing the full name (this is
-     how you confirm you opened the right clip). overflow/ellipsis stay on
-     only as a safety net for a name that's still too long for the window,
-     not as the normal case. */
+  font-size: 12.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-right: 6px;
 }
-#video-name.loaded { color: var(--yes); font-weight: 510; }
+/* Once a file has actually decoded the row goes green as a whole (.ok on the
+   field, exactly like the link row's "Saved" state) — so the name only needs
+   the weight bump, not a colour of its own. */
+#video-name.loaded { font-weight: 510; }
 
 .nav-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
@@ -337,33 +333,38 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #drive-link:focus { outline: none; }
 #drive-link::placeholder { color: var(--ink-on-fill); }
 
-/* One-click copy on top of the field already being a real, selectable
-   <input> — shown only once there's something worth copying (ui.js's
-   setupCopyLink() toggles [hidden] on input). Briefly turns green + swaps
-   to a checkmark on click, the same "it happened" language #name-field's
-   save flash and the round markers' colors already use elsewhere. */
-#btn-copy-link {
+/* One-click copy on top of each field already being real, selectable text —
+   shown only once there's something worth copying. Briefly turns green on
+   click, the same "it happened" language #name-field's save flash and the
+   round markers' colors already use elsewhere. Both rows share this. */
+#btn-copy-link, #btn-copy-name {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 6px; border: 0;
   background: transparent; color: inherit; opacity: .65;
 }
-#btn-copy-link:hover { opacity: 1; background: var(--fill-2); }
-#btn-copy-link[hidden] { display: none; }
-#btn-copy-link svg { width: 12px; height: 12px; }
-#btn-copy-link.copied { opacity: 1; color: var(--yes); }
+#btn-copy-link:hover, #btn-copy-name:hover { opacity: 1; background: var(--fill-2); }
+#btn-copy-link[hidden], #btn-copy-name[hidden] { display: none; }
+#btn-copy-link svg, #btn-copy-name svg { width: 12px; height: 12px; }
+#btn-copy-link.copied, #btn-copy-name.copied { opacity: 1; color: var(--yes); }
 
-/* Whether this link has registered. The field itself carries the state — the
-   whole control tints, leading icon included — because the question being
-   answered is about the field, not about a badge next to it.
-   Unlike the name field's 1.8s green flash this one PERSISTS: "are my labels
-   being filed under this link" is a question asked at any moment, so the answer
-   has to still be there when you look up. */
-#link-status {
+/* The trailing confirmation chip, on both rows: "Loaded" for the file,
+   "Saved" for the link. The FIELD carries the state — the whole control
+   tints, leading icon included — because the question being answered is
+   about the field, not about a badge next to it.
+   Unlike the name field's 1.8s green flash these PERSIST: "did my video
+   open" and "are my labels being filed under this link" are questions asked
+   at any moment, so the answer has to still be there when you look up. */
+.field-status {
   flex: none; display: flex; align-items: center; gap: 5px;
   font-size: 11.5px; font-weight: 590; white-space: nowrap;
+  /* Wide enough for the longer of the two resting words ("Loaded" vs
+     "Saved") and right-aligned, so the copy buttons ahead of them line up
+     between the two rows instead of sitting a few px apart. Longer error
+     text just pushes past it. */
+  min-width: 64px; justify-content: flex-end;
 }
-#link-status[hidden] { display: none; }
-#link-status svg { width: 12px; height: 12px; flex: none; }
+.field-status[hidden] { display: none; }
+.field-status svg { width: 12px; height: 12px; flex: none; }
 /* Only rendered in the error state — see setLinkStatus() in ui.js. */
 .link-retry {
   flex: none; margin-left: 2px; padding: 2px 8px; border-radius: 5px;

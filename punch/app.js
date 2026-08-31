@@ -910,28 +910,43 @@ function setupDriveLink() {
   }
 }
 
-// One click on top of the field already being a real, selectable <input> —
-// see the comment on #btn-copy-link. Clipboard API needs a secure context
-// (https, or localhost); execCommand('copy') is the fallback for a plain
-// http:// preview.
-async function copyDriveLink(input, btn) {
-  const text = input.value.trim();
+// One click on top of text that is already selectable on screen — the link
+// row's <input> and the video row's file name both use this. Clipboard API
+// needs a secure context (https, or localhost); the textarea + execCommand
+// dance is the fallback for a plain http:// preview, and works for a plain
+// string where input.select() would not.
+//
+// Exposed on window because ui.js (which owns the video row's wiring, and
+// loads after this file) calls it too.
+async function copyTextToClipboard(text, btn, what) {
+  text = String(text || '').trim();
   if (!text) return;
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
     } else {
-      input.select();
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      // Off-screen but focusable — a display:none node cannot be selected.
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
       document.execCommand('copy');
-      input.setSelectionRange(0, 0);
+      ta.remove();
     }
     btn.classList.add('copied');
     const prevTitle = btn.title;
     btn.title = 'Copied!';
     setTimeout(() => { btn.classList.remove('copied'); btn.title = prevTitle; }, 1200);
   } catch (e) {
-    showToast('Copy failed — select the link and copy manually', 'error');
+    showToast(`Copy failed — select the ${what || 'text'} and copy manually`, 'error');
   }
+}
+window.copyTextToClipboard = copyTextToClipboard;
+
+function copyDriveLink(input, btn) {
+  return copyTextToClipboard(input.value, btn, 'link');
 }
 
 // ============================================================
