@@ -823,22 +823,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-/* Exactly where a round starts or ends — a vertical line + flag, built by
-   renderTimelineOverlay(). The hatched "outside round" shading on the scrub
-   track says roughly where you are RELATIVE to a round; this says exactly
-   where the boundary itself falls, to the pixel.
-   TWO layers sharing this same rule: #round-markers lives inside #seg-lanes
-   and zooms with it (positioned by timeToViewportPct); #round-markers-scrub
-   lives inside #scrub, which never zooms (positioned by timeToScrubPct) —
-   see setupScrubOverview() in ui.js for why the scrub track is the one part
-   of the timeline that always shows the whole video. Sized top:0/bottom:0
-   against each one's OWN parent rather than a fixed height, so it tracks
-   whatever that box's height happens to be (touch sizing, a future third
-   lane) without a number to keep in sync here. */
-/* The rounds ribbon: a row of its own at the top of #seg-lanes, in flow
-   (not an overlay), so a round reads as the stretch of time it is instead
-   of as two vertical rules through the lanes. Those rules were the same
-   shape as a playhead and were being mistaken for one. */
+/* Where the rounds are, built by renderRoundStrip(). Still TWO layers, but
+   they no longer share a rule: #round-markers lives inside #seg-lanes and
+   zooms with it (positioned by timeToViewportPct), and is a labelled span
+   per round; #round-markers-scrub lives inside #scrub, which never zooms
+   (timeToScrubPct) — see setupScrubOverview() in ui.js for why the scrub
+   track is the one part of the timeline that always shows the whole video —
+   and is boundary ticks, because 8px has no room for a label.
+   The rounds ribbon is a row of its own at the top of #seg-lanes, in flow
+   rather than an overlay, so a round reads as the stretch of time it is
+   instead of as two vertical rules through the lanes. Those rules were the
+   same shape as a playhead and were being mistaken for one. */
 #round-markers {
   position: relative; height: 13px; flex: none; margin-bottom: 2px;
 }
@@ -1444,8 +1439,8 @@ button.ffm-row[aria-checked="true"]::before,
    round is one the pipeline discards), so they now get the same weight a
    punch row gets: a tinted background and a coloured left border, colour-
    coded start vs end so the two read apart at a glance. Same green/blue pair
-   the timeline's own round flags use (see .round-mark above) — same story,
-   two places. */
+   the timeline's rounds ribbon brackets each span with (.round-span above,
+   and .round-tick on the scrub track) — same story, two places. */
 .label-entry.round-marker {
   padding: 7px 9px; font-size: 12.5px; border-left-width: 3px;
 }
