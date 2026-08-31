@@ -41,46 +41,6 @@
     muted: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8.3 2.9 5.2 5.4H2.9v5.2h2.3l3.1 2.5V2.9Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="m11 6.2 3.1 3.6M14.1 6.2 11 9.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   };
 
-  // ── segmented controls ────────────────────────────────────────────────
-  // Three options and two options: exactly what the platform's segmented
-  // control is for, and both are answered far more often by eye than by
-  // opening a menu. The <select> stays in the DOM as the model — app.js reads
-  // `.value` off it when it builds every save URL and listens for `change` to
-  // persist the choice — so this only ever mirrors it in both directions.
-  function buildSegment(segId, selectId) {
-    const seg = $(segId), sel = $(selectId);
-    if (!seg || !sel) return;
-
-    const paint = () => {
-      for (const b of seg.children) {
-        b.setAttribute('aria-checked', String(b.dataset.value === sel.value));
-      }
-    };
-
-    for (const opt of sel.options) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.role = 'radio';
-      b.dataset.value = opt.value;
-      b.textContent = opt.textContent;
-      // A narrow segmented control (the sidebar's Session block) can
-      // truncate a long option with ellipsis — the tooltip is the fallback.
-      b.title = opt.textContent;
-      b.onclick = () => {
-        if (sel.value === opt.value) return;
-        sel.value = opt.value;
-        // app.js's own listener writes the choice to localStorage; a
-        // programmatic .value assignment does not fire `change` by itself.
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-        paint();
-      };
-      seg.appendChild(b);
-    }
-    // Something else may still move the select (a future page, a restore).
-    sel.addEventListener('change', paint);
-    paint();
-  }
-
   // ── transport icons ───────────────────────────────────────────────────
   // player.js writes the WORDS "Play"/"Pause" into #btn-play and a speaker
   // emoji into #btn-mute. Both are the wrong register beside a row of stroked
@@ -989,8 +949,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    buildSegment('seg-type', 'training-type');
-    buildSegment('seg-stance', 'stance-select');
     setupTransportIcons();
     setupVolume();      // after the icons: it repaints the speaker glyph
     setupSpeed();

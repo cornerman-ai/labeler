@@ -169,36 +169,35 @@ function punchFamilyLabel(headId) {
   return punchLabel(headId).replace(HEAD_SUFFIX_STRIP[state.lang] || HEAD_SUFFIX_STRIP.en, '');
 }
 
+// Six plain, far-apart hues for offense — red, blue, orange, purple, green,
+// cyan — rather than the six neighbouring warm shades this used to be
+// (red/orange/gold/pink sat within about 60° of each other and read as one
+// smear on a 6px strip). Each punch keeps ONE hue across head and body so a
+// jab is still "the red one"; the head/body split is carried by a large
+// LIGHTNESS gap — a deep, saturated head against a distinctly pale body —
+// which survives being 4px tall in a way a small shade difference did not.
+// Defense sits in its own lane and gets four hues offense does not use
+// (magenta, indigo, brown, olive), so a mis-routed strip is obvious.
+// Enforced, not just intended: see the ΔE floors verified against this table.
 const PUNCH_COLORS = {
-  // Offense — one hue per punch, shared between its head and body variant;
-  // only the shade changes (dark = head, light = body), so a jab reads as
-  // "the red one" on the timeline regardless of target.
-  jab_head:           '#cc1133',
-  jab_body:           '#ff8fa3',
-  cross_head:         '#cc6600',
-  cross_body:         '#ffc285',
-  lead_hook_head:     '#b8960b',
-  lead_hook_body:     '#ffe066',
-  rear_hook_head:     '#aa0077',
-  rear_hook_body:     '#ff8fd4',
-  lead_uppercut_head: '#7722aa',
-  lead_uppercut_body: '#d9a3ff',
-  rear_uppercut_head: '#117777',
-  rear_uppercut_body: '#7fe0e0',
-  // Defense — same pairing rule as offense above: slip and roll each get
-  // one hue, dark for lead and light for rear. Pull-back, step-back and
-  // duck have no lead/rear split, so each keeps its own distinct color.
-  lead_slip: '#118844',
-  rear_slip: '#8fe6ae',
-  lead_roll: '#1155cc',
-  rear_roll: '#99c2ff',
-  pull_back: '#aa66ff',
-  step_back: '#ffff00',
-  duck:      '#88ff00',
+  // Offense — dark = head, pale = body.
+  jab_head:           '#d32020',   jab_body:           '#ffb0b0',  // red
+  cross_head:         '#1259c9',   cross_body:         '#a8cbff',  // blue
+  lead_hook_head:     '#e07000',   lead_hook_body:     '#ffd39b',  // orange
+  rear_hook_head:     '#7b1fa2',   rear_hook_body:     '#e8a6e2',  // purple
+  lead_uppercut_head: '#25822f',   lead_uppercut_body: '#a5dfa8',  // green
+  rear_uppercut_head: '#006f78',   rear_uppercut_body: '#a8ecf4',  // cyan
+  // Defense — same dark/pale rule for the lead/rear pairs. Pull-back and
+  // duck have no counterpart, so each just takes its own hue.
+  lead_slip: '#c2185b',   rear_slip: '#ffa8c8',                    // magenta
+  lead_roll: '#3730a3',   rear_roll: '#b3b0e8',                    // indigo
+  pull_back: '#6d4b34',                                            // brown
+  duck:      '#8a8f1e',                                            // olive
+  step_back: '#9aa0a6',   // retired; grey so old rows read as inactive
   // Other
-  unsure:      '#999999',
-  round_start: '#28a745',
-  round_end:   '#666666',
+  unsure:      '#8e8e93',
+  round_start: '#1c7c33',
+  round_end:   '#5a5a5f',
 };
 
 function getPunchColor(punchId) {
@@ -238,6 +237,9 @@ Object.assign(state, {
   // fresh Set per page load; not persisted, since who's labeling a given
   // video changes video to video and a stale hide would just be confusing.
   hiddenLabelers: new Set(),
+  // Lane order for other labelers — see foreignOwnersInOrder(). Same
+  // reasoning as above for not persisting it.
+  labelerOrder: [],
 });
 
 // ============================================================
@@ -405,7 +407,9 @@ function renderForeignFilterMenu(menu) {
     const who = foreignOwnerName(l);
     counts[who] = (counts[who] || 0) + 1;
   }
-  const owners = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  // Listed in LANE order, not by count — the menu is also the reorder
+  // control, so it has to show the order it edits.
+  const owners = foreignOwnersInOrder().filter(n => counts[n]);
 
   menu.innerHTML = '';
 
@@ -430,20 +434,47 @@ function renderForeignFilterMenu(menu) {
   sep.className = 'ffm-sep';
   menu.appendChild(sep);
 
-  for (const who of owners) {
-    const row = document.createElement('button');
-    row.type = 'button';
+  owners.forEach((who, i) => {
+    // A row, not a button: it holds the visibility toggle AND the two
+    // reorder arrows, and a button can't contain buttons.
+    const row = document.createElement('div');
     row.className = 'ffm-row';
-    row.setAttribute('role', 'menuitemcheckbox');
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'ffm-toggle';
+    toggle.setAttribute('role', 'menuitemcheckbox');
     // Greyed out and inert while the master switch is off — an individual
     // hide has nothing to do until "Show others" is on (shouldHideByTab()
     // hides every foreign row on that switch alone, regardless of this).
-    row.disabled = !state.showForeign;
-    row.setAttribute('aria-checked', String(!state.hiddenLabelers.has(who)));
-    row.innerHTML = `<span class="ffm-name">${who}</span><span class="ffm-count">${counts[who]}</span>`;
-    row.onclick = () => { toggleLabelerHidden(who); renderForeignFilterMenu(menu); };
+    toggle.disabled = !state.showForeign;
+    toggle.setAttribute('aria-checked', String(!state.hiddenLabelers.has(who)));
+    // The dot is this labeler's lane colour — the menu is where you learn
+    // which colour on the timeline is whose.
+    toggle.innerHTML =
+      `<span class="ffm-dot" style="--who: ${labelerColor(who)}"></span>` +
+      `<span class="ffm-name">${who}</span>` +
+      `<span class="ffm-count">${counts[who]}</span>`;
+    toggle.onclick = () => { toggleLabelerHidden(who); renderForeignFilterMenu(menu); };
+    row.appendChild(toggle);
+
+    // ▲▼ rather than drag-and-drop: four teammates at most, and a 28px menu
+    // row sitting next to its own checkmark is a poor drop target.
+    const arrows = document.createElement('span');
+    arrows.className = 'ffm-arrows';
+    [['▲', -1, i === 0], ['▼', 1, i === owners.length - 1]].forEach(([glyph, delta, atEnd]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ffm-arrow';
+      b.textContent = glyph;
+      b.title = delta < 0 ? 'Move up' : 'Move down';
+      b.disabled = atEnd || !state.showForeign;
+      b.onclick = (e) => { e.stopPropagation(); moveLabeler(who, delta); renderForeignFilterMenu(menu); };
+      arrows.appendChild(b);
+    });
+    row.appendChild(arrows);
     menu.appendChild(row);
-  }
+  });
 }
 
 function toggleUnsureFilter() {
@@ -520,6 +551,58 @@ function foreignOwnerName(label) {
 // unique per sheet the way the app already treats labeler identity.
 function isLabelerHidden(label) {
   return state.hiddenLabelers.has(foreignOwnerName(label));
+}
+
+// One stable colour per teammate, used by BOTH their timeline lane and the
+// badge on their rows in the Labels list — so "whose mark is that" is
+// answered the same way in both places. Hashed from the name rather than
+// assigned in arrival order, so a person keeps their colour no matter who
+// else happens to be on the video. Deliberately unrelated to PUNCH_COLORS:
+// those say WHAT the move is, these say WHO logged it, and the two are read
+// at different moments.
+// Every one of these carries WHITE text on the .who-badge, so each is dark
+// enough to clear 4.5:1 against white — the brighter versions of the orange,
+// green, cyan and amber came in as low as 2.5:1 and were unreadable at the
+// badge's 10px.
+const LABELER_TINTS = [
+  '#0071e3', '#c84d0a', '#7048e8', '#0a8560',
+  '#d6336c', '#0d8091', '#aa6300', '#4263eb',
+];
+function labelerColor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return LABELER_TINTS[Math.abs(h) % LABELER_TINTS.length];
+}
+
+// Every teammate with rows on this video, in display order. state.labelerOrder
+// is the user's chosen order (moved with the arrows in the Others menu);
+// anyone new is appended alphabetically, and anyone who's gone drops out.
+function foreignOwnersInOrder() {
+  const present = new Set();
+  for (const l of state.labels) if (l.foreign) present.add(foreignOwnerName(l));
+  const ordered = state.labelerOrder.filter(n => present.has(n));
+  for (const n of [...present].sort()) if (!ordered.includes(n)) ordered.push(n);
+  state.labelerOrder = ordered;
+  return ordered;
+}
+
+// …of those, the ones actually being drawn right now.
+function visibleForeignOwners() {
+  if (!state.showForeign) return [];
+  return foreignOwnersInOrder().filter(n => !state.hiddenLabelers.has(n));
+}
+
+// Move a teammate up or down the lane order. Used by the ▲▼ in the Others
+// menu — buttons rather than drag-and-drop: the list is short, and a menu
+// row is a poor drop target next to its own checkmark.
+function moveLabeler(who, delta) {
+  const order = foreignOwnersInOrder();
+  const i = order.indexOf(who);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  order.splice(j, 0, order.splice(i, 1)[0]);
+  state.labelerOrder = order;
+  renderLabels();
 }
 
 // The "Unsure only" filter (review labeler only) — governs the tags floating
@@ -1379,10 +1462,17 @@ function renderLabels() {
       const who = foreignOwnerName(label);
       entry.className = 'label-entry label-foreign';
       entry.style.borderLeftColor = getPunchColor(label.punch);
+      // Whose row this is gets its own badge, in that labeler's colour and
+      // on the same line as the move — it used to be dim grey text tacked
+      // onto the end of the timestamps, which is where you look last. The
+      // colour matches their timeline lane, so the two read together.
       entry.innerHTML = `
         <span class="label-text">
-          <strong>${punchLabel(label.punch)}</strong><br>
-          <small>${formatTime(label.start)} &rarr; ${formatTime(label.end)} &middot; ${who} (read-only)</small>
+          <span class="label-head">
+            <strong>${punchLabel(label.punch)}</strong>
+            <span class="who-badge" style="--who: ${labelerColor(who)}">${who}</span>
+          </span>
+          <small>${formatTime(label.start)} &rarr; ${formatTime(label.end)}</small>
         </span>
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
@@ -1402,8 +1492,11 @@ function renderLabels() {
       // screen admitted it, so the type and the times looked like a receipt.
       entry.innerHTML = `
         <span class="label-text">
-          <small style="color:#555">#${label.id || '...'}</small> <strong>${punchLabel(label.punch)}</strong>${who ? ` <small>&middot; ${who}</small>` : ''}<br>
-          ${formatTime(label.start)} &rarr; ${formatTime(label.end)}
+          <span class="label-head">
+            <strong>${punchLabel(label.punch)}</strong>
+            ${who ? `<span class="who-badge" style="--who: ${labelerColor(who)}">${who}</span>` : ''}
+          </span>
+          <small>${formatTime(label.start)} &rarr; ${formatTime(label.end)}</small>
         </span>
         <button class="label-edit" onclick="event.stopPropagation(); openEditLabel(${idx})" title="Edit type and times" aria-label="Edit"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.1 2.4 11.6 4.9M2.2 11.8l.5-2.2 6.1-6.1 2.5 2.5-6.1 6.1-2.2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
         <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
@@ -1926,13 +2019,50 @@ function timeToScrubPct(time, duration) {
   return (time / duration) * 100;
 }
 
+// Rebuilds the lane stack: an Offense/Defense pair for YOU, then one pair
+// per visible teammate, each tagged with their colour. Two people marking
+// the same second used to land on the same two rows and cover each other;
+// now every labeler owns their own rows and overlap is impossible.
+// Returns a Map keyed "<owner>|<bucket>" ('' owner = yours) so the strip
+// loop can route each label without re-querying the DOM.
+function buildSegLanes(container, markersLayer, overlay) {
+  if (!container) return null;
+  const owners = visibleForeignOwners();
+  // Detach before clearing: #round-markers is a child of this container and
+  // innerHTML='' would take it with the lanes.
+  if (markersLayer && markersLayer.parentNode === container) markersLayer.remove();
+  container.innerHTML = '';
+
+  const lanes = new Map();
+  const addPair = (owner) => {
+    for (const bucket of ['offense', 'defense']) {
+      const lane = document.createElement('div');
+      lane.className = 'seg-lane' + (owner ? ' lane-foreign' : ' lane-own');
+      lane.dataset.bucket = bucket;
+      const bucketName = bucket === 'offense' ? 'Offense' : 'Defense';
+      if (owner) {
+        lane.dataset.owner = owner;
+        lane.style.setProperty('--lane-tint', labelerColor(owner));
+        lane.dataset.laneLabel = owner + ' · ' + bucketName;
+        lane.setAttribute('aria-label', owner + ' ' + bucketName);
+      } else {
+        // "You" only earns its place once somebody else has a lane too —
+        // on a video only you have labeled it would be noise.
+        lane.dataset.laneLabel = owners.length ? 'You · ' + bucketName : bucketName;
+        lane.setAttribute('aria-label', bucketName);
+      }
+      container.appendChild(lane);
+      lanes.set((owner || '') + '|' + bucket, lane);
+    }
+  };
+  addPair(null);
+  owners.forEach(addPair);
+  if (markersLayer) container.appendChild(markersLayer);
+  return lanes;
+}
+
 function renderTimelineOverlay() {
   const overlay = document.getElementById('seek-bar-overlay');
-  // Punch strips live in two lanes above the scrubber, offense over defense —
-  // see the comment on #seg-lanes in index.html for why two. Falls back to
-  // the overlay if a lane is missing, so an older page still renders.
-  const laneOff = document.getElementById('seg-lane-off') || overlay;
-  const laneDef = document.getElementById('seg-lane-def') || overlay;
   // Round-boundary flags are TWO layers, not one: #round-markers sits inside
   // #seg-lanes and zooms with it; #round-markers-scrub sits inside #scrub and
   // stays fixed to the always-full-range track. Same data, two coordinate
@@ -1942,8 +2072,10 @@ function renderTimelineOverlay() {
   const video = document.getElementById('video-player');
   const duration = video.duration;
   overlay.innerHTML = '';
-  if (laneOff !== overlay) laneOff.innerHTML = '';
-  if (laneDef !== overlay && laneDef !== laneOff) laneDef.innerHTML = '';
+  // Rebuilt every repaint, same as the strips themselves — which owners are
+  // visible can change between two of them (a hide, a reorder, phase 2 of a
+  // load landing).
+  const laneMap = buildSegLanes(document.getElementById('seg-lanes'), markersLayer, overlay);
   if (markersLayer) markersLayer.innerHTML = '';
   if (markersScrub) markersScrub.innerHTML = '';
   if (!duration || duration <= 0) return;
@@ -2065,13 +2197,19 @@ function renderTimelineOverlay() {
     seg.style.backgroundColor = getPunchColor(label.punch);
     const punchDescText = punchDesc(label.punch);
     const moveTitle = punchDescText ? `${punchLabel(label.punch)} — ${punchDescText}` : punchLabel(label.punch);
-    if (label.foreign) {
-      const who = foreignOwnerName(label);
-      seg.title = moveTitle + '\n' + (state.isAdmin ? who : who + ' (read-only)');
+    const owner = label.foreign ? foreignOwnerName(label) : '';
+    if (owner) {
+      seg.title = moveTitle + '\n' + (state.isAdmin ? owner : owner + ' (read-only)');
     } else {
       seg.title = moveTitle;
     }
-    (punchBucket(label.punch) === 'defense' ? laneDef : laneOff).appendChild(seg);
+    // Each labeler's own pair of rows — see buildSegLanes(). The fallback
+    // covers a label whose owner has no lane (shouldn't happen, since the
+    // visibility test above already ran, but a missing lane must not throw
+    // and silently stop painting the rest of the timeline).
+    const lane = laneMap && (laneMap.get(owner + '|' + punchBucket(label.punch))
+                          || laneMap.get('|' + punchBucket(label.punch)));
+    if (lane) lane.appendChild(seg);
   });
 
   renderMinimap();

@@ -139,13 +139,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #cm-labeler-chip { display: none !important; }
 #labeler-badge   { display: none !important; }
 
-/* Visually hidden but still real: the two <select>s stay in the DOM because
-   app.js reads and writes their .value and listens for `change` on them. The
-   segmented controls beside them are the UI; the selects are the model. */
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
-}
+/* (.sr-only lived here to hide the training/stance <select>s behind their
+   segmented controls. Those selects are the visible UI now — see
+   .session-select — and nothing else on the page used the class.) */
 
 #app { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -483,31 +479,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 /* ── session: training type + stance ─────────────────────────────────────── */
 /* Moved down here from the toolbar above the video — see the comment on
    #video-source-bar. A hairline (not another card) separates it from the
-   move catalogue above: same panel, a different kind of choice. Caption
-   stacked above each segmented control rather than beside it — beside would
-   put "Shadowboxing | Sparring | Bagwork" in under half the sidebar's
-   width, which is the same overflow #punch-btn's min-width:0 fix exists to
-   prevent elsewhere; stacked, each control gets the panel's full width. */
+   move catalogue above: same panel, a different kind of choice.
+   Label left, value right on ONE row — the settings-row shape, and the only
+   thing that fits: as a segmented control the three training options had to
+   share ~240px and "Shadowboxing" wrapped to three lines. */
 #punch-session {
   margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
 }
-.session-row { margin-top: 12px; }
-.session-row:first-of-type { margin-top: 6px; }
+.session-row {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 32px; margin-top: 8px;
+}
+.session-row:first-of-type { margin-top: 4px; }
+/* Fixed label column so the two pop-ups share a left edge and the same
+   width — "Training" and "Stance" are different lengths, and without this
+   the controls stagger. */
 .session-label {
-  display: block; margin-bottom: 6px;
+  flex: none; min-width: 58px;
   font-size: 12.5px; font-weight: 500; color: var(--ink-dim);
 }
-#punch-session .seg { width: 100%; }
-/* "Shadowboxing" still doesn't fit a third of the panel's width on one
-   line — wrapping (with hyphenation, since <html lang="en"> makes it
-   available) reads better than losing the tail of the word to an ellipsis;
-   min-width:0 is what lets the button shrink to its column at all, same
-   fix .punch-btn needed for the same reason. */
-#punch-session .seg button {
-  flex: 1 1 0; min-width: 0;
-  white-space: normal; overflow-wrap: break-word; hyphens: auto;
-  line-height: 1.2; text-align: center;
+/* The pop-up itself: a filled pill matching #lang-field/#name-field in the
+   nav bar, sized to the row's remaining width so the two line up with each
+   other regardless of how long the chosen value is. */
+.session-select {
+  flex: 1; min-width: 0; height: 30px;
+  padding: 0 6px 0 9px; border: 0; border-radius: 8px;
+  background: var(--fill); color: var(--ink);
+  font-size: 12.5px; font-weight: 510;
 }
+.session-select:hover { background: var(--fill-2); }
 
 .punch-group-header {
   font-size: 11px; font-weight: 590; letter-spacing: .04em;
@@ -761,9 +761,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: var(--ink-dim);
   text-shadow: 0 0 3px var(--fill), 0 0 3px var(--fill), 0 0 3px var(--fill);
   pointer-events: none;
+  /* attr(), not a per-id rule: the lanes are built at render time now, one
+     pair per labeler, so their captions aren't known to the stylesheet. */
+  content: attr(data-lane-label);
 }
-#seg-lane-off::before { content: 'Offense'; }
-#seg-lane-def::before { content: 'Defense'; }
+/* A teammate's lane: their colour on the caption and a bar down the leading
+   edge, so a glance down the stack tells you whose row you're on before you
+   read anything. The tint comes in as --lane-tint from buildSegLanes(). */
+.seg-lane.lane-foreign {
+  background: color-mix(in srgb, var(--lane-tint, var(--ink-dim)) 9%, var(--fill));
+}
+.seg-lane.lane-foreign::before { color: var(--lane-tint, var(--ink-dim)); }
+.seg-lane.lane-foreign::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--lane-tint, var(--ink-dim)); z-index: 3; pointer-events: none;
+}
+/* Yours reads as the primary row — the one you can actually drag. */
+.seg-lane.lane-own::before { color: var(--ink); }
 .seg-lane .seek-segment {
   position: absolute; top: 2px; height: 10px; border-radius: 3px;
   /* A real punch (0.3-0.9s) against a multi-minute video is under 0.3% of
@@ -1307,25 +1321,48 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   text-transform: none; letter-spacing: 0;
 }
 #foreign-filter-menu[hidden] { display: none; }
+/* A teammate row: the visibility toggle takes the width, the reorder arrows
+   sit at the end. The master "Show others" row is a bare .ffm-row button. */
 .ffm-row {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 8px; border-radius: 7px; border: 0; background: none;
+  display: flex; align-items: center; gap: 2px; width: 100%;
+  border-radius: 7px; border: 0; background: none;
   font-size: 12.5px; font-weight: 500; color: var(--ink); text-align: left;
 }
-.ffm-row:hover { background: var(--fill); }
+button.ffm-row { padding: 7px 8px; gap: 8px; }
+.ffm-toggle {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: 7px; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left;
+}
+button.ffm-row:hover, .ffm-toggle:hover { background: var(--fill); }
 /* Greyed out while the master "Show others" switch is off — see
    renderForeignFilterMenu() in app.js. */
-.ffm-row:disabled { opacity: .4; }
-.ffm-row:disabled:hover { background: none; }
-.ffm-row::before {
+button.ffm-row:disabled, .ffm-toggle:disabled { opacity: .4; }
+button.ffm-row:disabled:hover, .ffm-toggle:disabled:hover { background: none; }
+button.ffm-row::before, .ffm-toggle::before {
   content: '\2713'; width: 12px; flex: none; font-size: 11px;
   color: var(--accent); opacity: 0;
 }
-.ffm-row[aria-checked="true"]::before { opacity: 1; }
-.ffm-row .ffm-name {
+button.ffm-row[aria-checked="true"]::before,
+.ffm-toggle[aria-checked="true"]::before { opacity: 1; }
+/* This labeler's timeline-lane colour, so the menu is where you learn which
+   colour belongs to whom. */
+.ffm-dot {
+  flex: none; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--who, var(--ink-dim));
+}
+.ffm-name {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ffm-row .ffm-count { flex: none; color: var(--ink-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.ffm-count { flex: none; color: var(--ink-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.ffm-arrows { flex: none; display: flex; }
+.ffm-arrow {
+  width: 20px; height: 24px; border: 0; border-radius: 5px;
+  background: none; color: var(--ink-dim); font-size: 8px; line-height: 1;
+}
+.ffm-arrow:hover:not(:disabled) { background: var(--fill-2); color: var(--ink); }
+.ffm-arrow:disabled { opacity: .25; }
 .ffm-sep { height: 1px; margin: 5px 4px; background: var(--line); }
 .ffm-empty { padding: 10px 8px; font-size: 12px; color: var(--ink-dim); }
 
@@ -1406,11 +1443,26 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .label-entry.round-marker.rm-foreign .label-text strong { color: var(--ink-dim); font-weight: 500; }
 
-/* Another labeler's punch row, shown read-only for shared context. */
-.label-entry.label-foreign {
-  background: transparent; opacity: .6;
+/* Another labeler's punch row, shown read-only for shared context. Only
+   slightly held back (.82, not .6): whose row it is now reads from the
+   badge, so the row itself no longer has to be faded to the point of being
+   hard to read — which is what "too vague and not readable" was about. */
+.label-entry.label-foreign { background: transparent; opacity: .82; }
+
+/* Move name and author on one line, times underneath. */
+.label-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.label-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Who logged it. A solid chip in that labeler's colour (--who, set inline
+   from labelerColor()) — the SAME colour as their timeline lane, so the two
+   views agree at a glance. White text on the tint rather than tinted text,
+   because at 10px a coloured word on a light card is the first thing to
+   disappear. */
+.who-badge {
+  flex: none; padding: 1.5px 6px; border-radius: 999px;
+  background: var(--who, var(--ink-dim)); color: #fff;
+  font-size: 10px; font-weight: 650; letter-spacing: .01em;
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.label-entry.label-foreign .label-text strong { color: var(--ink-dim); font-weight: 500; }
 .label-entry.editing { background: var(--card); border-left-color: var(--accent);
                        box-shadow: 0 0 0 1px var(--accent); padding: 10px; }
 

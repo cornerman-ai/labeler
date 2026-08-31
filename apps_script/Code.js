@@ -1011,6 +1011,17 @@ var COMBINED_BACKUP_NAME = 'Combined Data Backup';
 // reviewed canonical data and merge it in verbatim on every rebuild.
 var COMBINED_ARCHIVE_NAME = 'Combined Data Archive';
 
+// "Labeled Data …" tabs that are not a PERSON. They match LABELER_PREFIX and
+// so would otherwise be scanned and attributed like a teammate — "Review"
+// showing up beside Arianne and John in the punch page's per-labeler list is
+// what prompted this. Deliberately a short list of known non-people rather
+// than an allowlist of real names: a new labeler must never need a code
+// change to have their rows appear.
+var NON_PERSON_LABELER_SHEETS = ['Labeled Data Review'];
+function isNonPersonLabelerSheet(name) {
+  return NON_PERSON_LABELER_SHEETS.indexOf(name) !== -1;
+}
+
 // The punch/defense tabs (every 'Labeled Data Software N', Combined Data,
 // Combined Data Backup, Combined Data Archive) moved out of Box Labeled Data
 // (the script's bound spreadsheet) into their own workbook, 2026-08 — same
@@ -1725,6 +1736,8 @@ function scanAllRowsForVideo(pss, video) {
     if (!isArchive) {
       if (name.indexOf(LABELER_PREFIX) !== 0) continue;
       if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+      // Not a teammate — see NON_PERSON_LABELER_SHEETS.
+      if (isNonPersonLabelerSheet(name)) continue;
     }
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();

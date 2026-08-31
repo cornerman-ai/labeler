@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260831f">
+  <link rel="stylesheet" href="punch.css?v=20260831i">
 </head>
 <body>
   <div id="app">
@@ -124,27 +124,32 @@
              not always — living here next to the moves themselves, not
              buried in the toolbar above the video, is what makes changing
              one mid-session feel like a normal thing to do instead of a
-             detour. ui.js's buildSegment() still drives each from its own
-             <select> below, unchanged by the move. -->
+             detour.
+             Real <select>s, not segmented controls: a segment row has to
+             show every option at once, which in a 240px rail meant
+             "Shadowboxing" wrapping to three lines. A pop-up menu shows the
+             CHOSEN value and puts the rest one click away, which is what
+             the platform uses for a set of options that doesn't need to be
+             on screen permanently. app.js already read .value and listened
+             for `change` on exactly these elements, so nothing downstream
+             moved. -->
         <div id="punch-session">
           <p class="card-eyebrow">Session</p>
-          <div class="session-row">
+          <label class="session-row" for="training-type">
             <span class="session-label">Training</span>
-            <div class="seg" id="seg-type" role="radiogroup" aria-label="Training type"></div>
-          </div>
-          <div class="session-row">
+            <select id="training-type" class="session-select">
+              <option value="shadowboxing">Shadowboxing</option>
+              <option value="sparring">Sparring</option>
+              <option value="bagwork">Bagwork</option>
+            </select>
+          </label>
+          <label class="session-row" for="stance-select">
             <span class="session-label">Stance</span>
-            <div class="seg" id="seg-stance" role="radiogroup" aria-label="Stance"></div>
-          </div>
-          <select id="training-type" class="sr-only" tabindex="-1" aria-hidden="true">
-            <option value="shadowboxing">Shadowboxing</option>
-            <option value="sparring">Sparring</option>
-            <option value="bagwork">Bagwork</option>
-          </select>
-          <select id="stance-select" class="sr-only" tabindex="-1" aria-hidden="true">
-            <option value="Orthodox">Orthodox</option>
-            <option value="Southpaw">Southpaw</option>
-          </select>
+            <select id="stance-select" class="session-select">
+              <option value="Orthodox">Orthodox</option>
+              <option value="Southpaw">Southpaw</option>
+            </select>
+          </label>
         </div>
       </aside>
 
@@ -186,9 +191,12 @@
                  so its flags zoom with the lanes they sit over; #scrub gets
                  its own copy, #round-markers-scrub, positioned on the
                  always-full-range track instead. -->
+            <!-- Lanes are BUILT BY JS now (app.js's buildSegLanes) rather
+                 than fixed here: with other labelers shown, each one gets
+                 its own Offense/Defense pair so two people's marks on the
+                 same second sit on separate rows instead of overlapping.
+                 #round-markers is preserved across those rebuilds. -->
             <div id="seg-lanes">
-              <div class="seg-lane" id="seg-lane-off" data-bucket="offense" aria-label="Offense punches"></div>
-              <div class="seg-lane" id="seg-lane-def" data-bucket="defense" aria-label="Defense moves"></div>
               <div id="round-markers"></div>
             </div>
             <!-- The one part of the timeline that always shows the WHOLE
@@ -307,7 +315,11 @@
         </section>
 
         <section class="card labels-card">
-          <p class="card-eyebrow">
+          <!-- A <div>, NOT the <p> the other card eyebrows use: #foreign-filter
+               below is a block element, and the parser auto-closes a <p> when
+               one opens inside it — which silently moved the whole control out
+               of this header and onto its own line underneath. -->
+          <div class="card-eyebrow">
             Labels <span id="label-count">(0)</span>
             <!-- Master show/hide plus a per-labeler breakdown — app.js's
                  setupForeignFilterMenu()/renderForeignFilterMenu() build the
@@ -322,7 +334,7 @@
               <div id="foreign-filter-menu" role="menu" hidden></div>
             </div>
             <button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none">Unsure only: off</button>
-          </p>
+          </div>
           <!-- Offense / defense punches sorted by time in one list used to mean
                scrolling past six jabs to find the one slip among them.
                app.js's setLabelTab() drives both the selected state and what
@@ -408,12 +420,12 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260831f"></script>
-  <script src="../shared/player.js?v=20260831f"></script>
-  <script src="app.js?v=20260831f"></script>
+  <script src="../shared/labeler_name.js?v=20260831i"></script>
+  <script src="../shared/player.js?v=20260831i"></script>
+  <script src="app.js?v=20260831i"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260831f"></script>
+  <script src="ui.js?v=20260831i"></script>
 </body>
 </html>
