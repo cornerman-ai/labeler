@@ -99,6 +99,12 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* …except a <dialog>, which the browser centres with `margin: auto` on top
+   of its own fixed inset:0 — the `margin: 0` above was silently overriding
+   that and pinning every modal on this page to the top-left corner. Applies
+   to all of them (shortcuts, "already labeled", agreement), so it belongs
+   here next to the reset that broke it rather than in each dialog's rule. */
+dialog { margin: auto; }
 html, body { height: 100%; }
 body {
   font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
