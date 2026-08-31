@@ -1152,7 +1152,11 @@ function maybeShowForeignVideoPopup() {
     ? `<p class="fvd-note">A new label you add here will be credited to <strong>${entries[0][0]}</strong> (most labels on this video) — editing an existing row instead writes back to whoever owns that row.</p>`
     : '';
   body.innerHTML = `<p class="fvd-lede">This video already has labels from:</p><div class="fvd-rows">${rows}</div>${note}`;
-  dlg.showModal();
+  // showModal() throws InvalidStateError on an already-open dialog — which
+  // happens when a second video is opened before this popup is dismissed.
+  // Thrown from inside phase 2's try, it would have surfaced as a bogus
+  // "could not load other labelers' labels".
+  if (!dlg.open) dlg.showModal();
 }
 
 // Round markers from OTHER labelers' sheets (list response
