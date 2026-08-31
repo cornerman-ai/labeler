@@ -1055,6 +1055,19 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // ── phase 2: everyone else's rows, in the background ─────────────────
   // Deliberately not awaited by the caller's critical path and never
   // blocking: the page is already usable at this point.
+  //
+  // Skipped on the quiet re-fetch that follows this labeler's own
+  // add/edit/delete. Nobody ELSE's rows changed because I saved one of
+  // mine, and the save just invalidated this video's server-side cache
+  // (see invalidateVideoRowCache in apps_script/Code.js) — so asking again
+  // here would pay the full uncached ~17s walk after every single label.
+  //
+  // Admin is the exception and has to re-ask: it owns no sheet, so a row it
+  // just created comes back as somebody else's FOREIGN row, and until that
+  // arrives the optimistic local copy has no owner to write a later edit
+  // back to. See mergeForeignPunchLabels(), which adopts it in place.
+  if (!isFreshLoad && !state.isAdmin) return;
+
   try {
     const fgn = await fetchJson(sheetUrl({ action: 'listForeign', video: driveLink }), 60000);
     if (!current()) return;
