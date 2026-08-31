@@ -14,54 +14,187 @@
 // Punch catalogue
 // ============================================================
 const PUNCH_TYPES = [
-  { id: 'jab_head',              label: 'Jab (Head)',          key: '1', group: 'offense' },
-  { id: 'cross_head',            label: 'Cross (Head)',        key: '2', group: 'offense' },
-  { id: 'lead_hook_head',        label: 'Lead Hook',           key: '3', group: 'offense' },
-  { id: 'rear_hook_head',        label: 'Rear Hook',           key: '4', group: 'offense' },
-  { id: 'lead_uppercut_head',    label: 'Lead Uppercut',       key: '5', group: 'offense' },
-  { id: 'rear_uppercut_head',    label: 'Rear Uppercut',       key: '6', group: 'offense' },
-  { id: 'jab_body',              label: 'Jab (Body)',          key: '⇧1', group: 'offense' },
-  { id: 'cross_body',            label: 'Cross (Body)',        key: '⇧2', group: 'offense' },
-  { id: 'lead_hook_body',        label: 'Lead Hook (Body)',    key: '⇧3', group: 'offense' },
-  { id: 'rear_hook_body',        label: 'Rear Hook (Body)',    key: '⇧4', group: 'offense' },
-  { id: 'lead_uppercut_body',    label: 'Lead Uppercut (Body)', key: '⇧5', group: 'offense' },
-  { id: 'rear_uppercut_body',    label: 'Rear Uppercut (Body)', key: '⇧6', group: 'offense' },
-  { id: 'lead_slip',             label: 'Lead Slip',           key: 'q', group: 'defense' },
-  { id: 'rear_slip',             label: 'Rear Slip',           key: 'w', group: 'defense' },
-  { id: 'lead_roll',             label: 'Lead Roll',           key: 'a', group: 'defense' },
-  { id: 'rear_roll',             label: 'Rear Roll',           key: 'd', group: 'defense' },
-  { id: 'pull_back',             label: 'Pull Back',           key: 'r', group: 'defense' },
+  { id: 'jab_head',              label: 'Jab (Head)',          key: '1', group: 'offense',
+    desc: 'Fast straight punch with the lead hand, to the head' },
+  { id: 'cross_head',            label: 'Cross (Head)',        key: '2', group: 'offense',
+    desc: 'Straight power punch with the rear hand, to the head' },
+  { id: 'lead_hook_head',        label: 'Lead Hook',           key: '3', group: 'offense',
+    desc: 'Circular punch with the lead hand, to the head' },
+  { id: 'rear_hook_head',        label: 'Rear Hook',           key: '4', group: 'offense',
+    desc: 'Circular punch with the rear hand, to the head' },
+  { id: 'lead_uppercut_head',    label: 'Lead Uppercut',       key: '5', group: 'offense',
+    desc: 'Rising punch with the lead hand, to the head' },
+  { id: 'rear_uppercut_head',    label: 'Rear Uppercut',       key: '6', group: 'offense',
+    desc: 'Rising punch with the rear hand, to the head' },
+  { id: 'jab_body',              label: 'Jab (Body)',          key: '⇧1', group: 'offense',
+    desc: 'Fast straight punch with the lead hand, to the body' },
+  { id: 'cross_body',            label: 'Cross (Body)',        key: '⇧2', group: 'offense',
+    desc: 'Straight power punch with the rear hand, to the body' },
+  { id: 'lead_hook_body',        label: 'Lead Hook (Body)',    key: '⇧3', group: 'offense',
+    desc: 'Circular punch with the lead hand, to the body' },
+  { id: 'rear_hook_body',        label: 'Rear Hook (Body)',    key: '⇧4', group: 'offense',
+    desc: 'Circular punch with the rear hand, to the body' },
+  { id: 'lead_uppercut_body',    label: 'Lead Uppercut (Body)', key: '⇧5', group: 'offense',
+    desc: 'Rising punch with the lead hand, to the body' },
+  { id: 'rear_uppercut_body',    label: 'Rear Uppercut (Body)', key: '⇧6', group: 'offense',
+    desc: 'Rising punch with the rear hand, to the body' },
+  { id: 'lead_slip',             label: 'Lead Slip',           key: 'q', group: 'defense',
+    desc: 'Head movement off the lead side to dodge a punch' },
+  { id: 'rear_slip',             label: 'Rear Slip',           key: 'w', group: 'defense',
+    desc: 'Head movement off the rear side to dodge a punch' },
+  { id: 'lead_roll',             label: 'Lead Roll',           key: 'a', group: 'defense',
+    desc: 'Duck under a hook and come up on the lead side' },
+  { id: 'rear_roll',             label: 'Rear Roll',           key: 'd', group: 'defense',
+    desc: 'Duck under a hook and come up on the rear side' },
+  { id: 'pull_back',             label: 'Pull Back',           key: 'r', group: 'defense',
+    desc: 'Lean back at the waist to pull the head out of range' },
   // step_back retired 2026-07-28: backward steps are mostly unintentional
   // footwork (detected kinematically by the step detector, not labeled).
   // Kept in the catalogue so the 800+ existing sheet rows still render
   // instead of falling back to jab_head.
-  { id: 'step_back',             label: 'Step Back',           key: 'f', group: 'defense', retired: true },
-  { id: 'duck',                  label: 'Duck',                key: 'c', group: 'defense' },
-  { id: 'unsure',                label: 'Unsure',              key: 'u', group: 'other' },
+  { id: 'step_back',             label: 'Step Back',           key: 'f', group: 'defense', retired: true,
+    desc: 'Retreating step to create distance (retired — mostly unintentional footwork)' },
+  { id: 'duck',                  label: 'Duck',                key: 'c', group: 'defense',
+    desc: 'Bend the knees to drop the head under a punch' },
+  { id: 'unsure',                label: 'Unsure',              key: 'u', group: 'other',
+    desc: "Labeler couldn't confidently identify the move" },
 ];
 
+// ============================================================
+// Punch catalogue — translations
+// ============================================================
+// English lives on PUNCH_TYPES itself (label/desc above) and doubles as the
+// fallback for anything missing here. Everything else — sheet columns,
+// punch ids, PUNCH_COLORS keys — stays English regardless of state.lang;
+// only what a labeler actually reads (button names, tooltips, the label
+// list, the video overlay tags) changes. See punchLabel()/punchDesc().
+const LANGUAGES = { en: 'English', ru: 'Русский', be: 'Беларуская', tl: 'Filipino' };
+const PUNCH_I18N = {
+  ru: {
+    jab_head:           { label: 'Джеб (голова)', desc: 'Быстрый прямой удар передней рукой в голову' },
+    cross_head:         { label: 'Кросс (голова)', desc: 'Мощный прямой удар задней рукой в голову' },
+    lead_hook_head:     { label: 'Передний хук', desc: 'Круговой удар передней рукой в голову' },
+    rear_hook_head:      { label: 'Задний хук', desc: 'Круговой удар задней рукой в голову' },
+    lead_uppercut_head: { label: 'Передний апперкот', desc: 'Восходящий удар передней рукой в голову' },
+    rear_uppercut_head: { label: 'Задний апперкот', desc: 'Восходящий удар задней рукой в голову' },
+    jab_body:           { label: 'Джеб (корпус)', desc: 'Быстрый прямой удар передней рукой в корпус' },
+    cross_body:         { label: 'Кросс (корпус)', desc: 'Мощный прямой удар задней рукой в корпус' },
+    lead_hook_body:     { label: 'Передний хук (корпус)', desc: 'Круговой удар передней рукой в корпус' },
+    rear_hook_body:     { label: 'Задний хук (корпус)', desc: 'Круговой удар задней рукой в корпус' },
+    lead_uppercut_body: { label: 'Передний апперкот (корпус)', desc: 'Восходящий удар передней рукой в корпус' },
+    rear_uppercut_body: { label: 'Задний апперкот (корпус)', desc: 'Восходящий удар задней рукой в корпус' },
+    lead_slip:          { label: 'Передний слип', desc: 'Уклон головой в сторону передней руки от удара' },
+    rear_slip:          { label: 'Задний слип', desc: 'Уклон головой в сторону задней руки от удара' },
+    lead_roll:          { label: 'Передний ролл', desc: 'Нырок под хук с выходом в сторону передней руки' },
+    rear_roll:          { label: 'Задний ролл', desc: 'Нырок под хук с выходом в сторону задней руки' },
+    pull_back:          { label: 'Отклон назад', desc: 'Наклон корпуса назад, чтобы вывести голову из зоны удара' },
+    step_back:          { label: 'Шаг назад', desc: 'Отступающий шаг для увеличения дистанции (устарело — обычно непреднамеренная работа ног)' },
+    duck:               { label: 'Нырок', desc: 'Сгибание ног, чтобы увести голову вниз от удара' },
+    unsure:             { label: 'Не уверен', desc: 'Разметчик не смог точно определить движение' },
+  },
+  be: {
+    jab_head:           { label: 'Джэб (галава)', desc: 'Хуткі прамы ўдар пярэдняй рукой у галаву' },
+    cross_head:         { label: 'Крос (галава)', desc: 'Магутны прамы ўдар задняй рукой у галаву' },
+    lead_hook_head:     { label: 'Пярэдні хук', desc: 'Кругавы ўдар пярэдняй рукой у галаву' },
+    rear_hook_head:     { label: 'Задні хук', desc: 'Кругавы ўдар задняй рукой у галаву' },
+    lead_uppercut_head: { label: 'Пярэдні апперкот', desc: 'Узыходзячы ўдар пярэдняй рукой у галаву' },
+    rear_uppercut_head: { label: 'Задні апперкот', desc: 'Узыходзячы ўдар задняй рукой у галаву' },
+    jab_body:           { label: 'Джэб (корпус)', desc: 'Хуткі прамы ўдар пярэдняй рукой у корпус' },
+    cross_body:         { label: 'Крос (корпус)', desc: 'Магутны прамы ўдар задняй рукой у корпус' },
+    lead_hook_body:     { label: 'Пярэдні хук (корпус)', desc: 'Кругавы ўдар пярэдняй рукой у корпус' },
+    rear_hook_body:     { label: 'Задні хук (корпус)', desc: 'Кругавы ўдар задняй рукой у корпус' },
+    lead_uppercut_body: { label: 'Пярэдні апперкот (корпус)', desc: 'Узыходзячы ўдар пярэдняй рукой у корпус' },
+    rear_uppercut_body: { label: 'Задні апперкот (корпус)', desc: 'Узыходзячы ўдар задняй рукой у корпус' },
+    lead_slip:          { label: 'Пярэдні сліп', desc: 'Ухіленне галавы ў бок пярэдняй рукі ад удару' },
+    rear_slip:          { label: 'Задні сліп', desc: 'Ухіленне галавы ў бок задняй рукі ад удару' },
+    lead_roll:          { label: 'Пярэдні ролл', desc: 'Нырок пад хук з выхадам у бок пярэдняй рукі' },
+    rear_roll:          { label: 'Задні ролл', desc: 'Нырок пад хук з выхадам у бок задняй рукі' },
+    pull_back:          { label: 'Адхіленне назад', desc: 'Нахіл корпуса назад, каб вывесці галаву з зоны ўдару' },
+    step_back:          { label: 'Крок назад', desc: 'Адступальны крок для павелічэння дыстанцыі (састарэла — звычайна ненаўмысная праца ног)' },
+    duck:               { label: 'Нырок', desc: 'Згінанне ног, каб увесці галаву ўніз ад удару' },
+    unsure:             { label: 'Не ўпэўнены', desc: 'Разметчык не змог дакладна вызначыць рух' },
+  },
+  tl: {
+    // Filipino boxing commentary keeps jab/cross/hook/uppercut/slip/roll as
+    // English loanwords — only the descriptions (and the two that already
+    // have no accepted loanword) are actually translated.
+    jab_head:           { label: 'Jab (Ulo)', desc: 'Mabilis na deretsong suntok gamit ang unang kamay, sa ulo' },
+    cross_head:         { label: 'Cross (Ulo)', desc: 'Malakas na deretsong suntok gamit ang likod na kamay, sa ulo' },
+    lead_hook_head:     { desc: 'Pabilog na suntok gamit ang unang kamay, sa ulo' },
+    rear_hook_head:     { desc: 'Pabilog na suntok gamit ang likod na kamay, sa ulo' },
+    lead_uppercut_head: { desc: 'Pataas na suntok gamit ang unang kamay, sa ulo' },
+    rear_uppercut_head: { desc: 'Pataas na suntok gamit ang likod na kamay, sa ulo' },
+    jab_body:           { label: 'Jab (Katawan)', desc: 'Mabilis na deretsong suntok gamit ang unang kamay, sa katawan' },
+    cross_body:         { label: 'Cross (Katawan)', desc: 'Malakas na deretsong suntok gamit ang likod na kamay, sa katawan' },
+    lead_hook_body:     { label: 'Lead Hook (Katawan)', desc: 'Pabilog na suntok gamit ang unang kamay, sa katawan' },
+    rear_hook_body:     { label: 'Rear Hook (Katawan)', desc: 'Pabilog na suntok gamit ang likod na kamay, sa katawan' },
+    lead_uppercut_body: { label: 'Lead Uppercut (Katawan)', desc: 'Pataas na suntok gamit ang unang kamay, sa katawan' },
+    rear_uppercut_body: { label: 'Rear Uppercut (Katawan)', desc: 'Pataas na suntok gamit ang likod na kamay, sa katawan' },
+    lead_slip:          { desc: 'Pag-iwas ng ulo papunta sa unang kamay para makaiwas sa suntok' },
+    rear_slip:          { desc: 'Pag-iwas ng ulo papunta sa likod na kamay para makaiwas sa suntok' },
+    lead_roll:          { desc: 'Yuyukod sa ilalim ng hook at babangon sa gilid ng unang kamay' },
+    rear_roll:          { desc: 'Yuyukod sa ilalim ng hook at babangon sa gilid ng likod na kamay' },
+    pull_back:          { desc: 'Paghilig ng katawan pauwi para ilayo ang ulo sa saklaw ng suntok' },
+    step_back:          { desc: 'Pag-atras para lumikha ng distansya (retired — kadalasang di-sinasadyang paggalaw ng paa)' },
+    duck:               { desc: 'Pagbaluktot ng tuhod para ibaba ang ulo mula sa suntok' },
+    unsure:             { label: 'Hindi sigurado', desc: 'Hindi sigurado ang lumagda kung anong galaw ito' },
+  },
+};
+
+// Both fall back to the English PUNCH_TYPES entry — a missing translation
+// (tl mostly relies on this for labels, since boxing loanwords stay
+// English) reads in English rather than as a blank or an id.
+function punchLabel(id) {
+  const punch = PUNCH_TYPES.find(p => p.id === id);
+  const t = PUNCH_I18N[state.lang]?.[id];
+  return (t && t.label) || punch?.label || id;
+}
+function punchDesc(id) {
+  const punch = PUNCH_TYPES.find(p => p.id === id);
+  const t = PUNCH_I18N[state.lang]?.[id];
+  return (t && t.desc) || punch?.desc || '';
+}
+
+// Only jab/cross carry a literal "(Head)" suffix on their label (hooks and
+// uppercuts don't need one — "Lead Hook" is unambiguous on its own); the
+// offense matrix's row-name column strips it per punchFamilyLabel() below,
+// language-aware since the suffix text itself is translated.
+const HEAD_SUFFIX_STRIP = {
+  en: /\s*\(Head\)$/,
+  ru: /\s*\(голова\)$/,
+  be: /\s*\(галава\)$/,
+  tl: /\s*\(Ulo\)$/,
+};
+function punchFamilyLabel(headId) {
+  return punchLabel(headId).replace(HEAD_SUFFIX_STRIP[state.lang] || HEAD_SUFFIX_STRIP.en, '');
+}
+
 const PUNCH_COLORS = {
-  // Offense — each punch gets a distinct, vivid color
-  jab_head:           '#ff2244',
-  cross_head:         '#ff8800',
-  lead_hook_head:     '#ffdd00',
-  rear_hook_head:     '#ff00aa',
-  lead_uppercut_head: '#cc44ff',
-  rear_uppercut_head: '#33cccc',
-  jab_body:           '#0088ff',
-  cross_body:         '#ff6699',
-  lead_hook_body:     '#aa9900',
-  rear_hook_body:     '#aa0066',
-  lead_uppercut_body: '#7722aa',
-  rear_uppercut_body: '#228899',
-  // Defense
-  lead_slip:  '#00ff88',
-  rear_slip:  '#00ddff',
-  lead_roll:  '#3388ff',
-  rear_roll:  '#00ffcc',
-  pull_back:  '#aa66ff',
-  step_back:  '#ffff00',
-  duck:       '#88ff00',
+  // Offense — one hue per punch, shared between its head and body variant;
+  // only the shade changes (dark = head, light = body), so a jab reads as
+  // "the red one" on the timeline regardless of target.
+  jab_head:           '#cc1133',
+  jab_body:           '#ff8fa3',
+  cross_head:         '#cc6600',
+  cross_body:         '#ffc285',
+  lead_hook_head:     '#b8960b',
+  lead_hook_body:     '#ffe066',
+  rear_hook_head:     '#aa0077',
+  rear_hook_body:     '#ff8fd4',
+  lead_uppercut_head: '#7722aa',
+  lead_uppercut_body: '#d9a3ff',
+  rear_uppercut_head: '#117777',
+  rear_uppercut_body: '#7fe0e0',
+  // Defense — same pairing rule as offense above: slip and roll each get
+  // one hue, dark for lead and light for rear. Pull-back, step-back and
+  // duck have no lead/rear split, so each keeps its own distinct color.
+  lead_slip: '#118844',
+  rear_slip: '#8fe6ae',
+  lead_roll: '#1155cc',
+  rear_roll: '#99c2ff',
+  pull_back: '#aa66ff',
+  step_back: '#ffff00',
+  duck:      '#88ff00',
   // Other
   unsure:      '#999999',
   round_start: '#28a745',
@@ -82,8 +215,22 @@ Object.assign(state, {
   labels: [],
   roundActive: false,
   unsureFilter: false,
+  // Other labelers' punch/defense rows are fetched every load (see
+  // mergeForeignPunchLabels) but stay folded away by default — this is just
+  // the visibility toggle, not what's in state.labels. Round markers are
+  // unaffected; those have always shown regardless.
+  showForeign: false,
+  // Set when the labeler name field holds "Admin" (case-insensitive, same
+  // convention as the "review" special-case below). Lets isForeignLabel()
+  // wave through mutations of another labeler's row — see the comment on
+  // that function.
+  isAdmin: false,
   // Which bucket the Labels panel is showing.
   labelTab: 'offense',
+  // Display language for punch/defense names + descriptions — see
+  // PUNCH_I18N, punchLabel(), punchDesc(). Purely a display-layer choice:
+  // the sheet always gets the English punch id regardless of this.
+  lang: 'en',
 });
 
 // ============================================================
@@ -99,6 +246,12 @@ Object.assign(state, {
 // registered second and win. document keeps this in the natural
 // script-execution order both files were written assuming.
 document.addEventListener('DOMContentLoaded', () => {
+  // Restored before buildPunchButtons() (and anything else that reads
+  // punchLabel()/punchDesc()) so the first paint is already in the right
+  // language, not English-then-flip.
+  const savedLang = localStorage.getItem('punchLang');
+  if (savedLang && PUNCH_I18N[savedLang]) state.lang = savedLang;
+  setupLangSelect();
   buildPunchButtons();
   setupPlayer();                 // video loader, seek bar, minimap — from player.js
   setupKeyboardShortcuts();
@@ -125,12 +278,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateUnsureFilterButton();
   }
+  if (labelerId().toLowerCase() === 'admin') {
+    state.isAdmin = true;
+    state.showForeign = true;   // no point being admin over a folded-away queue
+    const badge = document.getElementById('labeler-badge');
+    if (badge) badge.textContent += ' (admin)';
+  }
   const savedTab = localStorage.getItem('labelTab');
   if (savedTab === 'defense' || savedTab === 'combined') {
     state.labelTab = savedTab;
   }
   updateLabelTabButtons();
+  if (localStorage.getItem('showForeignLabels') === 'true') {
+    state.showForeign = true;
+  }
+  updateForeignFilterButton();
+  setupForeignVideoDialog();
 });
+
+// Wiring for the "already labeled by someone else" popup (maybeShowForeignVideoPopup
+// fills #fvd-body and opens it) — same open/close pattern as #sc-dialog in ui.js.
+function setupForeignVideoDialog() {
+  const dlg = document.getElementById('fvd-dialog');
+  if (!dlg) return;
+  const close = () => dlg.close();
+  document.getElementById('fvd-close')?.addEventListener('click', close);
+  document.getElementById('fvd-close-x')?.addEventListener('click', close);
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+  document.getElementById('fvd-show')?.addEventListener('click', () => {
+    if (!state.showForeign) toggleForeignFilter();
+    close();
+  });
+}
+
+// Populates #lang-select from LANGUAGES, applies state.lang (already
+// restored from localStorage by the time this runs — see DOMContentLoaded),
+// and re-renders every surface that shows a punch/defense name on change.
+// Group headers, buttons, dialogs etc. outside the punch catalogue stay
+// English — this only ever touches punchLabel()/punchDesc() output.
+function setupLangSelect() {
+  const sel = document.getElementById('lang-select');
+  if (!sel) return;
+  sel.innerHTML = Object.entries(LANGUAGES)
+    .map(([code, name]) => `<option value="${code}">${name}</option>`).join('');
+  sel.value = state.lang;
+  sel.addEventListener('change', () => {
+    state.lang = sel.value;
+    localStorage.setItem('punchLang', state.lang);
+    buildPunchButtons();
+    renderLabels();
+    updateVideoOverlay();
+  });
+}
+
+function toggleForeignFilter() {
+  state.showForeign = !state.showForeign;
+  localStorage.setItem('showForeignLabels', String(state.showForeign));
+  updateForeignFilterButton();
+  renderLabels();
+  updateVideoOverlay();
+}
+
+function updateForeignFilterButton() {
+  const btn = document.getElementById('btn-foreign-filter');
+  if (!btn) return;
+  btn.textContent = state.showForeign ? 'Others: shown' : 'Others: hidden';
+  btn.classList.toggle('on', state.showForeign);
+}
 
 function toggleUnsureFilter() {
   state.unsureFilter = !state.unsureFilter;
@@ -150,25 +364,45 @@ function updateUnsureFilterButton() {
 }
 
 // The one gate every mutation of a label passes through. `foreign` is set
-// only in mergeForeignRoundMarkers() — a round marker pulled read-only from
-// ANOTHER labeler's sheet so this page can show the video's round structure
-// without letting a second labeler edit, retime, or delete someone else's
-// row. Today that is the only kind of label that can carry the flag (the
-// `list` action only ever returns the caller's OWN punch rows — see doGet in
-// apps_script/Code.js), so every check below is currently redundant with the
-// render layer simply never wiring a foreign row to a pencil, a delete
-// button, or a draggable timeline strip. It is enforced again HERE, at each
-// function that actually mutates or saves a label, so that guarantee does
-// not depend on every future call site remembering to check first — a
-// console call, a keyboard shortcut, a future feature that lists more than
-// one labeler's punches, all hit the same wall.
+// in mergeForeignRoundMarkers() / mergeForeignPunchLabels() — a row pulled
+// read-only from ANOTHER labeler's sheet so this page can show what else is
+// on a shared video without letting a second labeler edit, retime, or
+// delete someone else's row. It is enforced HERE, at each function that
+// actually mutates or saves a label, so that guarantee does not depend on
+// every future call site remembering to check first — a console call, a
+// keyboard shortcut, a drag handler, all hit the same wall.
+//
+// The one escape hatch is state.isAdmin (labeler name field = "Admin"):
+// isForeignLabel() reports false for it, so every gate below waves the
+// mutation through. `label.foreign` itself stays true either way — that's
+// the flag rendering uses to show whose row it originally was — only the
+// permission check changes. The save path (updateLabelInSheet /
+// deleteLabelFromSheet) then re-points the request at the ROW'S OWNER via
+// foreignOwnerLabelerParam(), so an admin edit lands directly in that
+// person's own sheet, exactly as if they'd made it themselves — no separate
+// "edited by admin" bookkeeping, no audit column.
 function isForeignLabel(label) {
-  return !!(label && label.foreign);
+  return !!(label && label.foreign) && !state.isAdmin;
 }
 function refuseForeign(label) {
   if (!isForeignLabel(label)) return false;
   showToast('Read-only — added by another labeler', 'error');
   return true;
+}
+
+// "Labeled Data Software 3" -> "3", "Labeled Data John" -> "John". Null for
+// anything that doesn't parse (e.g. the frozen Combined Data Archive, whose
+// source sheet is long gone) — there's no live sheet to write back to, so
+// admin edits on those rows have nowhere to land and must be refused same
+// as for anyone else.
+function foreignOwnerLabelerParam(label) {
+  const name = label && label.sheetName;
+  if (!name) return null;
+  const sw = /^Labeled Data Software (\d+)$/.exec(name);
+  if (sw) return sw[1];
+  const nm = /^Labeled Data (.+)$/.exec(name);
+  if (nm) return nm[1];
+  return null;
 }
 
 // The "Unsure only" filter (review labeler only) — governs the tags floating
@@ -199,6 +433,9 @@ function punchBucket(punchId) {
 // shows.
 function shouldHideByTab(label) {
   if (label.isRoundMarker) return false;
+  // Someone else's punch/defense row, folded away until "Others: shown" is
+  // toggled on — round markers are exempt, those have always shown.
+  if (label.foreign && !state.showForeign) return true;
   // 'combined' skips the bucket check entirely — every punch shows, same as
   // before the tabs existed. 'offense'/'defense' still filter by bucket.
   if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
@@ -237,6 +474,10 @@ function updateLabelTabButtons() {
 // two columns.
 function buildPunchButtons() {
   const container = document.getElementById('punch-buttons');
+  // Cleared up front: this used to only ever run once (on page load), but a
+  // language switch now calls it again to re-render with new text, and
+  // without this it would just keep appending a second, third... set.
+  container.innerHTML = '';
   const live = PUNCH_TYPES.filter(p => !p.retired);
 
   const header = (text) => {
@@ -258,10 +499,15 @@ function buildPunchButtons() {
     btn.className = named ? 'punch-btn' : 'punch-btn cell';
     btn.dataset.punchId = punch.id;
     btn.type = 'button';
-    btn.title = punch.label;
-    btn.setAttribute('aria-label', punch.label);
+    const label = punchLabel(punch.id), desc = punchDesc(punch.id);
+    // The matrix cells carry no visible label (just a dot + keycap), so the
+    // hover title is the only place the move's name shows up at all — the
+    // description rides along either way, since neither form spells out
+    // what a hook vs. a roll actually IS.
+    btn.title = desc ? `${label} — ${desc}` : label;
+    btn.setAttribute('aria-label', label);
     btn.innerHTML = named
-      ? `${dot(punch.id)}<span class="pname">${punch.label}</span>${keycap(punch)}`
+      ? `${dot(punch.id)}<span class="pname">${label}</span>${keycap(punch)}`
       : `${dot(punch.id)}${keycap(punch)}`;
     btn.onclick = () => selectPunch(punch.id);
     return btn;
@@ -279,7 +525,7 @@ function buildPunchButtons() {
       const body = live.find(p => p.id === head.id.replace(/_head$/, '_body'));
       const name = document.createElement('span');
       name.className = 'prow-name';
-      name.textContent = head.label.replace(/\s*\(Head\)$/, '');
+      name.textContent = punchFamilyLabel(head.id);
       grid.appendChild(name);
       grid.appendChild(button(head, false));
       if (body) grid.appendChild(button(body, false));
@@ -307,6 +553,15 @@ function buildPunchButtons() {
     other.forEach(p => grid.appendChild(button(p, true)));
     container.appendChild(grid);
   }
+
+  // A language switch rebuilds every button from scratch mid-selection
+  // (mode 'punch', waiting on a type before the end time) — carry the
+  // selected look over, since selectPunch() itself only runs once per pick.
+  if (state.selectedPunch) {
+    container.querySelectorAll('.punch-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.punchId === state.selectedPunch);
+    });
+  }
 }
 
 function selectPunch(punchId) {
@@ -316,12 +571,10 @@ function selectPunch(punchId) {
     btn.classList.toggle('selected', btn.dataset.punchId === punchId);
   });
 
-  const punch = PUNCH_TYPES.find(p => p.id === punchId);
-
   if (state.mode === 'punch') {
     state.mode = 'end';
     document.getElementById('pending-label').textContent =
-      `${punch.label} from ${formatTime(state.pendingStart)} — now set the end time`;
+      `${punchLabel(punchId)} from ${formatTime(state.pendingStart)} — now set the end time`;
   }
   updateTimestampButton();
 }
@@ -392,7 +645,7 @@ function captureTimestamp() {
     renderLabels();
 
     pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
-    showToast(`Labeled: ${PUNCH_TYPES.find(p => p.id === label.punch).label} (${formatTime(label.start)} - ${formatTime(label.end)})`, 'success');
+    showToast(`Labeled: ${punchLabel(label.punch)} (${formatTime(label.start)} - ${formatTime(label.end)})`, 'success');
   }
 }
 
@@ -510,13 +763,13 @@ function setupDriveLink() {
     debounceTimer = setTimeout(() => {
       if (input.value.trim()) {
         state.labels = [];
-        fetchLabelsFromSheet();
+        fetchLabelsFromSheet(true);
       }
     }, 500);
   });
 
   if (saved && saved.trim()) {
-    fetchLabelsFromSheet();
+    fetchLabelsFromSheet(true);
   }
 }
 
@@ -530,7 +783,7 @@ function linkStatus(kind, detail) {
   if (typeof window.setLinkStatus === 'function') window.setLinkStatus(kind, detail);
 }
 
-async function fetchLabelsFromSheet() {
+async function fetchLabelsFromSheet(isFreshLoad = false) {
   if (_pendingDeletes > 0) return;
   const driveLink = normalizeDriveUrl(document.getElementById('drive-link').value.trim());
   // Returns before any request goes out, so the chip must not be put into
@@ -585,7 +838,8 @@ async function fetchLabelsFromSheet() {
         }
       }
 
-      mergeForeignRoundMarkers(result);
+      mergeForeignRoundMarkers(result, driveLink);
+      mergeForeignPunchLabels(result, driveLink);
       syncRoundActiveFromLabels();
       renderLabels();
       showToast(`Loaded ${result.labels.length} existing labels from sheet`, 'info');
@@ -594,12 +848,19 @@ async function fetchLabelsFromSheet() {
       // is filed under it is the label list's job, one panel over.
       linkStatus('ok');
     } else {
-      mergeForeignRoundMarkers(result);
+      mergeForeignRoundMarkers(result, driveLink);
+      mergeForeignPunchLabels(result, driveLink);
       syncRoundActiveFromLabels();
       showToast('No existing labels for this video', 'info');
       renderLabels();
       linkStatus('ok');
     }
+
+    // Only the caller who just opened this video (a pasted link, or the one
+    // restored on page load — see setupDriveLink()) asks for the popup; a
+    // routine re-fetch after this labeler's own add/edit/delete passes
+    // nothing and stays quiet.
+    if (isFreshLoad) maybeShowForeignVideoPopup();
   } catch (e) {
     console.error('Failed to fetch labels:', e);
     showToast('Failed to load labels from sheet', 'error');
@@ -607,22 +868,106 @@ async function fetchLabelsFromSheet() {
   }
 }
 
+// "This video is already being labeled by someone else" — pops up the
+// moment a video is opened (not on every incidental re-fetch) if any
+// foreign rows came back for it. Counts by owner so the busiest labeler is
+// obvious at a glance; for Admin specifically that's also who a brand-new
+// label would be attributed to (see resolveMajorityLabelerSheet in
+// apps_script/Code.js), so the note below spells that out.
+function maybeShowForeignVideoPopup() {
+  const counts = {};
+  for (const l of state.labels) {
+    if (!l.foreign) continue;
+    const who = String(l.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'another labeler';
+    counts[who] = (counts[who] || 0) + 1;
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return;
+
+  const dlg = document.getElementById('fvd-dialog');
+  const body = document.getElementById('fvd-body');
+  if (!dlg || !body) return;
+
+  const rows = entries.map(([who, n]) =>
+    `<div class="fvd-row"><strong>${who}</strong><span>${n} label${n === 1 ? '' : 's'}</span></div>`
+  ).join('');
+  const note = state.isAdmin
+    ? `<p class="fvd-note">A new label you add here will be credited to <strong>${entries[0][0]}</strong> (most labels on this video) — editing an existing row instead writes back to whoever owns that row.</p>`
+    : '';
+  body.innerHTML = `<p class="fvd-lede">This video already has labels from:</p><div class="fvd-rows">${rows}</div>${note}`;
+  dlg.showModal();
+}
+
 // Round markers from OTHER labelers' sheets (list response
 // `foreign_round_markers`). Read-only: they show the video's round
 // structure so a second labeler doesn't re-mark rounds, but can't be
 // edited or deleted from here. Own markers of the same type nearby win.
-function mergeForeignRoundMarkers(result) {
+function mergeForeignRoundMarkers(result, driveLink) {
   if (!Array.isArray(result.foreign_round_markers)) return;
   for (const fm of result.foreign_round_markers) {
     const t = typeof fm.startTime === 'number' ? fm.startTime : parseSheetTime(fm.startTime);
     if (!Number.isFinite(t)) continue;
+    // A row Admin just added (addRoundMarker(), attributed by the backend
+    // to whoever labels this video most — see resolveMajorityLabelerSheet
+    // in apps_script/Code.js) comes back HERE, not in `labels`: Admin's own
+    // list is always empty. Adopt the still-local optimistic entry in place
+    // instead of pushing a duplicate, so it picks up `foreign`/`sheetName`
+    // and a later edit redirects to the right owner sheet
+    // (foreignOwnerLabelerParam()) instead of hitting "Admin has no sheet".
+    const existing = state.labels.find(l => l.isRoundMarker && !l.foreign &&
+      (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5));
+    if (existing) {
+      Object.assign(existing, { foreign: true, sheetName: fm.sheet, fromSheet: true, videoName: driveLink });
+      if (fm.id != null) existing.id = fm.id;
+      continue;
+    }
     const dupe = state.labels.some(l =>
       l.isRoundMarker && l.punch === fm.punch && Math.abs(l.start - t) < 0.5);
     if (dupe) continue;
     state.labels.push({
-      id: null, punch_uuid: '', punch: fm.punch, start: t, end: t,
-      videoName: null, fromSheet: true, isRoundMarker: true,
+      // `id` (and a real videoName, not null) only matter once an admin can
+      // write back to this row — see updateLabelInSheet/deleteLabelFromSheet
+      // and foreignOwnerLabelerParam(). Everyone else's UI never reads them.
+      id: fm.id != null ? fm.id : null, punch_uuid: '', punch: fm.punch, start: t, end: t,
+      videoName: driveLink, fromSheet: true, isRoundMarker: true,
       foreign: true, sheetName: fm.sheet,
+    });
+  }
+}
+
+// Punch/defense rows from OTHER labelers' sheets (list response
+// `foreign_punch_labels`). Read-only for a normal labeler — shown so they
+// can see what everyone else marked on a shared video, but
+// isForeignLabel()/refuseForeign() (and ui.js's own checks) keep them
+// un-draggable, un-editable, un-deletable from here. An admin caller gets
+// isForeignLabel() === false instead, so these become editable — the `id`
+// and `videoName` set below are what let the save round-trip find the row
+// again in the OWNER's sheet.
+function mergeForeignPunchLabels(result, driveLink) {
+  if (!Array.isArray(result.foreign_punch_labels)) return;
+  for (const fp of result.foreign_punch_labels) {
+    const start = typeof fp.startTime === 'number' ? fp.startTime : parseSheetTime(fp.startTime);
+    const end = typeof fp.endTime === 'number' ? fp.endTime : parseSheetTime(fp.endTime);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    // A row Admin just added (captureTimestamp(), attributed by the backend
+    // to whoever labels this video most — see resolveMajorityLabelerSheet
+    // in apps_script/Code.js) comes back HERE, not in `labels`: Admin's own
+    // list is always empty. Adopt the still-local optimistic entry in place
+    // instead of pushing a duplicate — same reasoning as
+    // mergeForeignRoundMarkers() above.
+    const existing = state.labels.find(l => !l.isRoundMarker && !l.foreign &&
+      (l.id != null && fp.id != null
+        ? l.id === fp.id
+        : l.punch === mapPunchType(fp.punch) && Math.abs(l.start - start) < 0.01 && Math.abs(l.end - end) < 0.01));
+    if (existing) {
+      Object.assign(existing, { foreign: true, sheetName: fp.sheet, fromSheet: true, videoName: driveLink });
+      if (fp.id != null) existing.id = fp.id;
+      continue;
+    }
+    state.labels.push({
+      id: fp.id != null ? fp.id : null, punch_uuid: '', punch: mapPunchType(fp.punch), start, end,
+      videoName: driveLink, fromSheet: true, isRoundMarker: false,
+      foreign: true, sheetName: fp.sheet,
     });
   }
 }
@@ -721,12 +1066,12 @@ function renderLabels() {
       // rm-foreign keeps it at the old muted, colourless look, since the
       // tint is reserved for a boundary this labeler can actually act on.
       const isStart = label.punch === 'round_start';
+      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
       entry.className = 'label-entry round-marker ' + (isStart ? 'rm-start' : 'rm-end') +
-        (label.foreign ? ' rm-foreign' : '');
+        (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
       const icon = isStart ? '\u25B6' : '\u25A0';
       const text = isStart ? 'Round Start' : 'Round End';
-      if (label.foreign) {
-        const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      if (label.foreign && !state.isAdmin) {
         entry.innerHTML = `
           <span class="label-text">
             <strong>${icon} ${text}</strong>
@@ -738,18 +1083,44 @@ function renderLabels() {
           document.getElementById('video-player').currentTime = label.start;
         };
       } else {
+        // label.foreign here (admin only) means this row belongs to `who`'s
+        // sheet, not the admin's own \u2014 deleteLabel/saveEditRoundMarker still
+        // write it there, via foreignOwnerLabelerParam().
         entry.innerHTML = `
           <span class="label-text">
             <small>#${label.id || '...'}</small> <strong>${icon} ${text}</strong>
-            <small>${formatTime(label.start)}</small>
+            <small>${formatTime(label.start)}${label.foreign ? ' &middot; ' + who : ''}</small>
           </span>
           <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
         `;
         entry.querySelector('.label-text').style.cursor = 'pointer';
         entry.querySelector('.label-text').onclick = () => openEditRoundMarker(idx);
       }
+    } else if (label.foreign && !state.isAdmin) {
+      // Read-only, same treatment as a foreign round marker: no edit pencil,
+      // no delete — this row belongs to another labeler's sheet and
+      // isForeignLabel()/refuseForeign() would refuse the mutation anyway.
+      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      entry.className = 'label-entry label-foreign';
+      entry.style.borderLeftColor = getPunchColor(label.punch);
+      entry.innerHTML = `
+        <span class="label-text">
+          <strong>${punchLabel(label.punch)}</strong><br>
+          <small>${formatTime(label.start)} &rarr; ${formatTime(label.end)} &middot; ${who} (read-only)</small>
+        </span>
+      `;
+      entry.querySelector('.label-text').style.cursor = 'pointer';
+      entry.querySelector('.label-text').onclick = () => {
+        document.getElementById('video-player').currentTime = label.start;
+      };
     } else {
-      const punch = PUNCH_TYPES.find(p => p.id === label.punch);
+      // label.foreign here means admin editing someone else's row (the
+      // read-only branch above already handled every non-admin case) —
+      // saveEditLabel/deleteLabel still write it into THEIR sheet, via
+      // foreignOwnerLabelerParam().
+      const who = label.foreign
+        ? String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler'
+        : '';
       entry.className = 'label-entry';
       entry.style.borderLeftColor = getPunchColor(label.punch);
       // The pencil is the only thing that ever said these rows are editable.
@@ -757,7 +1128,7 @@ function renderLabels() {
       // screen admitted it, so the type and the times looked like a receipt.
       entry.innerHTML = `
         <span class="label-text">
-          <small style="color:#555">#${label.id || '...'}</small> <strong>${punch?.label || label.punch}</strong><br>
+          <small style="color:#555">#${label.id || '...'}</small> <strong>${punchLabel(label.punch)}</strong>${who ? ` <small>&middot; ${who}</small>` : ''}<br>
           ${formatTime(label.start)} &rarr; ${formatTime(label.end)}
         </span>
         <button class="label-edit" onclick="event.stopPropagation(); openEditLabel(${idx})" title="Edit type and times" aria-label="Edit"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.1 2.4 11.6 4.9M2.2 11.8l.5-2.2 6.1-6.1 2.5 2.5-6.1 6.1-2.2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
@@ -809,7 +1180,7 @@ function openEditLabel(idx) {
   // through. A retired type still shows if it is the row's current value —
   // otherwise reopening an old `step_back` row would silently retype it.
   const opt = (p) =>
-    `<option value="${p.id}" ${p.id === label.punch ? 'selected' : ''}>${p.label}</option>`;
+    `<option value="${p.id}" ${p.id === label.punch ? 'selected' : ''}>${punchLabel(p.id)}</option>`;
   const group = (name, ps) => {
     const live = ps.filter(p => !p.retired || p.id === label.punch);
     return live.length ? `<optgroup label="${name}">${live.map(opt).join('')}</optgroup>` : '';
@@ -970,16 +1341,27 @@ function undoLastLabel() {
 async function updateLabelInSheet(label) {
   if (!state.scriptUrl) { showToast('No script URL configured', 'error'); return; }
   if (!label.id) { showToast('Label has no ID, cannot update sheet', 'error'); return; }
+  const params = {
+    action: 'update',
+    id: label.id,
+    video: label.videoName,
+    punchId: label.punch,
+    angle: label.angle,
+    startTime: formatTimeSheet(label.start),
+    endTime: formatTimeSheet(label.end),
+  };
+  // Admin editing someone else's row: sheetUrl() defaults `labeler` to the
+  // logged-in Admin identity, which would write this into "Labeled Data
+  // Admin" — a sheet that isn't where the row lives. Overriding it here
+  // sends the request to the ROW'S OWNER sheet instead, so the edit lands
+  // exactly where it would have if that person had made it.
+  if (label.foreign) {
+    const owner = foreignOwnerLabelerParam(label);
+    if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
+    params.labeler = owner;
+  }
   try {
-    const url = sheetUrl({
-      action: 'update',
-      id: label.id,
-      video: label.videoName,
-      punchId: label.punch,
-      angle: label.angle,
-      startTime: formatTimeSheet(label.start),
-      endTime: formatTimeSheet(label.end),
-    });
+    const url = sheetUrl(params);
     const resp = await fetch(url);
     const result = await resp.json();
     console.log('Update response:', result);
@@ -999,9 +1381,16 @@ let _pendingDeletes = 0;
 async function deleteLabelFromSheet(label) {
   if (!state.scriptUrl) { showToast('No script URL configured', 'error'); return; }
   if (!label.id) { showToast('Label has no ID, cannot delete from sheet', 'error'); return; }
+  const params = { action: 'delete', id: label.id, video: label.videoName };
+  // Same owner-redirect as updateLabelInSheet — see the comment there.
+  if (label.foreign) {
+    const owner = foreignOwnerLabelerParam(label);
+    if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
+    params.labeler = owner;
+  }
   _pendingDeletes++;
   try {
-    const url = sheetUrl({ action: 'delete', id: label.id, video: label.videoName });
+    const url = sheetUrl(params);
     console.log('Delete request:', url);
     const resp = await fetch(url);
     const text = await resp.text();
@@ -1337,9 +1726,9 @@ function renderTimelineOverlay() {
     state.labels.forEach((label) => {
       if (!label.isRoundMarker) return;
       const isStart = label.punch === 'round_start' || label.punch?.includes?.('start');
-      const cls = 'round-mark ' + (isStart ? 'rm-start' : 'rm-end') + (label.foreign ? ' rm-foreign' : '');
+      const cls = 'round-mark ' + (isStart ? 'rm-start' : 'rm-end') + (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
       const title = (isStart ? 'Round start' : 'Round end') + ' — ' + formatTime(label.start) +
-        (label.foreign ? ' (read-only, another labeler)' : '');
+        (label.foreign ? (state.isAdmin ? ' (another labeler)' : ' (read-only, another labeler)') : '');
 
       if (markersLayer) {
         const pct = timeToViewportPct(label.start, duration);
@@ -1374,6 +1763,7 @@ function renderTimelineOverlay() {
   // up by index on each mousemove.
   state.labels.forEach((label, idx) => {
     if (label.isRoundMarker) return;
+    if (label.foreign && !state.showForeign) return;
     // Inlined rather than calling shouldHideByUnsure() — this loop runs
     // per-frame during drag, and only the unsure-filter half applies here;
     // offense/defense already have their own separate lanes.
@@ -1382,7 +1772,11 @@ function renderTimelineOverlay() {
     const rPct = timeToViewportPct(label.end, duration);
     if (rPct < 0 || lPct > 100) return;
     const seg = document.createElement('div');
-    seg.className = 'seek-segment';
+    // rm-foreign-style muting for a strip pulled read-only from another
+    // labeler's sheet — ui.js's own isForeignLabel() checks already keep it
+    // undraggable; this just keeps it from looking like something you can
+    // grab. Admin drags it like any other strip, so it skips the muting.
+    seg.className = 'seek-segment' + (label.foreign && !state.isAdmin ? ' seg-foreign' : '');
     seg.dataset.labelIdx = idx;
     // Clipped at the viewport edges for DRAWING, but the untruncated times go
     // on the element too: a strip half off-screen at high zoom still has to
@@ -1390,6 +1784,14 @@ function renderTimelineOverlay() {
     seg.style.left = Math.max(0, lPct) + '%';
     seg.style.width = Math.max(Math.min(100, rPct) - Math.max(0, lPct), 0.15) + '%';
     seg.style.backgroundColor = getPunchColor(label.punch);
+    const punchDescText = punchDesc(label.punch);
+    const moveTitle = punchDescText ? `${punchLabel(label.punch)} — ${punchDescText}` : punchLabel(label.punch);
+    if (label.foreign) {
+      const who = String(label.sheetName || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+      seg.title = moveTitle + '\n' + (state.isAdmin ? who : who + ' (read-only)');
+    } else {
+      seg.title = moveTitle;
+    }
     (punchBucket(label.punch) === 'defense' ? laneDef : laneOff).appendChild(seg);
   });
 
@@ -1408,6 +1810,7 @@ function renderMinimap() {
 
   for (const label of state.labels) {
     if (label.isRoundMarker) continue;
+    if (label.foreign && !state.showForeign) continue;
     // Same reasoning as the lane loop above: this overview strip should show
     // exactly what the lanes show, not fewer segments because of a toggle
     // that used to matter for a single combined lane and no longer does.
@@ -1460,11 +1863,12 @@ function updateVideoOverlay() {
   }
 
   const activeLabels = state.labels.filter(l =>
-    !l.isRoundMarker && t >= l.start && t <= l.end && !shouldHideByUnsure(l)
+    !l.isRoundMarker && (state.showForeign || !l.foreign) &&
+    t >= l.start && t <= l.end && !shouldHideByUnsure(l)
   );
 
   const roundKey = currentRound ? 'R' + currentRound : 'out';
-  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter;
+  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.showForeign;
   if (overlay.dataset.activeKey === key) return;
   overlay.dataset.activeKey = key;
 
@@ -1492,12 +1896,11 @@ function updateVideoOverlay() {
   }
 
   for (const label of activeLabels) {
-    const punch = PUNCH_TYPES.find(p => p.id === label.punch);
     const tag = document.createElement('div');
     tag.className = 'video-overlay-tag';
     tag.style.borderLeftColor = getPunchColor(label.punch);
     tag.style.cursor = 'pointer';
-    tag.textContent = punch ? punch.label : label.punch;
+    tag.textContent = punchLabel(label.punch);
     const idx = state.labels.indexOf(label);
     tag.onclick = () => {
       openEditLabel(idx);

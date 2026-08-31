@@ -36,6 +36,14 @@
                  autocomplete="off" spellcheck="false" maxlength="40">
         </div>
 
+        <!-- Display language for punch/defense names + descriptions only —
+             app.js's punchLabel()/punchDesc() (see PUNCH_I18N). Everything
+             else in the UI stays English. -->
+        <div id="lang-field" title="Punch/defense language">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 7h11M7 1.5c1.7 1.6 2.6 3.6 2.6 5.5S8.7 11.9 7 13.5C5.3 11.9 4.4 9.9 4.4 8S5.3 2.1 7 1.5Z" stroke="currentColor" stroke-width="1.1"/></svg>
+          <select id="lang-select" aria-label="Punch/defense language"></select>
+        </div>
+
         <div class="menu">
           <button class="icon-btn" id="tools-btn" aria-haspopup="menu"
                   aria-expanded="false" aria-controls="tools-panel"
@@ -272,6 +280,7 @@
         <section class="card labels-card">
           <p class="card-eyebrow">
             Labels <span id="label-count">(0)</span>
+            <button id="btn-foreign-filter" onclick="toggleForeignFilter()">Others: hidden</button>
             <button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none">Unsure only: off</button>
           </p>
           <!-- Offense / defense punches sorted by time in one list used to mean
@@ -337,6 +346,24 @@
       <div class="sc-row"><span>Fit whole timeline</span><span class="sc-keys"><kbd>&#8984;0</kbd></span></div>
       <div class="sc-row"><span>Zoom the timeline at the pointer</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
       <div class="sc-row"><span>Pan the timeline once zoomed in</span><span class="sc-keys"><kbd>&#8679;Scroll</kbd></span></div>
+    </div>
+  </dialog>
+
+  <!-- ── "someone else already has this video" popup ─────────────────────── -->
+  <!-- Opened by app.js's maybeShowForeignVideoPopup(), only right after a
+       fresh video load (a pasted link or the one restored on page load) —
+       never after a routine re-fetch following an add/edit/delete. -->
+  <dialog id="fvd-dialog">
+    <div class="sc-head">
+      <h2>Already labeled by someone else</h2>
+      <button class="icon-btn" id="fvd-close-x" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body" id="fvd-body"></div>
+    <div class="fvd-actions">
+      <button type="button" id="fvd-show">Show their labels</button>
+      <button type="button" id="fvd-close" class="fvd-primary">Got it</button>
     </div>
   </dialog>
 

@@ -419,10 +419,20 @@ function doGet(e) {
   // per-labeler branch below and auto-create a junk "Labeled Data Archive".
   var sheetName;
   var labelerLc = String(labeler).toLowerCase();
+  // Admin (punch/app.js's state.isAdmin) never gets a "Labeled Data Admin"
+  // sheet of its own — it only edits rows that already belong to someone
+  // else. "Labeled Data Admin" below is used purely as a sentinel name: it
+  // is never actually created, so collectForeignRoundMarkers()'s /
+  // collectForeignPunchLabels()'s "exclude my own sheet" check never
+  // matches a real sheet, and every labeler's rows come back as foreign to
+  // Admin, which is exactly what Admin's client wants to see.
+  var isAdminCaller = labelerLc === 'admin';
   if (labelerLc === 'combined') {
     sheetName = 'Combined Data';
   } else if (labelerLc === 'archive') {
     sheetName = COMBINED_ARCHIVE_NAME;
+  } else if (isAdminCaller) {
+    sheetName = 'Labeled Data Admin';
   } else if (/^\d+$/.test(labeler)) {
     sheetName = 'Labeled Data Software ' + labeler;
   } else {
@@ -430,7 +440,42 @@ function doGet(e) {
   }
 
   var pss = punchSpreadsheet();
-  var sheet = pss.getSheetByName(sheetName);
+
+  // === Admin / LIST: Admin owns no rows, so the whole response is the
+  // foreign-row scan — nothing else below applies. ===
+  if (isAdminCaller && action === 'list' && p.video) {
+    return jsonOut({
+      status: 'ok', labels: [],
+      foreign_round_markers: collectForeignRoundMarkers(p.video, sheetName),
+      foreign_punch_labels: collectForeignPunchLabels(p.video, sheetName),
+    });
+  }
+
+  var sheet;
+  if (isAdminCaller && action === 'add') {
+    // A brand-new label from Admin has no "own sheet" to land in, so it's
+    // attributed to whoever has already labeled this video the most — see
+    // resolveMajorityLabelerSheet(). punch/app.js's captureTimestamp() /
+    // addRoundMarker() don't (and can't) know who that is client-side, so
+    // this is the one place the assignment gets decided.
+    sheetName = resolveMajorityLabelerSheet(p.videoName);
+    if (!sheetName) {
+      return jsonOut({ status: 'error', message:
+        'No existing labeler for this video yet — Admin can only add to a video someone else has already started labeling.' });
+    }
+    sheet = pss.getSheetByName(sheetName);
+  } else if (isAdminCaller) {
+    // Every other action (update/delete, or a bare status ping) must arrive
+    // with `labeler` already redirected to the real row owner — see
+    // foreignOwnerLabelerParam() in punch/app.js — or needs no sheet at
+    // all. Reaching here means neither is true; refuse rather than fall
+    // into the auto-create block below and leave behind a "Labeled Data
+    // Admin" sheet Admin is never supposed to have.
+    return jsonOut({ status: 'error', message: 'Admin has no sheet of its own for action: ' + action });
+  } else {
+    sheet = pss.getSheetByName(sheetName);
+  }
+
   if (!sheet) {
     if (labelerLc === 'combined' || labelerLc === 'archive') {
       return ContentService
@@ -484,9 +529,11 @@ function doGet(e) {
     // without being able to edit or duplicate it. Punch rows deliberately
     // stay own-sheet-only.
     var foreignMarkers = collectForeignRoundMarkers(p.video, sheetName);
+    var foreignPunches = collectForeignPunchLabels(p.video, sheetName);
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'ok', labels: labels, foreign_round_markers: foreignMarkers,
+        foreign_punch_labels: foreignPunches,
       }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -1571,6 +1618,7 @@ function collectForeignRoundMarkers(video, ownSheetName) {
       if (lbl !== 'round_start' && lbl !== 'round_end') continue;
       if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
       out.push({
+        id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
         punch: lbl,
         startTime: toSeconds(data[r][cols.start]),
         sheet: name,
@@ -1578,6 +1626,82 @@ function collectForeignRoundMarkers(video, ownSheetName) {
     }
   }
   return out;
+}
+
+// Every non-round punch/defense row for a video across every OTHER labeler
+// sheet + the frozen Combined Data Archive. Read-only for a normal labeler
+// — same "look, don't touch" contract as collectForeignRoundMarkers, shows
+// the punch segments instead of just the round boundaries — but carries the
+// row `id` so an admin caller (?labeler=Admin) CAN write back to it: the
+// client re-issues the update/delete with `labeler` overridden to this
+// row's own owner, landing the edit in that person's sheet exactly as if
+// they'd made it, no separate admin bookkeeping. Everyone else's client
+// still refuses the mutation locally (state.isAdmin gates it), so the id
+// riding along here is inert for them.
+function collectForeignPunchLabels(video, ownSheetName) {
+  var ss = punchSpreadsheet();
+  var target = normalizeDriveUrl(video);
+  var out = [];
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var name = sheet.getName();
+    var isArchive = name === COMBINED_ARCHIVE_NAME;
+    if (!isArchive) {
+      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+      if (name === ownSheetName) continue;
+    }
+    if (sheet.getLastRow() < 2) continue;
+    var data = sheet.getDataRange().getValues();
+    var cols = findColumns(data[0]);
+    if (cols.punch < 0 || cols.video < 0 || cols.start < 0 || cols.end < 0) continue;
+    for (var r = 1; r < data.length; r++) {
+      var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
+      if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
+      if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
+      out.push({
+        id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
+        punch: lbl,
+        startTime: toSeconds(data[r][cols.start]),
+        endTime: toSeconds(data[r][cols.end]),
+        sheet: name,
+      });
+    }
+  }
+  return out;
+}
+
+// Whoever already has the most rows for a video, among live per-labeler
+// sheets — used to attribute a brand-new label Admin creates, since Admin
+// has no sheet of its own to write into (see the isAdminCaller branches in
+// doGet). Excludes the frozen Combined Data Archive even though it counts
+// as a source of *foreign* rows elsewhere: its source sheets are gone, so
+// there's nowhere live to append a new one even if it "wins" on count.
+// Returns null for a video nobody has labeled yet — there's no majority to
+// infer, so the caller has to refuse rather than guess.
+function resolveMajorityLabelerSheet(video) {
+  var target = normalizeDriveUrl(video);
+  if (!target) return null;
+  var ss = punchSpreadsheet();
+  var sheets = ss.getSheets();
+  var best = null, bestCount = 0;
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var name = sheet.getName();
+    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+    if (sheet.getLastRow() < 2) continue;
+    var data = sheet.getDataRange().getValues();
+    var cols = findColumns(data[0]);
+    if (cols.video < 0) continue;
+    var count = 0;
+    for (var r = 1; r < data.length; r++) {
+      if (normalizeDriveUrl(data[r][cols.video]) === target) count++;
+    }
+    if (count > bestCount) { bestCount = count; best = name; }
+  }
+  return best;
 }
 function isPunchLabel(lbl) {
   if (lbl === null || lbl === undefined || lbl === '') return false;
