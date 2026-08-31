@@ -1978,15 +1978,22 @@ function renderLabels() {
         // label.foreign here (admin only) means this row belongs to `who`'s
         // sheet, not the admin's own \u2014 deleteLabel/saveEditRoundMarker still
         // write it there, via foreignOwnerLabelerParam().
+        // The pencil is REQUIRED here, not decoration: clicking the row now
+        // only highlights, so without it a round boundary could be deleted
+        // and re-added but never retimed.
         entry.innerHTML = `
           <span class="label-text">
             <small>#${label.id || '...'}</small> <strong>${icon} ${text}</strong>
             <small>${formatTime(label.start)}${label.foreign ? ' &middot; ' + who : ''}</small>
           </span>
+          <button class="label-edit" onclick="event.stopPropagation(); openEditRoundMarker(${idx})" title="Edit the time" aria-label="Edit"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.1 2.4 11.6 4.9M2.2 11.8l.5-2.2 6.1-6.1 2.5 2.5-6.1 6.1-2.2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
           <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
         `;
         entry.querySelector('.label-text').style.cursor = 'pointer';
-        entry.querySelector('.label-text').onclick = () => openEditRoundMarker(idx);
+        entry.querySelector('.label-text').onclick = () => {
+          highlightLabel(label);
+          document.getElementById('video-player').currentTime = label.start;
+        };
       }
     } else if (label.foreign && !state.isAdmin) {
       // Read-only, same treatment as a foreign round marker: no edit pencil,
@@ -2036,9 +2043,14 @@ function renderLabels() {
         <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
+      // Highlight and seek — NOT open the editor. Clicking a row is how you
+      // find a punch on the timeline, which is a thing you do constantly
+      // while scanning; opening an edit form every time you looked at one
+      // meant half the list was a form you then had to dismiss. The pencil
+      // is the way in to editing, and it is right there on the row.
       entry.querySelector('.label-text').onclick = () => {
         highlightLabel(label);
-        openEditLabel(idx);
+        document.getElementById('video-player').currentTime = label.start;
       };
     }
 

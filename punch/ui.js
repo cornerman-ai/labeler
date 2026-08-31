@@ -611,8 +611,32 @@
 
     // A click always follows a drag; without this the seek-bar wrapper would
     // jump the playhead to wherever the drag happened to end.
+    //
+    // The same handler is where a genuine (undragged) click on a strip is
+    // turned into a highlight, because `moved` is the only thing that can
+    // tell the two apart, and it lives here. Capture phase, so this runs
+    // before setupZoomedClickToSeek's own listener on the same element —
+    // clicking a punch should go to THAT punch's start, not to whatever
+    // pixel the pointer happened to land on.
     $('seek-bar-wrapper').addEventListener('click', (e) => {
-      if (moved) { moved = false; e.stopPropagation(); e.preventDefault(); }
+      if (moved) { moved = false; e.stopPropagation(); e.preventDefault(); return; }
+      const el = e.target.closest('.seek-segment');
+      if (!el) return;
+      const label = state.labels[+el.dataset.labelIdx];
+      if (!label) return;
+      // stopImmediatePropagation, not stopPropagation: setupZoomedClickToSeek
+      // listens on THIS SAME element, and plain stopPropagation does not stop
+      // a listener on the node you are already at. It would then re-seek to
+      // whatever pixel was clicked, overwriting the punch's own start a
+      // moment later. (highlightLabel re-renders, which detaches the strip
+      // mid-dispatch and collapses the event path onto the wrapper, so the
+      // two listeners end up same-target regardless.)
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      // Seek BEFORE re-rendering, so this write is the last one either way.
+      const video = $('video-player');
+      if (video && video.duration) video.currentTime = label.start;
+      if (typeof highlightLabel === 'function') highlightLabel(label);
     }, true);
 
     // Bail out mid-drag and put the punch back where it was.
