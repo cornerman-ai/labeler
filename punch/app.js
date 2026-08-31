@@ -1087,10 +1087,26 @@ function outboxRemove(punchUuid) {
   updateOutboxChip();
 }
 
+// Every queue belonging to THIS labeler, across every video. The chip and
+// the drain both work over all of them: a label queued on video A while the
+// sheet was down would otherwise sit there unnoticed and undelivered as
+// soon as the labeler moved on to video B, which defeats the whole point.
+function outboxKeysForLabeler() {
+  const prefix = OUTBOX_PREFIX + (labelerId() || '?') + ':';
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) keys.push(k);
+    }
+  } catch (e) {}
+  return keys;
+}
+
 function updateOutboxChip() {
   const chip = document.getElementById('outbox-chip');
   if (!chip) return;
-  const n = outboxRead().length;
+  const n = outboxKeysForLabeler().reduce((s, k) => s + outboxRead(k).length, 0);
   chip.hidden = n === 0;
   chip.textContent = n === 1 ? '1 unsaved' : n + ' unsaved';
 }
@@ -1107,27 +1123,38 @@ let _draining = false;
 // save, on page load, and whenever the browser says it is back online.
 async function drainOutbox({ quiet = true } = {}) {
   if (_draining || !state.scriptUrl) return;
-  const key = outboxKey();
-  if (!outboxRead(key).length) { updateOutboxChip(); return; }
+  const keys = outboxKeysForLabeler();
+  if (!keys.some(k => outboxRead(k).length)) { updateOutboxChip(); return; }
   _draining = true;
+  let stopped = false;
   try {
-    for (const entry of outboxRead(key)) {
-      try {
-        const result = await sendQueued(entry);
-        // Adopt the server's id/uuid onto the in-memory label if it's still
-        // on screen, so a later edit targets the right row.
-        const live = state.labels.find(l => l.punch_uuid === entry.punchUuid);
-        if (live) {
-          if (result.id != null) live.id = result.id;
-          if (result.punch_uuid) live.punch_uuid = result.punch_uuid;
+    // Across every video this labeler has pending work for, not just the one
+    // currently open — see outboxKeysForLabeler().
+    for (const key of keys) {
+      if (stopped) break;
+      for (const entry of outboxRead(key)) {
+        try {
+          const result = await sendQueued(entry);
+          // Adopt the server's id/uuid onto the in-memory label if it's still
+          // on screen, so a later edit targets the right row.
+          const live = state.labels.find(l => l.punch_uuid === entry.punchUuid);
+          if (live) {
+            if (result.id != null) live.id = result.id;
+            if (result.punch_uuid) live.punch_uuid = result.punch_uuid;
+          }
+          outboxWrite(outboxRead(key).filter(e => e.punchUuid !== entry.punchUuid), key);
+        } catch (e) {
+          // Stop on the first failure — the rest are almost certainly going
+          // to fail the same way, and hammering a slow Apps Script makes it
+          // worse. Everything still queued stays queued.
+          if (!quiet) showToast('Still cannot reach the sheet — your labels are saved locally.', 'error');
+          stopped = true;
+          break;
         }
-        outboxRemove(entry.punchUuid);
-      } catch (e) {
-        // Stop on the first failure — the rest are almost certainly going to
-        // fail the same way, and hammering a slow Apps Script makes it worse.
-        if (!quiet) showToast('Still cannot reach the sheet — your labels are saved locally.', 'error');
-        break;
       }
+      // Drop the key once its queue is empty, so localStorage doesn't
+      // accumulate one entry per video ever labelled.
+      if (!outboxRead(key).length) { try { localStorage.removeItem(key); } catch (e) {} }
     }
   } finally {
     _draining = false;
