@@ -310,6 +310,17 @@ document.addEventListener('DOMContentLoaded', () => {
   updateForeignFilterButton();
   setupForeignFilterMenu();
   setupForeignVideoDialog();
+  setupAgreement();
+
+  // Anything left queued from a previous session goes out now, and again
+  // whenever the browser regains a connection. `online` alone isn't enough
+  // (it doesn't fire for a server that was merely slow), which is why the
+  // successful-save path drains too.
+  updateOutboxChip();
+  drainOutbox();
+  window.addEventListener('online', () => drainOutbox({ quiet: false }));
+  document.getElementById('outbox-chip')?.addEventListener('click',
+    () => drainOutbox({ quiet: false }));
 });
 
 // Wiring for the "already labeled by someone else" popup (maybeShowForeignVideoPopup
@@ -773,6 +784,151 @@ function buildPunchButtons() {
   }
 }
 
+// ============================================================
+// Inter-rater agreement (admin only)
+// ============================================================
+// Two people labelling the same video is only worth the cost if you can
+// say whether they AGREE — that is the whole point of the cross-labeler
+// rows, and until now nothing measured it. Computed here in the browser
+// from the rows already on screen: admin's listForeign pulls every
+// labeler's punches for this video, so the answer needs no new endpoint
+// and no round trip.
+//
+// Per-video by design. "Did these two people mark the same punches the
+// same way in the clip I am looking at" is the question you ask while
+// reviewing; a corpus-wide number would need a backend job over every
+// sheet, which is a different (and much slower) thing.
+
+// Overlap of two [start,end] intervals over their union. 1 = identical
+// timing, 0 = no overlap at all.
+function timeIoU(a, b) {
+  const inter = Math.min(a.end, b.end) - Math.max(a.start, b.start);
+  if (inter <= 0) return 0;
+  const union = Math.max(a.end, b.end) - Math.min(a.start, b.start);
+  return union > 0 ? inter / union : 0;
+}
+
+// Greedy best-first pairing: take the highest-IoU pair still available,
+// then the next, and so on. Hungarian matching would be optimal, but on
+// punches — which are short and rarely ambiguous about which one they are
+// — greedy gives the same answer for far less machinery.
+const AGREE_IOU_FLOOR = 0.3;
+function matchPunchSets(A, B) {
+  const cands = [];
+  A.forEach((a, i) => B.forEach((b, j) => {
+    const iou = timeIoU(a, b);
+    if (iou >= AGREE_IOU_FLOOR) cands.push({ i, j, iou });
+  }));
+  cands.sort((x, y) => y.iou - x.iou);
+  const usedA = new Set(), usedB = new Set(), pairs = [];
+  for (const c of cands) {
+    if (usedA.has(c.i) || usedB.has(c.j)) continue;
+    usedA.add(c.i); usedB.add(c.j);
+    pairs.push({ a: A[c.i], b: B[c.j], iou: c.iou });
+  }
+  return {
+    pairs,
+    onlyA: A.filter((_, i) => !usedA.has(i)),
+    onlyB: B.filter((_, j) => !usedB.has(j)),
+  };
+}
+
+function computeAgreement() {
+  const byOwner = new Map();
+  for (const l of state.labels) {
+    if (l.isRoundMarker) continue;
+    const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
+    if (!byOwner.has(who)) byOwner.set(who, []);
+    byOwner.get(who).push(l);
+  }
+  const names = [...byOwner.keys()].sort();
+  const rows = [];
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) {
+      const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
+      const m = matchPunchSets(A, B);
+      const typeAgree = m.pairs.filter(p => p.a.punch === p.b.punch).length;
+      rows.push({
+        a: names[i], b: names[j],
+        aCount: A.length, bCount: B.length,
+        matched: m.pairs.length,
+        typeAgree,
+        // Of the punches BOTH found, how often did they call it the same
+        // move. Kept separate from the count above because "we both saw a
+        // punch here" and "we both think it was a jab" fail differently.
+        typePct: m.pairs.length ? Math.round((typeAgree / m.pairs.length) * 100) : null,
+        meanIoU: m.pairs.length
+          ? +(m.pairs.reduce((s, p) => s + p.iou, 0) / m.pairs.length).toFixed(2) : null,
+        onlyA: m.onlyA.length,
+        onlyB: m.onlyB.length,
+        // Every move pair they disagreed on, commonest first — this is the
+        // part that tells you WHICH distinction the taxonomy is failing.
+        confusions: (() => {
+          const c = {};
+          m.pairs.filter(p => p.a.punch !== p.b.punch).forEach(p => {
+            const k = [punchLabel(p.a.punch), punchLabel(p.b.punch)].join(' ↔ ');
+            c[k] = (c[k] || 0) + 1;
+          });
+          return Object.entries(c).sort((x, y) => y[1] - x[1]);
+        })(),
+      });
+    }
+  }
+  return { names, counts: names.map(n => byOwner.get(n).length), rows };
+}
+
+function setupAgreement() {
+  const btn = document.getElementById('btn-agreement');
+  const dlg = document.getElementById('agr-dialog');
+  if (!btn || !dlg) return;
+  btn.hidden = !state.isAdmin;      // review instrument, not a labelling one
+  btn.addEventListener('click', () => { renderAgreement(); dlg.showModal(); });
+  document.getElementById('agr-close')?.addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+}
+
+function renderAgreement() {
+  const body = document.getElementById('agr-body');
+  if (!body) return;
+  const { names, counts, rows } = computeAgreement();
+
+  if (rows.length === 0) {
+    body.innerHTML = `<p class="agr-empty">${names.length < 2
+      ? 'Only one labeler has punches on this video — nothing to compare yet.'
+      : 'No punches on this video yet.'}</p>`;
+    return;
+  }
+
+  const roster = names.map((n, i) =>
+    `<span class="agr-who" style="--who: ${labelerColor(n)}">${n} <b>${counts[i]}</b></span>`).join('');
+
+  const table = rows.map(r => `
+    <div class="agr-pair">
+      <div class="agr-pair-head">
+        <span class="agr-who" style="--who: ${labelerColor(r.a)}">${r.a}</span>
+        <span class="agr-vs">vs</span>
+        <span class="agr-who" style="--who: ${labelerColor(r.b)}">${r.b}</span>
+      </div>
+      <div class="agr-stats">
+        <div><b>${r.matched}</b><span>both found</span></div>
+        <div><b>${r.typePct === null ? '—' : r.typePct + '%'}</b><span>same move</span></div>
+        <div><b>${r.meanIoU === null ? '—' : r.meanIoU}</b><span>mean overlap</span></div>
+        <div><b>${r.onlyA}</b><span>only ${r.a}</span></div>
+        <div><b>${r.onlyB}</b><span>only ${r.b}</span></div>
+      </div>
+      ${r.confusions.length ? `<ul class="agr-conf">${
+        r.confusions.slice(0, 5).map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
+      }</ul>` : ''}
+    </div>`).join('');
+
+  body.innerHTML = `
+    <p class="agr-lede">Punches are paired when they overlap in time by at least
+      ${Math.round(AGREE_IOU_FLOOR * 100)}%. "Same move" counts only the pairs both
+      labelers found.</p>
+    <div class="agr-roster">${roster}</div>
+    ${table}`;
+}
+
 // Clicking a row in the Labels panel lights that row AND its strip on the
 // timeline — including on another labeler's lane, so "which of these is the
 // one I'm reading" is answerable in both directions. Clicking the same row
@@ -843,6 +999,16 @@ function captureTimestamp() {
   const video = document.getElementById('video-player');
   const time = video.currentTime;
 
+  // Admin reviews and corrects; it does not author. A new row would have no
+  // honest owner — admin has no labelling sheet of its own, and silently
+  // filing it under whoever happens to have the most rows on this video
+  // (which is what the old admin-add path did) attributes work to someone
+  // who didn't do it. Editing and deleting anyone's row stays allowed.
+  if (state.isAdmin) {
+    showToast('Admin can edit and delete any label, but not create new ones.', 'error');
+    return;
+  }
+
   if (state.mode === 'start') {
     state.pendingStart = time;
     state.mode = 'punch';
@@ -885,42 +1051,128 @@ function captureTimestamp() {
 }
 
 // ============================================================
-// Google Apps Script Push (no auth needed)
+// Outbox — labels survive a failed save
 // ============================================================
+// A label used to exist ONLY in state.labels until the sheet confirmed it.
+// A failed save showed a toast and moved on, so a flaky connection plus a
+// reload silently threw the work away — and nothing but preferences was
+// ever written to localStorage. Now every label is queued on disk the
+// instant it is created, BEFORE the request goes out, and only leaves the
+// queue once the server has given it an id.
+//
+// Keyed by labeler + video so two people (or two tabs on two videos) can't
+// drain each other's work.
+const OUTBOX_PREFIX = 'punchOutbox:';
+function outboxKey() {
+  const video = normalizeDriveUrl(document.getElementById('drive-link')?.value.trim() || '');
+  return OUTBOX_PREFIX + (labelerId() || '?') + ':' + video;
+}
+function outboxRead(key) {
+  try { return JSON.parse(localStorage.getItem(key || outboxKey()) || '[]'); } catch (e) { return []; }
+}
+function outboxWrite(entries, key) {
+  try { localStorage.setItem(key || outboxKey(), JSON.stringify(entries)); } catch (e) {}
+}
+// punch_uuid is the identity: it is generated client-side before the first
+// send, so a retry can never create a second row for the same label.
+function outboxAdd(payload) {
+  const entries = outboxRead();
+  if (entries.some(e => e.punchUuid === payload.punchUuid)) return;
+  entries.push(payload);
+  outboxWrite(entries);
+  updateOutboxChip();
+}
+function outboxRemove(punchUuid) {
+  outboxWrite(outboxRead().filter(e => e.punchUuid !== punchUuid));
+  updateOutboxChip();
+}
+
+function updateOutboxChip() {
+  const chip = document.getElementById('outbox-chip');
+  if (!chip) return;
+  const n = outboxRead().length;
+  chip.hidden = n === 0;
+  chip.textContent = n === 1 ? '1 unsaved' : n + ' unsaved';
+}
+
+// One attempt at one queued label. Returns true once the server owns it.
+async function sendQueued(payload) {
+  const result = await fetchJson(sheetUrl(payload.params), 30000);
+  if (result.status === 'error') throw new Error(result.message || 'sheet error');
+  return result;
+}
+
+let _draining = false;
+// Retries everything still queued for this labeler+video. Called after each
+// save, on page load, and whenever the browser says it is back online.
+async function drainOutbox({ quiet = true } = {}) {
+  if (_draining || !state.scriptUrl) return;
+  const key = outboxKey();
+  if (!outboxRead(key).length) { updateOutboxChip(); return; }
+  _draining = true;
+  try {
+    for (const entry of outboxRead(key)) {
+      try {
+        const result = await sendQueued(entry);
+        // Adopt the server's id/uuid onto the in-memory label if it's still
+        // on screen, so a later edit targets the right row.
+        const live = state.labels.find(l => l.punch_uuid === entry.punchUuid);
+        if (live) {
+          if (result.id != null) live.id = result.id;
+          if (result.punch_uuid) live.punch_uuid = result.punch_uuid;
+        }
+        outboxRemove(entry.punchUuid);
+      } catch (e) {
+        // Stop on the first failure — the rest are almost certainly going to
+        // fail the same way, and hammering a slow Apps Script makes it worse.
+        if (!quiet) showToast('Still cannot reach the sheet — your labels are saved locally.', 'error');
+        break;
+      }
+    }
+  } finally {
+    _draining = false;
+    updateOutboxChip();
+    renderLabels();
+  }
+}
+
 async function pushLabelToSheet(label) {
   if (!state.scriptUrl) return;
   const punch = PUNCH_TYPES.find(p => p.id === label.punch);
+  const params = {
+    action: 'add',
+    videoName: label.videoName,
+    trainingType: document.getElementById('training-type').value,
+    stance: document.getElementById('stance-select').value,
+    punchId: punch.id,
+    punchUuid: label.punch_uuid || '',
+    angle: label.angle || '',
+    startTime: formatTimeSheet(label.start),
+    endTime: formatTimeSheet(label.end),
+  };
+  // Queued FIRST. If the tab dies between here and the response, the label
+  // is still on disk and the next load will send it.
+  outboxAdd({ punchUuid: label.punch_uuid, params });
   try {
-    const url = sheetUrl({
-      action: 'add',
-      videoName: label.videoName,
-      trainingType: document.getElementById('training-type').value,
-      stance: document.getElementById('stance-select').value,
-      punchId: punch.id,
-      punchUuid: label.punch_uuid || '',
-      angle: label.angle || '',
-      startTime: formatTimeSheet(label.start),
-      endTime: formatTimeSheet(label.end),
-    });
-    const resp = await fetch(url);
-    const result = await resp.json();
-    if (result.status === 'error') {
-      console.error('Sheet push error:', result.message);
-      showToast('Sheet save failed: ' + result.message, 'error');
-    } else {
-      if (result.id != null) label.id = result.id;
-      // Server may have stamped its own UUID if our client-generated one was
-      // missing (older builds). Adopt whatever the server persisted.
-      if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
-      showToast('Saved to Google Sheet', 'info');
-    }
+    const result = await sendQueued({ params });
+    if (result.id != null) label.id = result.id;
+    // Server may have stamped its own UUID if our client-generated one was
+    // missing (older builds). Adopt whatever the server persisted.
+    if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
+    outboxRemove(params.punchUuid);
   } catch (e) {
     console.error('Sheet push failed:', e);
-    showToast('Sheet save failed: ' + e.message, 'error');
+    showToast('Sheet is unreachable — label saved locally, will retry.', 'error');
+    updateOutboxChip();
   }
 }
 
 function addRoundMarker(markerType) {
+  // Same rule as captureTimestamp(): admin corrects, it does not author.
+  if (state.isAdmin) {
+    showToast('Admin can edit and delete any label, but not create new ones.', 'error');
+    return;
+  }
   const video = document.getElementById('video-player');
   const time = video.currentTime;
   const label = {
@@ -940,30 +1192,34 @@ function addRoundMarker(markerType) {
   pushRoundMarkerToSheet(label);
 }
 
+// Same outbox as pushLabelToSheet — a round boundary is as expensive to
+// re-find as a punch, and the old version dropped it on any failure.
 async function pushRoundMarkerToSheet(label) {
   if (!state.scriptUrl) return;
   const time = formatTimeSheet(label.start);
+  const params = {
+    action: 'add',
+    videoName: label.videoName,
+    trainingType: document.getElementById('training-type').value,
+    stance: document.getElementById('stance-select').value,
+    punchId: label.punch,
+    punchUuid: label.punch_uuid || '',
+    angle: '',
+    startTime: time,
+    endTime: time,
+  };
+  outboxAdd({ punchUuid: label.punch_uuid, params });
   try {
-    const url = sheetUrl({
-      action: 'add',
-      videoName: label.videoName,
-      trainingType: document.getElementById('training-type').value,
-      stance: document.getElementById('stance-select').value,
-      punchId: label.punch,
-      punchUuid: label.punch_uuid || '',
-      angle: '',
-      startTime: time,
-      endTime: time,
-    });
-    const resp = await fetch(url);
-    const result = await resp.json();
+    const result = await sendQueued({ params });
     if (result.id != null) label.id = result.id;
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
+    outboxRemove(params.punchUuid);
     showToast(`${label.punch} saved at ${formatTime(label.start)}`, 'success');
     fetchLabelsFromSheet();
   } catch (e) {
     console.error('Round marker push failed:', e);
-    showToast('Round marker save failed: ' + e.message, 'error');
+    showToast('Sheet is unreachable — round marker saved locally, will retry.', 'error');
+    updateOutboxChip();
   }
 }
 
@@ -1407,8 +1663,16 @@ function parseSheetTime(timeStr) {
 function renderLabels() {
   const log = document.getElementById('label-log');
   const count = document.getElementById('label-count');
-  const punchCount = state.labels.filter(l => !l.isRoundMarker && !shouldHideByTab(l)).length;
-  count.textContent = `(${punchCount})`;
+  const visible = state.labels.filter(l => !l.isRoundMarker && !shouldHideByTab(l));
+  count.textContent = `(${visible.length})`;
+
+  // How many of those the pipeline would throw away — see isOutsideRound().
+  const warn = document.getElementById('outside-round-warning');
+  if (warn) {
+    const n = visible.filter(isOutsideRound).length;
+    warn.hidden = n === 0;
+    warn.textContent = n === 1 ? '1 outside a round' : `${n} outside rounds`;
+  }
 
   // Capture open editors before wiping (keyed by array index —
   // unique within a render call, unlike label.id which can collide)
@@ -1531,6 +1795,14 @@ function renderLabels() {
     }
 
     if (label === state.highlightedLabel) entry.classList.add('label-selected');
+    // Flagged, not blocked: a punch outside every round is one the pipeline
+    // throws away, and the labeler is the only one who can decide whether
+    // the punch is wrong or the round boundary is.
+    if (isOutsideRound(label)) {
+      entry.classList.add('label-outside');
+      entry.title = 'Outside every round — the training pipeline discards this. '
+                  + 'Move it, or fix the round boundary.';
+    }
     entry.dataset.labelIdx = idx;
     log.appendChild(entry);
   });
@@ -1752,6 +2024,11 @@ async function updateLabelInSheet(label) {
     const owner = foreignOwnerLabelerParam(label);
     if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
     params.labeler = owner;
+    // Who is REALLY making this change. Without it the write is
+    // indistinguishable from the owner editing their own row, since
+    // `labeler` has just been rewritten to them. The server appends it to
+    // the Admin Actions tab — see logAdminAction() in apps_script/Code.js.
+    params.actor = labelerId();
   }
   try {
     const url = sheetUrl(params);
@@ -1780,6 +2057,11 @@ async function deleteLabelFromSheet(label) {
     const owner = foreignOwnerLabelerParam(label);
     if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
     params.labeler = owner;
+    // Who is REALLY making this change. Without it the write is
+    // indistinguishable from the owner editing their own row, since
+    // `labeler` has just been rewritten to them. The server appends it to
+    // the Admin Actions tab — see logAdminAction() in apps_script/Code.js.
+    params.actor = labelerId();
   }
   _pendingDeletes++;
   try {
@@ -1996,6 +2278,37 @@ function setupKeyboardShortcuts() {
 // ============================================================
 // Round tracking
 // ============================================================
+// The rounds this video is currently showing, as [start, end) spans. One
+// definition, used by the ribbon, the "outside round" shading and the
+// warning below — these each used to re-derive it, and had already drifted
+// once over whether a hidden labeler's boundaries still count (they don't).
+// An unclosed round runs to Infinity; callers that need to draw it clamp to
+// the duration.
+function roundSpans() {
+  const times = (which) => state.labels
+    .filter(l => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
+              && !isLabelerHidden(l))
+    .map(l => l.start)
+    .sort((a, b) => a - b);
+  const starts = times('start'), ends = times('end');
+  return starts.map(s => {
+    const e = ends.find(x => x > s);
+    return { start: s, end: e !== undefined ? e : Infinity };
+  });
+}
+
+// A punch thrown outside every round is one the training pipeline DISCARDS.
+// The timeline has always hatched those stretches, but nothing said so at
+// the moment you logged one — so a labeler could spend a session on punches
+// that never reach the model. Returns false when no rounds are marked at
+// all: with nothing to be outside of, warning would be noise.
+function isOutsideRound(label) {
+  if (!label || label.isRoundMarker) return false;
+  const spans = roundSpans();
+  if (!spans.length) return false;
+  return !spans.some(r => label.start >= r.start && label.start <= r.end);
+}
+
 function syncRoundActiveFromLabels() {
   const starts = state.labels.filter(l => l.punch === 'round_start').map(l => l.start).sort((a, b) => a - b);
   const ends = state.labels.filter(l => l.punch === 'round_end').map(l => l.start).sort((a, b) => a - b);
@@ -2173,24 +2486,12 @@ function renderTimelineOverlay() {
   if (markersScrub) markersScrub.innerHTML = '';
   if (!duration || duration <= 0) return;
 
-  // Hiding a labeler hides their round boundaries too, so the shading and
-  // the ribbon agree with the lanes — this filter was applied to the
-  // boundary flags but not to the rounds themselves, which left a video
-  // shaded by a labeler whose rows were no longer on screen.
-  const roundMarkerTimes = (which) => state.labels
-    .filter(l => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
-              && !isLabelerHidden(l))
-    .map(l => l.start)
-    .sort((a, b) => a - b);
-  const roundStarts = roundMarkerTimes('start');
-  const roundEnds = roundMarkerTimes('end');
-
-  const rounds = [];
-  for (let i = 0; i < roundStarts.length; i++) {
-    const rStart = roundStarts[i];
-    const rEnd = roundEnds.find(e => e > rStart);
-    rounds.push({ start: rStart, end: rEnd !== undefined ? rEnd : duration });
-  }
+  // One shared definition — see roundSpans(). An unclosed round comes back
+  // as Infinity; on screen it runs to the end of the video.
+  const rounds = roundSpans().map(r => ({
+    start: r.start,
+    end: Number.isFinite(r.end) ? r.end : duration,
+  }));
 
   // Shade areas outside rounds — on the SCRUB track, which no longer zooms,
   // so this is plain duration math (timeToScrubPct), not the viewport-aware

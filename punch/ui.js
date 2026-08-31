@@ -836,12 +836,27 @@
 
     if (current()) input.value = current();
 
+    const isAdminName = (n) => String(n || '').toLowerCase() === 'admin';
+
     const commit = () => {
       const v = input.value.trim();
       if (!v || !window.CMLabeler) return;
       if (v === current()) return;
+      const wasAdmin = isAdminName(current());
       window.CMLabeler.set(v);
       input.value = current();
+      // Admin-ness is decided once, at DOMContentLoaded: it gates what the
+      // catalogue lets you do, which endpoints the page calls, and whether
+      // the agreement panel exists. Switching into or out of it mid-session
+      // left a page half-configured for the other role, so the identity
+      // change is committed by reloading into it.
+      if (wasAdmin !== isAdminName(current())) {
+        if (typeof showToast === 'function') {
+          showToast(isAdminName(current()) ? 'Entering admin mode…' : 'Leaving admin mode…', 'info');
+        }
+        setTimeout(() => location.reload(), 350);
+        return;
+      }
       flashSaved();
       if (typeof showToast === 'function') {
         showToast('Saving labels as ' + current(), 'success');

@@ -241,6 +241,28 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #lang-select:focus { outline: none; }
 #lang-field:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* Unsaved-label count. Amber rather than red: nothing is lost — the labels
+   are on disk and will retry — so this is "not done yet", not "broken". */
+#outbox-chip {
+  height: 32px; padding: 0 11px; border-radius: 8px; border: 0;
+  background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200;
+  font-size: 12.5px; font-weight: 590; white-space: nowrap;
+}
+#outbox-chip[hidden] { display: none; }
+#outbox-chip:hover { background: color-mix(in srgb, #b26a00 26%, transparent); }
+@media (prefers-color-scheme: dark) {
+  #outbox-chip { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
+}
+
+/* Admin-only, shown by setupAgreement(). */
+#btn-agreement {
+  height: 32px; padding: 0 11px; border-radius: 8px; border: 0;
+  background: var(--fill); color: var(--ink);
+  font-size: 12.5px; font-weight: 510; white-space: nowrap;
+}
+#btn-agreement[hidden] { display: none; }
+#btn-agreement:hover { background: var(--fill-2); }
+
 /* 32x32 is below the 44pt touch minimum on purpose: these two are pointer-only
    chrome on a desktop tool, and the hit area is padded out to 44 by the
    ::before below so a stylus or a touchscreen still lands them. */
@@ -1489,6 +1511,30 @@ button.ffm-row[aria-checked="true"]::before,
   background: var(--accent-wash);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
+/* A punch outside every round — the pipeline discards it. Amber, not red:
+   it is a thing to look at, not an error, and the fix might be the ROUND
+   boundary rather than the punch. The hatch echoes the timeline's own
+   "outside round" shading so the two read as the same fact. */
+.label-entry.label-outside {
+  background: repeating-linear-gradient(45deg,
+    color-mix(in srgb, #b26a00 11%, transparent) 0 5px, transparent 5px 10px);
+}
+.label-entry.label-outside .label-head::after {
+  content: '⚠'; flex: none; font-size: 11px; color: #b26a00;
+}
+@media (prefers-color-scheme: dark) {
+  .label-entry.label-outside .label-head::after { color: #f0b355; }
+}
+#outside-round-warning {
+  padding: 2px 7px; border-radius: 5px;
+  background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200;
+  font-size: 10px; font-weight: 620; letter-spacing: 0; text-transform: none;
+}
+#outside-round-warning[hidden] { display: none; }
+@media (prefers-color-scheme: dark) {
+  #outside-round-warning { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
+}
+
 .label-entry.editing { background: var(--card); border-left-color: var(--accent);
                        box-shadow: 0 0 0 1px var(--accent); padding: 10px; }
 
@@ -1611,6 +1657,52 @@ kbd {
   font-size: 13px; font-weight: 510; background: var(--fill); color: var(--ink);
 }
 .fvd-actions .fvd-primary { background: var(--accent-solid); color: #fff; font-weight: 590; }
+
+/* ── agreement sheet (admin) ─────────────────────────────────────────────── */
+#agr-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#agr-dialog::backdrop {
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.agr-lede { font-size: 12.5px; color: var(--ink-dim); margin: 4px 0 12px; line-height: 1.45; }
+.agr-empty { font-size: 13px; color: var(--ink-dim); padding: 12px 0; }
+.agr-roster { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+/* Same colour a labeler has on the timeline and on their rows — the point
+   of the panel is comparing people, so they have to be identifiable at a
+   glance in all three places. */
+.agr-who {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--who, var(--ink-dim)); color: #fff;
+  font-size: 11px; font-weight: 650;
+}
+.agr-who b { font-weight: 750; opacity: .85; margin-left: 3px; }
+.agr-pair { padding: 12px 0; border-top: 1px solid var(--line); }
+.agr-pair-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.agr-vs { font-size: 11px; color: var(--ink-dim); font-weight: 590; }
+.agr-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.agr-stats div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agr-stats b {
+  font-size: 17px; font-weight: 640; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.agr-stats span {
+  font-size: 10px; color: var(--ink-dim); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Which distinction they actually disagree on — the number that says
+   whether the taxonomy is the problem. */
+.agr-conf { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--fill); }
+.agr-conf li {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11.5px; padding: 2px 0; list-style: none;
+}
+.agr-conf li span { color: var(--ink-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agr-conf li b { font-variant-numeric: tabular-nums; }
 
 /* ── toast ───────────────────────────────────────────────────────────────── */
 /* showToast() in player.js hard-codes the three classes below, so the names

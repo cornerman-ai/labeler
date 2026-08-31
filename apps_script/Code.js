@@ -463,29 +463,24 @@ function doGet(e) {
   }
 
   var sheet;
-  if (isAdminCaller && action === 'add') {
-    // A brand-new label from Admin has no "own sheet" to land in, so it's
-    // attributed to whoever has already labeled this video the most — see
-    // resolveMajorityLabelerSheet(). punch/app.js's captureTimestamp() /
-    // addRoundMarker() don't (and can't) know who that is client-side, so
-    // this is the one place the assignment gets decided.
-    sheetName = resolveMajorityLabelerSheet(pss, p.videoName);
-    if (!sheetName) {
+  if (isAdminCaller) {
+    // Admin reviews and corrects; it does not author. A new row would have
+    // no honest owner — admin has no labelling sheet — and the previous
+    // behaviour (file it under whoever had the most rows on this video)
+    // credited work to someone who hadn't done it. The client blocks this
+    // too; this is the half that a stale tab or a hand-made URL still hits.
+    if (action === 'add') {
       return jsonOut({ status: 'error', message:
-        'No existing labeler for this video yet — Admin can only add to a video someone else has already started labeling.' });
+        'Admin cannot create labels — only edit or delete existing ones.' });
     }
-    sheet = pss.getSheetByName(sheetName);
-  } else if (isAdminCaller) {
-    // Every other action (update/delete, or a bare status ping) must arrive
-    // with `labeler` already redirected to the real row owner — see
-    // foreignOwnerLabelerParam() in punch/app.js — or needs no sheet at
-    // all. Reaching here means neither is true; refuse rather than fall
-    // into the auto-create block below and leave behind a "Labeled Data
-    // Admin" sheet Admin is never supposed to have.
+    // update/delete must arrive with `labeler` already redirected to the
+    // real row owner — see foreignOwnerLabelerParam() in punch/app.js — or
+    // need no sheet at all. Reaching here means neither is true; refuse
+    // rather than fall into the auto-create block below and leave behind a
+    // "Labeled Data Admin" sheet Admin is never supposed to have.
     return jsonOut({ status: 'error', message: 'Admin has no sheet of its own for action: ' + action });
-  } else {
-    sheet = pss.getSheetByName(sheetName);
   }
+  sheet = pss.getSheetByName(sheetName);
 
   if (!sheet) {
     if (labelerLc === 'combined' || labelerLc === 'archive') {
@@ -621,6 +616,12 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ status: 'error', message: 'ID not found: ' + p.id, sheet: sheetName, cols: cols, headers: String(data[0]) }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    // Captured BEFORE the writes so the action log can record what the row
+    // used to say — see logAdminAction().
+    var beforeRow = data[row - 1];
+    var was = function (c) { return c >= 0 ? String(beforeRow[c]) : ''; };
+    var prev = { punch: was(cols.punch), start: was(cols.start), end: was(cols.end) };
+
     var updated = [];
     if (p.punchId && cols.punch >= 0) { sheet.getRange(row, cols.punch + 1).setValue(p.punchId); updated.push('punch'); }
     if (p.angle && cols.angle >= 0) { sheet.getRange(row, cols.angle + 1).setValue(p.angle); updated.push('angle'); }
@@ -630,6 +631,9 @@ function doGet(e) {
     if (p.startTime && cols.start >= 0) { var sc = sheet.getRange(row, cols.start + 1); sc.setNumberFormat('@'); sc.setValue(secondsToSheetTime(toSeconds(p.startTime))); updated.push('start'); }
     if (p.endTime && cols.end >= 0) { var ec = sheet.getRange(row, cols.end + 1); ec.setNumberFormat('@'); ec.setValue(secondsToSheetTime(toSeconds(p.endTime))); updated.push('end'); }
     invalidateVideoRowCache(p.video);
+    logAdminAction(p, 'update', sheetName, p.id,
+      prev.punch + ' ' + prev.start + '→' + prev.end,
+      (p.punchId || prev.punch) + ' ' + (p.startTime || prev.start) + '→' + (p.endTime || prev.end));
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'updated', sheet: sheetName, row: row, cols: cols, updated: updated }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -645,8 +649,13 @@ function doGet(e) {
         .createTextOutput(JSON.stringify({ status: 'error', message: 'ID not found: ' + p.id, sheet: sheetName, video: p.video }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    var goneRow = data[row - 1];
+    var gone = (cols.punch >= 0 ? String(goneRow[cols.punch]) : '') + ' ' +
+               (cols.start >= 0 ? String(goneRow[cols.start]) : '') + '→' +
+               (cols.end >= 0 ? String(goneRow[cols.end]) : '');
     sheet.deleteRow(row);
     invalidateVideoRowCache(p.video);
+    logAdminAction(p, 'delete', sheetName, p.id, gone, '(removed)');
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'deleted', sheet: sheetName, row: row }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -1760,35 +1769,49 @@ function scanAllRowsForVideo(pss, video) {
   return out;
 }
 
-// Whoever already has the most rows for a video, among live per-labeler
-// sheets — used to attribute a brand-new label Admin creates, since Admin
-// has no sheet of its own to write into (see the isAdminCaller branches in
-// doGet). Excludes the frozen Combined Data Archive even though it counts
-// as a source of *foreign* rows elsewhere: its source sheets are gone, so
-// there's nowhere live to append a new one even if it "wins" on count.
-// Returns null for a video nobody has labeled yet — there's no majority to
-// infer, so the caller has to refuse rather than guess. Takes the caller's
-// already-open `pss` for the same reason collectForeignRows() does.
-function resolveMajorityLabelerSheet(pss, video) {
-  var target = normalizeDriveUrl(video);
-  if (!target) return null;
-  // Shares cachedAllRowsForVideo()'s single scan rather than walking every
-  // sheet again — this used to be a second full-spreadsheet read on the
-  // Admin add path.
-  var all = cachedAllRowsForVideo(pss, video);
-  var counts = {};
-  var best = null, bestCount = 0;
-  for (var i = 0; i < all.length; i++) {
-    var name = all[i].sheet;
-    // The Archive counts as a source of foreign rows elsewhere, but its
-    // source sheets are gone — there is nowhere live to append to even if
-    // it wins on count.
-    if (name === COMBINED_ARCHIVE_NAME) continue;
-    counts[name] = (counts[name] || 0) + 1;
-    if (counts[name] > bestCount) { bestCount = counts[name]; best = name; }
+// (resolveMajorityLabelerSheet lived here: it picked whichever labeler had
+// the most rows on a video so an Admin-created label could be filed under
+// somebody. Admin no longer creates labels — it credited work to a person
+// who hadn't done it — so the function went with its only caller.)
+
+// ── Admin's own tab: what admin changed, and to what ─────────────────────
+// Admin's CORRECTIONS still land in the owning labeler's sheet, because
+// that is the sheet the training pipeline reads and the correction has to
+// be in the data, not beside it. What was missing was any record that a
+// row had been changed by someone other than its owner — the edit arrives
+// with `labeler` already redirected to the owner (see
+// foreignOwnerLabelerParam in punch/app.js), so from the sheet's point of
+// view it is indistinguishable from that person editing their own work.
+//
+// The client sends `actor` on any admin-driven write. When it is present,
+// the change is appended here: the correction stays where it belongs, and
+// there is a provenance trail for it. Best-effort — a logging failure must
+// never fail the edit that was actually asked for.
+var ADMIN_LOG_NAME = 'Admin Actions';
+var ADMIN_LOG_HEADERS = ['ts', 'admin', 'action', 'target_sheet', 'row_id', 'video', 'before', 'after'];
+
+function logAdminAction(p, action, targetSheet, rowId, before, after) {
+  var actor = String(p.actor || '').trim();
+  if (!actor) return;                       // a normal labeler editing their own row
+  try {
+    var ss = punchSpreadsheet();
+    var sheet = ss.getSheetByName(ADMIN_LOG_NAME);
+    if (!sheet) {
+      sheet = ss.insertSheet(ADMIN_LOG_NAME);
+      sheet.appendRow(ADMIN_LOG_HEADERS);
+      sheet.setFrozenRows(1);
+    }
+    sheet.appendRow([
+      new Date().toISOString(), actor, action, targetSheet,
+      String(rowId || ''), normalizeDriveUrl(p.video || p.videoName || ''),
+      String(before || ''), String(after || ''),
+    ]);
+  } catch (e) {
+    // Deliberately swallowed: the row edit already succeeded, and failing
+    // the response over the audit line would be worse than missing it.
   }
-  return best;
 }
+
 function isPunchLabel(lbl) {
   if (lbl === null || lbl === undefined || lbl === '') return false;
   var s = String(lbl).toLowerCase();
