@@ -1700,6 +1700,51 @@ kbd {
   font-size: 10px; color: var(--ink-dim); line-height: 1.2;
   overflow: hidden; text-overflow: ellipsis;
 }
+/* The two secondary numbers, on one line under the headline grid: chance-
+   corrected agreement, and which way the timing leans. */
+.agr-sub {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 11.5px;
+}
+.agr-kappa {
+  padding: 2px 8px; border-radius: 999px; font-weight: 650;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* Banded, so the number carries a verdict without needing one looked up. */
+.agr-tone-ok  { background: var(--yes-wash); color: var(--yes-on-wash); }
+.agr-tone-mid { background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200; }
+.agr-tone-bad { background: var(--no-wash); color: var(--no-on-wash); }
+.agr-tone-na  { background: var(--fill); color: var(--ink-dim); }
+@media (prefers-color-scheme: dark) {
+  .agr-tone-mid { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
+}
+.agr-offset { color: var(--ink-dim); }
+
+/* Per-move breakdown — where a single headline mean hides the one move the
+   two actually disagree about. */
+.agr-moves {
+  width: 100%; margin-top: 10px; border-collapse: collapse;
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+.agr-moves th {
+  text-align: right; padding: 3px 6px; font-size: 9.5px; font-weight: 650;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim);
+  border-bottom: 1px solid var(--line);
+}
+.agr-moves th:first-child, .agr-moves td:first-child { text-align: left; }
+.agr-moves td { padding: 4px 6px; text-align: right; }
+.agr-moves tbody tr + tr td { border-top: 1px solid var(--line); }
+.agr-moves td i { color: var(--ink-dim); font-style: normal; margin-left: 3px; }
+/* The rows worth looking at. Under 60% agreement on a move is the signal
+   that the distinction, not the labeler, is the problem. */
+.agr-moves tr.agr-weak td { background: var(--no-wash); }
+.agr-moves tr.agr-weak td i { color: var(--no-on-wash); font-weight: 650; }
+.agr-swatch {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-right: 6px; vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+
 /* Which distinction they actually disagree on — the number that says
    whether the taxonomy is the problem. */
 .agr-conf { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--fill); }

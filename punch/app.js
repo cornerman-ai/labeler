@@ -833,6 +833,78 @@ function matchPunchSets(A, B) {
   };
 }
 
+// Cohen's kappa over the matched pairs — how much the two agree on WHICH
+// move it was, beyond what they'd hit by chance. A raw percentage flatters
+// a set dominated by jabs: two people who both call everything a jab score
+// 95% and have demonstrated nothing. Kappa divides that out, and is the
+// number this kind of work is normally reported with.
+// Undefined when one class accounts for everything (the chance term hits 1
+// and the denominator vanishes) — reported as null rather than a fake 0.
+function cohensKappa(pairs) {
+  if (!pairs.length) return null;
+  const po = pairs.filter(p => p.a.punch === p.b.punch).length / pairs.length;
+  const fa = {}, fb = {};
+  pairs.forEach(p => {
+    fa[p.a.punch] = (fa[p.a.punch] || 0) + 1;
+    fb[p.b.punch] = (fb[p.b.punch] || 0) + 1;
+  });
+  let pe = 0;
+  for (const k of new Set([...Object.keys(fa), ...Object.keys(fb)])) {
+    pe += ((fa[k] || 0) / pairs.length) * ((fb[k] || 0) / pairs.length);
+  }
+  if (pe > 0.9999) return null;
+  return (po - pe) / (1 - pe);
+}
+
+// The usual plain-language bands for kappa, so the number doesn't need a
+// stats background to act on.
+function kappaBand(k) {
+  if (k === null) return { word: '—', tone: 'na' };
+  if (k < 0.2) return { word: 'poor', tone: 'bad' };
+  if (k < 0.4) return { word: 'fair', tone: 'bad' };
+  if (k < 0.6) return { word: 'moderate', tone: 'mid' };
+  if (k < 0.8) return { word: 'good', tone: 'ok' };
+  return { word: 'very good', tone: 'ok' };
+}
+
+// Per-move agreement. The single headline mean hides the thing you'd
+// actually act on: a taxonomy usually fails on ONE distinction, and a
+// timing problem is usually specific to one kind of move (uppercuts start
+// ambiguously; jabs don't). A move counts toward `both` when EITHER labeler
+// called it that, and toward `agreed` only when both did — so a move that
+// one person always sees and the other never does shows up as a low
+// percentage rather than silently vanishing.
+function perMoveBreakdown(pairs) {
+  const acc = {};
+  const bump = (id, key) => {
+    if (!acc[id]) acc[id] = { move: id, both: 0, agreed: 0, iouSum: 0 };
+    acc[id][key]++;
+  };
+  pairs.forEach(p => {
+    const same = p.a.punch === p.b.punch;
+    if (same) {
+      bump(p.a.punch, 'both');
+      bump(p.a.punch, 'agreed');
+      acc[p.a.punch].iouSum += p.iou;
+    } else {
+      bump(p.a.punch, 'both');
+      bump(p.b.punch, 'both');
+    }
+  });
+  return Object.values(acc)
+    .map(r => ({
+      move: r.move,
+      label: punchLabel(r.move),
+      both: r.both,
+      agreed: r.agreed,
+      pct: Math.round((r.agreed / r.both) * 100),
+      // Timing overlap only over the pairs they AGREED were this move —
+      // averaging in a jab-vs-cross pair would be measuring the wrong thing.
+      meanIoU: r.agreed ? +(r.iouSum / r.agreed).toFixed(2) : null,
+    }))
+    .sort((x, y) => y.both - x.both || x.label.localeCompare(y.label));
+}
+
 function computeAgreement() {
   const byOwner = new Map();
   for (const l of state.labels) {
@@ -848,6 +920,13 @@ function computeAgreement() {
       const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
       const m = matchPunchSets(A, B);
       const typeAgree = m.pairs.filter(p => p.a.punch === p.b.punch).length;
+      const kappa = cohensKappa(m.pairs);
+      // Signed, so it reads as a direction rather than a magnitude: a
+      // consistent offset is a habit one of them can correct, which a mean
+      // absolute error would have hidden.
+      const offsetMs = m.pairs.length
+        ? Math.round((m.pairs.reduce((s, p) => s + (p.a.start - p.b.start), 0) / m.pairs.length) * 1000)
+        : null;
       rows.push({
         a: names[i], b: names[j],
         aCount: A.length, bCount: B.length,
@@ -859,8 +938,12 @@ function computeAgreement() {
         typePct: m.pairs.length ? Math.round((typeAgree / m.pairs.length) * 100) : null,
         meanIoU: m.pairs.length
           ? +(m.pairs.reduce((s, p) => s + p.iou, 0) / m.pairs.length).toFixed(2) : null,
+        kappa: kappa === null ? null : +kappa.toFixed(2),
+        kappaBand: kappaBand(kappa),
+        offsetMs,
         onlyA: m.onlyA.length,
         onlyB: m.onlyB.length,
+        perMove: perMoveBreakdown(m.pairs),
         // Every move pair they disagreed on, commonest first — this is the
         // part that tells you WHICH distinction the taxonomy is failing.
         confusions: (() => {
@@ -902,6 +985,14 @@ function renderAgreement() {
   const roster = names.map((n, i) =>
     `<span class="agr-who" style="--who: ${labelerColor(n)}">${n} <b>${counts[i]}</b></span>`).join('');
 
+  // Which way the timing offset leans, said in words — a signed number
+  // alone makes you re-derive who "+" refers to every time.
+  const offsetLine = (r) => {
+    if (r.offsetMs === null || Math.abs(r.offsetMs) < 10) return 'timing aligned';
+    const who = r.offsetMs > 0 ? r.a : r.b;
+    return `${who} marks ${Math.abs(r.offsetMs)} ms later`;
+  };
+
   const table = rows.map(r => `
     <div class="agr-pair">
       <div class="agr-pair-head">
@@ -916,6 +1007,27 @@ function renderAgreement() {
         <div><b>${r.onlyA}</b><span>only ${r.a}</span></div>
         <div><b>${r.onlyB}</b><span>only ${r.b}</span></div>
       </div>
+      <p class="agr-sub">
+        <span class="agr-kappa agr-tone-${r.kappaBand.tone}"
+              title="Agreement on the move, corrected for what chance alone would give.">
+          ${r.kappa === null
+            ? 'κ n/a · only one move in common'
+            : `κ ${r.kappa} · ${r.kappaBand.word}`}
+        </span>
+        <span class="agr-offset">${offsetLine(r)}</span>
+      </p>
+      ${r.perMove.length ? `
+        <table class="agr-moves">
+          <thead><tr><th>Move</th><th>Seen</th><th>Agreed</th><th>Overlap</th></tr></thead>
+          <tbody>${r.perMove.map(m => `
+            <tr class="${m.pct < 60 ? 'agr-weak' : ''}">
+              <td><span class="agr-swatch" style="background:${getPunchColor(m.move)}"></span>${m.label}</td>
+              <td>${m.both}</td>
+              <td>${m.agreed} <i>${m.pct}%</i></td>
+              <td>${m.meanIoU === null ? '—' : m.meanIoU}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : ''}
       ${r.confusions.length ? `<ul class="agr-conf">${
         r.confusions.slice(0, 5).map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
       }</ul>` : ''}
@@ -923,8 +1035,9 @@ function renderAgreement() {
 
   body.innerHTML = `
     <p class="agr-lede">Punches are paired when they overlap in time by at least
-      ${Math.round(AGREE_IOU_FLOOR * 100)}%. "Same move" counts only the pairs both
-      labelers found.</p>
+      ${Math.round(AGREE_IOU_FLOOR * 100)}%. <b>κ</b> is agreement on the move
+      corrected for chance — a plain percentage flatters a video that is mostly
+      jabs. <b>Overlap</b> is 1.0 for identical timing.</p>
     <div class="agr-roster">${roster}</div>
     ${table}`;
 }
