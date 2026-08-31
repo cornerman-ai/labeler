@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260831i">
+  <link rel="stylesheet" href="punch.css?v=20260831k">
 </head>
 <body>
   <div id="app">
@@ -197,7 +197,16 @@
                  same second sit on separate rows instead of overlapping.
                  #round-markers is preserved across those rebuilds. -->
             <div id="seg-lanes">
+              <!-- Rounds ribbon. Sits ABOVE the lanes as its own row rather
+                   than as full-height lines through them: as vertical rules
+                   with a dot on top, round boundaries were indistinguishable
+                   from a playhead. Rounds are spans, so they're drawn as
+                   spans. app.js's renderRoundStrip() fills it. -->
               <div id="round-markers"></div>
+              <!-- Where you actually are. The one thing that must stay
+                   readable over a lane packed with bright strips, hence the
+                   light halo either side of the dark core. -->
+              <div id="playhead" hidden><span class="playhead-grip"></span></div>
             </div>
             <!-- The one part of the timeline that always shows the WHOLE
                  video, start to end, no matter how far #seg-lanes above is
@@ -420,12 +429,12 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260831i"></script>
-  <script src="../shared/player.js?v=20260831i"></script>
-  <script src="app.js?v=20260831i"></script>
+  <script src="../shared/labeler_name.js?v=20260831k"></script>
+  <script src="../shared/player.js?v=20260831k"></script>
+  <script src="app.js?v=20260831k"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260831i"></script>
+  <script src="ui.js?v=20260831k"></script>
 </body>
 </html>

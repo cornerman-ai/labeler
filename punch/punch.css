@@ -795,6 +795,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    one end of it. */
 .seg-lane .seek-segment.dragging { opacity: 1; top: 0; height: 14px;
                                    cursor: grabbing; box-shadow: 0 0 0 1.5px var(--ink); }
+/* The strip whose row is selected in the Labels panel. Full height and a
+   dark ring rather than a colour change — the fill still has to say which
+   MOVE it is, so the selection can only be carried by the outline. */
+.seg-lane .seek-segment.seg-selected {
+  opacity: 1; top: 0; height: 14px; z-index: 4;
+  box-shadow: 0 0 0 1.5px var(--card), 0 0 0 3px var(--accent);
+}
 @media (prefers-reduced-motion: reduce) { .seg-lane .seek-segment { transition: none; } }
 
 /* What you are about to drag, named. Follows the pointer along the lane and
@@ -828,47 +835,64 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    against each one's OWN parent rather than a fixed height, so it tracks
    whatever that box's height happens to be (touch sizing, a future third
    lane) without a number to keep in sync here. */
-#round-markers, #round-markers-scrub {
+/* The rounds ribbon: a row of its own at the top of #seg-lanes, in flow
+   (not an overlay), so a round reads as the stretch of time it is instead
+   of as two vertical rules through the lanes. Those rules were the same
+   shape as a playhead and were being mistaken for one. */
+#round-markers {
+  position: relative; height: 13px; flex: none; margin-bottom: 2px;
+}
+.round-span {
+  position: absolute; top: 0; bottom: 0; min-width: 3px;
+  border-radius: 3px; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  /* Bracketed ends — the boundary is the edge of the span, which is what
+     makes it read as a period rather than a marker. */
+  border-left: 2px solid var(--yes-solid);
+  border-right: 2px solid var(--accent-solid);
+  overflow: hidden;
+}
+.round-span:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.round-span-label {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  padding-left: 5px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--accent-on-wash);
+  white-space: nowrap; pointer-events: none;
+}
+
+/* The scrub overview keeps boundary ticks — it is 8px tall, with no room
+   for a labelled span. Short stubs anchored to the track, deliberately not
+   full-height, so they read as edges rather than as a position. */
+#round-markers-scrub {
   position: absolute; top: 0; bottom: 0; left: 0; right: 0;
   pointer-events: none; z-index: 15;
 }
-.round-mark {
-  position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
-  background: var(--yes-solid);
-}
-/* Start is green — the same colour #round-indicator turns when a round is
-   live. End is the accent blue, not red: this is a neutral boundary marker,
-   not a warning, and red on this page is reserved for delete/destructive. */
-.round-mark.rm-end { background: var(--accent-solid); }
-/* The actual click target is the dot at the top, not the hairline running the
-   full height — the LINE stays pointer-events:none so it can pass through the
-   lane's own drag surface underneath rather than shadowing a punch strip that
-   happens to start at the same instant. Ringed in --card so it pops off
-   whatever colour of strip happens to sit behind it in either lane. */
-.round-mark::before {
-  content: ''; position: absolute; top: -3px; left: 50%;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: inherit; box-shadow: 0 0 0 2px var(--card);
-  transform: translateX(-50%);
+.round-tick {
+  position: absolute; bottom: 50%; width: 2px; height: 9px; margin-left: -1px;
+  transform: translateY(50%);
+  border-radius: 1px; background: var(--yes-solid);
   pointer-events: auto; cursor: pointer;
 }
-/* A wider, invisible hit box around that 8px dot — clicking anywhere in it
-   still resolves to .round-mark (pseudo-elements aren't separate DOM nodes,
-   so the click listener on the real element fires either way). Not the full
-   44pt minimum: on a 2px-wide flag, that would overlap its neighbour on a
-   short round and eat into the drag lane's own hit-testing underneath. This
-   is a precision affordance for a pointer, not the touch-primary way to jump
-   to a boundary — the side-panel row is, and that one is sized properly. */
-.round-mark::after {
-  content: ''; position: absolute; top: -11px; left: 50%;
-  width: 20px; height: 20px; transform: translateX(-50%);
-  pointer-events: auto; cursor: pointer;
+.round-tick.rt-end { background: var(--accent-solid); }
+
+/* Where you are. A dark core with a light edge either side, so it survives
+   crossing a saturated strip — the scrub thumb alone used to disappear into
+   any bright punch once zoomed in. */
+#playhead {
+  position: absolute; top: 0; bottom: 0; width: 1px; z-index: 20;
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--card), 0 0 3px 1px rgba(0,0,0,.28);
+  pointer-events: none;
 }
-/* Someone else's round marker: present, because the round structure is real
-   whoever set it, but dimmed — the tint is reserved for the boundaries this
-   labeler can act on. Matches the read-only weight already used for a
-   foreign round-marker row in the side panel. */
-.round-mark.rm-foreign { opacity: .45; }
+#playhead[hidden] { display: none; }
+/* A small handle at the head of the line — the part the eye lands on when
+   scrubbing, and what separates it at a glance from a round bracket. */
+.playhead-grip {
+  position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+  width: 9px; height: 9px; border-radius: 2px;
+  background: var(--ink); box-shadow: 0 0 0 1.5px var(--card);
+}
 
 /* Another labeler's punch strip, shown read-only for shared context — same
    muted treatment as .rm-foreign above, minus the hover/drag affordance
@@ -1390,13 +1414,12 @@ button.ffm-row[aria-checked="true"]::before,
                            font-variant-numeric: tabular-nums; }
 .label-entry strong { color: var(--ink); font-size: 13px; font-weight: 590;
                       letter-spacing: -.01em; }
-/* renderLabels() writes the row ids and times with hard-coded #555 / #666 —
-   fine on the old near-black panel, 3:1 on --card in light mode. Re-point them
-   at the semantic dim ink rather than editing the strings, which keeps the
-   render path untouched. .label-text is excluded because JS also sets
-   `style.cursor` on it, which would otherwise match [style]. */
-.label-entry small[style],
-.label-entry span[style]:not(.label-text) { color: var(--ink-on-fill) !important; }
+/* (A rule used to live here re-pointing hard-coded #555/#666 inline colours
+   in renderLabels() at the semantic dim ink. Those strings are gone — the
+   row markup no longer sets colour inline — and the rule had outlived them
+   in the worst way: it matched ANY span carrying a style attribute, with
+   !important, so the .who-badge (which carries an inline --who custom
+   property) had its white text forced to grey. Removed with its cause.) */
 .label-entry .label-edit,
 .label-entry .label-delete {
   flex: none; display: grid; place-items: center;
@@ -1443,25 +1466,33 @@ button.ffm-row[aria-checked="true"]::before,
 }
 .label-entry.round-marker.rm-foreign .label-text strong { color: var(--ink-dim); font-weight: 500; }
 
-/* Another labeler's punch row, shown read-only for shared context. Only
-   slightly held back (.82, not .6): whose row it is now reads from the
-   badge, so the row itself no longer has to be faded to the point of being
-   hard to read — which is what "too vague and not readable" was about. */
-.label-entry.label-foreign { background: transparent; opacity: .82; }
+/* Another labeler's punch row, shown read-only for shared context.
+   NO opacity on the row: it used to carry .82, which multiplied through to
+   the badge and turned its white name a dull grey — the whole point of the
+   badge is that the name reads cleanly. Held back by the muted TIMES
+   instead, which is the part that doesn't need to compete. */
+.label-entry.label-foreign { background: transparent; }
+.label-entry.label-foreign .label-text small { color: var(--ink-dim); }
 
 /* Move name and author on one line, times underneath. */
 .label-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .label-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Who logged it. A solid chip in that labeler's colour (--who, set inline
    from labelerColor()) — the SAME colour as their timeline lane, so the two
-   views agree at a glance. White text on the tint rather than tinted text,
-   because at 10px a coloured word on a light card is the first thing to
-   disappear. */
+   views agree at a glance. Text is pure white, and every tint in
+   LABELER_TINTS is dark enough to clear 4.5:1 behind it. */
 .who-badge {
-  flex: none; padding: 1.5px 6px; border-radius: 999px;
+  flex: none; padding: 1.5px 7px; border-radius: 999px;
   background: var(--who, var(--ink-dim)); color: #fff;
-  font-size: 10px; font-weight: 650; letter-spacing: .01em;
+  font-size: 10.5px; font-weight: 680; letter-spacing: .01em;
   max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The row you last clicked. Paired with .seek-segment.seg-selected on the
+   timeline — see highlightLabel() — so picking a row in the list points at
+   the same punch in both places. */
+.label-entry.label-selected {
+  background: var(--accent-wash);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .label-entry.editing { background: var(--card); border-left-color: var(--accent);
                        box-shadow: 0 0 0 1px var(--accent); padding: 10px; }

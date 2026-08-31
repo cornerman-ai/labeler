@@ -240,6 +240,12 @@ Object.assign(state, {
   // Lane order for other labelers — see foreignOwnersInOrder(). Same
   // reasoning as above for not persisting it.
   labelerOrder: [],
+  // The row you last clicked, lit in the list AND on the timeline so the
+  // two views point at the same thing. Held as the label OBJECT, not an
+  // index: indices shift when a load rebuilds state.labels, which would
+  // silently move the highlight onto some unrelated punch. Object identity
+  // simply stops matching after a rebuild, which is the right behaviour.
+  highlightedLabel: null,
 });
 
 // ============================================================
@@ -767,6 +773,15 @@ function buildPunchButtons() {
   }
 }
 
+// Clicking a row in the Labels panel lights that row AND its strip on the
+// timeline — including on another labeler's lane, so "which of these is the
+// one I'm reading" is answerable in both directions. Clicking the same row
+// again clears it.
+function highlightLabel(label) {
+  state.highlightedLabel = state.highlightedLabel === label ? null : label;
+  renderLabels();
+}
+
 function selectPunch(punchId) {
   state.selectedPunch = punchId;
 
@@ -854,6 +869,12 @@ function captureTimestamp() {
     state.labels.push(label);
     state.mode = 'start';
     state.pendingStart = null;
+    // The move is finished, so nothing in the catalogue is "current" any
+    // more. Leaving it lit made the panel claim a pick that no longer
+    // applied to anything, and the next label starts by choosing a type
+    // anyway (mode 'start' → 'punch' → pick).
+    state.selectedPunch = null;
+    document.querySelectorAll('.punch-btn').forEach(b => b.classList.remove('selected'));
     document.getElementById('pending-label').textContent = '';
     updateTimestampButton();
     renderLabels();
@@ -1477,6 +1498,7 @@ function renderLabels() {
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
       entry.querySelector('.label-text').onclick = () => {
+        highlightLabel(label);
         document.getElementById('video-player').currentTime = label.start;
       };
     } else {
@@ -1502,9 +1524,13 @@ function renderLabels() {
         <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
-      entry.querySelector('.label-text').onclick = () => openEditLabel(idx);
+      entry.querySelector('.label-text').onclick = () => {
+        highlightLabel(label);
+        openEditLabel(idx);
+      };
     }
 
+    if (label === state.highlightedLabel) entry.classList.add('label-selected');
     entry.dataset.labelIdx = idx;
     log.appendChild(entry);
   });
@@ -2028,10 +2054,14 @@ function timeToScrubPct(time, duration) {
 function buildSegLanes(container, markersLayer, overlay) {
   if (!container) return null;
   const owners = visibleForeignOwners();
-  // Detach before clearing: #round-markers is a child of this container and
-  // innerHTML='' would take it with the lanes.
+  // Detach before clearing: the rounds ribbon and the playhead are children
+  // of this container and innerHTML='' would take them with the lanes.
+  const playhead = document.getElementById('playhead');
   if (markersLayer && markersLayer.parentNode === container) markersLayer.remove();
+  if (playhead && playhead.parentNode === container) playhead.remove();
   container.innerHTML = '';
+  // Rounds ribbon first — it reads as a header over the lanes it spans.
+  if (markersLayer) container.appendChild(markersLayer);
 
   const lanes = new Map();
   const addPair = (owner) => {
@@ -2057,8 +2087,71 @@ function buildSegLanes(container, markersLayer, overlay) {
   };
   addPair(null);
   owners.forEach(addPair);
-  if (markersLayer) container.appendChild(markersLayer);
+  // Playhead last so it sits over every lane.
+  if (playhead) container.appendChild(playhead);
   return lanes;
+}
+
+// Where the playhead is, over the lane stack. A dark core between two light
+// halves, so it stays legible whether it crosses an empty lane or a
+// saturated strip — over a bright punch the old scrub thumb was simply
+// lost. Hidden when the current time is outside the zoomed viewport, since
+// a line pinned to the edge would claim a position that isn't shown.
+function updatePlayhead() {
+  const ph = document.getElementById('playhead');
+  const video = document.getElementById('video-player');
+  if (!ph || !video) return;
+  const d = video.duration;
+  if (!d || d <= 0) { ph.hidden = true; return; }
+  const pct = timeToViewportPct(video.currentTime, d);
+  if (pct < -0.5 || pct > 100.5) { ph.hidden = true; return; }
+  ph.hidden = false;
+  ph.style.left = Math.max(0, Math.min(100, pct)) + '%';
+}
+
+// Rounds as spans, in the ribbon above the lanes — see the call site for
+// why they are no longer vertical rules. `rounds` is already paired and
+// already excludes hidden labelers.
+function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
+  const seek = (t) => (e) => {
+    // Same reason the old flags did this: #seek-bar-wrapper has its own
+    // click-to-seek, and letting the click through would re-seek from the
+    // pointer's pixel rather than the exact boundary.
+    e.stopPropagation();
+    video.currentTime = t;
+  };
+
+  if (markersLayer) {
+    rounds.forEach((r, i) => {
+      const l = timeToViewportPct(r.start, duration);
+      const rt = timeToViewportPct(r.end, duration);
+      if (rt < 0 || l > 100) return;
+      const span = document.createElement('div');
+      span.className = 'round-span';
+      span.style.left = Math.max(0, l) + '%';
+      span.style.width = Math.max(Math.min(100, rt) - Math.max(0, l), 0.4) + '%';
+      span.title = `Round ${i + 1} — ${formatTime(r.start)} → ${formatTime(r.end)}`;
+      span.innerHTML = `<span class="round-span-label">Round ${i + 1}</span>`;
+      span.addEventListener('click', seek(r.start));
+      markersLayer.appendChild(span);
+    });
+  }
+
+  // The scrub track is 8px tall — no room for a labelled span, so rounds
+  // stay as boundary ticks there. Short bottom-anchored stubs, not
+  // full-height rules, so they can't be mistaken for the playhead either.
+  if (markersScrub) {
+    rounds.forEach((r, i) => {
+      [['start', r.start], ['end', r.end]].forEach(([kind, t]) => {
+        const tick = document.createElement('div');
+        tick.className = 'round-tick rt-' + kind;
+        tick.style.left = timeToScrubPct(t, duration) + '%';
+        tick.title = `Round ${i + 1} ${kind} — ${formatTime(t)}`;
+        tick.addEventListener('click', seek(t));
+        markersScrub.appendChild(tick);
+      });
+    });
+  }
 }
 
 function renderTimelineOverlay() {
@@ -2080,14 +2173,17 @@ function renderTimelineOverlay() {
   if (markersScrub) markersScrub.innerHTML = '';
   if (!duration || duration <= 0) return;
 
-  const roundStarts = state.labels
-    .filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))
+  // Hiding a labeler hides their round boundaries too, so the shading and
+  // the ribbon agree with the lanes — this filter was applied to the
+  // boundary flags but not to the rounds themselves, which left a video
+  // shaded by a labeler whose rows were no longer on screen.
+  const roundMarkerTimes = (which) => state.labels
+    .filter(l => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
+              && !isLabelerHidden(l))
     .map(l => l.start)
     .sort((a, b) => a - b);
-  const roundEnds = state.labels
-    .filter(l => l.punch === 'round_end' || (l.isRoundMarker && l.punch?.includes?.('end')))
-    .map(l => l.start)
-    .sort((a, b) => a - b);
+  const roundStarts = roundMarkerTimes('start');
+  const roundEnds = roundMarkerTimes('end');
 
   const rounds = [];
   for (let i = 0; i < roundStarts.length; i++) {
@@ -2120,53 +2216,18 @@ function renderTimelineOverlay() {
     }
   }
 
-  // Round-boundary flags — one per marker, own or foreign, independent of the
-  // `rounds` pairing above: that array exists only to shade "outside round"
-  // spans and drops which marker is whose. This walks state.labels directly
-  // so every round_start/round_end gets a flag, each with its own seek
-  // target and ownership. Built onto BOTH marker layers — the zoomed one over
-  // the lanes and the always-full-range one over the scrub track — from the
-  // same label, just two different left% calculations.
-  if (markersLayer || markersScrub) {
-    const seekFn = (label) => (e) => { e.stopPropagation(); video.currentTime = label.start; };
-    state.labels.forEach((label) => {
-      if (!label.isRoundMarker) return;
-      // Round markers are otherwise exempt from state.showForeign (shared
-      // context, shown regardless) — but an individually hidden labeler
-      // (isLabelerHidden) is a stronger, per-person mute that DOES reach
-      // round markers too.
-      if (isLabelerHidden(label)) return;
-      const isStart = label.punch === 'round_start' || label.punch?.includes?.('start');
-      const cls = 'round-mark ' + (isStart ? 'rm-start' : 'rm-end') + (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
-      const title = (isStart ? 'Round start' : 'Round end') + ' — ' + formatTime(label.start) +
-        (label.foreign ? (state.isAdmin ? ' (another labeler)' : ' (read-only, another labeler)') : '');
+  // Rounds. Drawn as SPANS in their own ribbon above the lanes, not as
+  // full-height rules through them: as vertical lines with a dot on top,
+  // a round boundary was the same shape as a playhead, and the two were
+  // being read for each other. A round is a stretch of time, so it now
+  // looks like one — a labelled bar from its start to its end, with the
+  // boundaries as its bracket ends.
+  // The scrub track underneath keeps thin boundary ticks (it is only 8px
+  // tall — there is no room for a labelled span there), but they are
+  // bottom-anchored stubs now rather than a full-height line.
+  renderRoundStrip(markersLayer, markersScrub, rounds, duration, video);
 
-      if (markersLayer) {
-        const pct = timeToViewportPct(label.start, duration);
-        if (pct >= -1 && pct <= 101) {
-          const mark = document.createElement('div');
-          mark.className = cls;
-          mark.style.left = Math.max(0, Math.min(100, pct)) + '%';
-          mark.title = title;
-          // stopPropagation matters here, not just tidiness: #seek-bar-wrapper
-          // has its own click-to-seek listener (player.js), and without this
-          // the click bubbles up to it and re-seeks from the click's pixel
-          // position — approximately label.start, but not exactly, which
-          // defeats the one thing this marker exists to give you.
-          mark.addEventListener('click', seekFn(label));
-          markersLayer.appendChild(mark);
-        }
-      }
-      if (markersScrub) {
-        const mark = document.createElement('div');
-        mark.className = cls;
-        mark.style.left = timeToScrubPct(label.start, duration) + '%';
-        mark.title = title;
-        mark.addEventListener('click', seekFn(label));
-        markersScrub.appendChild(mark);
-      }
-    });
-  }
+  updatePlayhead();
 
   // Punch segments. Each strip carries the index of the label it draws, which
   // is what lets ui.js drag it: the lane is rebuilt on every render, so the
@@ -2187,7 +2248,9 @@ function renderTimelineOverlay() {
     // labeler's sheet — ui.js's own isForeignLabel() checks already keep it
     // undraggable; this just keeps it from looking like something you can
     // grab. Admin drags it like any other strip, so it skips the muting.
-    seg.className = 'seek-segment' + (label.foreign && !state.isAdmin ? ' seg-foreign' : '');
+    seg.className = 'seek-segment'
+      + (label.foreign && !state.isAdmin ? ' seg-foreign' : '')
+      + (label === state.highlightedLabel ? ' seg-selected' : '');
     seg.dataset.labelIdx = idx;
     // Clipped at the viewport edges for DRAWING, but the untruncated times go
     // on the element too: a strip half off-screen at high zoom still has to
@@ -2251,6 +2314,11 @@ function updateVideoOverlay() {
   const overlay = document.getElementById('video-overlay');
   const video = document.getElementById('video-player');
   const t = video.currentTime;
+
+  // player.js calls this on every timeupdate, which is the only hook that
+  // fires often enough to keep the playhead with the picture. Cheap: one
+  // style write, no DOM building.
+  updatePlayhead();
 
   const roundStarts = state.labels
     .filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))

@@ -310,15 +310,18 @@
   // registration order regardless of the capture flag, and that one is what
   // suppresses the click a drag-release fires — if this one ran first it
   // would re-seek right through that suppression. #scrub (unzoomed, handled
-  // entirely by setupScrubOverview()) and .round-mark (which seeks to its
-  // own exact label.start, not wherever was clicked) are left alone so
+  // entirely by setupScrubOverview()) and the round controls (which seek to
+  // their own exact boundary, not wherever was clicked) are left alone so
   // their own, already-correct listeners still run.
   function setupZoomedClickToSeek() {
     const wrapper = $('seek-bar-wrapper'), seekBar = $('seek-bar'), video = $('video-player');
     if (!wrapper || !seekBar || !video) return;
     wrapper.addEventListener('click', (e) => {
       if (!video.duration) return;
-      if (e.target.closest('#scrub') || e.target.closest('.round-mark')) return;
+      // .round-span / .round-tick replaced the old .round-mark flags when
+      // rounds became spans in their own ribbon — see renderRoundStrip().
+      if (e.target.closest('#scrub') ||
+          e.target.closest('.round-span') || e.target.closest('.round-tick')) return;
       e.stopImmediatePropagation();
       const rect = seekBar.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
