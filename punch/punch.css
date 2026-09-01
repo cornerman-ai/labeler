@@ -1705,6 +1705,45 @@ kbd {
 }
 .fvd-actions .fvd-primary { background: var(--accent-solid); color: #fff; font-weight: 590; }
 
+/* ── "labels are loading" popup ─────────────────────────────────────────── */
+/* Modal on purpose: phase one is the labeler's OWN rows, and marking a punch
+   against a half-loaded own-list is how duplicates get made. Phase two only
+   adds other people's read-only rows, so that stage reveals a way out. */
+#ldg-dialog {
+  width: min(380px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#ldg-dialog::backdrop {
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.ldg-body {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 28px 24px 24px; text-align: center;
+}
+.ldg-spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid var(--fill); border-top-color: var(--accent-solid);
+  animation: spin .8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .ldg-spinner { animation: none; } }
+#ldg-title { font-size: 16px; font-weight: 640; letter-spacing: -.02em; }
+/* Reserved height: the note runs one line in the first stage and three in
+   the second, and the sheet should not jump when it swaps. */
+.ldg-note {
+  font-size: 12.5px; line-height: 1.5; color: var(--ink-dim);
+  min-height: 4.5em;
+}
+#ldg-skip {
+  height: 32px; padding: 0 14px; border: 0; border-radius: 8px;
+  background: var(--accent-solid); color: #fff;
+  font-size: 13px; font-weight: 590; cursor: pointer;
+}
+#ldg-skip:hover { filter: brightness(1.06); }
+#ldg-skip[hidden] { display: none; }
+
 /* ── agreement sheet (admin) ─────────────────────────────────────────────── */
 /* Wide and tall: this is a review instrument, not a notification. Flex
    column with a bounded height so the HEAD stays put and only the body

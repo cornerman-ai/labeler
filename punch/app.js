@@ -310,6 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateForeignFilterButton();
   setupForeignFilterMenu();
   setupForeignVideoDialog();
+  setupLoadingDialog();
   setupAgreement();
   setupAdminPresence();
 
@@ -1707,9 +1708,14 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // Locked only for the load that just opened this video — not for the
   // quiet re-fetch after this labeler's own add/edit/delete, which
   // shouldn't block anything the labeler is already mid-way through.
-  if (isFreshLoad) setLoadingLocked(true);
+  if (isFreshLoad) { setLoadingLocked(true); showLoadingDialog(); }
 
   // ── phase 1: own rows ────────────────────────────────────────────────
+  // Tracked, because the dialog must only advance to "loading others" if
+  // this half actually succeeded — on a failure or a supersede it has to
+  // come down instead, or it would sit there claiming to load something
+  // that is no longer being loaded.
+  let phase1ok = false;
   try {
     const result = await fetchJson(sheetUrl({ action: 'list', video: driveLink }), 30000);
     if (!current()) return;                    // superseded — drop it
@@ -1754,6 +1760,7 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     syncRoundActiveFromLabels();
     renderLabels();
     linkStatus('ok');
+    phase1ok = true;
   } catch (e) {
     if (!current()) return;
     reportLoadFailure(e, 'labels');
@@ -1762,7 +1769,14 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     // Unlock as soon as the labeler's OWN rows are in — the slow half runs
     // in the background. Guarded on `current()` so a superseded load can
     // never unlock the newer one's spinner.
-    if (isFreshLoad && current()) setLoadingLocked(false);
+    if (isFreshLoad && current()) {
+      setLoadingLocked(false);
+      // Advance the dialog only if there is a second half still coming.
+      // Anything else — an error, a supersede — takes it down, so it can
+      // never sit there loading something nobody is loading.
+      if (phase1ok) setLoadingStage('foreign');
+      else hideLoadingDialog();
+    }
   }
 
   // ── phase 2: everyone else's rows, in the background ─────────────────
@@ -1794,6 +1808,9 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     syncRoundActiveFromLabels();
     renderLabels();
     updateForeignFilterButton();
+    // Down BEFORE the "already labeled" popup — otherwise the two stack,
+    // and the one that matters ends up behind the one that doesn't.
+    if (isFreshLoad) hideLoadingDialog();
     // Only the caller who just opened this video (a pasted link, or the one
     // restored on page load — see setupDriveLink()) asks for the popup; a
     // routine re-fetch after this labeler's own add/edit/delete stays quiet.
@@ -1806,6 +1823,10 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     showToast(e.name === 'AbortError'
       ? 'Other labelers’ labels timed out — yours are loaded and safe to edit.'
       : 'Could not load other labelers’ labels — yours are loaded and safe to edit.', 'error');
+  } finally {
+    // Whatever happened above — success, refusal, timeout — the load is
+    // over, so the dialog goes. Never left hanging on a failed second half.
+    if (isFreshLoad && current()) hideLoadingDialog();
   }
 }
 
@@ -1821,6 +1842,56 @@ function reportLoadFailure(e, what) {
     showToast('Could not reach the sheet. Press Retry.', 'error');
     linkStatus('error', 'Not reaching sheet');
   }
+}
+
+// ============================================================
+// Loading dialog
+// ============================================================
+// Raised for the whole of a fresh video load. The catalogue overlay
+// (#punch-loading) is the GUARD — it is what actually stops a label being
+// started against a half-loaded list — but it is a corner of one panel, and
+// on a 500-label video the load runs long enough that the page looked idle
+// rather than busy. This says what is happening, in the middle of the
+// screen, and names which half it is on.
+//
+// It does NOT trap you for the full load: the two halves are not equally
+// important. Your OWN rows must be in before you label (a duplicate is the
+// cost of getting that wrong). Everybody else's are read-only context, so
+// once phase 1 lands the dialog offers a way straight past it.
+function showLoadingDialog() {
+  const dlg = document.getElementById('ldg-dialog');
+  if (!dlg) return;
+  setLoadingStage('own');
+  if (!dlg.open) dlg.showModal();
+}
+
+function setLoadingStage(stage) {
+  const title = document.getElementById('ldg-title');
+  const note = document.getElementById('ldg-note');
+  const skip = document.getElementById('ldg-skip');
+  if (!title) return;
+  if (stage === 'own') {
+    title.textContent = 'Loading your labels…';
+    note.textContent = 'Fetching what you have already marked on this video.';
+    if (skip) skip.hidden = true;
+  } else {
+    title.textContent = 'Loading other labelers…';
+    note.textContent = 'Your own labels are in — you can start now, or wait for '
+                     + 'everyone else’s to appear on the timeline.';
+    if (skip) skip.hidden = false;
+  }
+}
+
+function hideLoadingDialog() {
+  const dlg = document.getElementById('ldg-dialog');
+  if (dlg && dlg.open) dlg.close();
+}
+
+function setupLoadingDialog() {
+  document.getElementById('ldg-skip')?.addEventListener('click', hideLoadingDialog);
+  // Deliberately no backdrop-click and no close button during phase 1:
+  // there is nothing useful to do behind it yet. Escape still works, which
+  // is the browser's own contract for a dialog and not worth fighting.
 }
 
 // Blocks starting a new label (the punch-type buttons and "Set Start Time")
@@ -2735,6 +2806,14 @@ function timeToScrubPct(time, duration) {
   return (time / duration) * 100;
 }
 
+// Which buckets get a lane, given the Labels-panel tab. The tab is the one
+// filter for what you are looking at, so it governs the timeline as well as
+// the list: on Defense you get the defensive rows only, and the stack is
+// half as tall instead of half empty.
+function visibleBuckets() {
+  return state.labelTab === 'combined' ? ['offense', 'defense'] : [state.labelTab];
+}
+
 // Rebuilds the lane stack: an Offense/Defense pair for YOU, then one pair
 // per visible teammate, each tagged with their colour. Two people marking
 // the same second used to land on the same two rows and cover each other;
@@ -2744,6 +2823,7 @@ function timeToScrubPct(time, duration) {
 function buildSegLanes(container, markersLayer, overlay) {
   if (!container) return null;
   const owners = visibleForeignOwners();
+  const buckets = visibleBuckets();
   // Detach before clearing: the rounds ribbon and the playhead are children
   // of this container and innerHTML='' would take them with the lanes.
   const playhead = document.getElementById('playhead');
@@ -2755,20 +2835,24 @@ function buildSegLanes(container, markersLayer, overlay) {
 
   const lanes = new Map();
   const addPair = (owner) => {
-    for (const bucket of ['offense', 'defense']) {
+    for (const bucket of buckets) {
       const lane = document.createElement('div');
       lane.className = 'seg-lane' + (owner ? ' lane-foreign' : ' lane-own');
       lane.dataset.bucket = bucket;
       const bucketName = bucket === 'offense' ? 'Offense' : 'Defense';
+      // With one bucket on screen the tab already says which it is, so the
+      // rows are named by WHO — repeating "· Defense" down every lane just
+      // costs the width the names need.
+      const suffix = buckets.length > 1 ? ' · ' + bucketName : '';
       if (owner) {
         lane.dataset.owner = owner;
         lane.style.setProperty('--lane-tint', labelerColor(owner));
-        lane.dataset.laneLabel = owner + ' · ' + bucketName;
+        lane.dataset.laneLabel = owner + suffix;
         lane.setAttribute('aria-label', owner + ' ' + bucketName);
       } else {
         // "You" only earns its place once somebody else has a lane too —
         // on a video only you have labeled it would be noise.
-        lane.dataset.laneLabel = owners.length ? 'You · ' + bucketName : bucketName;
+        lane.dataset.laneLabel = owners.length ? 'You' + suffix : bucketName;
         lane.setAttribute('aria-label', bucketName);
       }
       container.appendChild(lane);
@@ -2915,9 +2999,12 @@ function renderTimelineOverlay() {
     if (label.isRoundMarker) return;
     if (label.foreign && (!state.showForeign || isLabelerHidden(label))) return;
     // Inlined rather than calling shouldHideByUnsure() — this loop runs
-    // per-frame during drag, and only the unsure-filter half applies here;
-    // offense/defense already have their own separate lanes.
+    // per-frame during drag, and only the unsure-filter half applies here.
     if (state.unsureFilter && label.punch !== 'unsure') return;
+    // The Labels tab hides whole lanes (see visibleBuckets); without this
+    // the strips for the hidden bucket would fall through to the fallback
+    // lookup below and land in the wrong lane.
+    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return;
     const lPct = timeToViewportPct(label.start, duration);
     const rPct = timeToViewportPct(label.end, duration);
     if (rPct < 0 || lPct > 100) return;
@@ -2973,6 +3060,7 @@ function renderMinimap() {
     // exactly what the lanes show, not fewer segments because of a toggle
     // that used to matter for a single combined lane and no longer does.
     if (state.unsureFilter && label.punch !== 'unsure') continue;
+    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
     const seg = document.createElement('div');
     seg.style.position = 'absolute';
     seg.style.top = '0';
