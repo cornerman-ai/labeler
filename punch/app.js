@@ -1829,24 +1829,42 @@ function setLoadingLocked(locked) {
 // label would be attributed to (see resolveMajorityLabelerSheet in
 // apps_script/Code.js), so the note below spells that out.
 function maybeShowForeignVideoPopup() {
+  // Split per labeler, because "273 labels" answers almost nothing — 273
+  // punches and 2 slips is a different video from 140 and 130, and which of
+  // the two you are looking at changes whether it is worth re-labelling.
+  // Round markers are counted apart: they are structure, not moves, and
+  // folding them into either bucket would overstate it.
   const counts = {};
   for (const l of state.labels) {
     if (!l.foreign) continue;
     const who = foreignOwnerName(l);
-    counts[who] = (counts[who] || 0) + 1;
+    const c = counts[who] || (counts[who] = { total: 0, offense: 0, defense: 0, rounds: 0 });
+    c.total++;
+    if (l.isRoundMarker) c.rounds++;
+    else if (punchBucket(l.punch) === 'defense') c.defense++;
+    else c.offense++;
   }
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const entries = Object.entries(counts).sort((a, b) => b[1].total - a[1].total);
   if (!entries.length) return;
 
   const dlg = document.getElementById('fvd-dialog');
   const body = document.getElementById('fvd-body');
   if (!dlg || !body) return;
 
-  const rows = entries.map(([who, n]) =>
-    `<div class="fvd-row"><strong>${who}</strong><span>${n} label${n === 1 ? '' : 's'}</span></div>`
-  ).join('');
+  const rows = entries.map(([who, c]) => {
+    const parts = [`<span class="fvd-off">${c.offense} offense</span>`,
+                   `<span class="fvd-def">${c.defense} defense</span>`];
+    if (c.rounds) parts.push(`<span class="fvd-rnd">${c.rounds} round mark${c.rounds === 1 ? '' : 's'}</span>`);
+    return `<div class="fvd-row">
+      <span class="fvd-name"><strong>${who}</strong><span class="fvd-split">${parts.join('')}</span></span>
+      <span class="fvd-total">${c.total}</span>
+    </div>`;
+  }).join('');
+  // Admin can no longer create labels at all — this used to say a new one
+  // would be credited to whoever had the most rows, which is no longer true
+  // and would now be actively misleading.
   const note = state.isAdmin
-    ? `<p class="fvd-note">A new label you add here will be credited to <strong>${entries[0][0]}</strong> (most labels on this video) — editing an existing row instead writes back to whoever owns that row.</p>`
+    ? `<p class="fvd-note">As admin you can edit or delete any of these — each change writes back to whoever owns that row. You cannot add new labels.</p>`
     : '';
   body.innerHTML = `<p class="fvd-lede">This video already has labels from:</p><div class="fvd-rows">${rows}</div>${note}`;
   // showModal() throws InvalidStateError on an already-open dialog — which
