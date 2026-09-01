@@ -643,6 +643,22 @@ function punchBucket(punchId) {
   return type && type.group === 'defense' ? 'defense' : 'offense';
 }
 
+// Same offense/defense split the offline agreement reports use (see
+// cornerman-backend's ml/research/defense/agreement_report), for the
+// "already labeled" popup specifically -- NOT punchBucket() above, which
+// intentionally folds unsure/retired/unrecognized into offense for the
+// Labels-panel tabs and must keep doing that. Here we want the opposite:
+// step_back (retired), unsure (not a move), and any id from an old naming
+// scheme the current catalogue doesn't recognize (e.g. legacy
+// lead_bodyshot/rear_bodyshot rows) all return null, so the popup's counts
+// match what a report run against the same sheet would show.
+function reportBucket(punchId) {
+  const type = PUNCH_TYPES.find(p => p.id === punchId);
+  if (!type || type.retired) return null;
+  if (type.group === 'offense' || type.group === 'defense') return type.group;
+  return null;
+}
+
 // The Labels-panel list's own filter — bucketed by tab. Kept separate from
 // shouldHideByUnsure() on purpose: that one still governs the timeline's
 // video-side surfaces (the tags over the video, jumpToAdjacentLabel) exactly
@@ -1838,11 +1854,19 @@ function maybeShowForeignVideoPopup() {
   for (const l of state.labels) {
     if (!l.foreign) continue;
     const who = foreignOwnerName(l);
-    const c = counts[who] || (counts[who] = { total: 0, offense: 0, defense: 0, rounds: 0 });
+    const c = counts[who] || (counts[who] = { total: 0, offense: 0, defense: 0, rounds: 0, other: 0 });
     c.total++;
-    if (l.isRoundMarker) c.rounds++;
-    else if (punchBucket(l.punch) === 'defense') c.defense++;
-    else c.offense++;
+    if (l.isRoundMarker) {
+      c.rounds++;
+      continue;
+    }
+    const bucket = reportBucket(l.punch);
+    if (bucket === 'offense') c.offense++;
+    else if (bucket === 'defense') c.defense++;
+    // step_back, unsure, or a legacy id the current catalogue doesn't
+    // recognize -- counted in total (it's a real row) but not in either
+    // bucket, same as the offline reports.
+    else c.other++;
   }
   const entries = Object.entries(counts).sort((a, b) => b[1].total - a[1].total);
   if (!entries.length) return;
@@ -1855,6 +1879,7 @@ function maybeShowForeignVideoPopup() {
     const parts = [`<span class="fvd-off">${c.offense} offense</span>`,
                    `<span class="fvd-def">${c.defense} defense</span>`];
     if (c.rounds) parts.push(`<span class="fvd-rnd">${c.rounds} round mark${c.rounds === 1 ? '' : 's'}</span>`);
+    if (c.other) parts.push(`<span class="fvd-oth">${c.other} other</span>`);
     return `<div class="fvd-row">
       <span class="fvd-name"><strong>${who}</strong><span class="fvd-split">${parts.join('')}</span></span>
       <span class="fvd-total">${c.total}</span>

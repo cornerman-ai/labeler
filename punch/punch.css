@@ -1686,6 +1686,7 @@ kbd {
 .fvd-off::before { background: var(--no); }
 .fvd-def::before { background: var(--accent); }
 .fvd-rnd::before { background: var(--yes-solid); }
+.fvd-oth::before { background: var(--ink-dim); }
 .fvd-total {
   flex: none; font-size: 15px; font-weight: 640; color: var(--ink);
   font-variant-numeric: tabular-nums; letter-spacing: -.02em;
