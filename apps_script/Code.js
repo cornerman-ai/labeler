@@ -441,6 +441,16 @@ function doGet(e) {
 
   var pss = punchSpreadsheet();
 
+  // === ADMIN PRESENCE: who else is in admin mode right now. ===
+  // Two admins are genuinely concurrent writers on somebody else's sheet.
+  // The write lock below makes that SAFE, but it cannot make it sensible —
+  // two people correcting the same video without knowing about each other
+  // still produces last-write-wins surprises. This tells them.
+  // Answered before any sheet work: it is a heartbeat, and must stay cheap.
+  if (action === 'adminPing') {
+    return jsonOut(adminPresence(p.client, p.who));
+  }
+
   // === LIST FOREIGN: every OTHER labeler's rows for this video. ===
   // Split out of `list` on purpose. This is the expensive half — it walks
   // every labeler sheet (see collectForeignRows) — and making the page wait
@@ -541,7 +551,9 @@ function doGet(e) {
   }
 
   // === ADD a new label ===
-  if (action === 'add') {
+  // Locked: the insertion scan below picks a row index from a snapshot and
+  // then inserts at it. See withPunchWriteLock().
+  if (action === 'add') return withPunchWriteLock(function () {
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
     // Make sure the punch_uuid header exists before we assign row[cols.uuid]
@@ -604,10 +616,12 @@ function doGet(e) {
         punch_uuid: cols.uuid >= 0 ? row[cols.uuid] : ''
       }))
       .setMimeType(ContentService.MimeType.JSON);
-  }
+  });
 
   // === UPDATE an existing label by ID ===
-  if (action === 'update' && p.id) {
+  // Locked: findRowById resolves an index that a concurrent add/delete on
+  // this sheet would shift out from under the writes below.
+  if (action === 'update' && p.id) return withPunchWriteLock(function () {
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
     var row = findRowById(data, cols, p.id, p.video);
@@ -637,10 +651,13 @@ function doGet(e) {
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'updated', sheet: sheetName, row: row, cols: cols, updated: updated }))
       .setMimeType(ContentService.MimeType.JSON);
-  }
+  });
 
   // === DELETE a label by ID ===
-  if (action === 'delete' && p.id) {
+  // Locked, and this is the one that used to be able to destroy data: an
+  // index shifted by a concurrent write means deleteRow() removes a
+  // DIFFERENT punch, with no error.
+  if (action === 'delete' && p.id) return withPunchWriteLock(function () {
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
     var row = findRowById(data, cols, p.id, p.video);
@@ -659,7 +676,7 @@ function doGet(e) {
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'deleted', sheet: sheetName, row: row }))
       .setMimeType(ContentService.MimeType.JSON);
-  }
+  });
 
   // === Default: status check ===
   return ContentService
@@ -835,6 +852,92 @@ function jsonOut(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── who is in admin mode right now ───────────────────────────────────────
+// A heartbeat in the shared script cache: each admin tab reports itself
+// under its own id, entries older than ADMIN_TTL are forgotten, and the
+// caller is told about everyone EXCEPT itself.
+//
+// CacheService rather than PropertiesService: presence is worthless the
+// moment it is stale, so a store that forgets on its own is exactly right
+// and costs no cleanup. It is also shared across users, which is the whole
+// requirement.
+var ADMIN_PRESENCE_KEY = 'adminPresence';
+var ADMIN_TTL_MS = 75000;      // ~2.5 missed 30s heartbeats before dropping
+
+function adminPresence(clientId, who) {
+  clientId = String(clientId || '').slice(0, 64);
+  if (!clientId) return { status: 'ok', others: [] };
+  var cache;
+  try { cache = CacheService.getScriptCache(); } catch (e) { return { status: 'ok', others: [] }; }
+
+  // Read-modify-write, so it needs the lock too — without it two admins
+  // arriving together can each write a map that omits the other, and
+  // neither is ever told about anyone. Short wait: presence is advisory,
+  // and blocking a heartbeat is worse than dropping one.
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(3000)) lock = null;
+  } catch (e) { lock = null; }
+
+  try {
+    var now = Date.now();
+    var map = {};
+    try { map = JSON.parse(cache.get(ADMIN_PRESENCE_KEY) || '{}'); } catch (e) { map = {}; }
+
+    // One pass: keep whoever is still live, report them, drop the rest so
+    // the blob cannot grow without bound.
+    var others = [], fresh = {};
+    for (var id in map) {
+      if (id === clientId) continue;
+      if (now - (map[id].t || 0) > ADMIN_TTL_MS) continue;   // gone quiet
+      fresh[id] = map[id];
+      others.push({ who: map[id].who || 'Admin', since: map[id].t });
+    }
+    fresh[clientId] = { t: now, who: String(who || 'Admin').slice(0, 40) };
+    try { cache.put(ADMIN_PRESENCE_KEY, JSON.stringify(fresh), 300); } catch (e) {}
+    return { status: 'ok', others: others };
+  } finally {
+    if (lock) { try { lock.releaseLock(); } catch (e) {} }
+  }
+}
+
+// Serialises a read-then-write against the punch sheets.
+//
+// THIS IS LOAD-BEARING, not defensive tidiness. add/update/delete all work
+// the same way: snapshot the sheet, resolve a 1-based ROW INDEX from that
+// snapshot (findRowById / the insertion scan), then write by that index. A
+// second write landing in between shifts every row beneath it — `add`
+// inserts in time order, `delete` removes — so the index goes stale and the
+// write lands on somebody else's punch. Silently: no error, no clue, just a
+// different label edited or deleted than the one asked for.
+//
+// Rare with one labeler per sheet, which is how this used to work. Admin
+// changed that: it writes into OTHER people's sheets, so two admins — or an
+// admin and the sheet's owner — are now genuinely concurrent writers on one
+// sheet. Hence a real lock rather than hoping.
+//
+// tryLock, not waitLock: if the sheet is busy this returns a refusal the
+// client can retry, which is far better than the request sitting until the
+// Apps Script execution ceiling kills it mid-write.
+function withPunchWriteLock(fn) {
+  var lock;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(20000)) {
+      return jsonOut({ status: 'error',
+        message: 'Another save is in progress — nothing was changed. Try again in a moment.' });
+    }
+  } catch (e) {
+    return jsonOut({ status: 'error', message: 'Could not obtain a write lock: ' + e.message });
+  }
+  try {
+    return fn();
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 // ============================================================

@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupForeignFilterMenu();
   setupForeignVideoDialog();
   setupAgreement();
+  setupAdminPresence();
 
   // Anything left queued from a previous session goes out now, and again
   // whenever the browser regains a connection. `online` alone isn't enough
@@ -1025,6 +1026,79 @@ function computeAgreement() {
     }
   }
   return { names, counts: names.map(n => byOwner.get(n).length), rows };
+}
+
+// ============================================================
+// "Another admin is here" — presence heartbeat
+// ============================================================
+// Admin writes into OTHER people's sheets, so two admins are real
+// concurrent writers on one sheet. The server-side lock (withPunchWriteLock
+// in apps_script/Code.js) makes that SAFE — no more edits landing on the
+// wrong row — but it cannot make it sensible: two people correcting the
+// same video still overwrite each other's judgement calls without knowing.
+// So say so, once, as soon as we know.
+//
+// Per TAB, not per browser: two admin tabs really are two writers, and
+// sessionStorage is scoped exactly that way.
+const ADMIN_PING_MS = 30000;
+function adminClientId() {
+  let id = null;
+  try { id = sessionStorage.getItem('adminClientId'); } catch (e) {}
+  if (!id) {
+    id = 'a' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { sessionStorage.setItem('adminClientId', id); } catch (e) {}
+  }
+  return id;
+}
+
+let _adminSeen = 0;   // how many others we've already told them about
+async function adminPing() {
+  if (!state.isAdmin || !state.scriptUrl) return;
+  try {
+    const res = await fetchJson(sheetUrl({
+      action: 'adminPing', client: adminClientId(), who: labelerId() || 'Admin',
+    }), 15000);
+    const others = (res && res.others) || [];
+    updateAdminPresenceChip(others.length);
+    // Announce only when the number GOES UP — a standing warning re-shown
+    // every 30 seconds would be the thing people learn to dismiss blind.
+    if (others.length > _adminSeen) showAdminPresenceDialog(others.length);
+    _adminSeen = others.length;
+  } catch (e) {
+    // A missed heartbeat is not worth a word to the user; the next one
+    // covers it, and admin work is not blocked by not knowing.
+  }
+}
+
+function updateAdminPresenceChip(n) {
+  const chip = document.getElementById('admin-presence');
+  if (!chip) return;
+  chip.hidden = !n;
+  chip.textContent = n === 1 ? '1 other admin' : n + ' other admins';
+}
+
+function showAdminPresenceDialog(n) {
+  const dlg = document.getElementById('adm-dialog');
+  const body = document.getElementById('adm-body');
+  if (!dlg || !body) return;
+  body.innerHTML = `
+    <p class="adm-lead">${n === 1
+      ? 'Someone else is in admin mode right now.'
+      : n + ' other people are in admin mode right now.'}</p>
+    <p class="adm-note">Your edits are safe — saves are serialised, so nothing
+      can land on the wrong label. But if you both correct the same punch, the
+      later save wins and neither of you is told. Worth agreeing who takes
+      which video.</p>`;
+  if (!dlg.open) dlg.showModal();
+}
+
+function setupAdminPresence() {
+  if (!state.isAdmin) return;
+  adminPing();
+  setInterval(adminPing, ADMIN_PING_MS);
+  const dlg = document.getElementById('adm-dialog');
+  document.getElementById('adm-close')?.addEventListener('click', () => dlg.close());
+  dlg?.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 
 function setupAgreement() {

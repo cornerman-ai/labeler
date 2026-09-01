@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260831u">
+  <link rel="stylesheet" href="punch.css?v=20260831v">
 </head>
 <body>
   <div id="app">
@@ -53,6 +53,12 @@
         <!-- Only in admin mode — see setupAgreement() in app.js. -->
         <button type="button" id="btn-agreement" hidden
                 title="Inter-rater agreement for this video">Agreement</button>
+
+        <!-- Standing count of other admins working right now — the dialog
+             announces the arrival, this is what remains afterwards so the
+             fact stays visible without nagging. See adminPing(). -->
+        <span id="admin-presence" hidden
+              title="Other people are in admin mode. Saves are serialised, so nothing lands on the wrong label — but if you edit the same punch, the later save wins."></span>
 
         <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
                 aria-haspopup="dialog">
@@ -443,6 +449,18 @@
     </div>
   </dialog>
 
+  <!-- ── another admin is working, admin only ────────────────────────────── -->
+  <!-- Raised once by adminPing() when the number of other admins goes up. -->
+  <dialog id="adm-dialog">
+    <div class="sc-head">
+      <h2>You're not alone in here</h2>
+      <button class="icon-btn" id="adm-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body" id="adm-body"></div>
+  </dialog>
+
   <!-- ── inter-rater agreement, admin only ───────────────────────────────── -->
   <!-- Filled by app.js's renderAgreement() from the rows already loaded for
        this video — no request of its own. See computeAgreement(). -->
@@ -457,12 +475,12 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260831u"></script>
-  <script src="../shared/player.js?v=20260831u"></script>
-  <script src="app.js?v=20260831u"></script>
+  <script src="../shared/labeler_name.js?v=20260831v"></script>
+  <script src="../shared/player.js?v=20260831v"></script>
+  <script src="app.js?v=20260831v"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260831u"></script>
+  <script src="ui.js?v=20260831v"></script>
 </body>
 </html>
