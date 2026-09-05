@@ -363,6 +363,17 @@
               </button>
               <div id="foreign-filter-menu" role="menu" hidden></div>
             </div>
+            <!-- Admin only (app.js unhides it): narrow every surface to a few
+                 punch types — the same pop-up idiom as #foreign-filter, one
+                 checkmark row per catalogue entry. See setupTypeFilterMenu(). -->
+            <div id="type-filter" hidden>
+              <button id="btn-type-filter" type="button" aria-haspopup="menu"
+                      aria-expanded="false" aria-controls="type-filter-menu">
+                <span id="type-filter-label">Types: all</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="type-filter-menu" role="menu" hidden></div>
+            </div>
             <button id="btn-unsure-filter" onclick="toggleUnsureFilter()" style="display:none">Unsure only: off</button>
           </div>
           <!-- Offense / defense punches sorted by time in one list used to mean

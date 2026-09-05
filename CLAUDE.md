@@ -18,6 +18,15 @@ Web-based video labeling tool for boxing punch annotation.
 - Labels are saved to Google Sheets via GET requests to the Apps Script web app
 - Sheet naming: "Labeled Data Software {N}" per labeler, "Combined Data" for merged view
 - All CRUD operations (list/add/update/delete) go through `doGet` with URL params
+- **Admin mode** (punch labeler): type the name `admin`. Admin owns no rows
+  (`list` answers empty, `add` is refused) — everything it sees arrives via
+  `listForeign`, every labeler's rows in their own timeline lanes, editable
+  in place (writes redirect to the owner's tab). Admin-only chrome: the
+  Agreement report, the other-admins presence chip, and the **Types** menu in
+  the Labels card (beside Others) — pick punch types and the list, lanes,
+  minimap, video tags and Shift+Arrow nav narrow to those; picked types
+  bypass the Offense/Defense tabs, a tab click clears them, persisted in
+  localStorage `typeFilter`.
 
 ## Sheet Columns
 

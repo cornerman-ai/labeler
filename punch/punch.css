@@ -1364,26 +1364,28 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 #label-count { color: var(--ink); font-variant-numeric: tabular-nums; }
 #foreign-filter { position: relative; margin-left: auto; }
-#btn-foreign-filter, #btn-unsure-filter {
+#type-filter { position: relative; }
+#btn-foreign-filter, #btn-type-filter, #btn-unsure-filter {
   display: flex; align-items: center; gap: 4px;
   padding: 3px 8px; border-radius: 6px; border: none;
   background: var(--fill); color: var(--ink-on-fill);
   font-size: 10.5px; font-weight: 590; letter-spacing: 0; text-transform: none;
 }
-#btn-foreign-filter.on, #btn-unsure-filter.on {
+#btn-foreign-filter.on, #btn-type-filter.on, #btn-unsure-filter.on {
   background: var(--accent-wash); color: var(--accent-on-wash);
 }
-#btn-foreign-filter svg {
+#btn-foreign-filter svg, #btn-type-filter svg {
   width: 8px; height: 8px; opacity: .7; transition: transform .15s ease;
 }
-#btn-foreign-filter[aria-expanded="true"] svg { transform: rotate(180deg); }
+#btn-foreign-filter[aria-expanded="true"] svg,
+#btn-type-filter[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* Same pop-up chrome and checkmark-row idiom as #speed-menu — a master
    "Show others" row, then one row per foreign owner currently on this
    video, each independently toggleable (see isLabelerHidden() in app.js).
    Rebuilt on open from whoever's actually present, so it never goes stale
    the way a fixed list would as labelers come and go video to video. */
-#foreign-filter-menu {
+#foreign-filter-menu, #type-filter-menu {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
   min-width: 190px; max-width: 240px; padding: 6px; border-radius: 12px;
   background: var(--chrome);
@@ -1393,7 +1395,20 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-shadow: 0 8px 32px rgba(0,0,0,.18);
   text-transform: none; letter-spacing: 0;
 }
-#foreign-filter-menu[hidden] { display: none; }
+#foreign-filter-menu[hidden], #type-filter-menu[hidden] { display: none; }
+/* Admin's Types menu — the same pop-up, with one checkmark row per catalogue
+   entry laid out two across (lead beside rear, head row above body row, as
+   the catalogue does): nineteen rows in one column ran off the bottom of a
+   laptop screen. Wider than the Others menu to fit the pair. */
+#type-filter-menu {
+  position: fixed; top: auto; right: auto;   /* placed by setupTypeFilterMenu() */
+  width: 360px; max-width: none; overflow-y: auto;
+}
+.tfm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; }
+.tfm-grid .ffm-row { gap: 6px; font-size: 12px; }
+/* Dimmed while types are picked — they decide what shows then, not the tabs
+   (shouldHideByTab()); a tab click clears them and takes back over. */
+#label-tabs.bypassed { opacity: .45; }
 /* A teammate row: the visibility toggle takes the width, the reorder arrows
    sit at the end. The master "Show others" row is a bare .ffm-row button. */
 .ffm-row {
@@ -1940,7 +1955,7 @@ kbd {
   .punch-btn { min-height: 44px; }
   .pmatrix { grid-template-columns: 1fr 54px 54px; }
   .menu-item { padding: 12px 10px; }
-  #btn-unsure-filter { padding: 10px 12px; }
+  #btn-unsure-filter, #btn-type-filter { padding: 10px 12px; }
   #btn-cancel { padding: 12px; }
   .label-entry .label-edit,
   .label-entry .label-delete { width: 44px; height: 44px; opacity: .8; }

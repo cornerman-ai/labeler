@@ -226,6 +226,9 @@ Object.assign(state, {
   isAdmin: false,
   // Which bucket the Labels panel is showing.
   labelTab: 'offense',
+  // Admin only: the punch types picked in the Labels panel's "Types" menu.
+  // Empty = off. Narrows every surface the tabs do — see shouldHideByType().
+  typeFilter: new Set(),
   // Display language for punch/defense names + descriptions — see
   // PUNCH_I18N, punchLabel(), punchDesc(). Purely a display-layer choice:
   // the sheet always gets the English punch id regardless of this.
@@ -298,6 +301,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.showForeign = true;   // no point being admin over a folded-away queue
     const badge = document.getElementById('labeler-badge');
     if (badge) badge.textContent += ' (admin)';
+    // The Types menu is admin's: reviewing is where "just the slips" pays.
+    const tf = document.getElementById('type-filter');
+    if (tf) tf.hidden = false;
+    try {
+      // Only ids the catalogue still knows — a stale one could otherwise hide
+      // every row with nothing in the menu to explain it.
+      for (const id of JSON.parse(localStorage.getItem('typeFilter') || '[]')) {
+        if (PUNCH_TYPES.some(p => p.id === id)) state.typeFilter.add(id);
+      }
+    } catch (e) {}
   }
   const savedTab = localStorage.getItem('labelTab');
   if (savedTab === 'defense' || savedTab === 'combined') {
@@ -309,6 +322,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   updateForeignFilterButton();
   setupForeignFilterMenu();
+  updateTypeFilterButton();
+  setupTypeFilterMenu();
   setupForeignVideoDialog();
   setupLoadingDialog();
   setupAgreement();
@@ -496,6 +511,138 @@ function renderForeignFilterMenu(menu) {
   });
 }
 
+// ============================================================
+// Type filter (admin only)
+// ============================================================
+// "Types: all" beside the Others menu — the same pop-up, one checkmark row
+// per catalogue entry. Pick rows and every surface narrows to those types:
+// the list, the lanes (whole buckets drop out, as with the tabs), the
+// minimap, the tags over the video and Shift+Arrow nav. A slip review is
+// then two clicks (Lead Slip, Rear Slip) instead of a scroll past every jab
+// from every labeler. While any are picked the Offense/Defense tabs stand
+// aside (dimmed) and a tab click clears the picks. Persisted like the other
+// filters, restored for admin only.
+function shouldHideByType(label) {
+  if (label.isRoundMarker) return false;
+  if (state.typeFilter.size === 0) return false;
+  return !state.typeFilter.has(label.punch);
+}
+
+function toggleTypeFilter(punchId) {
+  if (!state.typeFilter.delete(punchId)) state.typeFilter.add(punchId);
+  applyTypeFilter();
+}
+
+// Persist, repaint the button and the dimmed tabs, then re-render everything
+// the filter reaches. renderLabels() redraws the lanes and the minimap too;
+// the video tags are cached on their own key, hence the extra call (the key
+// carries the filter — see updateVideoOverlay()).
+function applyTypeFilter() {
+  localStorage.setItem('typeFilter', JSON.stringify([...state.typeFilter]));
+  updateTypeFilterButton();
+  updateLabelTabButtons();
+  renderLabels();
+  updateVideoOverlay();
+}
+
+function updateTypeFilterButton() {
+  const label = document.getElementById('type-filter-label');
+  const btn = document.getElementById('btn-type-filter');
+  if (!label || !btn) return;
+  const n = state.typeFilter.size;
+  label.textContent = n ? `Types: ${n}` : 'Types: all';
+  btn.classList.toggle('on', n > 0);
+}
+
+// Same open/close pattern as setupForeignFilterMenu() above; rebuilt on
+// every open so the per-type counts track the rows currently loaded.
+function setupTypeFilterMenu() {
+  const btn = document.getElementById('btn-type-filter');
+  const menu = document.getElementById('type-filter-menu');
+  if (!btn || !menu) return;
+
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    renderTypeFilterMenu(menu);
+    // Shown, then measured, then placed — same order as the right-click menu
+    // in ui.js. position:fixed and placed by hand (unlike the Others menu,
+    // which just hangs off its button) because at two columns this one is
+    // wider than the panel, and #label-panel's overflow:hidden would clip
+    // whatever hung past the panel's left edge. Capped to the room below so
+    // the bottom rows scroll instead of running off a short screen.
+    menu.hidden = false;
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 6) + 'px';
+    menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 18) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden ? open() : close();
+  });
+  document.addEventListener('click', (e) => {
+    // composedPath(), not menu.contains(e.target): a row click re-renders
+    // the menu, so by the time this runs the clicked row is no longer in
+    // it, and contains() would close the menu after every single pick.
+    if (!menu.hidden && !e.composedPath().includes(menu) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.hidden) close();
+  });
+}
+
+function renderTypeFilterMenu(menu) {
+  // Rows on this video per type, counting what the Others menu lets through
+  // — each number is how many rows that pick would leave on screen.
+  const counts = {};
+  for (const l of state.labels) {
+    if (l.isRoundMarker) continue;
+    if (l.foreign && (!state.showForeign || isLabelerHidden(l))) continue;
+    counts[l.punch] = (counts[l.punch] || 0) + 1;
+  }
+
+  menu.innerHTML = '';
+
+  const allRow = document.createElement('button');
+  allRow.type = 'button';
+  allRow.className = 'ffm-row';
+  allRow.setAttribute('role', 'menuitemcheckbox');
+  allRow.setAttribute('aria-checked', String(state.typeFilter.size === 0));
+  allRow.innerHTML = '<span class="ffm-name">All types</span>';
+  allRow.onclick = () => {
+    if (state.typeFilter.size) { state.typeFilter.clear(); applyTypeFilter(); }
+    renderTypeFilterMenu(menu);
+  };
+  menu.appendChild(allRow);
+
+  const sep = document.createElement('div');
+  sep.className = 'ffm-sep';
+  menu.appendChild(sep);
+
+  // Two across in catalogue order, so lead sits beside rear and the head
+  // row above the body row, the way the catalogue lays them out. One column
+  // of nineteen ran off the bottom of a laptop screen.
+  const grid = document.createElement('div');
+  grid.className = 'tfm-grid';
+  for (const p of PUNCH_TYPES.filter(p => !p.retired)) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'ffm-row';
+    row.setAttribute('role', 'menuitemcheckbox');
+    row.setAttribute('aria-checked', String(state.typeFilter.has(p.id)));
+    row.title = punchLabel(p.id);
+    row.innerHTML =
+      `<span class="ffm-dot" style="--who: ${getPunchColor(p.id)}"></span>` +
+      `<span class="ffm-name">${punchLabel(p.id)}</span>` +
+      `<span class="ffm-count">${counts[p.id] || 0}</span>`;
+    row.onclick = () => { toggleTypeFilter(p.id); renderTypeFilterMenu(menu); };
+    grid.appendChild(row);
+  }
+  menu.appendChild(grid);
+}
+
 function toggleUnsureFilter() {
   state.unsureFilter = !state.unsureFilter;
   localStorage.setItem('unsureFilter', String(state.unsureFilter));
@@ -663,9 +810,9 @@ function reportBucket(punchId) {
 // The Labels-panel list's own filter — bucketed by tab. Kept separate from
 // shouldHideByUnsure() on purpose: that one still governs the timeline's
 // video-side surfaces (the tags over the video, jumpToAdjacentLabel) exactly
-// as before. The tabs are the one thing that decides what the list shows,
-// and the Unsure-only filter is the one thing that decides what the video
-// shows.
+// as before. The tabs — or admin's picked types, while there are any —
+// decide what the list shows; the Unsure-only filter is the one thing that
+// decides what the video shows.
 function shouldHideByTab(label) {
   // Round markers are exempt from the master "Others" switch — those have
   // always shown, as shared context — but an individually hidden labeler
@@ -674,22 +821,35 @@ function shouldHideByTab(label) {
   // Someone else's punch/defense row, folded away until "Others: shown" is
   // toggled on, or its owner is individually hidden.
   if (label.foreign && (!state.showForeign || isLabelerHidden(label))) return true;
+  // Admin's Types menu, once anything is picked, replaces the bucket tabs:
+  // "Lead Slip" picked under the Offense tab would otherwise show an empty
+  // list. A tab click clears the picks (setLabelTab).
+  if (shouldHideByType(label)) return true;
   // 'combined' skips the bucket check entirely — every punch shows, same as
   // before the tabs existed. 'offense'/'defense' still filter by bucket.
-  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
+  if (!state.typeFilter.size &&
+      state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
   if (!state.unsureFilter) return false;
   return label.punch !== 'unsure';
 }
 
 function setLabelTab(tab) {
-  if (state.labelTab === tab) return;
+  const hadTypes = state.typeFilter.size > 0;
+  if (state.labelTab === tab && !hadTypes) return;
   state.labelTab = tab;
   localStorage.setItem('labelTab', tab);
+  // A tab click hands the list back to the buckets: admin's picked types,
+  // which bypass the tabs while there are any (see shouldHideByTab), are
+  // cleared with it. applyTypeFilter() repaints the tabs and re-renders.
+  if (hadTypes) { state.typeFilter.clear(); applyTypeFilter(); return; }
   updateLabelTabButtons();
   renderLabels();
 }
 
 function updateLabelTabButtons() {
+  const tabs = document.getElementById('label-tabs');
+  // Dimmed while picked types are deciding instead — see shouldHideByTab().
+  if (tabs) tabs.classList.toggle('bypassed', state.typeFilter.size > 0);
   document.querySelectorAll('#label-tabs button').forEach((b) => {
     const on = b.dataset.tab === state.labelTab;
     b.classList.toggle('selected', on);
@@ -2429,7 +2589,10 @@ function deleteLabel(idx) {
 function highlightLabelInPanel(idx) {
   const label = state.labels[idx];
   if (!label || label.isRoundMarker) return;
-  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
+  // Not while types are picked: the tabs aren't deciding then (see
+  // shouldHideByTab), and switching one would clear the picks.
+  if (!state.typeFilter.size &&
+      state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
     setLabelTab(punchBucket(label.punch));
   }
   const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);
@@ -2545,7 +2708,7 @@ function jumpToAdjacentLabel(dir) {
   const EPS = 0.05;
 
   const times = state.labels
-    .filter(l => !l.isRoundMarker && !shouldHideByUnsure(l))
+    .filter(l => !l.isRoundMarker && !shouldHideByUnsure(l) && !shouldHideByType(l))
     .map(l => l.start)
     .sort((a, b) => a - b);
 
@@ -2811,6 +2974,12 @@ function timeToScrubPct(time, duration) {
 // the list: on Defense you get the defensive rows only, and the stack is
 // half as tall instead of half empty.
 function visibleBuckets() {
+  // Picked types override the tab (see shouldHideByTab): only the buckets
+  // they belong to keep a lane, so "just the slips" is a defense-only stack.
+  if (state.typeFilter.size) {
+    const picked = new Set([...state.typeFilter].map(punchBucket));
+    return ['offense', 'defense'].filter(b => picked.has(b));
+  }
   return state.labelTab === 'combined' ? ['offense', 'defense'] : [state.labelTab];
 }
 
@@ -3001,10 +3170,14 @@ function renderTimelineOverlay() {
     // Inlined rather than calling shouldHideByUnsure() — this loop runs
     // per-frame during drag, and only the unsure-filter half applies here.
     if (state.unsureFilter && label.punch !== 'unsure') return;
+    // Admin's picked types, inlined for the same reason.
+    if (state.typeFilter.size && !state.typeFilter.has(label.punch)) return;
     // The Labels tab hides whole lanes (see visibleBuckets); without this
     // the strips for the hidden bucket would fall through to the fallback
-    // lookup below and land in the wrong lane.
-    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return;
+    // lookup below and land in the wrong lane. Picked types stand in for
+    // the tab here too.
+    if (!state.typeFilter.size &&
+        state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return;
     const lPct = timeToViewportPct(label.start, duration);
     const rPct = timeToViewportPct(label.end, duration);
     if (rPct < 0 || lPct > 100) return;
@@ -3060,7 +3233,9 @@ function renderMinimap() {
     // exactly what the lanes show, not fewer segments because of a toggle
     // that used to matter for a single combined lane and no longer does.
     if (state.unsureFilter && label.punch !== 'unsure') continue;
-    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
+    if (state.typeFilter.size && !state.typeFilter.has(label.punch)) continue;
+    if (!state.typeFilter.size &&
+        state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
     const seg = document.createElement('div');
     seg.style.position = 'absolute';
     seg.style.top = '0';
@@ -3115,11 +3290,12 @@ function updateVideoOverlay() {
 
   const activeLabels = state.labels.filter(l =>
     !l.isRoundMarker && (!l.foreign || (state.showForeign && !isLabelerHidden(l))) &&
-    t >= l.start && t <= l.end && !shouldHideByUnsure(l)
+    t >= l.start && t <= l.end && !shouldHideByUnsure(l) && !shouldHideByType(l)
   );
 
   const roundKey = currentRound ? 'R' + currentRound : 'out';
-  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.showForeign;
+  const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.showForeign +
+    '|' + [...state.typeFilter].join(',');
   if (overlay.dataset.activeKey === key) return;
   overlay.dataset.activeKey = key;
 
