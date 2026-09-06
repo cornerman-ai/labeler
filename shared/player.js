@@ -45,6 +45,12 @@ function normalizeDriveUrl(url) {
   const s = String(url).trim();
   const ytMatch = s.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([\w-]+)/);
   if (ytMatch) return 'https://www.youtube.com/watch?v=' + ytMatch[1];
+  // Google Drive: canonical ".../file/d/<id>/view" per file id, so a pasted
+  // link with a trailing slash, /edit, or open?id= finds the same rows as
+  // the copy-link form. Mirrors normalizeDriveUrl() in apps_script/Code.js —
+  // keep the two identical.
+  const drive = s.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([\w-]+)/);
+  if (drive) return 'https://drive.google.com/file/d/' + drive[1] + '/view';
   return s.split('?')[0];
 }
 
