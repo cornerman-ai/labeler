@@ -2905,7 +2905,10 @@ function outboxWrite(entries, key) {
   try { localStorage.setItem(key || outboxKey(), JSON.stringify(entries)); } catch (e) {}
 }
 // punch_uuid is the identity: it is generated client-side before the first
-// send, so a retry can never create a second row for the same label.
+// send, the outbox never queues it twice, and the server's `add` answers a
+// uuid it already holds with that row instead of inserting again
+// (rowIndexByUuid in apps_script/Code.js) — so a retry can never create a
+// second row for the same label.
 function outboxAdd(payload) {
   const entries = outboxRead();
   if (entries.some(e => e.punchUuid === payload.punchUuid)) return;

@@ -173,6 +173,22 @@ function normalizeDriveUrl(url) {
   return s.split('?')[0];
 }
 
+// The row already holding this punch_uuid, as an index into `data` (0 =
+// header), or -1. The page treats punch_uuid as the label's identity: it
+// generates it before the first send and re-sends the same request from its
+// outbox when it gets no reply. The page stops waiting after 30 s; Apps
+// Script does not — so a retry very often follows a row that DID land. The
+// add handler asks here first and inserts nothing for a uuid it already has.
+function rowIndexByUuid(data, cols, uuid) {
+  if (!cols || cols.uuid == null || cols.uuid < 0 || !uuid) return -1;
+  var want = String(uuid).trim();
+  if (!want) return -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][cols.uuid]).trim() === want) return i;
+  }
+  return -1;
+}
+
 // Find the next available ID (max existing + 1)
 function nextId(data, cols) {
   var maxId = 0;
@@ -609,6 +625,23 @@ function doGet(e) {
     // Same for the `ts` (label write-time) column.
     var ensuredTs = ensureTsColumn(sheet, data, cols);
     data = ensuredTs.data; cols = ensuredTs.cols;
+    // Idempotent: a uuid we already hold is the outbox retrying a save whose
+    // row landed after the page gave up waiting. Answer as if it had just
+    // been added — the page adopts the id and clears its outbox — and insert
+    // nothing. Under the write lock, so two retries arriving together cannot
+    // both pass. Measured 2026-09-07 before this guard: 29 uuids in John's
+    // tab and 32 in Arianne's saved two or three times over, identical to
+    // the millisecond, minutes apart.
+    var existing = rowIndexByUuid(data, cols, p.punchUuid);
+    if (existing > 0) {
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: 'ok', action: 'exists',
+          id: parseInt(data[existing][cols.id]) || (existing + 1),
+          punch_uuid: String(data[existing][cols.uuid])
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     var newId = nextId(data, cols);
     var row = new Array(data[0].length).fill('');
     if (cols.id >= 0) row[cols.id] = newId;
