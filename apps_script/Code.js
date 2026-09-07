@@ -154,15 +154,19 @@ function normalizeDriveUrl(url) {
   if (ytMatch) return 'https://www.youtube.com/watch?v=' + ytMatch[1];
 
   // Google Drive: one canonical form per FILE ID, so every way of pasting
-  // the same file matches — .../view?usp=sharing, .../edit, a bare
-  // .../d/<id>/ or .../d/<id>, open?id=<id>. Before this, only the query
-  // string was stripped, and a link ending in "/" silently matched none of
-  // the rows saved from the "/view" copy-link form (2026-09-05: 0 rows on a
-  // video with 151). The canonical form IS that "/view" form, so a row saved
+  // the same file matches — http, https or no scheme, any ?usp= value (the
+  // sheet holds sharing, drivesdk, drive_link and a typo'd sharingo),
+  // .../edit, a bare .../d/<id>/ or .../d/<id>, open?id=<id>, uc?id=<id>,
+  // and the drive.usercontent.google.com/download?id=<id> form (147 Archive
+  // rows, one video, 2026-09-07). Before this, only the query string was
+  // stripped, and a link ending in "/" silently matched none of the rows
+  // saved from the "/view" copy-link form (2026-09-05: 0 rows on a video
+  // with 151). The canonical form IS that "/view" form, so a row saved
   // today looks exactly like the existing ones and nothing needs migrating —
-  // every comparison normalizes both sides. Same regex in shared/player.js;
-  // keep the two identical.
-  var drive = s.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([\w-]+)/);
+  // every comparison normalizes both sides. Same regexes in
+  // shared/player.js; keep the two identical.
+  var drive = s.match(/drive\.google\.com\/file\/d\/([\w-]+)/) ||
+              s.match(/drive(?:\.usercontent)?\.google\.com\/(?:open|uc|download)\?(?:[^#]*&)?id=([\w-]+)/);
   if (drive) return 'https://drive.google.com/file/d/' + drive[1] + '/view';
 
   // Everything else: strip query params as before
