@@ -310,7 +310,13 @@ document.addEventListener('DOMContentLoaded', () => {
     state.showForeign = true;   // no point being admin over a folded-away queue
     const badge = document.getElementById('labeler-badge');
     if (badge) badge.textContent += ' (admin)';
-    // The Types menu is admin's: reviewing is where "just the slips" pays.
+  }
+  // The Types menu — narrow the list/lanes/minimap/video tags to a few
+  // punch types — used to be admin-only ("reviewing is where 'just the
+  // slips' pays"), but there's nothing admin-specific about wanting to
+  // narrow your OWN view to a few move types either, so it's for everyone
+  // now.
+  {
     const tf = document.getElementById('type-filter');
     if (tf) tf.hidden = false;
     try {
@@ -700,12 +706,21 @@ function updateUnsureFilterButton() {
 // foreignOwnerLabelerParam(), so an admin edit lands directly in that
 // person's own sheet, exactly as if they'd made it themselves — no separate
 // "edited by admin" bookkeeping, no audit column.
+//
+// `label.isPrediction` (see predictions.js) has NO such escape hatch — a
+// model's row lives only in this tab's memory, was never on any sheet to
+// begin with, and isForeignLabel() refuses it for admin same as anyone
+// else. Checked first, so the admin bypass below never even gets asked.
 function isForeignLabel(label) {
-  return !!(label && label.foreign) && !state.isAdmin;
+  if (!label) return false;
+  if (label.isPrediction) return true;
+  return !!label.foreign && !state.isAdmin;
 }
 function refuseForeign(label) {
   if (!isForeignLabel(label)) return false;
-  showToast('Read-only — added by another labeler', 'error');
+  showToast(label.isPrediction
+    ? 'Read-only — this is a model prediction, not a label'
+    : 'Read-only — added by another labeler', 'error');
   return true;
 }
 
@@ -727,8 +742,11 @@ function foreignOwnerLabelerParam(label) {
 // Display name for a foreign label's owner — "Labeled Data John" -> "John".
 // Used everywhere a foreign row needs to say whose it is: the label log,
 // the timeline tooltip, the "already labeled" popup, and the per-labeler
-// show/hide list below.
+// show/hide list below. A prediction has no sheet at all — its "owner" is
+// just the model name predictions.js stamped on it from the file name,
+// shown plain (just "Rolly") — same as any labeler's name everywhere else.
 function foreignOwnerName(label) {
+  if (label && label.isPrediction) return label.predictionModel || 'model';
   return String((label && label.sheetName) || '').replace(/^Labeled Data (Software )?/, '') || 'other labeler';
 }
 
@@ -755,8 +773,25 @@ function isLabelerHidden(label) {
 const LABELER_TINTS = [
   '#0071e3', '#c84d0a', '#7048e8', '#0a8560',
   '#d6336c', '#0d8091', '#aa6300', '#4263eb',
+  '#c92a2a', '#5c940d', '#9c36b5',
 ];
+// Position in the CURRENT set of foreign owners (real labelers + any loaded
+// prediction models — foreignOwnersInOrder() covers both, same list the
+// Others menu and every lane already iterate), not a hash of the name.
+// A hash can and did collide — with only 8-11 tints and enough labelers,
+// two different people landing on the same colour was a matter of when,
+// not if, and a colour collision is exactly the thing this palette exists
+// to prevent. Indexing into who's actually on screen right now guarantees
+// no two of THEM share a tint (as long as there are <= LABELER_TINTS.length
+// of them); reusing tints only becomes unavoidable past that count, same
+// as it always was.
 function labelerColor(name) {
+  const owners = typeof foreignOwnersInOrder === 'function' ? foreignOwnersInOrder() : [];
+  const idx = owners.indexOf(name);
+  if (idx >= 0) return LABELER_TINTS[idx % LABELER_TINTS.length];
+  // Not a current owner (called before the list is populated, or for a
+  // name outside that set) — fall back to the old hash so there's still
+  // SOME deterministic colour rather than none.
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
   return LABELER_TINTS[Math.abs(h) % LABELER_TINTS.length];
@@ -2057,6 +2092,11 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
 
     syncRoundActiveFromLabels();
     renderLabels();
+    // predictions.js is optional — reapplies whatever model file is loaded
+    // against THIS video now that state.labels was just rebuilt from
+    // scratch above (the filter a few lines up drops everything that
+    // isn't a fresh own-row, predictions included).
+    if (typeof applyPredictionsToLabels === 'function') applyPredictionsToLabels();
     linkStatus('ok');
     phase1ok = true;
   } catch (e) {
@@ -2104,7 +2144,10 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     mergeForeignRoundMarkers(fgn, driveLink);
     mergeForeignPunchLabels(fgn, driveLink);
     syncRoundActiveFromLabels();
-    renderLabels();
+    // Same reapply as phase 1 — the filter just above dropped predictions
+    // again (they carry `foreign: true` too, same as any real foreign row).
+    if (typeof applyPredictionsToLabels === 'function') applyPredictionsToLabels();
+    else renderLabels();
     updateForeignFilterButton();
     // Down BEFORE the "already labeled" popup — otherwise the two stack,
     // and the one that matters ends up behind the one that doesn't.
@@ -2507,17 +2550,21 @@ function renderLabels() {
           document.getElementById('video-player').currentTime = label.start;
         };
       }
-    } else if (label.foreign && !state.isAdmin) {
+    } else if (label.isPrediction || (label.foreign && !state.isAdmin)) {
       // Read-only, same treatment as a foreign round marker: no edit pencil,
-      // no delete — this row belongs to another labeler's sheet and
-      // isForeignLabel()/refuseForeign() would refuse the mutation anyway.
+      // no delete — this row belongs to another labeler's sheet (or is a
+      // model prediction, which is read-only for EVERYONE, admin included —
+      // see isForeignLabel()) and isForeignLabel()/refuseForeign() would
+      // refuse the mutation anyway.
       const who = foreignOwnerName(label);
       entry.className = 'label-entry label-foreign';
       entry.style.borderLeftColor = getPunchColor(label.punch);
       // Whose row this is gets its own badge, in that labeler's colour and
       // on the same line as the move — it used to be dim grey text tacked
       // onto the end of the timestamps, which is where you look last. The
-      // colour matches their timeline lane, so the two read together.
+      // colour matches their timeline lane, so the two read together. A
+      // model's row (label.isPrediction) uses this exact same treatment —
+      // just its name, same as any labeler's.
       entry.innerHTML = `
         <span class="label-text">
           <span class="label-head">
@@ -2601,6 +2648,129 @@ function renderLabels() {
   });
 
   renderTimelineOverlay();
+  renderProblems();
+}
+
+// ============================================================
+// Problems — timing issues on rows THIS labeler can actually act on,
+// listed the same way the Labels card lists rows: a move outside every
+// round, a move whose duration is absurd (a stuck end time — "the whole
+// video" is the extreme case), or two rounds from the SAME owner
+// overlapping each other.
+//
+// Deliberately NOT flagging two punches overlapping — a slip thrown mid-
+// combo, a counter into an opponent's punch, is normal and expected, and
+// treating it as a problem would just be noise on every real session.
+//
+// "Actionable" is !isForeignLabel(l), NOT !l.foreign — those differ
+// exactly for admin, who owns no rows of their own (every row admin sees
+// is `foreign: true`) but CAN edit any of them in place. Scoping to
+// `!l.foreign` made this card permanently empty for admin, which is
+// backwards: admin reviewing everyone else's timing is the main reason to
+// have it. A model's prediction is never actionable either way — see
+// isForeignLabel(). Round overlaps still group by OWNER even for admin: two
+// DIFFERENT people's rounds crossing is normal (independent tracks), only
+// the SAME owner's own two rounds stepping on each other is a problem.
+// ============================================================
+const PROBLEM_MAX_MOVE_DURATION = 8;   // seconds — no real punch/defense move gets anywhere close
+
+// Pairs round_start/round_end markers within one already-filtered list —
+// used per-owner below so an overlap check never crosses between two
+// different people's independent round tracks.
+function pairRoundSpans(labels) {
+  const starts = labels.filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))
+    .sort((a, b) => a.start - b.start);
+  const ends = labels.filter(l => l.punch === 'round_end' || (l.isRoundMarker && l.punch?.includes?.('end')))
+    .sort((a, b) => a.start - b.start);
+  return starts.map(s => {
+    const e = ends.find(x => x.start > s.start);
+    return { start: s.start, end: e ? e.start : Infinity, startLabel: s };
+  });
+}
+
+function computeProblems() {
+  const problems = [];
+  const video = document.getElementById('video-player');
+  const duration = video && video.duration ? video.duration : 0;
+  const isActionable = (l) => !isForeignLabel(l);
+  const ownerOf = (l) => l.foreign ? foreignOwnerName(l) : '';
+  const suffix = (l) => l.foreign ? ` (${ownerOf(l)})` : '';
+
+  const moves = state.labels.filter(l => !l.isRoundMarker && isActionable(l));
+  for (const l of moves) {
+    if (isOutsideRound(l)) {
+      problems.push({ label: l, text: `${punchLabel(l.punch)} is outside every round${suffix(l)}` });
+    }
+    const dur = l.end - l.start;
+    // Absolute AND relative-to-video checks: an 8s+ punch is wrong no
+    // matter how long the video is, but a shorter video can also produce a
+    // "takes the whole video" mistake well under that absolute floor.
+    if (dur > PROBLEM_MAX_MOVE_DURATION || (duration > 0 && dur > duration * 0.5)) {
+      problems.push({ label: l, text: `${punchLabel(l.punch)} lasts ${dur.toFixed(1)}s — looks like a stuck end time${suffix(l)}` });
+    }
+  }
+
+  const rounds = state.labels.filter(l => l.isRoundMarker && isActionable(l));
+  const byOwner = new Map();
+  for (const l of rounds) {
+    const owner = ownerOf(l);
+    if (!byOwner.has(owner)) byOwner.set(owner, []);
+    byOwner.get(owner).push(l);
+  }
+  for (const [owner, ownerLabels] of byOwner) {
+    const spans = pairRoundSpans(ownerLabels);
+    for (let i = 0; i < spans.length - 1; i++) {
+      const a = spans[i], b = spans[i + 1];
+      if (a.end > b.start) {
+        problems.push({
+          label: b.startLabel,
+          text: `Round ${i + 1} and Round ${i + 2} overlap (${formatTime(a.end)} vs ${formatTime(b.start)})${owner ? ` (${owner})` : ''}`,
+        });
+      }
+    }
+  }
+
+  return problems;
+}
+
+function renderProblems() {
+  const card = document.getElementById('problems-card');
+  const countEl = document.getElementById('problem-count');
+  const log = document.getElementById('problem-log');
+  if (!card || !log || !countEl) return;
+
+  const problems = computeProblems();
+  countEl.textContent = `(${problems.length})`;
+  card.hidden = problems.length === 0;
+  if (!problems.length) { log.innerHTML = ''; return; }
+
+  // Chronological, not newest-first like the Labels list — a problem list
+  // reads best top-to-bottom against the video's own timeline, the same
+  // order the round ribbon and timeline itself use.
+  problems.sort((a, b) => a.label.start - b.label.start);
+
+  log.innerHTML = problems.map(p => {
+    const idx = state.labels.indexOf(p.label);
+    return `
+      <div class="label-entry problem-entry" data-problem-idx="${idx}">
+        <span class="label-text">
+          <strong>${formatTime(p.label.start)}</strong>
+          <small>${p.text}</small>
+        </span>
+      </div>
+    `;
+  }).join('');
+
+  log.querySelectorAll('.problem-entry').forEach(entry => {
+    entry.style.cursor = 'pointer';
+    entry.addEventListener('click', () => {
+      const label = state.labels[+entry.dataset.problemIdx];
+      if (!label) return;
+      highlightLabel(label);
+      const video = document.getElementById('video-player');
+      if (video) video.currentTime = label.start;
+    });
+  });
 }
 
 function openEditLabel(idx) {
@@ -3481,9 +3651,11 @@ function renderTimelineOverlay() {
     // rm-foreign-style muting for a strip pulled read-only from another
     // labeler's sheet — ui.js's own isForeignLabel() checks already keep it
     // undraggable; this just keeps it from looking like something you can
-    // grab. Admin drags it like any other strip, so it skips the muting.
+    // grab. Admin drags it like any other strip, so it skips the muting —
+    // except a prediction, which stays muted for admin too (isPrediction
+    // has no admin bypass — see isForeignLabel()).
     seg.className = 'seek-segment'
-      + (label.foreign && !state.isAdmin ? ' seg-foreign' : '')
+      + (label.isPrediction || (label.foreign && !state.isAdmin) ? ' seg-foreign' : '')
       + (label === state.highlightedLabel ? ' seg-selected' : '');
     seg.dataset.labelIdx = idx;
     // Clipped at the viewport edges for DRAWING, but the untruncated times go
@@ -3496,7 +3668,8 @@ function renderTimelineOverlay() {
     const moveTitle = punchDescText ? `${punchLabel(label.punch)} — ${punchDescText}` : punchLabel(label.punch);
     const owner = label.foreign ? foreignOwnerName(label) : '';
     if (owner) {
-      seg.title = moveTitle + '\n' + (state.isAdmin ? owner : owner + ' (read-only)');
+      const readOnly = label.isPrediction || !state.isAdmin;
+      seg.title = moveTitle + '\n' + (readOnly ? owner + ' (read-only)' : owner);
     } else {
       seg.title = moveTitle;
     }

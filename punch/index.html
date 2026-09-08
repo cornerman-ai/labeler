@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260908j">
+  <link rel="stylesheet" href="punch.css?v=20260908v">
 </head>
 <body>
   <div id="app">
@@ -79,6 +79,15 @@
          this" — instead of one living in the nav bar and the other in a
          separate strip below it. ─────────────────────────────────────── -->
     <div id="video-source-bar">
+      <!-- Folds the four rows below away once they're set up and don't need
+           another look — see setupVideoSourceFold() in ui.js. Remembers the
+           open/closed state in localStorage, same as everything else here
+           that doesn't want to reset on every reload. -->
+      <button type="button" id="video-source-toggle" aria-expanded="true" aria-controls="video-source-rows">
+        <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Video source
+      </button>
+      <div id="video-source-rows">
       <!-- Link comes first now: it's the identity every label is filed
            under, and pasting it is usually the FIRST thing a labeler does
            (it's what triggers the "what was loaded from the sheet" popup —
@@ -138,6 +147,27 @@
         <span id="skeleton-name">No skeletons loaded</span>
         <button type="button" id="btn-toggle-skeleton" title="Show/hide skeleton overlay" hidden>Show</button>
         <span id="skeleton-status" class="field-status" hidden></span>
+      </div>
+
+      <!-- Model predictions for the currently open video, read from an
+           .xlsx shaped like a "Labeled Data X" sheet tab — video_file |
+           punch_type | start_sec | end_sec (see CLAUDE.md's Sheet Columns).
+           predictions.js matches rows to this video and folds them into
+           state.labels as a permanently read-only lane named after
+           whatever the labeler typed in the naming prompt on load
+           (defaulting to the file name minus its extension) — same
+           lane/list/colour machinery a real labeler's rows use, but with
+           no admin bypass: see isForeignLabel() in app.js. Nothing here is
+           ever written back to any sheet. -->
+      <div id="predictions-loader" class="src-field">
+        <button id="btn-pick-predictions" onclick="document.getElementById('predictions-file').click()">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" rx="1.8" stroke="currentColor" stroke-width="1.2"/><path d="M4 4.5h6M4 7h6M4 9.5h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          Open Predictions
+        </button>
+        <input type="file" id="predictions-file" accept=".xlsx" hidden>
+        <span id="predictions-name">No predictions loaded</span>
+        <span id="predictions-status" class="field-status" hidden></span>
+      </div>
       </div>
     </div>
 
@@ -393,9 +423,10 @@
               </button>
               <div id="foreign-filter-menu" role="menu" hidden></div>
             </div>
-            <!-- Admin only (app.js unhides it): narrow every surface to a few
-                 punch types — the same pop-up idiom as #foreign-filter, one
-                 checkmark row per catalogue entry. See setupTypeFilterMenu(). -->
+            <!-- Narrow every surface to a few punch types — the same pop-up
+                 idiom as #foreign-filter, one checkmark row per catalogue
+                 entry. See setupTypeFilterMenu(). Unhidden for everyone (used
+                 to be admin-only). -->
             <div id="type-filter" hidden>
               <button id="btn-type-filter" type="button" aria-haspopup="menu"
                       aria-expanded="false" aria-controls="type-filter-menu">
@@ -419,6 +450,20 @@
                     onclick="setLabelTab('defense')">Defense</button>
           </div>
           <div id="label-log" role="tabpanel"></div>
+        </section>
+
+        <!-- Timing problems on rows this labeler can actually act on — own
+             rows always, plus (for admin) any foreign row too, since admin
+             edits those in place: a move outside every round, a move whose
+             duration is absurd, or two rounds from the SAME owner
+             overlapping each other. Deliberately NOT "two punches
+             overlap": that's normal (a slip mid-combo, a counter thrown
+             into an opponent's punch) and flagging it would just be noise.
+             Hidden entirely at zero — see renderProblems() in app.js — so
+             a clean video doesn't carry an empty card. -->
+        <section class="card problems-card" id="problems-card" hidden>
+          <p class="card-eyebrow">Problems <span id="problem-count">(0)</span></p>
+          <div id="problem-log"></div>
         </section>
       </aside>
     </div>
@@ -532,14 +577,42 @@
     <div class="sc-body" id="agr-body"></div>
   </dialog>
 
+  <!-- ── name a loaded predictions file ──────────────────────────────────── -->
+  <!-- Opened by predictions.js's askPredictionName() right after an .xlsx is
+       parsed — the file name is only a starting guess (export naming
+       conventions vary), and whatever's confirmed here becomes the model's
+       name everywhere: lane, badge, tooltip, the Others menu. Cancel (or
+       Escape) keeps that starting guess rather than aborting the load. -->
+  <dialog id="pred-name-dialog">
+    <div class="sc-head">
+      <h2>Name these predictions</h2>
+      <button class="icon-btn" id="pred-name-close-x" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body">
+      <p class="pred-name-note">Shown as the labeler name for these rows — the lane, the badge, everywhere.</p>
+      <input type="text" id="pred-name-input" class="pred-name-field" autocomplete="off" spellcheck="false" maxlength="40">
+    </div>
+    <div class="fvd-actions">
+      <button type="button" id="pred-name-cancel">Cancel</button>
+      <button type="button" id="pred-name-ok" class="fvd-primary">Use this name</button>
+    </div>
+  </dialog>
+
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260908j"></script>
-  <script src="../shared/player.js?v=20260908j"></script>
-  <script src="skeleton.js?v=20260908j"></script>
-  <script src="app.js?v=20260908j"></script>
+  <script src="../shared/labeler_name.js?v=20260908v"></script>
+  <script src="../shared/player.js?v=20260908v"></script>
+  <script src="skeleton.js?v=20260908v"></script>
+  <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
+       with no network dependency at runtime. predictions.js is the only
+       consumer. -->
+  <script src="../shared/xlsx.full.min.js?v=20260908v"></script>
+  <script src="predictions.js?v=20260908v"></script>
+  <script src="app.js?v=20260908v"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260908j"></script>
+  <script src="ui.js?v=20260908v"></script>
 </body>
 </html>

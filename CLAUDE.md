@@ -22,10 +22,10 @@ Web-based video labeling tool for boxing punch annotation.
   (`list` answers empty, `add` is refused) — everything it sees arrives via
   `listForeign`, every labeler's rows in their own timeline lanes, editable
   in place (writes redirect to the owner's tab). Admin-only chrome: the
-  Agreement report, the other-admins presence chip, and the **Types** menu in
-  the Labels card (beside Others) — pick punch types and the list, lanes,
-  minimap, video tags and Shift+Arrow nav narrow to those; picked types
-  bypass the Offense/Defense tabs, a tab click clears them, persisted in
+  Agreement report and the other-admins presence chip. The **Types** menu in
+  the Labels card (beside Others) is for everyone — pick punch types and the
+  list, lanes, minimap, video tags and Shift+Arrow nav narrow to those; picked
+  types bypass the Offense/Defense tabs, a tab click clears them, persisted in
   localStorage `typeFilter`.
 
 ## Sheet Columns

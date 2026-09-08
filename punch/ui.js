@@ -789,6 +789,29 @@
     }, true);
   }
 
+  // ── fold the drive-link/video/skeletons/predictions rows away ──────────
+  // Four rows is a lot of permanent vertical space once they're all set up
+  // and nothing in them needs another look. One toggle for the whole
+  // block (not per-row — the four rows together answer one question, "what
+  // video is this and what's overlaid on it"), collapsing to just the
+  // header line. Remembered in localStorage, same as everything else here
+  // that shouldn't reset on every reload.
+  function setupVideoSourceFold() {
+    const btn = $('video-source-toggle'), rows = $('video-source-rows');
+    if (!btn || !rows) return;
+    const KEY = 'videoSourceCollapsed';
+    const apply = (collapsed) => {
+      rows.hidden = collapsed;
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    };
+    apply(localStorage.getItem(KEY) === 'true');
+    btn.addEventListener('click', () => {
+      const collapsed = !rows.hidden;
+      apply(collapsed);
+      localStorage.setItem(KEY, String(collapsed));
+    });
+  }
+
   // ── right-click a strip: highlight it in the panel, or delete it ───────
   // Two actions worth their own menu — Highlight jumps the Labels panel to
   // (and flashes) this exact chip's row without hunting a scrolled list;
@@ -1138,6 +1161,7 @@
     setupTimelineWheelZoom();
     setupSegmentEditing();
     setupRoundSpanDragging();
+    setupVideoSourceFold();
     setupZoomedClickToSeek();
     setupSegmentContextMenu();
     setupTimeEdit();

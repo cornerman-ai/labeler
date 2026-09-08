@@ -16,16 +16,23 @@ Object.assign(state, {
   skeleton: { rounds: [], visible: false },
 });
 
-// Body-only BlazePose-33 edges (mediapipe POSE_CONNECTIONS minus the face
-// landmarks 0-10) — a boxer's stance and guard read fine off the torso/limbs
-// alone, and the face dots just added clutter at video scale.
+// Body edges (mediapipe POSE_CONNECTIONS) plus the nose (joint 0) wired to
+// both shoulders as a simple head/neck triangle — a boxer's stance and
+// guard read fine off the torso/limbs alone, so the rest of the face mesh
+// (joints 1-10: eyes, ears, mouth) stays out as clutter, but head position
+// itself matters for guard height and chin tuck, and the nose is the one
+// face landmark BlazePose tracks cleanly enough to be worth showing.
 const SKELETON_EDGES = [
+  [0, 11], [0, 12],
   [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
   [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
   [11, 23], [12, 24], [23, 24],
   [23, 25], [25, 27], [27, 29], [29, 31], [27, 31],
   [24, 26], [26, 28], [28, 30], [30, 32], [28, 32],
 ];
+// Joints drawn as dots — the nose plus every body landmark, skipping the
+// rest of the face (1-10).
+const SKELETON_DOT_JOINTS = [0, ...Array.from({ length: 22 }, (_, i) => i + 11)];
 const VISIBILITY_THRESHOLD = 0.5;
 
 // ============================================================
@@ -240,8 +247,8 @@ function drawSkeletonFrame(t) {
     ctx.stroke();
   }
   const dotR = Math.max(2.5, W / 200);
-  for (let j = 11; j < r.nJoints; j++) {
-    if (!visible(j)) continue;
+  for (const j of SKELETON_DOT_JOINTS) {
+    if (j >= r.nJoints || !visible(j)) continue;
     const [x, y] = px(j);
     ctx.beginPath();
     ctx.arc(x, y, dotR, 0, Math.PI * 2);
