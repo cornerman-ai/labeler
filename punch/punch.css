@@ -1808,11 +1808,20 @@ kbd {
 #agr-dialog {
   width: min(1020px, calc(100vw - 40px));
   max-height: 88vh;
-  display: flex; flex-direction: column;
   padding: 0; border: none; border-radius: 16px;
   background: var(--card); color: var(--ink);
   box-shadow: 0 24px 64px rgba(0,0,0,.28);
 }
+/* Scoped to [open] on purpose — every OTHER dialog on this page leaves
+   `display` alone entirely and lets the browser's own dialog[open]/:modal
+   UA rules toggle block/none, but this one needs flex-column layout (head
+   fixed, body scrolling — see below) while open. An unscoped `display: flex`
+   here would beat the UA's `dialog:not([open]) { display: none }` by
+   specificity, so a CLOSED dialog stayed rendered — sitting in normal
+   document flow at wherever it happens to live in the DOM (near the end of
+   <body>), which is exactly the "closes but folds into the bottom of the
+   page" bug this fixes. */
+#agr-dialog[open] { display: flex; flex-direction: column; }
 #agr-dialog .sc-head { flex: none; }
 /* Overrides .sc-body's own 65vh cap — here the dialog's max-height is what
    bounds it, and the body takes whatever is left. */
