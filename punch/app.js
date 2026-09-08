@@ -602,16 +602,26 @@ function setupTypeFilterMenu() {
   });
 }
 
-function renderTypeFilterMenu(menu) {
-  // Rows on this video per type, counting what the Others menu lets through
-  // — each number is how many rows that pick would leave on screen.
-  const counts = {};
-  for (const l of state.labels) {
-    if (l.isRoundMarker) continue;
-    if (l.foreign && (!state.showForeign || isLabelerHidden(l))) continue;
-    counts[l.punch] = (counts[l.punch] || 0) + 1;
-  }
+// Reading order of the Move Type panel itself: each move's Head cell next
+// to its Body cell (Jab, Cross, Lead Hook, Rear Hook, Lead Uppercut, Rear
+// Uppercut), then Defense, then Unsure. PUNCH_TYPES is NOT in this order —
+// it groups all Head ids before all Body ids, which is what the keyboard
+// digit-key layout wants (1-6 plain vs Shift+1-6) — so the Types menu below
+// remaps through this list rather than iterating PUNCH_TYPES directly.
+const TYPE_MENU_ORDER = [
+  'jab_head', 'jab_body',
+  'cross_head', 'cross_body',
+  'lead_hook_head', 'lead_hook_body',
+  'rear_hook_head', 'rear_hook_body',
+  'lead_uppercut_head', 'lead_uppercut_body',
+  'rear_uppercut_head', 'rear_uppercut_body',
+  'lead_slip', 'rear_slip',
+  'lead_roll', 'rear_roll',
+  'pull_back', 'duck',
+  'unsure',
+];
 
+function renderTypeFilterMenu(menu) {
   menu.innerHTML = '';
 
   const allRow = document.createElement('button');
@@ -630,12 +640,16 @@ function renderTypeFilterMenu(menu) {
   sep.className = 'ffm-sep';
   menu.appendChild(sep);
 
-  // Two across in catalogue order, so lead sits beside rear and the head
-  // row above the body row, the way the catalogue lays them out. One column
-  // of nineteen ran off the bottom of a laptop screen.
+  // Two across in TYPE_MENU_ORDER, so each move's Head cell sits beside its
+  // own Body cell — the same pairing the Move Type panel itself lays out —
+  // rather than every Head before every Body. One column of nineteen ran
+  // off the bottom of a laptop screen.
   const grid = document.createElement('div');
   grid.className = 'tfm-grid';
-  for (const p of PUNCH_TYPES.filter(p => !p.retired)) {
+  const orderedTypes = TYPE_MENU_ORDER
+    .map(id => PUNCH_TYPES.find(p => p.id === id))
+    .filter(p => p && !p.retired);
+  for (const p of orderedTypes) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'ffm-row';
@@ -644,8 +658,7 @@ function renderTypeFilterMenu(menu) {
     row.title = punchLabel(p.id);
     row.innerHTML =
       `<span class="ffm-dot" style="--who: ${getPunchColor(p.id)}"></span>` +
-      `<span class="ffm-name">${punchLabel(p.id)}</span>` +
-      `<span class="ffm-count">${counts[p.id] || 0}</span>`;
+      `<span class="ffm-name">${punchLabel(p.id)}</span>`;
     row.onclick = () => { toggleTypeFilter(p.id); renderTypeFilterMenu(menu); };
     grid.appendChild(row);
   }
