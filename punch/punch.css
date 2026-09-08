@@ -249,6 +249,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-right: 6px;
 }
+/* Same shape/behaviour as #btn-toggle-skeleton — "on" (visible) is the
+   solid accent pill, same green-accent language as every other engaged
+   toggle in the tool. */
+#btn-toggle-predictions {
+  flex: none; height: 24px; padding: 0 10px; border-radius: 999px;
+  border: 0; background: var(--accent-solid); color: #fff;
+  font-size: 11.5px; font-weight: 590; white-space: nowrap;
+}
+#btn-toggle-predictions.pred-hidden { background: var(--fill-2); color: var(--ink); }
+#btn-toggle-predictions[hidden] { display: none; }
 
 .nav-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
@@ -337,6 +347,26 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 #btn-agreement[hidden] { display: none; }
 #btn-agreement:hover { background: var(--fill-2); }
+
+/* Everyone's — see problems.js. Same shape as #btn-agreement beside it,
+   plus a count badge (amber, matching every other "worth a look, not an
+   error" signal in this tool) that only shows once something's open. */
+#btn-problems {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 11px; border-radius: 8px; border: 0;
+  background: var(--fill); color: var(--ink);
+  font-size: 12.5px; font-weight: 510; white-space: nowrap;
+}
+#btn-problems:hover { background: var(--fill-2); }
+#problems-count {
+  padding: 1px 6px; border-radius: 999px;
+  background: color-mix(in srgb, #b26a00 18%, transparent); color: #8a5200;
+  font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums;
+}
+#problems-count[hidden] { display: none; }
+@media (prefers-color-scheme: dark) {
+  #problems-count { color: #f0b355; background: color-mix(in srgb, #f0b355 22%, transparent); }
+}
 
 /* 32x32 is below the 44pt touch minimum on purpose: these two are pointer-only
    chrome on a desktop tool, and the hit area is padded out to 44 by the
@@ -1434,36 +1464,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding-bottom: 8px;
 }
 
-/* Timing problems — see renderProblems() in app.js. flex:none (not flex:1
-   like .labels-card): it only ever takes the room its own rows need, capped
-   and scrolling past that, so a page with a handful of problems doesn't
-   shove the Labels list itself down to a sliver. Hidden entirely at zero. */
-.problems-card {
-  flex: none; max-height: 180px;
-  display: flex; flex-direction: column;
-  padding-bottom: 8px;
-}
-#problem-count { color: var(--ink); font-variant-numeric: tabular-nums; }
-#problem-log {
-  flex: 1; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 5px;
-  margin-right: -6px; padding-right: 6px;
-  scrollbar-width: thin; scrollbar-color: var(--track) transparent;
-}
-#problem-log::-webkit-scrollbar { width: 8px; }
-#problem-log::-webkit-scrollbar-thumb { background: var(--track); border-radius: 4px; }
-/* Reuses .label-entry's whole layout (icon-free row, tabular-nums text,
-   clickable) — only the accent changes, amber rather than the move's own
-   colour, since a problem row isn't "here's what type of punch this is",
-   it's "something about this row's TIMING needs a look". */
-.problem-entry {
-  border-left-color: #b26a00;
-  background: color-mix(in srgb, #b26a00 10%, var(--fill));
-}
-.problem-entry .label-text small { color: var(--ink-dim); }
-@media (prefers-color-scheme: dark) {
-  .problem-entry { border-left-color: #f0b355; background: color-mix(in srgb, #f0b355 14%, var(--fill)); }
-}
 #label-count { color: var(--ink); font-variant-numeric: tabular-nums; }
 #foreign-filter { position: relative; margin-left: auto; }
 #type-filter { position: relative; }
@@ -1508,9 +1508,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .tfm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; }
 .tfm-grid .ffm-row { gap: 6px; font-size: 12px; }
-/* Dimmed while types are picked — they decide what shows then, not the tabs
-   (shouldHideByTab()); a tab click clears them and takes back over. */
-#label-tabs.bypassed { opacity: .45; }
 /* A teammate row: the visibility toggle takes the width, the reorder arrows
    sit at the end. The master "Show others" row is a bare .ffm-row button. */
 .ffm-row {
@@ -1659,29 +1656,6 @@ button.ffm-row[aria-checked="true"]::before,
 .label-entry.label-selected {
   background: var(--accent-wash);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-/* A punch outside every round — the pipeline discards it. Amber, not red:
-   it is a thing to look at, not an error, and the fix might be the ROUND
-   boundary rather than the punch. The hatch echoes the timeline's own
-   "outside round" shading so the two read as the same fact. */
-.label-entry.label-outside {
-  background: repeating-linear-gradient(45deg,
-    color-mix(in srgb, #b26a00 11%, transparent) 0 5px, transparent 5px 10px);
-}
-.label-entry.label-outside .label-head::after {
-  content: '⚠'; flex: none; font-size: 11px; color: #b26a00;
-}
-@media (prefers-color-scheme: dark) {
-  .label-entry.label-outside .label-head::after { color: #f0b355; }
-}
-#outside-round-warning {
-  padding: 2px 7px; border-radius: 5px;
-  background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200;
-  font-size: 10px; font-weight: 620; letter-spacing: 0; text-transform: none;
-}
-#outside-round-warning[hidden] { display: none; }
-@media (prefers-color-scheme: dark) {
-  #outside-round-warning { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
 }
 
 .label-entry.editing { background: var(--card); border-left-color: var(--accent);
@@ -1840,6 +1814,31 @@ kbd {
   font-size: 14px; font-weight: 510;
 }
 .pred-name-field:focus { outline: none; border-color: var(--accent); }
+
+/* ── timing-problem popup + the "View all" list ──────────────────────────── */
+#problem-popup-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#problem-popup-dialog::backdrop {
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+#problem-list-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#problem-list-dialog::backdrop {
+  background: rgba(0,0,0,.28);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+#problem-list-dialog .sc-body { overflow-y: auto; }
+#problem-list-count { color: var(--ink-dim); font-variant-numeric: tabular-nums; font-weight: 500; }
 
 /* ── "labels are loading" popup ─────────────────────────────────────────── */
 /* Modal on purpose: phase one is the labeler's OWN rows, and marking a punch

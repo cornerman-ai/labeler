@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260908v">
+  <link rel="stylesheet" href="punch.css?v=20260909b">
 </head>
 <body>
   <div id="app">
@@ -53,6 +53,15 @@
         <!-- Only in admin mode — see setupAgreement() in app.js. -->
         <button type="button" id="btn-agreement" hidden
                 title="Inter-rater agreement for this video">Agreement</button>
+
+        <!-- Standing way in to the same list the popup's "View all" opens —
+             see problems.js. Everyone's, not admin-only: it's rows THIS
+             labeler can act on (own always, plus foreign for admin), same
+             scope computeProblems() already uses. Count badge only shows
+             once there's something open; the button itself stays put so
+             it's somewhere predictable to check even at zero. -->
+        <button type="button" id="btn-problems"
+                title="Timing problems on this video">Problems<span id="problems-count" hidden></span></button>
 
         <!-- Standing count of other admins working right now — the dialog
              announces the arrival, this is what remains afterwards so the
@@ -166,6 +175,11 @@
         </button>
         <input type="file" id="predictions-file" accept=".xlsx" hidden>
         <span id="predictions-name">No predictions loaded</span>
+        <!-- Same per-owner mute the Others menu already has (toggleLabelerHidden()
+             in app.js) — a model's rows are just another "owner" to that
+             system, so hiding them here and un-hiding "Rolly" from the
+             Others menu are the same toggle either way. -->
+        <button type="button" id="btn-toggle-predictions" title="Show/hide these predictions" hidden>Hide</button>
         <span id="predictions-status" class="field-status" hidden></span>
       </div>
       </div>
@@ -407,10 +421,6 @@
                of this header and onto its own line underneath. -->
           <div class="card-eyebrow">
             Labels <span id="label-count">(0)</span>
-            <!-- How many visible punches fall outside every round, i.e. how
-                 many the training pipeline would discard. Hidden at zero,
-                 and while no rounds are marked at all. -->
-            <span id="outside-round-warning" hidden></span>
             <!-- Master show/hide plus a per-labeler breakdown — app.js's
                  setupForeignFilterMenu()/renderForeignFilterMenu() build the
                  rows below from whoever currently has foreign rows on this
@@ -450,20 +460,6 @@
                     onclick="setLabelTab('defense')">Defense</button>
           </div>
           <div id="label-log" role="tabpanel"></div>
-        </section>
-
-        <!-- Timing problems on rows this labeler can actually act on — own
-             rows always, plus (for admin) any foreign row too, since admin
-             edits those in place: a move outside every round, a move whose
-             duration is absurd, or two rounds from the SAME owner
-             overlapping each other. Deliberately NOT "two punches
-             overlap": that's normal (a slip mid-combo, a counter thrown
-             into an opponent's punch) and flagging it would just be noise.
-             Hidden entirely at zero — see renderProblems() in app.js — so
-             a clean video doesn't carry an empty card. -->
-        <section class="card problems-card" id="problems-card" hidden>
-          <p class="card-eyebrow">Problems <span id="problem-count">(0)</span></p>
-          <div id="problem-log"></div>
         </section>
       </aside>
     </div>
@@ -600,19 +596,59 @@
     </div>
   </dialog>
 
+  <!-- ── a new timing problem just appeared ──────────────────────────────── -->
+  <!-- Opened by problems.js's showProblemPopup() the moment checkProblems()
+       (called after every render) sees a problem that wasn't there a
+       moment ago — a move outside every round, an absurdly long move, two
+       of your own rounds overlapping, or a duplicate move. "View all"
+       opens #problem-list-dialog with everything currently open, not just
+       what triggered this popup. -->
+  <dialog id="problem-popup-dialog">
+    <div class="sc-head">
+      <h2 id="problem-popup-title">Timing problem</h2>
+      <button class="icon-btn" id="problem-popup-close-x" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body" id="problem-popup-body"></div>
+    <div class="fvd-actions">
+      <button type="button" id="problem-popup-viewall">View all</button>
+      <button type="button" id="problem-popup-close" class="fvd-primary">Got it</button>
+    </div>
+  </dialog>
+
+  <!-- ── every timing problem currently open ─────────────────────────────── -->
+  <!-- Recomputed live off computeProblems() when opened — the exact same
+       detection the popup itself just ran, not a separate fetch. Click a
+       row to seek and highlight it, same as the old Problems card did. -->
+  <dialog id="problem-list-dialog">
+    <div class="sc-head">
+      <h2>Timing problems <span id="problem-list-count"></span></h2>
+      <button class="icon-btn" id="problem-list-close-x" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body" id="problem-list-body"></div>
+  </dialog>
+
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260908v"></script>
-  <script src="../shared/player.js?v=20260908v"></script>
-  <script src="skeleton.js?v=20260908v"></script>
+  <script src="../shared/labeler_name.js?v=20260909b"></script>
+  <script src="../shared/player.js?v=20260909b"></script>
+  <script src="skeleton.js?v=20260909b"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260908v"></script>
-  <script src="predictions.js?v=20260908v"></script>
-  <script src="app.js?v=20260908v"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260909b"></script>
+  <script src="predictions.js?v=20260909b"></script>
+  <script src="app.js?v=20260909b"></script>
+  <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
+       foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
+       or in player.js. Nothing in problems.js runs before DOMContentLoaded
+       anyway, so this ordering isn't strictly load-bearing — just tidy. -->
+  <script src="problems.js?v=20260909b"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260908v"></script>
+  <script src="ui.js?v=20260909b"></script>
 </body>
 </html>

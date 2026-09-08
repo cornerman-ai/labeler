@@ -25,8 +25,9 @@ Web-based video labeling tool for boxing punch annotation.
   Agreement report and the other-admins presence chip. The **Types** menu in
   the Labels card (beside Others) is for everyone — pick punch types and the
   list, lanes, minimap, video tags and Shift+Arrow nav narrow to those; picked
-  types bypass the Offense/Defense tabs, a tab click clears them, persisted in
-  localStorage `typeFilter`.
+  types compose with the Offense/Defense tabs (AND, not a replacement) — a tab
+  click switches buckets without clearing the picks, persisted in localStorage
+  `typeFilter`.
 
 ## Sheet Columns
 

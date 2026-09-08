@@ -407,6 +407,10 @@ function toggleLabelerHidden(who) {
   updateForeignFilterButton();
   renderLabels();
   updateVideoOverlay();
+  // predictions.js's own dedicated Hide/Show button is a second door onto
+  // this exact same toggle — keep it in sync when the OTHER door (the
+  // Others menu) is the one that got used.
+  if (typeof updatePredictionsToggleButton === 'function') updatePredictionsToggleButton();
 }
 
 function updateForeignFilterButton() {
@@ -527,16 +531,18 @@ function renderForeignFilterMenu(menu) {
 }
 
 // ============================================================
-// Type filter (admin only)
+// Type filter
 // ============================================================
 // "Types: all" beside the Others menu — the same pop-up, one checkmark row
 // per catalogue entry. Pick rows and every surface narrows to those types:
 // the list, the lanes (whole buckets drop out, as with the tabs), the
 // minimap, the tags over the video and Shift+Arrow nav. A slip review is
 // then two clicks (Lead Slip, Rear Slip) instead of a scroll past every jab
-// from every labeler. While any are picked the Offense/Defense tabs stand
-// aside (dimmed) and a tab click clears the picks. Persisted like the other
-// filters, restored for admin only.
+// from every labeler. Composes with the Offense/Defense tabs (AND) rather
+// than replacing them — a tab click just switches buckets, picks stay put —
+// so picking a defense-only type while on Offense empties the list rather
+// than silently overriding the tab; switching tabs is the way out.
+// Persisted like the other filters.
 function shouldHideByType(label) {
   if (label.isRoundMarker) return false;
   if (state.typeFilter.size === 0) return false;
@@ -628,6 +634,16 @@ const TYPE_MENU_ORDER = [
 ];
 
 function renderTypeFilterMenu(menu) {
+  // Rows on THIS video per type, counting what the Others menu currently
+  // lets through — each number is how many rows that pick would leave on
+  // screen, so it reads as a preview of the pick, not a video-wide total.
+  const counts = {};
+  for (const l of state.labels) {
+    if (l.isRoundMarker) continue;
+    if (l.foreign && (!state.showForeign || isLabelerHidden(l))) continue;
+    counts[l.punch] = (counts[l.punch] || 0) + 1;
+  }
+
   menu.innerHTML = '';
 
   const allRow = document.createElement('button');
@@ -664,7 +680,8 @@ function renderTypeFilterMenu(menu) {
     row.title = punchLabel(p.id);
     row.innerHTML =
       `<span class="ffm-dot" style="--who: ${getPunchColor(p.id)}"></span>` +
-      `<span class="ffm-name">${punchLabel(p.id)}</span>`;
+      `<span class="ffm-name">${punchLabel(p.id)}</span>` +
+      `<span class="ffm-count">${counts[p.id] || 0}</span>`;
     row.onclick = () => { toggleTypeFilter(p.id); renderTypeFilterMenu(menu); };
     grid.appendChild(row);
   }
@@ -878,35 +895,31 @@ function shouldHideByTab(label) {
   // Someone else's punch/defense row, folded away until "Others: shown" is
   // toggled on, or its owner is individually hidden.
   if (label.foreign && (!state.showForeign || isLabelerHidden(label))) return true;
-  // Admin's Types menu, once anything is picked, replaces the bucket tabs:
-  // "Lead Slip" picked under the Offense tab would otherwise show an empty
-  // list. A tab click clears the picks (setLabelTab).
+  // Picked types AND the tab both narrow the view now — they compose
+  // (AND), rather than the types replacing the tab entirely. "Lead Slip"
+  // picked under the Offense tab shows an empty list, same as it would if
+  // you'd typed a search that matched nothing; switching to Defense is
+  // exactly the way out, not a picks-clearing reset.
   if (shouldHideByType(label)) return true;
   // 'combined' skips the bucket check entirely — every punch shows, same as
   // before the tabs existed. 'offense'/'defense' still filter by bucket.
-  if (!state.typeFilter.size &&
-      state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
+  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
   if (!state.unsureFilter) return false;
   return label.punch !== 'unsure';
 }
 
 function setLabelTab(tab) {
-  const hadTypes = state.typeFilter.size > 0;
-  if (state.labelTab === tab && !hadTypes) return;
+  if (state.labelTab === tab) return;
   state.labelTab = tab;
   localStorage.setItem('labelTab', tab);
-  // A tab click hands the list back to the buckets: admin's picked types,
-  // which bypass the tabs while there are any (see shouldHideByTab), are
-  // cleared with it. applyTypeFilter() repaints the tabs and re-renders.
-  if (hadTypes) { state.typeFilter.clear(); applyTypeFilter(); return; }
+  // Picked types are left alone on purpose — see shouldHideByTab(). A tab
+  // click now just changes which bucket the (possibly still-narrowed) list
+  // shows, the same way it always did before any types were picked.
   updateLabelTabButtons();
   renderLabels();
 }
 
 function updateLabelTabButtons() {
-  const tabs = document.getElementById('label-tabs');
-  // Dimmed while picked types are deciding instead — see shouldHideByTab().
-  if (tabs) tabs.classList.toggle('bypassed', state.typeFilter.size > 0);
   document.querySelectorAll('#label-tabs button').forEach((b) => {
     const on = b.dataset.tab === state.labelTab;
     b.classList.toggle('selected', on);
@@ -2469,14 +2482,6 @@ function renderLabels() {
   const visible = state.labels.filter(l => !l.isRoundMarker && !shouldHideByTab(l));
   count.textContent = `(${visible.length})`;
 
-  // How many of those the pipeline would throw away — see isOutsideRound().
-  const warn = document.getElementById('outside-round-warning');
-  if (warn) {
-    const n = visible.filter(isOutsideRound).length;
-    warn.hidden = n === 0;
-    warn.textContent = n === 1 ? '1 outside a round' : `${n} outside rounds`;
-  }
-
   // Capture open editors before wiping (keyed by array index —
   // unique within a render call, unlike label.id which can collide)
   const openEditors = {};
@@ -2614,14 +2619,11 @@ function renderLabels() {
     }
 
     if (label === state.highlightedLabel) entry.classList.add('label-selected');
-    // Flagged, not blocked: a punch outside every round is one the pipeline
-    // throws away, and the labeler is the only one who can decide whether
-    // the punch is wrong or the round boundary is.
-    if (isOutsideRound(label)) {
-      entry.classList.add('label-outside');
-      entry.title = 'Outside every round — the training pipeline discards this. '
-                  + 'Move it, or fix the round boundary.';
-    }
+    // "Outside every round" used to also flag the row right here (a class
+    // plus a tooltip) — removed because it duplicated the Problems card
+    // with a DIFFERENT scope (every visible row, foreign included, vs.
+    // Problems' "rows this labeler can actually act on"), which could
+    // disagree with it. That's now the ONE place this shows.
     entry.dataset.labelIdx = idx;
     log.appendChild(entry);
   });
@@ -2648,19 +2650,26 @@ function renderLabels() {
   });
 
   renderTimelineOverlay();
-  renderProblems();
+  // problems.js is optional — real-time timing-problem detection off the
+  // labels this render just drew. Guarded the same way skeleton.js/
+  // predictions.js are everywhere else they're called from app.js.
+  if (typeof checkProblems === 'function') checkProblems();
 }
 
 // ============================================================
-// Problems — timing issues on rows THIS labeler can actually act on,
-// listed the same way the Labels card lists rows: a move outside every
-// round, a move whose duration is absurd (a stuck end time — "the whole
-// video" is the extreme case), or two rounds from the SAME owner
-// overlapping each other.
+// Problems — pure detection (computeProblems()); problems.js is the
+// consumer, popping a toast the moment a NEW one appears and persisting it
+// to the backend in the background (see doGetProblems() in Code.js).
+// Detects timing issues on rows THIS labeler can actually act on — a move
+// outside every round, a move whose duration is absurd (a stuck end time —
+// "the whole video" is the extreme case), two of the SAME owner's rounds
+// overlapping, or a duplicate move (same type, same start AND end within
+// DUPLICATE_EPSILON — a double-save, not a real second rep).
 //
-// Deliberately NOT flagging two punches overlapping — a slip thrown mid-
-// combo, a counter into an opponent's punch, is normal and expected, and
-// treating it as a problem would just be noise on every real session.
+// Deliberately NOT flagging two DIFFERENT punches overlapping — a slip
+// thrown mid-combo, a counter into an opponent's punch, is normal and
+// expected, and treating it as a problem would just be noise on every real
+// session.
 //
 // "Actionable" is !isForeignLabel(l), NOT !l.foreign — those differ
 // exactly for admin, who owns no rows of their own (every row admin sees
@@ -2688,6 +2697,12 @@ function pairRoundSpans(labels) {
   });
 }
 
+// Two of the SAME owner's rows, same punch type, start AND end within
+// DUPLICATE_EPSILON of each other — a double-click or a re-save landing
+// twice, not two genuinely different reps (which are never this close on
+// both ends at once; overlap alone is normal — see the header comment).
+const DUPLICATE_EPSILON = 0.05;   // seconds
+
 function computeProblems() {
   const problems = [];
   const video = document.getElementById('video-player');
@@ -2699,14 +2714,34 @@ function computeProblems() {
   const moves = state.labels.filter(l => !l.isRoundMarker && isActionable(l));
   for (const l of moves) {
     if (isOutsideRound(l)) {
-      problems.push({ label: l, text: `${punchLabel(l.punch)} is outside every round${suffix(l)}` });
+      problems.push({ label: l, type: 'outside-round', text: `${punchLabel(l.punch)} is outside every round${suffix(l)}` });
     }
     const dur = l.end - l.start;
     // Absolute AND relative-to-video checks: an 8s+ punch is wrong no
     // matter how long the video is, but a shorter video can also produce a
     // "takes the whole video" mistake well under that absolute floor.
     if (dur > PROBLEM_MAX_MOVE_DURATION || (duration > 0 && dur > duration * 0.5)) {
-      problems.push({ label: l, text: `${punchLabel(l.punch)} lasts ${dur.toFixed(1)}s — looks like a stuck end time${suffix(l)}` });
+      problems.push({ label: l, type: 'too-long', text: `${punchLabel(l.punch)} lasts ${dur.toFixed(1)}s — looks like a stuck end time${suffix(l)}` });
+    }
+  }
+
+  // Duplicates, grouped by owner+punch so the O(n²) pair scan only ever
+  // compares rows that could plausibly be the same mistake, not the whole
+  // video's worth of labels against each other.
+  const byOwnerPunch = new Map();
+  for (const l of moves) {
+    const key = ownerOf(l) + '|' + l.punch;
+    if (!byOwnerPunch.has(key)) byOwnerPunch.set(key, []);
+    byOwnerPunch.get(key).push(l);
+  }
+  for (const group of byOwnerPunch.values()) {
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i], b = group[j];
+        if (Math.abs(a.start - b.start) < DUPLICATE_EPSILON && Math.abs(a.end - b.end) < DUPLICATE_EPSILON) {
+          problems.push({ label: b, type: 'duplicate-move', text: `${punchLabel(b.punch)} duplicates the one at ${formatTime(a.start)}${suffix(b)}` });
+        }
+      }
     }
   }
 
@@ -2724,6 +2759,7 @@ function computeProblems() {
       if (a.end > b.start) {
         problems.push({
           label: b.startLabel,
+          type: 'round-overlap',
           text: `Round ${i + 1} and Round ${i + 2} overlap (${formatTime(a.end)} vs ${formatTime(b.start)})${owner ? ` (${owner})` : ''}`,
         });
       }
@@ -2731,46 +2767,6 @@ function computeProblems() {
   }
 
   return problems;
-}
-
-function renderProblems() {
-  const card = document.getElementById('problems-card');
-  const countEl = document.getElementById('problem-count');
-  const log = document.getElementById('problem-log');
-  if (!card || !log || !countEl) return;
-
-  const problems = computeProblems();
-  countEl.textContent = `(${problems.length})`;
-  card.hidden = problems.length === 0;
-  if (!problems.length) { log.innerHTML = ''; return; }
-
-  // Chronological, not newest-first like the Labels list — a problem list
-  // reads best top-to-bottom against the video's own timeline, the same
-  // order the round ribbon and timeline itself use.
-  problems.sort((a, b) => a.label.start - b.label.start);
-
-  log.innerHTML = problems.map(p => {
-    const idx = state.labels.indexOf(p.label);
-    return `
-      <div class="label-entry problem-entry" data-problem-idx="${idx}">
-        <span class="label-text">
-          <strong>${formatTime(p.label.start)}</strong>
-          <small>${p.text}</small>
-        </span>
-      </div>
-    `;
-  }).join('');
-
-  log.querySelectorAll('.problem-entry').forEach(entry => {
-    entry.style.cursor = 'pointer';
-    entry.addEventListener('click', () => {
-      const label = state.labels[+entry.dataset.problemIdx];
-      if (!label) return;
-      highlightLabel(label);
-      const video = document.getElementById('video-player');
-      if (video) video.currentTime = label.start;
-    });
-  });
 }
 
 function openEditLabel(idx) {
@@ -2962,10 +2958,7 @@ function deleteLabel(idx) {
 function highlightLabelInPanel(idx) {
   const label = state.labels[idx];
   if (!label || label.isRoundMarker) return;
-  // Not while types are picked: the tabs aren't deciding then (see
-  // shouldHideByTab), and switching one would clear the picks.
-  if (!state.typeFilter.size &&
-      state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
+  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
     setLabelTab(punchBucket(label.punch));
   }
   const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);
@@ -3408,13 +3401,15 @@ function timeToScrubPct(time, duration) {
 // the list: on Defense you get the defensive rows only, and the stack is
 // half as tall instead of half empty.
 function visibleBuckets() {
-  // Picked types override the tab (see shouldHideByTab): only the buckets
-  // they belong to keep a lane, so "just the slips" is a defense-only stack.
-  if (state.typeFilter.size) {
-    const picked = new Set([...state.typeFilter].map(punchBucket));
-    return ['offense', 'defense'].filter(b => picked.has(b));
-  }
-  return state.labelTab === 'combined' ? ['offense', 'defense'] : [state.labelTab];
+  const tabBuckets = state.labelTab === 'combined' ? ['offense', 'defense'] : [state.labelTab];
+  // Picked types compose with the tab (see shouldHideByTab): a lane only
+  // survives if its bucket is BOTH what the tab shows AND has a picked
+  // type in it. On the Offense tab with only "Rear Slip" picked, that's
+  // zero lanes — the type and the tab genuinely disagree, same as it would
+  // for the list itself.
+  if (!state.typeFilter.size) return tabBuckets;
+  const picked = new Set([...state.typeFilter].map(punchBucket));
+  return tabBuckets.filter(b => picked.has(b));
 }
 
 // Rebuilds the lane stack: an Offense/Defense pair for YOU, then one pair
@@ -3636,14 +3631,13 @@ function renderTimelineOverlay() {
     // Inlined rather than calling shouldHideByUnsure() — this loop runs
     // per-frame during drag, and only the unsure-filter half applies here.
     if (state.unsureFilter && label.punch !== 'unsure') return;
-    // Admin's picked types, inlined for the same reason.
+    // Picked types, inlined for the same reason — composes with the tab
+    // check below rather than replacing it (see shouldHideByTab()).
     if (state.typeFilter.size && !state.typeFilter.has(label.punch)) return;
     // The Labels tab hides whole lanes (see visibleBuckets); without this
     // the strips for the hidden bucket would fall through to the fallback
-    // lookup below and land in the wrong lane. Picked types stand in for
-    // the tab here too.
-    if (!state.typeFilter.size &&
-        state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return;
+    // lookup below and land in the wrong lane.
+    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return;
     const lPct = timeToViewportPct(label.start, duration);
     const rPct = timeToViewportPct(label.end, duration);
     if (rPct < 0 || lPct > 100) return;
@@ -3702,8 +3696,7 @@ function renderMinimap() {
     // that used to matter for a single combined lane and no longer does.
     if (state.unsureFilter && label.punch !== 'unsure') continue;
     if (state.typeFilter.size && !state.typeFilter.has(label.punch)) continue;
-    if (!state.typeFilter.size &&
-        state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
+    if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
     const seg = document.createElement('div');
     seg.style.position = 'absolute';
     seg.style.top = '0';

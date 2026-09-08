@@ -204,9 +204,26 @@ function askPredictionName(fallback) {
   });
 }
 
+// Rides the SAME per-owner mute the Others menu already has — a model's
+// rows are just another "owner" as far as toggleLabelerHidden()/
+// isLabelerHidden() (app.js) are concerned, so hiding "Rolly" from here and
+// un-hiding it from the Others menu are literally the same toggle either
+// way. Only the button's own on/off look is specific to this row.
+function updatePredictionsToggleButton() {
+  const btn = document.getElementById('btn-toggle-predictions');
+  if (!btn) return;
+  const name = state.predictions.modelName;
+  if (!name) { btn.hidden = true; return; }
+  btn.hidden = false;
+  const hidden = typeof state.hiddenLabelers !== 'undefined' && state.hiddenLabelers.has(name);
+  btn.textContent = hidden ? 'Show' : 'Hide';
+  btn.classList.toggle('pred-hidden', hidden);
+}
+
 function setupPredictionsLoader() {
   const input = document.getElementById('predictions-file');
   const nameEl = document.getElementById('predictions-name');
+  const toggleBtn = document.getElementById('btn-toggle-predictions');
   if (!input) return;
 
   input.addEventListener('change', async (e) => {
@@ -221,9 +238,14 @@ function setupPredictionsLoader() {
       // it has to be something the labeler actually wants to see, not
       // whatever the file happened to be called.
       const modelName = await askPredictionName(fileModelName);
+      // A freshly (re)loaded file starts unhidden — otherwise re-picking a
+      // model whose old name you'd hidden would silently stay invisible
+      // with no visible reason why.
+      if (modelName && state.hiddenLabelers) state.hiddenLabelers.delete(modelName);
       state.predictions = { modelName, rows };
       if (nameEl) nameEl.textContent = modelName ? `${modelName} — ${rows.length} row${rows.length === 1 ? '' : 's'}` : 'No predictions loaded';
       const matched = applyPredictionsToLabels();
+      updatePredictionsToggleButton();
       setPredictionsStatus('ok', skipped
         ? `${matched} on this video, ${skipped} skipped`
         : `${matched} on this video`);
@@ -232,8 +254,16 @@ function setupPredictionsLoader() {
       state.predictions = { modelName: null, rows: [] };
       applyPredictionsToLabels();
       if (nameEl) nameEl.textContent = 'No predictions loaded';
+      updatePredictionsToggleButton();
       setPredictionsStatus('err', err.message || 'Could not read that file');
     }
+  });
+
+  toggleBtn?.addEventListener('click', () => {
+    const name = state.predictions.modelName;
+    if (!name || typeof toggleLabelerHidden !== 'function') return;
+    toggleLabelerHidden(name);   // app.js — same as the Others menu's own per-row toggle
+    updatePredictionsToggleButton();
   });
 }
 

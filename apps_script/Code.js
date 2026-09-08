@@ -315,6 +315,17 @@ function doGet(e) {
     return doGetGuardDrops(p, labeler, action);
   }
 
+  // Timing problems — punch/defense labeler, client-detected (outside a
+  // round, absurd duration, overlapping rounds, duplicate move — see
+  // computeProblems() in punch/app.js). This is an audit log, not a queue
+  // the page reads back from: the client shows its own live popup off the
+  // same detection it already ran, and only writes here so the finding
+  // survives past this tab. Fire-and-forget from the client, same as an
+  // outbox entry — never blocks labeling.
+  if (action === 'addProblem' || action === 'resolveProblem') {
+    return doGetProblems(p, labeler, action);
+  }
+
   // Chin-tuck labeler — separate sheet, one categorical verdict per sampled
   // frame (candidates baked into chin_frames.json by the backend's
   // chin_tuck/chin_sampler.py, not fetched from here).
@@ -2467,6 +2478,124 @@ function doGetImpactFrames(p, labeler, action) {
   }
 
   return jsonOut({ status: 'error', message: 'unknown impact-frame action: ' + action });
+}
+
+// ============================================================
+// Timing problems — punch/defense labeler. An audit log for issues
+// punch/app.js's computeProblems() already detects client-side (a move
+// outside every round, an absurdly long move, two of the SAME labeler's
+// rounds overlapping, or a duplicate move) — this sheet exists so a
+// finding survives past the tab it was found in, not to compute anything
+// itself. The client shows its own popup off the live detection and only
+// writes here in the background.
+//
+// Keyed by (labeler, punch_uuid, type) — punch_uuid is already the stable
+// per-row id used elsewhere (the rules labeler's join key), so it's also
+// the natural key for "this specific problem, on this specific row,
+// again". addProblem is a find-or-reopen upsert: calling it again for a
+// problem that's already open is a no-op past the first write, and
+// calling it for one that had been marked resolved reopens it (a fixed
+// row that regresses — start time dragged back outside a round, say — is
+// exactly the case this must catch again, not silently ignore because a
+// row with that key once existed).
+//
+// resolveProblem does NOT run synchronously when the client stops seeing
+// a problem — see problems.js's periodic sweep. Editing a label already
+// writes to its own sheet on every keystroke; ALSO writing here on every
+// keystroke just because a problem might have gone away would double the
+// write traffic for no reason the user can see. The sweep checks every
+// so often instead, and this endpoint only ever marks rows the sweep has
+// already confirmed are actually resolved.
+// ============================================================
+var PROBLEMS_SHEET_NAME = 'Timing Problems';
+var PROBLEMS_HEADERS = ['ts', 'labeler', 'punch_uuid', 'video', 'type',
+                        'detail', 'start_sec', 'resolved', 'resolved_at'];
+var PROBLEM_TYPES = ['outside-round', 'too-long', 'round-overlap', 'duplicate-move'];
+
+function getOrCreateProblemsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(PROBLEMS_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(PROBLEMS_SHEET_NAME);
+    sh.appendRow(PROBLEMS_HEADERS);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(PROBLEMS_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function doGetProblems(p, labeler, action) {
+  var sh = getOrCreateProblemsSheet();
+  var data = sh.getDataRange().getValues();
+  var idx = punchDirHeaderIndex(data[0]);
+
+  var required = ['labeler', 'punch_uuid', 'video', 'type'];
+  for (var k = 0; k < required.length; k++) {
+    if (!p[required[k]]) return jsonOut({ status: 'error', message: 'missing field: ' + required[k] });
+  }
+  if (PROBLEM_TYPES.indexOf(String(p.type)) === -1) {
+    return jsonOut({ status: 'error', message: 'invalid type: ' + p.type });
+  }
+
+  var matchRow = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][idx.labeler] !== p.labeler) continue;
+    if (data[i][idx.punch_uuid] !== p.punch_uuid) continue;
+    if (data[i][idx.type] !== p.type) continue;
+    matchRow = i;
+    break;
+  }
+
+  // === Find-or-reopen upsert ===
+  if (action === 'addProblem') {
+    if (matchRow >= 0) {
+      var row = matchRow + 1;
+      sh.getRange(row, idx.video + 1).setValue(p.video);
+      sh.getRange(row, idx.detail + 1).setValue(p.detail || '');
+      sh.getRange(row, idx.start_sec + 1).setValue(p.start_sec || '');
+      // Reopen — a row that was resolved and is being detected again is a
+      // regression, not a duplicate of the old finding.
+      sh.getRange(row, idx.resolved + 1).setValue('');
+      sh.getRange(row, idx.resolved_at + 1).setValue('');
+      return jsonOut({ status: 'ok', row: 'updated' });
+    }
+    var newRow = [];
+    var headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    for (var c = 0; c < headerRow.length; c++) {
+      var col = String(headerRow[c]);
+      if (col === 'ts') newRow.push(new Date().toISOString());
+      else if (col === 'labeler') newRow.push(p.labeler);
+      else if (col === 'punch_uuid') newRow.push(p.punch_uuid);
+      else if (col === 'video') newRow.push(p.video);
+      else if (col === 'type') newRow.push(p.type);
+      else if (col === 'detail') newRow.push(p.detail || '');
+      else if (col === 'start_sec') newRow.push(p.start_sec || '');
+      else newRow.push('');   // resolved / resolved_at start blank
+    }
+    sh.appendRow(newRow);
+    return jsonOut({ status: 'ok', row: 'created' });
+  }
+
+  // === Mark resolved — only the periodic sweep calls this, once it has
+  // confirmed the problem no longer reproduces client-side. A no-op if the
+  // row is missing or already resolved, so a sweep racing a delayed
+  // addProblem from another tab can't un-resolve something real. ===
+  if (action === 'resolveProblem') {
+    if (matchRow < 0) return jsonOut({ status: 'ok', row: 'not_found' });
+    if (String(data[matchRow][idx.resolved]) === '1') {
+      return jsonOut({ status: 'ok', row: 'already_resolved' });
+    }
+    var r = matchRow + 1;
+    sh.getRange(r, idx.resolved + 1).setValue('1');
+    sh.getRange(r, idx.resolved_at + 1).setValue(new Date().toISOString());
+    return jsonOut({ status: 'ok', row: 'resolved' });
+  }
+
+  return jsonOut({ status: 'error', message: 'unknown problems action: ' + action });
 }
 
 // ============================================================
