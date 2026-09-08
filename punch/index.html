@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260901a">
+  <link rel="stylesheet" href="punch.css?v=20260908d">
 </head>
 <body>
   <div id="app">
@@ -79,7 +79,28 @@
          this" — instead of one living in the nav bar and the other in a
          separate strip below it. ─────────────────────────────────────── -->
     <div id="video-source-bar">
-      <!-- Same .src-field component as the link row below it — same height,
+      <!-- Link comes first now: it's the identity every label is filed
+           under, and pasting it is usually the FIRST thing a labeler does
+           (it's what triggers the "what was loaded from the sheet" popup —
+           see maybeShowForeignVideoPopup() in app.js). Opening the local
+           video file is the second step, once you know which video you're
+           looking at. -->
+      <label class="src-field" for="drive-link">
+        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <input type="text" id="drive-link" placeholder="Paste the video link">
+        <!-- Shown once there's a link to copy — app.js's setupDriveLink()/
+             copyDriveLink(). The field is already a real, selectable
+             <input>; this is the one-click affordance on top of that. -->
+        <button type="button" id="btn-copy-link" title="Copy link" hidden>
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+        <!-- Filled by ui.js from the status app.js reports as it talks to the
+             sheet: this link is the key every label is filed under, and until
+             now nothing on screen said whether it had registered. -->
+        <span id="link-status" class="field-status" hidden></span>
+      </label>
+
+      <!-- Same .src-field component as the link row above it — same height,
            fill, radius, trailing copy button and confirmation chip, and the
            same green once it holds something real. The only thing that
            differs is the leading control: this row opens a file, that one
@@ -101,20 +122,23 @@
         <span id="video-status" class="field-status" hidden></span>
       </div>
 
-      <label class="src-field" for="drive-link">
-        <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        <input type="text" id="drive-link" placeholder="Paste the video link">
-        <!-- Shown once there's a link to copy — app.js's setupDriveLink()/
-             copyDriveLink(). The field is already a real, selectable
-             <input>; this is the one-click affordance on top of that. -->
-        <button type="button" id="btn-copy-link" title="Copy link" hidden>
-          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      <!-- Skeleton overlay data for the currently open video: the BlazePose
+           extraction pipeline (cornerman-backend) writes one
+           <title>_blazepose_r<round>.npy (+ _pts.npy + _meta.json) triple per
+           round. Pick all the triples for the video that's open; skeleton.js
+           groups them by round number and lets btn-toggle-skeleton draw them
+           over the video, synced by pts_sec (source-video seconds — same
+           clock as video.currentTime). -->
+      <div id="skeleton-loader" class="src-field">
+        <button id="btn-pick-skeleton" onclick="document.getElementById('skeleton-files').click()">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="3" r="1.4" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4V8m0 0-2.6 3.6M7 8l2.6 3.6M4 6.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          Open Skeletons
         </button>
-        <!-- Filled by ui.js from the status app.js reports as it talks to the
-             sheet: this link is the key every label is filed under, and until
-             now nothing on screen said whether it had registered. -->
-        <span id="link-status" class="field-status" hidden></span>
-      </label>
+        <input type="file" id="skeleton-files" accept=".npy,.json" multiple hidden>
+        <span id="skeleton-name">No skeletons loaded</span>
+        <button type="button" id="btn-toggle-skeleton" title="Show/hide skeleton overlay" hidden>Show</button>
+        <span id="skeleton-status" class="field-status" hidden></span>
+      </div>
     </div>
 
     <!-- ── main layout ──────────────────────────────────────────────────── -->
@@ -174,6 +198,12 @@
       <main id="video-container">
         <div id="video-viewport">
           <video id="video-player" preload="auto"></video>
+          <!-- Drawn by skeleton.js's drawSkeletonFrame(), called from
+               app.js's updateVideoOverlay() on every timeupdate. Positioned
+               and transformed to exactly match #video-player's rendered box
+               (including the pinch-zoom transform ui.js's setupVideoZoom()
+               applies) — see positionSkeletonCanvas(). -->
+          <canvas id="skeleton-canvas"></canvas>
           <div id="video-dim-overlay"></div>
           <div id="video-overlay"></div>
           <!-- Only while the picture is magnified; click to go back to 1x.
@@ -444,25 +474,26 @@
 
   <!-- ── labels are loading ──────────────────────────────────────────────── -->
   <!-- Two stages, driven by app.js's setLoadingStage(): "yours" is blocking
-       (labelling against a half-loaded own-list makes duplicates), then
-       "everyone else's" offers a way out, since those rows are read-only
-       context. Opened with showModal() so nothing behind it is clickable. -->
+       (labelling against a half-loaded own-list makes duplicates); "everyone
+       else's" is read-only context and closes itself the moment phase 2
+       lands (or via Escape, the dialog's own default). Opened with
+       showModal() so nothing behind it is clickable. -->
   <dialog id="ldg-dialog">
     <div class="ldg-body">
       <div class="ldg-spinner" aria-hidden="true"></div>
       <h2 id="ldg-title">Loading your labels…</h2>
       <p class="ldg-note" id="ldg-note">Fetching what you have already marked on this video.</p>
-      <button type="button" id="ldg-skip" hidden>Start labeling now</button>
     </div>
   </dialog>
 
-  <!-- ── "someone else already has this video" popup ─────────────────────── -->
-  <!-- Opened by app.js's maybeShowForeignVideoPopup(), only right after a
-       fresh video load (a pasted link or the one restored on page load) —
-       never after a routine re-fetch following an add/edit/delete. -->
+  <!-- ── "here's what the sheet had" popup ────────────────────────────────── -->
+  <!-- Opened by app.js's maybeShowForeignVideoPopup(), right after every
+       fresh video load (a pasted link) — never after a routine re-fetch
+       following an add/edit/delete. Title/body flex depending on whether
+       any other labeler has rows on this video. -->
   <dialog id="fvd-dialog">
     <div class="sc-head">
-      <h2>Already labeled by someone else</h2>
+      <h2 id="fvd-title">Already labeled by someone else</h2>
       <button class="icon-btn" id="fvd-close-x" aria-label="Close">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
@@ -500,12 +531,13 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260901a"></script>
-  <script src="../shared/player.js?v=20260901a"></script>
-  <script src="app.js?v=20260901a"></script>
+  <script src="../shared/labeler_name.js?v=20260908d"></script>
+  <script src="../shared/player.js?v=20260908d"></script>
+  <script src="skeleton.js?v=20260908d"></script>
+  <script src="app.js?v=20260908d"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260901a"></script>
+  <script src="ui.js?v=20260908d"></script>
 </body>
 </html>

@@ -340,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     () => drainOutbox({ quiet: false }));
 });
 
-// Wiring for the "already labeled by someone else" popup (maybeShowForeignVideoPopup
+// Wiring for the "what the sheet had" popup (maybeShowForeignVideoPopup
 // fills #fvd-body and opens it) — same open/close pattern as #sc-dialog in ui.js.
 function setupForeignVideoDialog() {
   const dlg = document.getElementById('fvd-dialog');
@@ -1732,8 +1732,6 @@ function setupDriveLink() {
   const copyBtn = document.getElementById('btn-copy-link');
 
   const prefix = labelerId() ? 'labeler_' + labelerId() + '_' : 'labeler_';
-  const saved = localStorage.getItem(prefix + 'drive_link');
-  if (saved) input.value = saved;
   if (copyBtn) {
     copyBtn.hidden = !input.value.trim();
     copyBtn.addEventListener('click', () => copyDriveLink(input, copyBtn));
@@ -1753,7 +1751,6 @@ function setupDriveLink() {
 
   let debounceTimer;
   input.addEventListener('input', () => {
-    localStorage.setItem(prefix + 'drive_link', normalizeDriveUrl(input.value.trim()));
     if (copyBtn) copyBtn.hidden = !input.value.trim();
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
@@ -1763,10 +1760,6 @@ function setupDriveLink() {
       }
     }, 500);
   });
-
-  if (saved && saved.trim()) {
-    fetchLabelsFromSheet(true);
-  }
 }
 
 // One click on top of text that is already selectable on screen — the link
@@ -2028,17 +2021,14 @@ function showLoadingDialog() {
 function setLoadingStage(stage) {
   const title = document.getElementById('ldg-title');
   const note = document.getElementById('ldg-note');
-  const skip = document.getElementById('ldg-skip');
   if (!title) return;
   if (stage === 'own') {
     title.textContent = 'Loading your labels…';
     note.textContent = 'Fetching what you have already marked on this video.';
-    if (skip) skip.hidden = true;
   } else {
     title.textContent = 'Loading other labelers…';
-    note.textContent = 'Your own labels are in — you can start now, or wait for '
-                     + 'everyone else’s to appear on the timeline.';
-    if (skip) skip.hidden = false;
+    note.textContent = 'Your own labels are in — waiting for everyone else’s '
+                     + 'to appear on the timeline.';
   }
 }
 
@@ -2048,10 +2038,11 @@ function hideLoadingDialog() {
 }
 
 function setupLoadingDialog() {
-  document.getElementById('ldg-skip')?.addEventListener('click', hideLoadingDialog);
-  // Deliberately no backdrop-click and no close button during phase 1:
-  // there is nothing useful to do behind it yet. Escape still works, which
-  // is the browser's own contract for a dialog and not worth fighting.
+  // Deliberately no backdrop-click, no close button and no skip-ahead
+  // button: phase 1 has nothing useful to do behind it yet, and phase 2
+  // closes itself the moment the foreign fetch lands (see
+  // fetchLabelsFromSheet). Escape still works — the dialog's own default —
+  // and isn't worth fighting.
 }
 
 // Blocks starting a new label (the punch-type buttons and "Set Start Time")
@@ -2069,23 +2060,22 @@ function setLoadingLocked(locked) {
   updateTimestampButton();
 }
 
-// "This video is already being labeled by someone else" — pops up the
-// moment a video is opened (not on every incidental re-fetch) if any
-// foreign rows came back for it. Counts by owner so the busiest labeler is
-// obvious at a glance; for Admin specifically that's also who a brand-new
-// label would be attributed to (see resolveMajorityLabelerSheet in
-// apps_script/Code.js), so the note below spells that out.
-function maybeShowForeignVideoPopup() {
-  // Split per labeler, because "273 labels" answers almost nothing — 273
-  // punches and 2 slips is a different video from 140 and 130, and which of
-  // the two you are looking at changes whether it is worth re-labelling.
+// "Here's what came back from the sheet" — pops up every time a video
+// finishes its fresh load (not on every incidental re-fetch), whether or
+// not anyone else has touched it, so pasting a link always confirms what
+// got pulled in instead of the labeler having to trust a silent fetch.
+// Counts by owner so the busiest labeler is obvious at a glance; for Admin
+// specifically that's also who a brand-new label would be attributed to
+// (see resolveMajorityLabelerSheet in apps_script/Code.js), so the note
+// below spells that out.
+function countLabelBucket(labels) {
+  // Split per labeler/bucket, because "273 labels" answers almost nothing —
+  // 273 punches and 2 slips is a different video from 140 and 130, and which
+  // of the two you are looking at changes whether it is worth re-labelling.
   // Round markers are counted apart: they are structure, not moves, and
   // folding them into either bucket would overstate it.
-  const counts = {};
-  for (const l of state.labels) {
-    if (!l.foreign) continue;
-    const who = foreignOwnerName(l);
-    const c = counts[who] || (counts[who] = { total: 0, offense: 0, defense: 0, rounds: 0, other: 0 });
+  const c = { total: 0, offense: 0, defense: 0, rounds: 0, other: 0 };
+  for (const l of labels) {
     c.total++;
     if (l.isRoundMarker) {
       c.rounds++;
@@ -2099,30 +2089,59 @@ function maybeShowForeignVideoPopup() {
     // bucket, same as the offline reports.
     else c.other++;
   }
-  const entries = Object.entries(counts).sort((a, b) => b[1].total - a[1].total);
-  if (!entries.length) return;
+  return c;
+}
+
+function fvdRow(who, c, strong) {
+  const parts = [`<span class="fvd-off">${c.offense} offense</span>`,
+                 `<span class="fvd-def">${c.defense} defense</span>`];
+  if (c.rounds) parts.push(`<span class="fvd-rnd">${c.rounds} round mark${c.rounds === 1 ? '' : 's'}</span>`);
+  if (c.other) parts.push(`<span class="fvd-oth">${c.other} other</span>`);
+  const name = strong ? `<strong>${who}</strong>` : who;
+  return `<div class="fvd-row">
+    <span class="fvd-name">${name}<span class="fvd-split">${parts.join('')}</span></span>
+    <span class="fvd-total">${c.total}</span>
+  </div>`;
+}
+
+function maybeShowForeignVideoPopup() {
+  const own = countLabelBucket(state.labels.filter(l => !l.foreign));
+
+  const foreignByOwner = {};
+  for (const l of state.labels) {
+    if (!l.foreign) continue;
+    const who = foreignOwnerName(l);
+    (foreignByOwner[who] = foreignByOwner[who] || []).push(l);
+  }
+  const foreignEntries = Object.entries(foreignByOwner)
+    .map(([who, labels]) => [who, countLabelBucket(labels)])
+    .sort((a, b) => b[1].total - a[1].total);
 
   const dlg = document.getElementById('fvd-dialog');
   const body = document.getElementById('fvd-body');
+  const title = document.getElementById('fvd-title');
+  const showBtn = document.getElementById('fvd-show');
   if (!dlg || !body) return;
 
-  const rows = entries.map(([who, c]) => {
-    const parts = [`<span class="fvd-off">${c.offense} offense</span>`,
-                   `<span class="fvd-def">${c.defense} defense</span>`];
-    if (c.rounds) parts.push(`<span class="fvd-rnd">${c.rounds} round mark${c.rounds === 1 ? '' : 's'}</span>`);
-    if (c.other) parts.push(`<span class="fvd-oth">${c.other} other</span>`);
-    return `<div class="fvd-row">
-      <span class="fvd-name"><strong>${who}</strong><span class="fvd-split">${parts.join('')}</span></span>
-      <span class="fvd-total">${c.total}</span>
-    </div>`;
-  }).join('');
+  const ownRow = fvdRow(state.isAdmin ? 'Everyone (foreign)' : 'You', own, false);
+  const foreignRows = foreignEntries.map(([who, c]) => fvdRow(who, c, true)).join('');
+  const hasForeign = foreignEntries.length > 0;
+
+  if (title) title.textContent = hasForeign ? 'Already labeled by someone else' : 'Loaded from the sheet';
+  if (showBtn) showBtn.hidden = !hasForeign;
+
   // Admin can no longer create labels at all — this used to say a new one
   // would be credited to whoever had the most rows, which is no longer true
   // and would now be actively misleading.
-  const note = state.isAdmin
+  const note = hasForeign && state.isAdmin
     ? `<p class="fvd-note">As admin you can edit or delete any of these — each change writes back to whoever owns that row. You cannot add new labels.</p>`
     : '';
-  body.innerHTML = `<p class="fvd-lede">This video already has labels from:</p><div class="fvd-rows">${rows}</div>${note}`;
+  const lede = hasForeign ? 'This video already has labels from:' : 'What was loaded from the sheet:';
+  // state.isAdmin's own row is always zero (admin owns no rows) and just
+  // clutters this popup, which already spells "Everyone (foreign)" above —
+  // skip it for admin specifically.
+  const rows = state.isAdmin ? foreignRows : `${ownRow}${foreignRows}`;
+  body.innerHTML = `<p class="fvd-lede">${lede}</p><div class="fvd-rows">${rows}</div>${note}`;
   // showModal() throws InvalidStateError on an already-open dialog — which
   // happens when a second video is opened before this popup is dismissed.
   // Thrown from inside phase 2's try, it would have surfaced as a bogus
@@ -3097,6 +3116,28 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
   }
 }
 
+// The lanes/minimap need SOME duration to turn a label's start/end into a
+// percentage — normally video.duration. But the sheet answers as soon as a
+// Drive link is pasted, well before a local video file is picked (the two
+// are separate steps now — see the reorder in index.html), and the labels
+// it returns are worth seeing immediately rather than waiting on a file
+// dialog. So: fall back to the furthest label end when there's no real
+// video yet. Real video.duration takes over the moment loadedmetadata fires
+// (player.js calls renderTimelineOverlay() there) and every position is
+// redrawn to scale, so the fallback only ever matters for this in-between
+// window.
+function getTimelineDuration() {
+  const video = document.getElementById('video-player');
+  if (video.duration && video.duration > 0) return video.duration;
+  let maxEnd = 0;
+  for (const l of state.labels) {
+    const end = Number.isFinite(l.end) ? l.end : l.start;
+    if (Number.isFinite(end) && end > maxEnd) maxEnd = end;
+  }
+  // Cosmetic headroom so the last strip isn't flush against the right edge.
+  return maxEnd > 0 ? maxEnd * 1.02 : 0;
+}
+
 function renderTimelineOverlay() {
   const overlay = document.getElementById('seek-bar-overlay');
   // Round-boundary flags are TWO layers, not one: #round-markers sits inside
@@ -3106,7 +3147,7 @@ function renderTimelineOverlay() {
   const markersLayer = document.getElementById('round-markers');
   const markersScrub = document.getElementById('round-markers-scrub');
   const video = document.getElementById('video-player');
-  const duration = video.duration;
+  const duration = getTimelineDuration();
   overlay.innerHTML = '';
   // Rebuilt every repaint, same as the strips themselves — which owners are
   // visible can change between two of them (a hide, a reorder, phase 2 of a
@@ -3219,8 +3260,7 @@ function renderTimelineOverlay() {
 }
 
 function renderMinimap() {
-  const video = document.getElementById('video-player');
-  const duration = video.duration;
+  const duration = getTimelineDuration();
   const segContainer = document.getElementById('minimap-segments');
   segContainer.innerHTML = '';
 
@@ -3260,6 +3300,10 @@ function updateVideoOverlay() {
   // fires often enough to keep the playhead with the picture. Cheap: one
   // style write, no DOM building.
   updatePlayhead();
+
+  // skeleton.js is optional (loads after player.js, before this file) —
+  // guarded so a stale cache or a future page without it still works.
+  if (typeof drawSkeletonFrame === 'function') drawSkeletonFrame(t);
 
   const roundStarts = state.labels
     .filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))
