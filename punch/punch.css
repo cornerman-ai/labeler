@@ -937,6 +937,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow: hidden;
 }
 .round-span:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+/* Grabbing an edge — see setupRoundSpanDragging() in ui.js. Same visual
+   language as .seek-segment.dragging: brighter fill, boundary bars pop. */
+.round-span.dragging-round {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  border-left-width: 3px; border-right-width: 3px;
+}
 .round-span-label {
   position: absolute; inset: 0; display: flex; align-items: center;
   padding-left: 5px;

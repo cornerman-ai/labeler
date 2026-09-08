@@ -2914,17 +2914,26 @@ function setupKeyboardShortcuts() {
 // once over whether a hidden labeler's boundaries still count (they don't).
 // An unclosed round runs to Infinity; callers that need to draw it clamp to
 // the duration.
-function roundSpans() {
-  const times = (which) => state.labels
-    .filter(l => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
-              && !isLabelerHidden(l))
-    .map(l => l.start)
-    .sort((a, b) => a - b);
-  const starts = times('start'), ends = times('end');
+// Same pairing as roundSpans() below, but keeping each boundary's index into
+// state.labels — renderRoundStrip needs that to wire up dragging (see
+// setupRoundSpanDragging() in ui.js): a round span isn't one row, it's two
+// separate round_start/round_end markers, and moving an edge means mutating
+// and saving whichever one of those it actually is.
+function roundSpansWithIdx() {
+  const marks = (which) => state.labels
+    .map((l, idx) => ({ l, idx }))
+    .filter(({ l }) => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
+                     && !isLabelerHidden(l))
+    .sort((a, b) => a.l.start - b.l.start);
+  const starts = marks('start'), ends = marks('end');
   return starts.map(s => {
-    const e = ends.find(x => x > s);
-    return { start: s, end: e !== undefined ? e : Infinity };
+    const e = ends.find(x => x.l.start > s.l.start);
+    return { start: s.l.start, end: e ? e.l.start : Infinity, startIdx: s.idx, endIdx: e ? e.idx : null };
   });
+}
+
+function roundSpans() {
+  return roundSpansWithIdx().map(({ start, end }) => ({ start, end }));
 }
 
 // A punch thrown outside every round is one the training pipeline DISCARDS.
@@ -3094,6 +3103,14 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       span.style.width = Math.max(Math.min(100, rt) - Math.max(0, l), 0.4) + '%';
       span.title = `Round ${i + 1} — ${formatTime(r.start)} → ${formatTime(r.end)}`;
       span.innerHTML = `<span class="round-span-label">Round ${i + 1}</span>`;
+      // Read by setupRoundSpanDragging() in ui.js — a round span is really
+      // two separate round_start/round_end rows, not one, so dragging an
+      // edge needs to know which state.labels index that edge actually is.
+      // '' (not omitted) when there's no closing/opening marker, so the
+      // dataset key is never left pointing at a stale index from a
+      // previous render.
+      span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
+      span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
       span.addEventListener('click', seek(r.start));
       markersLayer.appendChild(span);
     });
@@ -3157,11 +3174,13 @@ function renderTimelineOverlay() {
   if (markersScrub) markersScrub.innerHTML = '';
   if (!duration || duration <= 0) return;
 
-  // One shared definition — see roundSpans(). An unclosed round comes back
-  // as Infinity; on screen it runs to the end of the video.
-  const rounds = roundSpans().map(r => ({
+  // One shared definition — see roundSpansWithIdx(). An unclosed round comes
+  // back as Infinity; on screen it runs to the end of the video.
+  const rounds = roundSpansWithIdx().map(r => ({
     start: r.start,
     end: Number.isFinite(r.end) ? r.end : duration,
+    startIdx: r.startIdx,
+    endIdx: r.endIdx,
   }));
 
   // Shade areas outside rounds — on the SCRUB track, which no longer zooms,

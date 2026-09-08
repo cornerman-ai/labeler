@@ -651,6 +651,114 @@
     }, true);
   }
 
+  // ── dragging round boundaries on the ribbon ─────────────────────────────
+  // A round span is really TWO separate rows (round_start, round_end), not
+  // one — so unlike a punch strip there's no "move the whole thing", only
+  // "retime this edge". Grab within EDGE px of a round-span's left or right
+  // border to drag that boundary; the middle stays a plain click-to-seek
+  // (app.js's renderRoundStrip already wires that). Same admin-over-foreign
+  // rule as everywhere else: isForeignLabel()/refuseForeign() (app.js) are
+  // the actual gate, so an admin can retime a boundary that belongs to
+  // someone else's sheet exactly like they can already edit one via the
+  // pencil in the Labels list — this just adds the drag as a second way in,
+  // matching how a regular label can be dragged OR edited from the list.
+  function setupRoundSpanDragging() {
+    const layer = $('round-markers'), video = $('video-player'), seekBar = $('seek-bar');
+    if (!layer || !video || !seekBar) return;
+
+    const EDGE = 7;
+    let drag = null, moved = false;
+
+    const timeAt = (clientX) => {
+      const r = seekBar.getBoundingClientRect();
+      return viewportPctToTime(((clientX - r.left) / r.width) * 100, video.duration);
+    };
+    const snap = (t) => {
+      const f = state.frameDuration || 1 / 30;
+      return Math.max(0, Math.min(video.duration || 0, Math.round(t / f) * f));
+    };
+    // null in the middle: that's the span's own click-to-seek territory,
+    // not a resize — same "narrower than EDGE*2 just isn't grabbable at
+    // either end" tradeoff setupSegmentEditing() makes for punch strips.
+    const zoneOf = (el, clientX) => {
+      const r = el.getBoundingClientRect();
+      if (clientX - r.left <= EDGE) return 'start';
+      if (r.right - clientX <= EDGE) return 'end';
+      return null;
+    };
+    const idxFor = (el, zone) => {
+      const raw = zone === 'start' ? el.dataset.startIdx : el.dataset.endIdx;
+      return raw === '' || raw === undefined ? null : +raw;
+    };
+
+    layer.addEventListener('mousemove', (e) => {
+      const el = e.target.closest('.round-span');
+      if (drag || !el) return;
+      el.style.cursor = zoneOf(el, e.clientX) ? 'ew-resize' : '';
+    });
+    layer.addEventListener('mouseleave', (e) => {
+      const el = e.target.closest && e.target.closest('.round-span');
+      if (el) el.style.cursor = '';
+    });
+
+    layer.addEventListener('mousedown', (e) => {
+      const el = e.target.closest('.round-span');
+      if (!el || e.button !== 0) return;
+      const zone = zoneOf(el, e.clientX);
+      if (!zone) return;   // middle — let the span's own click-to-seek run
+      const idx = idxFor(el, zone);
+      const label = idx != null ? state.labels[idx] : null;
+      // Same silent fall-through as setupSegmentEditing()'s own mousedown
+      // guard: a foreign boundary (non-admin) just isn't a drag handle, so
+      // the click behaves like clicking anywhere else on the span instead
+      // of popping a toast for what looked like an ordinary click.
+      if (!label || (typeof isForeignLabel === 'function' && isForeignLabel(label))) return;
+      drag = { idx, grab: timeAt(e.clientX), start0: label.start };
+      moved = false;
+      el.classList.add('dragging-round');
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const label = state.labels[drag.idx];
+      if (!label) { drag = null; return; }
+      const dt = timeAt(e.clientX) - drag.grab;
+      if (Math.abs(dt) > 1e-4) moved = true;
+      label.start = snap(drag.start0 + dt);
+      // Round markers are instant flags (start === end at creation — see
+      // mergeForeignRoundMarkers()/addRoundMarker() in app.js); keep that
+      // invariant true after a drag too, same as any other reader of this
+      // row would expect.
+      label.end = label.start;
+      video.currentTime = label.start;
+      if (typeof renderTimelineOverlay === 'function') renderTimelineOverlay();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!drag) return;
+      const label = state.labels[drag.idx];
+      const changed = moved && label && label.start !== drag.start0;
+      drag = null;
+      document.querySelectorAll('.round-span.dragging-round').forEach(el => el.classList.remove('dragging-round'));
+      if (!changed) return;
+      renderLabels();
+      showToast('Round boundary moved to ' + formatTime(label.start), 'success');
+      updateLabelInSheet(label);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !drag) return;
+      const label = state.labels[drag.idx];
+      if (label) { label.start = drag.start0; label.end = drag.start0; }
+      drag = null; moved = false;
+      document.querySelectorAll('.round-span.dragging-round').forEach(el => el.classList.remove('dragging-round'));
+      renderLabels();
+      e.stopPropagation();
+    }, true);
+  }
+
   // ── right-click a strip: highlight it in the panel, or delete it ───────
   // Two actions worth their own menu — Highlight jumps the Labels panel to
   // (and flashes) this exact chip's row without hunting a scrolled list;
@@ -999,6 +1107,7 @@
     setupScrubOverview();
     setupTimelineWheelZoom();
     setupSegmentEditing();
+    setupRoundSpanDragging();
     setupZoomedClickToSeek();
     setupSegmentContextMenu();
     setupTimeEdit();
