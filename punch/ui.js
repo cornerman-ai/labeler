@@ -414,6 +414,13 @@
       video.classList.toggle('sharp', z >= SHARP_AT);
       viewport.classList.toggle('zoomed', on);
       if (badge) { badge.hidden = !on; badge.textContent = z.toFixed(1) + '×'; }
+      // skeleton.js's canvas tracks #video-player's rendered box, but it
+      // only repositions from a video 'timeupdate'/requestVideoFrameCallback
+      // — neither of which fires from a zoom while paused. Without this the
+      // overlay stayed put wherever it last drew and the picture zoomed out
+      // from under it. drawSkeletonFrame() re-measures the box AND redraws
+      // in one call, so this is enough even while playing.
+      if (typeof drawSkeletonFrame === 'function') drawSkeletonFrame(video.currentTime);
     };
 
     const reset = () => { z = 1; tx = 0; ty = 0; apply(); };
