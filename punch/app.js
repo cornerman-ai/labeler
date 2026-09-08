@@ -217,6 +217,10 @@ Object.assign(state, {
   // Not persisted and not shared: it only ever holds entries for actions
   // taken in THIS tab this session.
   undoStack: [],
+  // Ctrl+C/Ctrl+X target — {punch, angle, duration}, not a label object:
+  // pasting makes a genuinely new label (own id, own punch_uuid), not a
+  // second reference to the one that was copied. See copyHighlightedLabel().
+  clipboardLabel: null,
   roundActive: false,
   unsureFilter: false,
   // Other labelers' punch/defense rows are fetched every load (see
@@ -1409,10 +1413,91 @@ function renderAgreement() {
 // Clicking a row in the Labels panel lights that row AND its strip on the
 // timeline — including on another labeler's lane, so "which of these is the
 // one I'm reading" is answerable in both directions. Clicking the same row
-// again clears it.
+// again clears it. The reverse direction — clicking a move's strip ON the
+// timeline (ui.js's setupSegmentEditing click handler) — also lands here,
+// which is what makes that scroll the Labels panel to match: same "which of
+// these is the one I'm looking at" question, just asked from the other side.
 function highlightLabel(label) {
-  state.highlightedLabel = state.highlightedLabel === label ? null : label;
+  const turningOn = state.highlightedLabel !== label;
+  state.highlightedLabel = turningOn ? label : null;
   renderLabels();
+  // Scroll-to only on the way IN — toggling a highlight off shouldn't yank
+  // the panel's scroll position back to wherever that row happened to be.
+  if (!turningOn) return;
+  const idx = state.labels.indexOf(label);
+  if (idx === -1) return;
+  const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);
+  if (!entry) return;
+  entry.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  entry.classList.remove('label-flash');
+  void entry.offsetWidth;    // restart the animation if it's already mid-flash
+  entry.classList.add('label-flash');
+}
+
+// ============================================================
+// Copy / cut / paste — Ctrl+C / Ctrl+X / Ctrl+V on the highlighted label.
+// Round markers are excluded: a boundary isn't a "move" to duplicate, and
+// two round_start rows at different times has no sensible meaning the way
+// two jabs does. Scoped the same way undo is — see the comment above
+// pushUndo() — to what's actually a labeling action.
+// ============================================================
+function copyHighlightedLabel() {
+  const label = state.highlightedLabel;
+  if (!label || label.isRoundMarker) return;
+  state.clipboardLabel = { punch: label.punch, angle: label.angle, duration: label.end - label.start };
+  showToast(`Copied: ${punchLabel(label.punch)}`, 'info');
+}
+
+function cutHighlightedLabel() {
+  const label = state.highlightedLabel;
+  if (!label || label.isRoundMarker) return;
+  if (refuseForeign(label)) return;
+  copyHighlightedLabel();
+  const idx = state.labels.indexOf(label);
+  if (idx === -1) return;
+  state.highlightedLabel = null;   // the row it referred to is about to be gone
+  deleteLabel(idx);                // handles its own undo entry + sheet delete
+}
+
+// Pastes at the CURRENT playhead — not at the copied label's original time,
+// since "paste" here means "make another one of these, now", the same way
+// captureTimestamp() makes a fresh one from wherever the video is paused.
+// Duration is preserved from the copy so a repeated combo keeps its shape.
+function pasteLabelAtPlayhead() {
+  if (state.isAdmin) {
+    showToast('Admin can edit and delete any label, but not create new ones.', 'error');
+    return;
+  }
+  const clip = state.clipboardLabel;
+  if (!clip) return;
+  const video = document.getElementById('video-player');
+  const start = video.currentTime;
+  const label = {
+    id: null,
+    punch_uuid: crypto.randomUUID(),
+    punch: clip.punch,
+    angle: clip.angle || '',
+    start,
+    end: start + clip.duration,
+    videoName: normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName,
+    timestamp: new Date().toISOString(),
+  };
+  state.labels.push(label);
+  pushUndo({
+    label,
+    desc: 'Undid paste: ' + punchLabel(label.punch),
+    undo: () => {
+      const i = state.labels.indexOf(label);
+      if (i === -1) return;
+      state.labels.splice(i, 1);
+      renderLabels();
+      if (label.id != null) deleteLabelFromSheet(label);
+      else label._pendingCancel = true;
+    },
+  });
+  renderLabels();
+  pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
+  showToast(`Pasted: ${punchLabel(label.punch)} at ${formatTime(label.start)}`, 'success');
 }
 
 function selectPunch(punchId) {
@@ -2985,6 +3070,36 @@ function setupKeyboardShortcuts() {
         }
         break;
 
+      // Copy/cut/paste act on whichever label is currently highlighted —
+      // the same "selection" a click on a strip or a Labels-panel row
+      // already sets (see highlightLabel()). Only intercepted with a
+      // modifier held: plain 'C' stays the Duck shortcut below, and with
+      // nothing highlighted the browser's own copy/cut for a text
+      // selection elsewhere on the page is left alone.
+      case 'KeyC':
+        if (e.ctrlKey || e.metaKey) {
+          if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
+          e.preventDefault();
+          copyHighlightedLabel();
+        } else {
+          selectPunch('duck');
+        }
+        break;
+      case 'KeyX':
+        if (e.ctrlKey || e.metaKey) {
+          if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
+          e.preventDefault();
+          cutHighlightedLabel();
+        }
+        break;
+      case 'KeyV':
+        if (e.ctrlKey || e.metaKey) {
+          if (!state.clipboardLabel) break;
+          e.preventDefault();
+          pasteLabelAtPlayhead();
+        }
+        break;
+
       // Numpad: plain = head punch, Shift = body punch
       case 'Numpad1': selectPunch(e.shiftKey ? 'jab_body' : 'jab_head'); break;
       case 'Numpad2': selectPunch(e.shiftKey ? 'cross_body' : 'cross_head'); break;
@@ -2999,7 +3114,8 @@ function setupKeyboardShortcuts() {
       case 'KeyA': selectPunch('lead_roll'); break;
       case 'KeyD': selectPunch('rear_roll'); break;
       case 'KeyR': selectPunch('pull_back'); break;
-      case 'KeyC': selectPunch('duck'); break;
+      // 'KeyC' (Duck, unmodified) is handled above, merged with the
+      // Ctrl+C/copy branch — a switch can't have two cases for the same key.
       case 'KeyU': selectPunch('unsure'); break;
     }
   });
