@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260908e">
+  <link rel="stylesheet" href="punch.css?v=20260908f">
 </head>
 <body>
   <div id="app">
@@ -450,7 +450,7 @@
       <div class="sc-row"><span>Pull back / duck</span><span class="sc-keys"><kbd>R</kbd><kbd>C</kbd></span></div>
       <div class="sc-row"><span>Unsure</span><span class="sc-keys"><kbd>U</kbd></span></div>
       <div class="sc-row"><span>Cancel the move being built</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
-      <div class="sc-row"><span>Undo last label</span><span class="sc-keys"><kbd>Z</kbd></span></div>
+      <div class="sc-row"><span>Undo your last action (add, delete, edit, or drag — punches and rounds alike)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Z</kbd></span></div>
 
       <p class="sc-sec">Fixing a label</p>
       <div class="sc-row"><span>Slide a punch along the timeline</span><span class="sc-keys"><kbd>Drag its strip</kbd></span></div>
@@ -531,13 +531,13 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260908e"></script>
-  <script src="../shared/player.js?v=20260908e"></script>
-  <script src="skeleton.js?v=20260908e"></script>
-  <script src="app.js?v=20260908e"></script>
+  <script src="../shared/labeler_name.js?v=20260908f"></script>
+  <script src="../shared/player.js?v=20260908f"></script>
+  <script src="skeleton.js?v=20260908f"></script>
+  <script src="app.js?v=20260908f"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260908e"></script>
+  <script src="ui.js?v=20260908f"></script>
 </body>
 </html>

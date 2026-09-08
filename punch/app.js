@@ -212,6 +212,11 @@ Object.assign(state, {
   mode: 'start',
   pendingStart: null,
   labels: [],
+  // Undo history for this labeler's own mutations — add/delete/edit/drag,
+  // for both punch labels and round markers. See pushUndo()/performUndo().
+  // Not persisted and not shared: it only ever holds entries for actions
+  // taken in THIS tab this session.
+  undoStack: [],
   roundActive: false,
   unsureFilter: false,
   // Other labelers' punch/defense rows are fetched every load (see
@@ -1505,6 +1510,21 @@ function captureTimestamp() {
     };
 
     state.labels.push(label);
+    pushUndo({
+      label,
+      desc: 'Undid: ' + punchLabel(label.punch),
+      undo: () => {
+        const i = state.labels.indexOf(label);
+        if (i === -1) return;
+        state.labels.splice(i, 1);
+        renderLabels();
+        // The add may still be in flight — if it hasn't got an id back yet,
+        // there's no row to delete. Flag it instead; pushLabelToSheet()
+        // checks the flag the moment the id lands and deletes it then.
+        if (label.id != null) deleteLabelFromSheet(label);
+        else label._pendingCancel = true;
+      },
+    });
     state.mode = 'start';
     state.pendingStart = null;
     // The move is finished, so nothing in the catalogue is "current" any
@@ -1659,6 +1679,10 @@ async function pushLabelToSheet(label) {
     // missing (older builds). Adopt whatever the server persisted.
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
+    // Ctrl+Z landed on this label while the add was still in flight — there
+    // was no id yet for its undo entry to delete, so it just flagged this
+    // instead. Now there is one.
+    if (label._pendingCancel) deleteLabelFromSheet(label);
   } catch (e) {
     console.error('Sheet push failed:', e);
     showToast('Sheet is unreachable — label saved locally, will retry.', 'error');
@@ -1687,6 +1711,24 @@ function addRoundMarker(markerType) {
     timestamp: new Date().toISOString(),
   };
   state.labels.push(label);
+  pushUndo({
+    label,
+    desc: 'Undid: ' + (markerType === 'round_start' ? 'Round Start' : 'Round End'),
+    undo: () => {
+      const i = state.labels.indexOf(label);
+      if (i === -1) return;
+      state.labels.splice(i, 1);
+      // S/E flip state.roundActive BEFORE calling this — undoing the
+      // marker has to undo that flip too, or S would refuse a moment later
+      // claiming a round is already active that no longer has a start.
+      state.roundActive = markerType !== 'round_start';
+      localStorage.setItem('roundActive', String(state.roundActive));
+      updateRoundIndicator();
+      renderLabels();
+      if (label.id != null) deleteLabelFromSheet(label);
+      else label._pendingCancel = true;
+    },
+  });
   renderLabels();
   pushRoundMarkerToSheet(label);
 }
@@ -1713,6 +1755,7 @@ async function pushRoundMarkerToSheet(label) {
     if (result.id != null) label.id = result.id;
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
+    if (label._pendingCancel) { deleteLabelFromSheet(label); return; }
     showToast(`${label.punch} saved at ${formatTime(label.start)}`, 'success');
     fetchLabelsFromSheet();
   } catch (e) {
@@ -1756,6 +1799,10 @@ function setupDriveLink() {
     debounceTimer = setTimeout(() => {
       if (input.value.trim()) {
         state.labels = [];
+        // A fresh video means a fresh set of rows — an undo entry pointing
+        // at a label from whatever was open before would be meaningless
+        // (and its `idx` would land who-knows-where in the new list).
+        state.undoStack = [];
         fetchLabelsFromSheet(true);
       }
     }, 500);
@@ -2550,7 +2597,19 @@ function saveEditRoundMarker(idx) {
     return;
   }
 
+  const before = { start: label.start, end: label.end };
+  pushUndo({
+    label,
+    desc: 'Undid edit: ' + (label.punch === 'round_start' ? 'Round Start' : 'Round End'),
+    undo: () => {
+      Object.assign(label, before);
+      renderLabels();
+      updateLabelInSheet(label);
+    },
+  });
+
   label.start = start;
+  label.end = start;
 
   entry.classList.remove('editing');
   renderLabels();
@@ -2575,6 +2634,17 @@ function saveEditLabel(idx) {
     return;
   }
 
+  const before = { punch: label.punch, start: label.start, end: label.end };
+  pushUndo({
+    label,
+    desc: 'Undid edit: ' + punchLabel(before.punch),
+    undo: () => {
+      Object.assign(label, before);
+      renderLabels();
+      updateLabelInSheet(label);
+    },
+  });
+
   label.punch = punch;
   label.start = start;
   label.end = end;
@@ -2596,6 +2666,22 @@ function cancelEdit(idx) {
 function deleteLabel(idx) {
   const label = state.labels[idx];
   if (refuseForeign(label)) return;
+  pushUndo({
+    label,
+    desc: 'Restored: ' + (label.isRoundMarker
+      ? (label.punch === 'round_start' ? 'Round Start' : 'Round End')
+      : punchLabel(label.punch)),
+    undo: () => {
+      // The sheet delete below is a hard row-delete (see doGet's `delete`
+      // action) — there's no row left to resurrect, so undo re-creates it
+      // the same way the original label was made, and gets a fresh id.
+      label.id = null;
+      state.labels.splice(idx, 0, label);
+      renderLabels();
+      if (label.isRoundMarker) pushRoundMarkerToSheet(label);
+      else pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
+    },
+  });
   state.labels.splice(idx, 1);
   renderLabels();
   deleteLabelFromSheet(label);
@@ -2622,15 +2708,39 @@ function highlightLabelInPanel(idx) {
   entry.classList.add('label-flash');
 }
 
-function undoLastLabel() {
-  for (let i = state.labels.length - 1; i >= 0; i--) {
-    if (isForeignLabel(state.labels[i])) continue;   // see refuseForeign() above
-    const label = state.labels.splice(i, 1)[0];
-    renderLabels();
-    deleteLabelFromSheet(label);
-    showToast('Undid last label', 'info');
+// ============================================================
+// Undo — Ctrl+Z (and plain Z, same as before), for every mutation this
+// labeler makes: adding, deleting, editing or dragging a punch label OR a
+// round marker. Each mutator below pushes ONE entry right when it commits
+// the change, carrying enough of a snapshot to put it back and re-sync the
+// sheet — there's no single global "state before" snapshot, since replaying
+// one action at a time (rather than rewinding the whole label set) is what
+// lets undo interleave correctly with the outbox/async saves already in
+// flight for OTHER labels.
+//
+// Deliberately scoped to labeling, not general page state (filters, tabs,
+// zoom, the labeler name field, ...) — those aren't "did I get this right"
+// mistakes the way a label's time or type is, and undoing them would just
+// make Ctrl+Z unpredictable for the thing it's actually for.
+const UNDO_STACK_LIMIT = 50;
+
+function pushUndo(entry) {
+  state.undoStack.push(entry);
+  if (state.undoStack.length > UNDO_STACK_LIMIT) state.undoStack.shift();
+}
+
+function performUndo() {
+  while (state.undoStack.length) {
+    const entry = state.undoStack.pop();
+    // Guards the same way every other mutation does — see isForeignLabel().
+    // Can only fire if admin flips their own identity mid-session (the name
+    // field), since undo entries are otherwise always this labeler's own.
+    if (isForeignLabel(entry.label)) continue;
+    entry.undo();
+    showToast(entry.desc, 'info');
     return;
   }
+  showToast('Nothing to undo', 'info');
 }
 
 async function updateLabelInSheet(label) {
@@ -2869,12 +2979,9 @@ function setupKeyboardShortcuts() {
         break;
 
       case 'KeyZ':
-        if (e.ctrlKey || e.metaKey) {
+        if (!e.altKey) {
           e.preventDefault();
-          undoLastLabel();
-        } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.preventDefault();
-          undoLastLabel();
+          performUndo();
         }
         break;
 

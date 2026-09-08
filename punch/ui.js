@@ -598,12 +598,23 @@
     window.addEventListener('mouseup', () => {
       if (!drag) return;
       const label = state.labels[drag.idx];
-      const changed = moved && label &&
-        (label.start !== drag.start0 || label.end !== drag.end0);
+      const { start0, end0 } = drag;
+      const changed = moved && label && (label.start !== start0 || label.end !== end0);
       drag = null;
       lanes.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
       hideTip();
       if (!changed) return;
+      if (typeof pushUndo === 'function') {
+        pushUndo({
+          label,
+          desc: 'Undid move: ' + punchLabel(label.punch),
+          undo: () => {
+            label.start = start0; label.end = end0;
+            renderLabels();
+            updateLabelInSheet(label);
+          },
+        });
+      }
       renderLabels();
       showToast('Moved to ' + formatTime(label.start) + ' → ' + formatTime(label.end), 'success');
       updateLabelInSheet(label);
@@ -739,10 +750,22 @@
     window.addEventListener('mouseup', () => {
       if (!drag) return;
       const label = state.labels[drag.idx];
-      const changed = moved && label && label.start !== drag.start0;
+      const { start0 } = drag;
+      const changed = moved && label && label.start !== start0;
       drag = null;
       document.querySelectorAll('.round-span.dragging-round').forEach(el => el.classList.remove('dragging-round'));
       if (!changed) return;
+      if (typeof pushUndo === 'function') {
+        pushUndo({
+          label,
+          desc: 'Undid round boundary move',
+          undo: () => {
+            label.start = start0; label.end = start0;
+            renderLabels();
+            updateLabelInSheet(label);
+          },
+        });
+      }
       renderLabels();
       showToast('Round boundary moved to ' + formatTime(label.start), 'success');
       updateLabelInSheet(label);
