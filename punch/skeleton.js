@@ -16,13 +16,14 @@ Object.assign(state, {
   skeleton: { rounds: [], visible: false },
 });
 
-// Body edges (mediapipe POSE_CONNECTIONS) plus the nose (joint 0) wired to
-// both shoulders as a simple head/neck triangle — a boxer's stance and
-// guard read fine off the torso/limbs alone, so the rest of the face mesh
-// (joints 1-10: eyes, ears, mouth) stays out as clutter, but head position
-// itself matters for guard height and chin tuck, and the nose is the one
-// face landmark BlazePose tracks cleanly enough to be worth showing.
+// Body edges (mediapipe POSE_CONNECTIONS) plus a small head triangle — nose
+// (0) to each eye (2, 5) — wired down to both shoulders. Head position
+// matters for guard height and chin tuck, so it's tracked as more than one
+// floating dot; the rest of the face mesh (eye corners, ears, mouth —
+// joints 1,3,4,6-10) stays out as clutter BlazePose tracks less reliably
+// anyway.
 const SKELETON_EDGES = [
+  [0, 2], [0, 5], [2, 5],
   [0, 11], [0, 12],
   [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
   [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
@@ -30,9 +31,8 @@ const SKELETON_EDGES = [
   [23, 25], [25, 27], [27, 29], [29, 31], [27, 31],
   [24, 26], [26, 28], [28, 30], [30, 32], [28, 32],
 ];
-// Joints drawn as dots — the nose plus every body landmark, skipping the
-// rest of the face (1-10).
-const SKELETON_DOT_JOINTS = [0, ...Array.from({ length: 22 }, (_, i) => i + 11)];
+// Joints drawn as dots — the head triangle plus every body landmark.
+const SKELETON_DOT_JOINTS = [0, 2, 5, ...Array.from({ length: 22 }, (_, i) => i + 11)];
 const VISIBILITY_THRESHOLD = 0.5;
 
 // ============================================================
@@ -235,9 +235,13 @@ function drawSkeletonFrame(t) {
   const visible = (j) => r.visIdx < 0 || at(j, r.visIdx) >= VISIBILITY_THRESHOLD;
   const px = (j) => [at(j, r.xIdx) * W, at(j, r.yIdx) * H];
 
-  ctx.lineWidth = Math.max(2, W / 260);
-  ctx.strokeStyle = 'rgba(56, 220, 140, 0.9)';
-  ctx.fillStyle = 'rgba(56, 220, 140, 0.95)';
+  // Thin light bones, bright filled joints — the same visual language a
+  // pose-estimation demo uses: the SKELETON is a faint guide, the JOINTS
+  // are what you actually read the pose off of, so they carry the weight
+  // and the contrast.
+  ctx.lineWidth = Math.max(1, W / 500);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.lineCap = 'round';
   for (const [a, b] of SKELETON_EDGES) {
     if (a >= r.nJoints || b >= r.nJoints || !visible(a) || !visible(b)) continue;
     const [ax, ay] = px(a), [bx, by] = px(b);
@@ -246,13 +250,17 @@ function drawSkeletonFrame(t) {
     ctx.lineTo(bx, by);
     ctx.stroke();
   }
-  const dotR = Math.max(2.5, W / 200);
+  const dotR = Math.max(3, W / 140);
+  ctx.fillStyle = '#5CE65C';
+  ctx.strokeStyle = 'rgba(0, 40, 0, 0.55)';
+  ctx.lineWidth = Math.max(0.75, dotR / 4);
   for (const j of SKELETON_DOT_JOINTS) {
     if (j >= r.nJoints || !visible(j)) continue;
     const [x, y] = px(j);
     ctx.beginPath();
     ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   }
 }
 
