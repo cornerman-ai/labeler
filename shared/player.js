@@ -163,6 +163,8 @@ function setupVideoLoader() {
       if (skName) skName.textContent = 'No skeletons loaded';
       const skToggle = document.getElementById('btn-toggle-skeleton');
       if (skToggle) skToggle.hidden = true;
+      const skAddMore = document.getElementById('btn-add-more-skeletons');
+      if (skAddMore) skAddMore.hidden = true;
       const skStatus = document.getElementById('skeleton-status');
       if (skStatus) skStatus.hidden = true;
       document.getElementById('skeleton-loader')?.classList.remove('ok', 'err');

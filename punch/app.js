@@ -431,10 +431,10 @@ function toggleLabelerHidden(who) {
   updateForeignFilterButton();
   renderLabels();
   updateVideoOverlay();
-  // predictions.js's own dedicated Hide/Show button is a second door onto
-  // this exact same toggle — keep it in sync when the OTHER door (the
-  // Others menu) is the one that got used.
-  if (typeof updatePredictionsToggleButton === 'function') updatePredictionsToggleButton();
+  // predictions.js's own per-model chips are a second door onto this exact
+  // same toggle — keep them in sync when the OTHER door (the Others menu)
+  // is the one that got used.
+  if (typeof renderPredictionsList === 'function') renderPredictionsList();
 }
 
 function updateForeignFilterButton() {

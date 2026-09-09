@@ -18,11 +18,17 @@
 // ============================================================
 
 Object.assign(state, {
-  // The FULL parsed file, never filtered by video — re-matched against
-  // whatever video is open every time applyPredictionsToLabels() runs.
-  // {modelName, rows: [{video, punch, start, end, angle, stance,
-  // trainingType, fighter}]}
-  predictions: { modelName: null, rows: [] },
+  // Every loaded model's FULL parsed file, never filtered by video —
+  // re-matched against whatever video is open every time
+  // applyPredictionsToLabels() runs. One entry per model, in load order:
+  // [{modelName, rows: [{video, punch, start, end, angle, stance,
+  // trainingType, fighter}]}, ...]. Picking a file whose name matches an
+  // already-loaded model REPLACES that entry (see setupPredictionsLoader());
+  // any other name is just added, so several models can be on screen at
+  // once, each in their own timeline lane/colour exactly like a real
+  // labeler — foreignOwnerName()/labelerColor() (app.js) never knew there
+  // was only ever one before.
+  predictionModels: [],
 });
 
 // Deliberately does NOT fall back to a default the way app.js's own
@@ -121,28 +127,37 @@ function predictionMatchesOpenVideo(rowVideo) {
   return !!openName && baseName(rowVideo) === openName;
 }
 
-// Re-derives which of the loaded model's rows apply to whatever video is
+// Re-derives which of EVERY loaded model's rows apply to whatever video is
 // open right now, and folds them into state.labels. Safe to call anytime
-// (new file loaded, video switched, a fresh sheet fetch just replaced the
-// foreign rows out from under these) — it always starts by dropping any
-// prediction rows already in state.labels, so it never double-injects.
+// (a file just loaded or removed, video switched, a fresh sheet fetch just
+// replaced the foreign rows out from under these) — it always starts by
+// dropping any prediction rows already in state.labels, so it never
+// double-injects.
 function applyPredictionsToLabels() {
   state.labels = state.labels.filter(l => !l.isPrediction);
-  const { modelName, rows } = state.predictions;
-  if (!modelName || !rows.length) { renderLabels(); return 0; }
   let matched = 0;
-  for (const r of rows) {
-    if (!predictionMatchesOpenVideo(r.video)) continue;
-    state.labels.push({
-      id: null, punch_uuid: '', punch: r.punch, angle: r.angle,
-      start: r.start, end: r.end, videoName: r.video,
-      foreign: true, isPrediction: true, predictionModel: modelName,
-      sheetName: null, fromSheet: false, isRoundMarker: false,
-    });
-    matched++;
+  for (const { modelName, rows } of state.predictionModels) {
+    for (const r of rows) {
+      if (!predictionMatchesOpenVideo(r.video)) continue;
+      state.labels.push({
+        id: null, punch_uuid: '', punch: r.punch, angle: r.angle,
+        start: r.start, end: r.end, videoName: r.video,
+        foreign: true, isPrediction: true, predictionModel: modelName,
+        sheetName: null, fromSheet: false, isRoundMarker: false,
+      });
+      matched++;
+    }
   }
   renderLabels();
   return matched;
+}
+
+// How many of one model's rows matched the currently open video — derived
+// from state.labels rather than kept as a separate tally, so it's always
+// exactly what applyPredictionsToLabels() last computed and can never go
+// stale relative to what the chip is describing.
+function countMatchedPredictionRows(modelName) {
+  return state.labels.filter(l => l.isPrediction && l.predictionModel === modelName).length;
 }
 
 // ============================================================
@@ -204,66 +219,137 @@ function askPredictionName(fallback) {
   });
 }
 
-// Rides the SAME per-owner mute the Others menu already has — a model's
-// rows are just another "owner" as far as toggleLabelerHidden()/
-// isLabelerHidden() (app.js) are concerned, so hiding "Rolly" from here and
-// un-hiding it from the Others menu are literally the same toggle either
-// way. Only the button's own on/off look is specific to this row.
-function updatePredictionsToggleButton() {
-  const btn = document.getElementById('btn-toggle-predictions');
-  if (!btn) return;
-  const name = state.predictions.modelName;
-  if (!name) { btn.hidden = true; return; }
-  btn.hidden = false;
-  const hidden = typeof state.hiddenLabelers !== 'undefined' && state.hiddenLabelers.has(name);
-  btn.textContent = hidden ? 'Show' : 'Hide';
-  btn.classList.toggle('pred-hidden', hidden);
+// Bare-minimum escaping for the one piece of free text here that's
+// entirely the labeler's own typing (askPredictionName) rather than
+// something already trusted elsewhere in the app — the chips below build
+// their markup with innerHTML, so this keeps a name like `<b>x` inert.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+// The compact "No predictions loaded" / "N models loaded" line above the
+// chip list — the chips themselves already carry each model's own name and
+// count, so this only has to say how many there are.
+function updatePredictionsSummary() {
+  const el = document.getElementById('predictions-name');
+  const addBtn = document.getElementById('btn-add-more-predictions');
+  if (!el) return;
+  const models = state.predictionModels;
+  if (!models.length) {
+    el.textContent = 'No predictions loaded';
+  } else if (models.length === 1) {
+    const n = countMatchedPredictionRows(models[0].modelName);
+    el.textContent = `${models[0].modelName} — ${n} row${n === 1 ? '' : 's'}`;
+  } else {
+    el.textContent = `${models.length} models loaded`;
+  }
+  // Only worth showing once there's something to add TO — see the button's
+  // own comment in index.html.
+  if (addBtn) addBtn.hidden = models.length === 0;
+}
+
+// One chip per loaded model — name, its row count ON THIS VIDEO, a
+// Hide/Show (rides the SAME per-owner mute the Others menu already has:
+// toggleLabelerHidden()/isLabelerHidden() in app.js don't know or care
+// whether "who" is a real labeler or a model, so hiding "Rolly" here and
+// from the Others menu is literally the same toggle either way) and a
+// remove ×. Rebuilt from scratch on every call — same trade as every other
+// list in this app (renderLabels(), the Others/Types menus): simpler than
+// diffing, and this list is never more than a handful of rows.
+function renderPredictionsList() {
+  const container = document.getElementById('predictions-list');
+  if (!container) return;
+  container.innerHTML = '';
+  container.hidden = state.predictionModels.length === 0;
+  for (const { modelName } of state.predictionModels) {
+    const count = countMatchedPredictionRows(modelName);
+    const hidden = !!(state.hiddenLabelers && state.hiddenLabelers.has(modelName));
+    const chip = document.createElement('span');
+    chip.className = 'pred-chip' + (hidden ? ' pred-hidden' : '');
+    chip.style.setProperty('--who', typeof labelerColor === 'function' ? labelerColor(modelName) : '');
+    chip.innerHTML = `
+      <span class="pred-chip-name">${escapeHtml(modelName)}</span>
+      <span class="pred-chip-count">${count}</span>
+      <button type="button" class="pred-chip-toggle" title="${hidden ? 'Show' : 'Hide'} ${escapeHtml(modelName)}">${hidden ? 'Show' : 'Hide'}</button>
+      <button type="button" class="pred-chip-remove" title="Remove ${escapeHtml(modelName)}">&times;</button>
+    `;
+    chip.querySelector('.pred-chip-toggle').onclick = () => {
+      if (typeof toggleLabelerHidden === 'function') toggleLabelerHidden(modelName);
+      renderPredictionsList();
+    };
+    chip.querySelector('.pred-chip-remove').onclick = () => {
+      state.predictionModels = state.predictionModels.filter(m => m.modelName !== modelName);
+      applyPredictionsToLabels();
+      renderPredictionsList();
+      updatePredictionsSummary();
+    };
+    container.appendChild(chip);
+  }
+  updatePredictionsSummary();
+}
+
+// Reads and names ONE file, folding it into state.predictionModels — does
+// NOT re-derive state.labels or repaint, so the caller can run this over a
+// whole multi-file pick and pay applyPredictionsToLabels()/
+// renderPredictionsList() only once at the end.
+async function loadOnePredictionsFile(file) {
+  try {
+    const { rows, skipped, modelName: fileModelName } = await loadPredictionsFile(file);
+    // The file name is only a STARTING guess — export naming conventions
+    // vary ("Rolly_predicted_rolls_v3.xlsx"), and whatever's confirmed here
+    // is what shows EVERYWHERE (lane, badge, tooltip, the Others menu), so
+    // it has to be something the labeler actually wants to see, not
+    // whatever the file happened to be called.
+    const modelName = await askPredictionName(fileModelName);
+    if (!modelName) return null;
+    // A name that matches an already-loaded model REPLACES its rows in
+    // place — "reload this model's predictions", not "load a second copy
+    // of the same model". Anything else is just added.
+    const existing = state.predictionModels.find(m => m.modelName === modelName);
+    if (existing) existing.rows = rows;
+    else state.predictionModels.push({ modelName, rows });
+    // A freshly (re)loaded model starts unhidden — otherwise re-picking one
+    // whose old name you'd hidden would silently stay invisible with no
+    // visible reason why.
+    if (state.hiddenLabelers) state.hiddenLabelers.delete(modelName);
+    return { modelName, skipped };
+  } catch (err) {
+    console.error('Predictions load failed:', file.name, err);
+    setPredictionsStatus('err', `${file.name}: ${err.message || 'could not be read'}`);
+    return null;
+  }
 }
 
 function setupPredictionsLoader() {
   const input = document.getElementById('predictions-file');
-  const nameEl = document.getElementById('predictions-name');
-  const toggleBtn = document.getElementById('btn-toggle-predictions');
   if (!input) return;
 
+  // multiple: picking several .xlsx at once loads them as separate,
+  // independently named models in one go — see loadOnePredictionsFile()
+  // above, run once per file in sequence (so each gets its own naming
+  // prompt, one at a time, the same prompt a single pick has always used).
   input.addEventListener('change', async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    setPredictionsStatus('syncing', 'Reading…');
-    try {
-      const { rows, skipped, modelName: fileModelName } = await loadPredictionsFile(file);
-      // The file name is only a STARTING guess — export naming conventions
-      // vary ("Rolly_predicted_rolls_v3.xlsx"), and whatever shows here is
-      // what shows EVERYWHERE (lane, badge, tooltip, the Others menu), so
-      // it has to be something the labeler actually wants to see, not
-      // whatever the file happened to be called.
-      const modelName = await askPredictionName(fileModelName);
-      // A freshly (re)loaded file starts unhidden — otherwise re-picking a
-      // model whose old name you'd hidden would silently stay invisible
-      // with no visible reason why.
-      if (modelName && state.hiddenLabelers) state.hiddenLabelers.delete(modelName);
-      state.predictions = { modelName, rows };
-      if (nameEl) nameEl.textContent = modelName ? `${modelName} — ${rows.length} row${rows.length === 1 ? '' : 's'}` : 'No predictions loaded';
-      const matched = applyPredictionsToLabels();
-      updatePredictionsToggleButton();
-      setPredictionsStatus('ok', skipped
-        ? `${matched} on this video, ${skipped} skipped`
-        : `${matched} on this video`);
-    } catch (err) {
-      console.error('Predictions load failed:', err);
-      state.predictions = { modelName: null, rows: [] };
-      applyPredictionsToLabels();
-      if (nameEl) nameEl.textContent = 'No predictions loaded';
-      updatePredictionsToggleButton();
-      setPredictionsStatus('err', err.message || 'Could not read that file');
+    const files = Array.from(e.target.files || []);
+    input.value = '';   // lets the same file(s) be re-picked later without a no-op change event
+    if (!files.length) return;
+    setPredictionsStatus('syncing', files.length > 1 ? `Reading ${files.length} files…` : 'Reading…');
+    const loaded = [];
+    for (const file of files) {
+      const result = await loadOnePredictionsFile(file);
+      if (result) loaded.push(result);
     }
-  });
-
-  toggleBtn?.addEventListener('click', () => {
-    const name = state.predictions.modelName;
-    if (!name || typeof toggleLabelerHidden !== 'function') return;
-    toggleLabelerHidden(name);   // app.js — same as the Others menu's own per-row toggle
-    updatePredictionsToggleButton();
+    applyPredictionsToLabels();
+    renderPredictionsList();
+    if (!loaded.length) {
+      if (!state.predictionModels.length) setPredictionsStatus('err', 'Could not read that file');
+      return;
+    }
+    const skipped = loaded.reduce((sum, r) => sum + r.skipped, 0);
+    setPredictionsStatus('ok', loaded.length > 1
+      ? `${loaded.length} models loaded${skipped ? `, ${skipped} rows skipped` : ''}`
+      : `${countMatchedPredictionRows(loaded[0].modelName)} on this video${loaded[0].skipped ? `, ${loaded[0].skipped} skipped` : ''}`);
   });
 }
 
@@ -276,5 +362,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // element fires first depends on attachment order across files/scripts —
   // fragile to depend on. 'loadedmetadata' only ever fires once state.
   // videoName is already set, no matter the script load order.
-  document.getElementById('video-player')?.addEventListener('loadedmetadata', () => applyPredictionsToLabels());
+  document.getElementById('video-player')?.addEventListener('loadedmetadata', () => {
+    applyPredictionsToLabels();
+    renderPredictionsList();   // per-model counts are per-video — repaint the chips too
+  });
 });

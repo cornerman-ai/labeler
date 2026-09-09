@@ -233,6 +233,21 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #btn-toggle-skeleton.speed-active { background: var(--accent-solid); color: #fff; }
 #btn-toggle-skeleton[hidden] { display: none; }
 
+/* "+ Add more" — skeleton rounds and prediction models alike. Dashed
+   outline rather than a filled pill on purpose: it reads as "add to this"
+   rather than as a state toggle (#btn-toggle-skeleton/predictions' chips
+   own that solid-pill language already), and only appears once there is
+   something to add to — see setupSkeletonLoader()/setupPredictionsLoader(). */
+#btn-add-more-skeletons, #btn-add-more-predictions {
+  flex: none; height: 24px; padding: 0 9px; border-radius: 999px;
+  border: 1px dashed var(--ink-dim); background: transparent; color: var(--ink-dim);
+  font-size: 11.5px; font-weight: 590; white-space: nowrap;
+}
+#btn-add-more-skeletons:hover, #btn-add-more-predictions:hover {
+  color: var(--ink); border-color: var(--ink-dim); background: var(--fill-2);
+}
+#btn-add-more-skeletons[hidden], #btn-add-more-predictions[hidden] { display: none; }
+
 /* Predictions row — same leading-button pattern as the two above. */
 #predictions-loader { padding-left: 4px; }
 #btn-pick-predictions {
@@ -249,16 +264,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-right: 6px;
 }
-/* Same shape/behaviour as #btn-toggle-skeleton — "on" (visible) is the
-   solid accent pill, same green-accent language as every other engaged
-   toggle in the tool. */
-#btn-toggle-predictions {
-  flex: none; height: 24px; padding: 0 10px; border-radius: 999px;
-  border: 0; background: var(--accent-solid); color: #fff;
-  font-size: 11.5px; font-weight: 590; white-space: nowrap;
+/* One chip per loaded prediction model — see renderPredictionsList() in
+   predictions.js. Wraps rather than scrolling; the row is hidden outright
+   while there's nothing loaded. Indented to line up under the leading
+   button's icon+label above it rather than the row's bare left edge. */
+#predictions-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 8px 0 34px;
 }
-#btn-toggle-predictions.pred-hidden { background: var(--fill-2); color: var(--ink); }
-#btn-toggle-predictions[hidden] { display: none; }
+#predictions-list[hidden] { display: none; }
+.pred-chip {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 4px 3px 9px; border-radius: 999px;
+  background: var(--who, var(--ink-dim)); color: #fff;
+  font-size: 11px; font-weight: 590; line-height: 1;
+}
+.pred-chip-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pred-chip-count { opacity: .75; font-weight: 500; }
+/* Hidden (per the Others menu's same per-owner mute) reads exactly like a
+   muted labeler elsewhere — dimmed, not restyled, so it's still obviously
+   the same chip once shown again. */
+.pred-chip.pred-hidden { opacity: .45; }
+.pred-chip button {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  height: 18px; padding: 0 6px; border-radius: 999px; border: 0;
+  background: rgba(255,255,255,.2); color: #fff;
+  font-size: 10px; font-weight: 620;
+}
+.pred-chip button:hover { background: rgba(255,255,255,.35); }
+.pred-chip-remove { width: 18px; padding: 0; font-size: 12px; }
 
 .nav-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 

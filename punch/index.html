@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260909m">
+  <link rel="stylesheet" href="punch.css?v=20260909o">
 </head>
 <body>
   <div id="app">
@@ -154,34 +154,57 @@
         </button>
         <input type="file" id="skeleton-files" accept=".npy,.json" multiple hidden>
         <span id="skeleton-name">No skeletons loaded</span>
+        <!-- Only shown once at least one round is loaded — a second, later
+             pick MERGES into what's already there (upserted by round
+             number — see setupSkeletonLoader() in skeleton.js) rather than
+             replacing it, so this is the explicit invitation to do that
+             instead of leaving it to be discovered by re-clicking "Open
+             Skeletons" and hoping. -->
+        <button type="button" id="btn-add-more-skeletons" title="Load more round files without losing the ones already loaded" hidden
+                onclick="document.getElementById('skeleton-files').click()">+ Add more</button>
         <button type="button" id="btn-toggle-skeleton" title="Show/hide skeleton overlay" hidden>Show</button>
         <span id="skeleton-status" class="field-status" hidden></span>
       </div>
 
-      <!-- Model predictions for the currently open video, read from an
-           .xlsx shaped like a "Labeled Data X" sheet tab — video_file |
-           punch_type | start_sec | end_sec (see CLAUDE.md's Sheet Columns).
-           predictions.js matches rows to this video and folds them into
-           state.labels as a permanently read-only lane named after
-           whatever the labeler typed in the naming prompt on load
-           (defaulting to the file name minus its extension) — same
-           lane/list/colour machinery a real labeler's rows use, but with
-           no admin bypass: see isForeignLabel() in app.js. Nothing here is
-           ever written back to any sheet. -->
+      <!-- Model predictions for the currently open video, read from one or
+           more .xlsx files each shaped like a "Labeled Data X" sheet tab —
+           video_file | punch_type | start_sec | end_sec (see CLAUDE.md's
+           Sheet Columns). predictions.js matches each file's rows to this
+           video and folds them into state.labels as permanently read-only
+           lanes, one per model, named after whatever the labeler typed in
+           the naming prompt on load (defaulting to that file's name minus
+           its extension) — same lane/list/colour machinery a real
+           labeler's rows use, but with no admin bypass: see
+           isForeignLabel() in app.js. Nothing here is ever written back to
+           any sheet. -->
       <div id="predictions-loader" class="src-field">
         <button id="btn-pick-predictions" onclick="document.getElementById('predictions-file').click()">
           <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" rx="1.8" stroke="currentColor" stroke-width="1.2"/><path d="M4 4.5h6M4 7h6M4 9.5h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
           Open Predictions
         </button>
-        <input type="file" id="predictions-file" accept=".xlsx" hidden>
+        <!-- multiple: picking several files at once loads them as separate,
+             independently named models in one go — see
+             setupPredictionsLoader() in predictions.js. Picking again later
+             ADDS more (or replaces the one whose name you reuse); it never
+             clears what's already loaded — that's what each chip's own ×
+             below is for. -->
+        <input type="file" id="predictions-file" accept=".xlsx" multiple hidden>
         <span id="predictions-name">No predictions loaded</span>
-        <!-- Same per-owner mute the Others menu already has (toggleLabelerHidden()
-             in app.js) — a model's rows are just another "owner" to that
-             system, so hiding them here and un-hiding "Rolly" from the
-             Others menu are the same toggle either way. -->
-        <button type="button" id="btn-toggle-predictions" title="Show/hide these predictions" hidden>Hide</button>
+        <!-- Only shown once at least one model is loaded — the same file
+             input as the button above, just an explicit second door onto it
+             once there's something to add TO, so "you can load more than
+             one" doesn't depend on someone guessing that re-clicking "Open
+             Predictions" adds rather than replaces. -->
+        <button type="button" id="btn-add-more-predictions" title="Load another model's predictions without losing the ones already loaded" hidden
+                onclick="document.getElementById('predictions-file').click()">+ Add more</button>
         <span id="predictions-status" class="field-status" hidden></span>
       </div>
+      <!-- One chip per loaded model — see renderPredictionsList() in
+           predictions.js. Each carries that model's own colour (same as
+           its timeline lane), its row count on the open video, a Hide/Show,
+           and a remove ×. Hidden entirely while empty so the row above
+           stays the same single compact line it always was. -->
+      <div id="predictions-list" hidden></div>
       </div>
     </div>
 
@@ -656,23 +679,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260909m"></script>
-  <script src="../shared/player.js?v=20260909m"></script>
-  <script src="skeleton.js?v=20260909m"></script>
+  <script src="../shared/labeler_name.js?v=20260909o"></script>
+  <script src="../shared/player.js?v=20260909o"></script>
+  <script src="skeleton.js?v=20260909o"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260909m"></script>
-  <script src="predictions.js?v=20260909m"></script>
-  <script src="app.js?v=20260909m"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260909o"></script>
+  <script src="predictions.js?v=20260909o"></script>
+  <script src="app.js?v=20260909o"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260909m"></script>
+  <script src="problems.js?v=20260909o"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260909m"></script>
+  <script src="ui.js?v=20260909o"></script>
 </body>
 </html>
