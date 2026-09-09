@@ -42,6 +42,8 @@ const SKELETON_DOT_JOINTS = [
 // not a measured height, just "spans nearly the whole frame" so it reads as
 // a plumb line rather than a random mark.
 const SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION = 0.95;
+// Same idea, sideways — see drawSkeletonHorizontalGuide().
+const SKELETON_HORIZONTAL_GUIDE_WIDTH_FRACTION = 0.95;
 
 // A joint is ALWAYS drawn now, however unreliable BlazePose says the
 // estimate is — hiding it entirely below a cutoff (the old
@@ -267,6 +269,28 @@ function drawSkeletonVerticalGuide(ctx, px, nJoints, canvasH) {
   ctx.restore();   // setLineDash is context state — undo it before the (solid) bones below
 }
 
+// The horizontal counterpart — a barely-visible dashed line through the
+// shoulder midpoint (joints 11/12), the level line a coach's eye uses for
+// "are the shoulders actually square/level here". Same treatment as the
+// vertical guide: centered on the joint pair, drawn first and behind the
+// skeleton itself.
+function drawSkeletonHorizontalGuide(ctx, px, nJoints, canvasW) {
+  if (nJoints <= 12) return;   // no shoulder joints in this extraction — nothing to center on
+  const [lx, ly] = px(11), [rx, ry] = px(12);
+  const cx = (lx + rx) / 2, cy = (ly + ry) / 2;
+  const half = (canvasW * SKELETON_HORIZONTAL_GUIDE_WIDTH_FRACTION) / 2;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.lineWidth = Math.max(1, canvasW / 700);
+  ctx.setLineDash([canvasW / 90, canvasW / 60]);
+  ctx.beginPath();
+  ctx.moveTo(cx - half, cy);
+  ctx.lineTo(cx + half, cy);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawSkeletonFrame(t) {
   const canvas = document.getElementById('skeleton-canvas');
   if (!canvas) return;
@@ -290,6 +314,7 @@ function drawSkeletonFrame(t) {
   const px = (j) => [at(j, r.xIdx) * W, at(j, r.yIdx) * H];
 
   drawSkeletonVerticalGuide(ctx, px, r.nJoints, H);
+  drawSkeletonHorizontalGuide(ctx, px, r.nJoints, W);
 
   // Thin light bones, bright filled joints — the same visual language a
   // pose-estimation demo uses: the SKELETON is a faint guide, the JOINTS
