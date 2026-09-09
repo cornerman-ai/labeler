@@ -230,6 +230,18 @@ function updateTimeDisplay(overrideTime) {
 
   if (display) display.textContent = `${formatTime(t)} / ${formatTime(video.duration || 0)}`;
 
+  // Optional — only punch/index.html has #frame-display today. Frame
+  // numbers use state.frameDuration, the SAME detected-FPS value
+  // stepFrames() already steps by, so this always agrees with what a
+  // single ← / → press actually moves.
+  const frameEl = document.getElementById('frame-display');
+  if (frameEl) {
+    const fd = state.frameDuration || FRAME_DURATION_FALLBACK;
+    frameEl.textContent = video.duration
+      ? `Frame ${Math.round(t / fd)} / ${Math.round(video.duration / fd)}`
+      : '';
+  }
+
   if (video.duration) {
     const vp = getViewport();
     const norm = t / video.duration;

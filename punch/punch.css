@@ -1230,6 +1230,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    UA stylesheet's `[hidden]{display:none}` on specificity alone. */
 #time-display[hidden], #time-edit[hidden] { display: none !important; }
 
+/* Same pill language as #time-wrap, dimmer text — a secondary reading of
+   the same position, not a second thing to focus on. Read-only (no click-
+   to-edit like the timecode), so no cursor/hover/focus treatment. */
+#frame-display {
+  flex: none; display: grid; place-items: center;
+  height: 32px; min-width: 108px; padding: 0 10px; border-radius: 8px;
+  background: var(--fill); color: var(--ink-dim);
+  font: 500 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+#frame-display:empty { display: none; }
+
 #time-edit {
   width: 100%; border: 0; background: none; text-align: center; padding: 0;
 }

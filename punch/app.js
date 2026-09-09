@@ -3676,6 +3676,19 @@ function renderTimelineOverlay() {
     if (lane) lane.appendChild(seg);
   });
 
+  // Count each lane's own strips AFTER the filtering above already ran —
+  // this is what's actually drawn on THAT row right now, not a video-wide
+  // total, so a Types pick or the Unsure filter narrows the number here
+  // exactly as it narrows the strips themselves. lane.children are only
+  // ever the .seek-segment divs just appended, so its own length is the
+  // count — no separate tally needed. Appended to the label ::before
+  // already reads via attr(data-lane-label) — see .seg-lane::before.
+  if (laneMap) {
+    for (const lane of laneMap.values()) {
+      lane.dataset.laneLabel += ` (${lane.children.length})`;
+    }
+  }
+
   renderMinimap();
   updateMinimapChrome();
   renderTimeTicks();

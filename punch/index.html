@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260909c">
+  <link rel="stylesheet" href="punch.css?v=20260909d">
 </head>
 <body>
   <div id="app">
@@ -368,6 +368,13 @@
                      autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
             </span>
 
+            <!-- Frame count alongside the timecode — player.js's own
+                 updateTimeDisplay() fills this (guarded by the element
+                 existing, so pages without it are unaffected); frame
+                 numbers use state.frameDuration, the same detected-FPS
+                 value stepFrames()/the ← → keys already step by. -->
+            <span id="frame-display" role="status" aria-label="Current frame"></span>
+
             <span class="tdiv"></span>
 
             <!-- Speed. ui.js fills the menu from its own rate list and wraps
@@ -632,23 +639,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260909c"></script>
-  <script src="../shared/player.js?v=20260909c"></script>
-  <script src="skeleton.js?v=20260909c"></script>
+  <script src="../shared/labeler_name.js?v=20260909d"></script>
+  <script src="../shared/player.js?v=20260909d"></script>
+  <script src="skeleton.js?v=20260909d"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260909c"></script>
-  <script src="predictions.js?v=20260909c"></script>
-  <script src="app.js?v=20260909c"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260909d"></script>
+  <script src="predictions.js?v=20260909d"></script>
+  <script src="app.js?v=20260909d"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260909c"></script>
+  <script src="problems.js?v=20260909d"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260909c"></script>
+  <script src="ui.js?v=20260909d"></script>
 </body>
 </html>
