@@ -233,6 +233,10 @@ Object.assign(state, {
   // wave through mutations of another labeler's row — see the comment on
   // that function.
   isAdmin: false,
+  // Set when the labeler name field holds "Analyst" — strictly view-only,
+  // see the DOMContentLoaded block below and isForeignLabel(). Unlike
+  // isAdmin there is no bypass anywhere: every mutation is refused.
+  isAnalyst: false,
   // Which bucket the Labels panel is showing.
   labelTab: 'offense',
   // Admin only: the punch types picked in the Labels panel's "Types" menu.
@@ -315,6 +319,21 @@ document.addEventListener('DOMContentLoaded', () => {
     state.showForeign = true;   // no point being admin over a folded-away queue
     const badge = document.getElementById('labeler-badge');
     if (badge) badge.textContent += ' (admin)';
+  }
+  // Strictly view-only: sees everyone's rows (same listForeign pull as
+  // admin — see fetchLabelsFromSheet()'s phase 2), same as admin, but with
+  // no escape hatch at all. isForeignLabel() refuses every mutation
+  // unconditionally for this labeler (own rows included — there never are
+  // any, since captureTimestamp()/addRoundMarker()/pasteLabelAtPlayhead()/
+  // selectPunch() all refuse to start one), and the 'analyst-mode' body
+  // class dims the authoring surfaces (punch.css) so a control that can
+  // never do anything doesn't sit there looking clickable.
+  if (labelerId().toLowerCase() === 'analyst') {
+    state.isAnalyst = true;
+    state.showForeign = true;
+    document.body.classList.add('analyst-mode');
+    const badge = document.getElementById('labeler-badge');
+    if (badge) badge.textContent += ' (view only)';
   }
   // The Types menu — narrow the list/lanes/minimap/video tags to a few
   // punch types — used to be admin-only ("reviewing is where 'just the
@@ -735,14 +754,20 @@ function updateUnsureFilterButton() {
 // else. Checked first, so the admin bypass below never even gets asked.
 function isForeignLabel(label) {
   if (!label) return false;
+  // Analyst has no escape hatch anywhere, unlike admin's isAdmin bypass
+  // below — every row it sees refuses a mutation, own rows included (there
+  // never are any — see the DOMContentLoaded block that sets isAnalyst).
+  if (state.isAnalyst) return true;
   if (label.isPrediction) return true;
   return !!label.foreign && !state.isAdmin;
 }
 function refuseForeign(label) {
   if (!isForeignLabel(label)) return false;
-  showToast(label.isPrediction
-    ? 'Read-only — this is a model prediction, not a label'
-    : 'Read-only — added by another labeler', 'error');
+  showToast(state.isAnalyst
+    ? 'View only — Analyst mode cannot edit, delete, or drag labels'
+    : (label.isPrediction
+      ? 'Read-only — this is a model prediction, not a label'
+      : 'Read-only — added by another labeler'), 'error');
   return true;
 }
 
@@ -1602,6 +1627,10 @@ function pasteLabelAtPlayhead() {
     showToast('Admin can edit and delete any label, but not create new ones.', 'error');
     return;
   }
+  if (state.isAnalyst) {
+    showToast('View only — Analyst mode cannot add labels', 'error');
+    return;
+  }
   const clip = state.clipboardLabel;
   if (!clip) return;
   const video = document.getElementById('video-player');
@@ -1635,6 +1664,12 @@ function pasteLabelAtPlayhead() {
 }
 
 function selectPunch(punchId) {
+  // Reached via the move-type buttons AND the digit/letter keyboard
+  // shortcuts alike — this is the one funnel both go through, so it's the
+  // right place to refuse for Analyst rather than guarding every caller.
+  // A no-op here is enough: with captureTimestamp() also refusing to start
+  // a label, there is never a pending workflow for this to be a step of.
+  if (state.isAnalyst) return;
   state.selectedPunch = punchId;
 
   document.querySelectorAll('.punch-btn').forEach(btn => {
@@ -1702,6 +1737,10 @@ function captureTimestamp() {
   // who didn't do it. Editing and deleting anyone's row stays allowed.
   if (state.isAdmin) {
     showToast('Admin can edit and delete any label, but not create new ones.', 'error');
+    return;
+  }
+  if (state.isAnalyst) {
+    showToast('View only — Analyst mode cannot add labels', 'error');
     return;
   }
 
@@ -1913,6 +1952,10 @@ function addRoundMarker(markerType) {
   // Same rule as captureTimestamp(): admin corrects, it does not author.
   if (state.isAdmin) {
     showToast('Admin can edit and delete any label, but not create new ones.', 'error');
+    return;
+  }
+  if (state.isAnalyst) {
+    showToast('View only — Analyst mode cannot add round markers', 'error');
     return;
   }
   const video = document.getElementById('video-player');
@@ -2397,7 +2440,10 @@ function maybeShowForeignVideoPopup() {
   const showBtn = document.getElementById('fvd-show');
   if (!dlg || !body) return;
 
-  const ownRow = fvdRow(state.isAdmin ? 'Everyone (foreign)' : 'You', own, false);
+  // Analyst owns no rows either — same reason as admin, just with no
+  // editing on top.
+  const ownsNoRows = state.isAdmin || state.isAnalyst;
+  const ownRow = fvdRow(ownsNoRows ? 'Everyone (foreign)' : 'You', own, false);
   const foreignRows = foreignEntries.map(([who, c]) => fvdRow(who, c, true)).join('');
   const hasForeign = foreignEntries.length > 0;
 
@@ -2409,12 +2455,13 @@ function maybeShowForeignVideoPopup() {
   // and would now be actively misleading.
   const note = hasForeign && state.isAdmin
     ? `<p class="fvd-note">As admin you can edit or delete any of these — each change writes back to whoever owns that row. You cannot add new labels.</p>`
+    : hasForeign && state.isAnalyst
+    ? `<p class="fvd-note">View only — Analyst mode cannot add, edit, delete, or drag any label.</p>`
     : '';
   const lede = hasForeign ? 'This video already has labels from:' : 'What was loaded from the sheet:';
-  // state.isAdmin's own row is always zero (admin owns no rows) and just
-  // clutters this popup, which already spells "Everyone (foreign)" above —
-  // skip it for admin specifically.
-  const rows = state.isAdmin ? foreignRows : `${ownRow}${foreignRows}`;
+  // Own row is always zero for admin/Analyst (neither owns rows) and just
+  // clutters this popup, which already spells "Everyone (foreign)" above.
+  const rows = ownsNoRows ? foreignRows : `${ownRow}${foreignRows}`;
   body.innerHTML = `<p class="fvd-lede">${lede}</p><div class="fvd-rows">${rows}</div>${note}`;
   // showModal() throws InvalidStateError on an already-open dialog — which
   // happens when a second video is opened before this popup is dismissed.

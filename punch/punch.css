@@ -1316,6 +1316,19 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-height: 0; overflow: hidden;
 }
 
+/* Analyst mode (see the DOMContentLoaded block in app.js that sets
+   isAnalyst): every surface that exists to START or CHANGE a label is
+   visually disabled, not hidden — the controls stay in place so the layout
+   doesn't jump, they just read as inert. The actual refusal happens in
+   app.js (isForeignLabel()/isAnalyst checks); this is purely so a button
+   that can never do anything doesn't sit there looking clickable. Viewing
+   surfaces (timelines, the Labels list, filters) are untouched. */
+body.analyst-mode #punch-panel,
+body.analyst-mode #cap,
+body.analyst-mode #round-indicator {
+  opacity: .45; filter: grayscale(.4); pointer-events: none;
+}
+
 /* Round state. Not decoration — every punch outside a round is a punch the
    pipeline will ignore, so this is the one status on the page that has to be
    readable without being looked for. It is also the button that changes it. */

@@ -28,6 +28,13 @@ Web-based video labeling tool for boxing punch annotation.
   types compose with the Offense/Defense tabs (AND, not a replacement) — a tab
   click switches buckets without clearing the picks, persisted in localStorage
   `typeFilter`.
+- **Analyst mode** (punch labeler): type the name `analyst`. Strictly
+  view-only — same `listForeign` pull as admin (sees every labeler's rows in
+  their own lanes) but with no edit/delete/drag bypass at all: `isForeignLabel()`
+  refuses every mutation unconditionally, and the whole authoring surface
+  (move catalogue, the Start/Type/End workflow, round start/end) is dimmed
+  via the `analyst-mode` body class rather than hidden. All viewing surfaces
+  (timelines, Labels list, filters, Agreement report) work normally.
 
 ## Sheet Columns
 
