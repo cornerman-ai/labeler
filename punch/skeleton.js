@@ -39,9 +39,9 @@ const SKELETON_DOT_JOINTS = [
 
 // Total length of the vertical plumb-line guide (see
 // drawSkeletonVerticalGuide()), as a fraction of the canvas's own height —
-// not a measured height, just "reasonably taller than a person standing in
-// frame" so it reads as a plumb line rather than a random mark.
-const SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION = 0.7;
+// not a measured height, just "spans nearly the whole frame" so it reads as
+// a plumb line rather than a random mark.
+const SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION = 0.95;
 
 // A joint is ALWAYS drawn now, however unreliable BlazePose says the
 // estimate is — hiding it entirely below a cutoff (the old
@@ -257,7 +257,7 @@ function drawSkeletonVerticalGuide(ctx, px, nJoints, canvasH) {
   const half = (canvasH * SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION) / 2;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
   ctx.lineWidth = Math.max(1, canvasH / 700);
   ctx.setLineDash([canvasH / 90, canvasH / 60]);
   ctx.beginPath();
