@@ -238,6 +238,11 @@ Object.assign(state, {
   // Admin only: the punch types picked in the Labels panel's "Types" menu.
   // Empty = off. Narrows every surface the tabs do — see shouldHideByType().
   typeFilter: new Set(),
+  // 'agree' | 'disagree' | null — see shouldHideByAgreement(). Not
+  // persisted: which labelers have weighed in on THIS video changes video
+  // to video, and a stale filter surviving a load would just show an empty
+  // timeline with nothing on screen to explain why.
+  agreementFilter: null,
   // Display language for punch/defense names + descriptions — see
   // PUNCH_I18N, punchLabel(), punchDesc(). Purely a display-layer choice:
   // the sheet always gets the English punch id regardless of this.
@@ -901,11 +906,79 @@ function shouldHideByTab(label) {
   // you'd typed a search that matched nothing; switching to Defense is
   // exactly the way out, not a picks-clearing reset.
   if (shouldHideByType(label)) return true;
+  // Same composing treatment as Types — see shouldHideByAgreement().
+  if (shouldHideByAgreement(label)) return true;
   // 'combined' skips the bucket check entirely — every punch shows, same as
   // before the tabs existed. 'offense'/'defense' still filter by bucket.
   if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) return true;
   if (!state.unsureFilter) return false;
   return label.punch !== 'unsure';
+}
+
+// The "Agreement only" / "Disagreement only" filter — same idea as the
+// admin Agreement report (computeAgreement(), further down) but reduced to
+// a single per-label yes/no so it can gate the list/lanes/minimap like any
+// other filter. A label "agrees" if some OTHER owner has a label of the
+// SAME punch type overlapping it at over 40% IoU, matched greedily
+// best-first per pair of owners exactly like the report does — predictions
+// count as an owner here too, same as they already do in the report.
+const TIMELINE_AGREE_IOU_FLOOR = 0.4;
+function computeAgreedLabelSet() {
+  const byOwner = new Map();
+  for (const l of state.labels) {
+    if (l.isRoundMarker) continue;
+    const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
+    if (!byOwner.has(who)) byOwner.set(who, []);
+    byOwner.get(who).push(l);
+  }
+  const names = [...byOwner.keys()];
+  const agreed = new Set();
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) {
+      const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
+      const cands = [];
+      A.forEach((a, ai) => B.forEach((b, bi) => {
+        if (a.punch !== b.punch) return;
+        const iou = timeIoU(a, b);
+        if (iou > TIMELINE_AGREE_IOU_FLOOR) cands.push({ ai, bi, iou });
+      }));
+      cands.sort((x, y) => y.iou - x.iou);
+      const usedA = new Set(), usedB = new Set();
+      for (const c of cands) {
+        if (usedA.has(c.ai) || usedB.has(c.bi)) continue;
+        usedA.add(c.ai); usedB.add(c.bi);
+        agreed.add(A[c.ai]); agreed.add(B[c.bi]);
+      }
+    }
+  }
+  return agreed;
+}
+
+// Recomputed at the top of renderLabels()/renderTimelineOverlay() — whichever
+// runs first for a given render — rather than kept as a standing cache that
+// something has to remember to invalidate. Cheap relative to a render, and
+// this way it can never go stale and silently disagree with what's drawn.
+function refreshAgreedLabelCache() {
+  state._agreedLabels = state.agreementFilter ? computeAgreedLabelSet() : null;
+}
+
+function shouldHideByAgreement(label) {
+  if (!state.agreementFilter) return false;
+  const agreed = !!(state._agreedLabels && state._agreedLabels.has(label));
+  return state.agreementFilter === 'agree' ? !agreed : agreed;
+}
+
+function setAgreementFilter(mode) {
+  state.agreementFilter = state.agreementFilter === mode ? null : mode;
+  updateAgreementFilterButtons();
+  renderLabels();
+}
+
+function updateAgreementFilterButtons() {
+  const agreeBtn = document.getElementById('btn-agree-only');
+  const disagreeBtn = document.getElementById('btn-disagree-only');
+  if (agreeBtn) agreeBtn.setAttribute('aria-pressed', String(state.agreementFilter === 'agree'));
+  if (disagreeBtn) disagreeBtn.setAttribute('aria-pressed', String(state.agreementFilter === 'disagree'));
 }
 
 function setLabelTab(tab) {
@@ -2477,6 +2550,7 @@ function parseSheetTime(timeStr) {
 // Labels Rendering & Storage
 // ============================================================
 function renderLabels() {
+  refreshAgreedLabelCache();
   const log = document.getElementById('label-log');
   const count = document.getElementById('label-count');
   const visible = state.labels.filter(l => !l.isRoundMarker && !shouldHideByTab(l));
@@ -3557,6 +3631,7 @@ function getTimelineDuration() {
 }
 
 function renderTimelineOverlay() {
+  refreshAgreedLabelCache();
   const overlay = document.getElementById('seek-bar-overlay');
   // Round-boundary flags are TWO layers, not one: #round-markers sits inside
   // #seg-lanes and zooms with it; #round-markers-scrub sits inside #scrub and
@@ -3634,6 +3709,8 @@ function renderTimelineOverlay() {
     // Picked types, inlined for the same reason — composes with the tab
     // check below rather than replacing it (see shouldHideByTab()).
     if (state.typeFilter.size && !state.typeFilter.has(label.punch)) return;
+    // Agreement filter, same composing treatment as Types above.
+    if (shouldHideByAgreement(label)) return;
     // The Labels tab hides whole lanes (see visibleBuckets); without this
     // the strips for the hidden bucket would fall through to the fallback
     // lookup below and land in the wrong lane.
@@ -3709,6 +3786,7 @@ function renderMinimap() {
     // that used to matter for a single combined lane and no longer does.
     if (state.unsureFilter && label.punch !== 'unsure') continue;
     if (state.typeFilter.size && !state.typeFilter.has(label.punch)) continue;
+    if (shouldHideByAgreement(label)) continue;
     if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) continue;
     const seg = document.createElement('div');
     seg.style.position = 'absolute';

@@ -538,12 +538,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    controls (Type, Stance) above, aria-selected is the correct one for an
    actual tablist (#label-tabs below) — the segmented-control APPEARANCE
    doesn't care which ARIA pattern earned it. */
-.seg button[aria-checked="true"], .seg button[aria-selected="true"] {
+.seg button[aria-checked="true"], .seg button[aria-selected="true"],
+.seg button[aria-pressed="true"] {
   background: var(--card); color: var(--ink); font-weight: 590;
   box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px rgba(0,0,0,.04);
 }
 @media (prefers-color-scheme: dark) {
-  .seg button[aria-checked="true"], .seg button[aria-selected="true"] {
+  .seg button[aria-checked="true"], .seg button[aria-selected="true"],
+  .seg button[aria-pressed="true"] {
     background: color-mix(in srgb, var(--ink) 22%, var(--card));
     box-shadow: 0 1px 3px rgba(0,0,0,.5);
   }
