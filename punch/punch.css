@@ -612,6 +612,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   text-transform: uppercase; color: var(--ink-dim); margin: 0 0 10px;
 }
 
+/* A collapsible section's own header, layered on TOP of .card-eyebrow (Move
+   Type/Session, #punch-panel below) or .punch-group-header (Offense/Defense/
+   Other, one level in — see buildPunchButtons() in app.js): turns the label
+   into a real button with a chevron that rotates to say which way it goes.
+   Reused wherever something folds — same idea as #video-source-toggle
+   above, just generalised instead of copy-pasted a third and fourth time. */
+.fold-toggle {
+  width: 100%; border: 0; background: none; padding: 0; text-align: left; cursor: pointer;
+}
+.fold-toggle:hover { color: var(--ink); }
+.fold-toggle .fold-chev {
+  width: 9px; height: 9px; flex: none; color: inherit; transition: transform .15s ease;
+}
+.fold-toggle[aria-expanded="false"] .fold-chev { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .fold-toggle .fold-chev { transition: none; } }
+
 /* ── left sidebar: the move catalogue ────────────────────────────────────── */
 #punch-panel {
   width: 272px; flex: none;
@@ -685,6 +701,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .session-select:hover { background: var(--fill-2); }
 
 .punch-group-header {
+  display: flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 590; letter-spacing: .04em;
   text-transform: uppercase; color: var(--ink-dim);
   margin: 18px 0 8px;
@@ -715,6 +732,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    with the names in the cells, because there is no shared row noun to hoist. */
 .pgrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pgrid1 { display: grid; grid-template-columns: 1fr; gap: 6px; }
+
+/* Explicit, not left to the browser's own [hidden]{display:none} default:
+   that UA rule and .pmatrix/.pgrid2/.pgrid1's own `display: grid` above are
+   the same specificity, and author styles beat the UA stylesheet on a tie —
+   so without this, a folded group (see wireMoveGroupFold() in app.js)
+   toggled its chevron and kept the grid fully visible underneath it. */
+.pmatrix[hidden], .pgrid2[hidden], .pgrid1[hidden] { display: none; }
 
 .punch-btn {
   display: flex; align-items: center; gap: 7px;

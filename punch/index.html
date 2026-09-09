@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260909o">
+  <link rel="stylesheet" href="punch.css?v=20260909q">
 </head>
 <body>
   <div id="app">
@@ -213,7 +213,17 @@
 
       <!-- Left: the move catalogue -->
       <aside id="punch-panel">
-        <p class="card-eyebrow">Move Type</p>
+        <!-- Collapses #punch-catalogue away — see setupFold() in ui.js,
+             same collapse-and-remember-in-localStorage pattern as the video
+             source rows above it. The whole catalogue folds as ONE block
+             (not per-group — that's the level below, see buildPunchButtons()
+             in app.js), so someone who's picked their move type for the
+             session can shrink it to just this header line. -->
+        <button type="button" id="move-type-toggle" class="card-eyebrow fold-toggle"
+                aria-expanded="true" aria-controls="punch-catalogue">
+          <svg class="fold-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Move Type
+        </button>
         <!-- The overlay below covers THIS box only, not the whole panel:
              picking a move type is the one thing that must wait for the
              sheet, while Session (stance/training) underneath stays usable. -->
@@ -242,22 +252,31 @@
              for `change` on exactly these elements, so nothing downstream
              moved. -->
         <div id="punch-session">
-          <p class="card-eyebrow">Session</p>
-          <label class="session-row" for="training-type">
-            <span class="session-label">Training</span>
-            <select id="training-type" class="session-select">
-              <option value="shadowboxing">Shadowboxing</option>
-              <option value="sparring">Sparring</option>
-              <option value="bagwork">Bagwork</option>
-            </select>
-          </label>
-          <label class="session-row" for="stance-select">
-            <span class="session-label">Stance</span>
-            <select id="stance-select" class="session-select">
-              <option value="Orthodox">Orthodox</option>
-              <option value="Southpaw">Southpaw</option>
-            </select>
-          </label>
+          <!-- Same fold-and-remember treatment as Move Type above — its own
+               independent collapse, since picking a move type and setting
+               the session are two different things to be done with. -->
+          <button type="button" id="session-toggle" class="card-eyebrow fold-toggle"
+                  aria-expanded="true" aria-controls="session-rows">
+            <svg class="fold-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Session
+          </button>
+          <div id="session-rows">
+            <label class="session-row" for="training-type">
+              <span class="session-label">Training</span>
+              <select id="training-type" class="session-select">
+                <option value="shadowboxing">Shadowboxing</option>
+                <option value="sparring">Sparring</option>
+                <option value="bagwork">Bagwork</option>
+              </select>
+            </label>
+            <label class="session-row" for="stance-select">
+              <span class="session-label">Stance</span>
+              <select id="stance-select" class="session-select">
+                <option value="Orthodox">Orthodox</option>
+                <option value="Southpaw">Southpaw</option>
+              </select>
+            </label>
+          </div>
         </div>
       </aside>
 
@@ -679,23 +698,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260909o"></script>
-  <script src="../shared/player.js?v=20260909o"></script>
-  <script src="skeleton.js?v=20260909o"></script>
+  <script src="../shared/labeler_name.js?v=20260909q"></script>
+  <script src="../shared/player.js?v=20260909q"></script>
+  <script src="skeleton.js?v=20260909q"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260909o"></script>
-  <script src="predictions.js?v=20260909o"></script>
-  <script src="app.js?v=20260909o"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260909q"></script>
+  <script src="predictions.js?v=20260909q"></script>
+  <script src="app.js?v=20260909q"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260909o"></script>
+  <script src="problems.js?v=20260909q"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260909o"></script>
+  <script src="ui.js?v=20260909q"></script>
 </body>
 </html>

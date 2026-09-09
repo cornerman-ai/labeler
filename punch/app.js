@@ -242,6 +242,15 @@ Object.assign(state, {
   // Admin only: the punch types picked in the Labels panel's "Types" menu.
   // Empty = off. Narrows every surface the tabs do — see shouldHideByType().
   typeFilter: new Set(),
+  // Which move-type groups (Offense/Defense/Other) are folded away — see
+  // buildPunchButtons()'s header()/wireMoveGroupFold(). One level in from
+  // the panel-wide Move Type fold (#move-type-toggle in index.html, wired
+  // by ui.js's setupFold() — that one isn't state, just localStorage, since
+  // nothing else in JS needs to know it). Read synchronously here (not in
+  // the DOMContentLoaded restore block below, unlike typeFilter) because
+  // buildPunchButtons() runs before that block does and needs the real
+  // answer on its very first call, not the default.
+  collapsedMoveGroups: new Set(JSON.parse(localStorage.getItem('collapsedMoveGroups') || '[]')),
   // 'agree' | 'disagree' | null — see shouldHideByAgreement(). Not
   // persisted: which labelers have weighed in on THIS video changes video
   // to video, and a stale filter surviving a load would just show an empty
@@ -1046,11 +1055,36 @@ function buildPunchButtons() {
   container.innerHTML = '';
   const live = PUNCH_TYPES.filter(p => !p.retired);
 
+  // A real <button>, not a <div> — each group (Offense/Defense/Other) folds
+  // independently now, one level in from the panel-wide Move Type fold (see
+  // index.html's #move-type-toggle). Returns the button so the caller can
+  // wire it to whichever grid follows it — see wireMoveGroupFold() below.
   const header = (text) => {
-    const h = document.createElement('div');
-    h.className = 'punch-group-header';
-    h.textContent = text;
+    const h = document.createElement('button');
+    h.type = 'button';
+    h.className = 'punch-group-header fold-toggle';
+    h.innerHTML = `<svg class="fold-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${text}</span>`;
     container.appendChild(h);
+    return h;
+  };
+
+  // Wires one header button to the grid element right after it: applies the
+  // remembered collapsed state on this (re)build, then toggles + persists
+  // on click. `key` is 'offense'/'defense'/'other' — stable across a
+  // language switch (buildPunchButtons() rebuilds from scratch on one) so
+  // the fold survives it, unlike anything keyed off the button's own text.
+  const wireMoveGroupFold = (btn, grid, key) => {
+    const collapsed = state.collapsedMoveGroups.has(key);
+    grid.hidden = collapsed;
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.addEventListener('click', () => {
+      const nowCollapsed = !grid.hidden;
+      grid.hidden = nowCollapsed;
+      btn.setAttribute('aria-expanded', String(!nowCollapsed));
+      if (nowCollapsed) state.collapsedMoveGroups.add(key);
+      else state.collapsedMoveGroups.delete(key);
+      localStorage.setItem('collapsedMoveGroups', JSON.stringify([...state.collapsedMoveGroups]));
+    });
   };
 
   const dot = (id) =>
@@ -1082,7 +1116,7 @@ function buildPunchButtons() {
   // --- Offense: name | head | body -------------------------------------
   const heads = live.filter(p => p.group === 'offense' && p.id.endsWith('_head'));
   if (heads.length) {
-    header('Offense');
+    const h = header('Offense');
     const grid = document.createElement('div');
     grid.className = 'pmatrix';
     grid.innerHTML =
@@ -1098,26 +1132,29 @@ function buildPunchButtons() {
       else grid.appendChild(document.createElement('span'));
     }
     container.appendChild(grid);
+    wireMoveGroupFold(h, grid, 'offense');
   }
 
   // --- Defense: two per row, lead beside rear ---------------------------
   const defense = live.filter(p => p.group === 'defense');
   if (defense.length) {
-    header('Defense');
+    const h = header('Defense');
     const grid = document.createElement('div');
     grid.className = 'pgrid2';
     defense.forEach(p => grid.appendChild(button(p, true)));
     container.appendChild(grid);
+    wireMoveGroupFold(h, grid, 'defense');
   }
 
   // --- Anything else (currently just Unsure) ----------------------------
   const other = live.filter(p => p.group !== 'offense' && p.group !== 'defense');
   if (other.length) {
-    header('Other');
+    const h = header('Other');
     const grid = document.createElement('div');
     grid.className = 'pgrid1';
     other.forEach(p => grid.appendChild(button(p, true)));
     container.appendChild(grid);
+    wireMoveGroupFold(h, grid, 'other');
   }
 
   // A language switch rebuilds every button from scratch mid-selection

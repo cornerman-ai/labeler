@@ -812,6 +812,29 @@
     });
   }
 
+  // Generic version of the same collapse-and-remember pattern above, for the
+  // move catalogue sidebar's own two panel-wide folds (Move Type, Session —
+  // see #move-type-toggle/#session-toggle in index.html). One level IN from
+  // these — Offense/Defense/Other, each folding independently — is state
+  // (state.collapsedMoveGroups), not just localStorage, because
+  // buildPunchButtons() (app.js) rebuilds those from scratch on every
+  // language switch and has to know their collapsed state to reapply it;
+  // these two never rebuild, so plain localStorage is enough.
+  function setupFold(btnId, contentId, storageKey) {
+    const btn = $(btnId), content = $(contentId);
+    if (!btn || !content) return;
+    const apply = (collapsed) => {
+      content.hidden = collapsed;
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    };
+    apply(localStorage.getItem(storageKey) === 'true');
+    btn.addEventListener('click', () => {
+      const collapsed = !content.hidden;
+      apply(collapsed);
+      localStorage.setItem(storageKey, String(collapsed));
+    });
+  }
+
   // ── right-click a strip: highlight it in the panel, or delete it ───────
   // Two actions worth their own menu — Highlight jumps the Labels panel to
   // (and flashes) this exact chip's row without hunting a scrolled list;
@@ -1162,6 +1185,8 @@
     setupSegmentEditing();
     setupRoundSpanDragging();
     setupVideoSourceFold();
+    setupFold('move-type-toggle', 'punch-catalogue', 'moveTypeCollapsed');
+    setupFold('session-toggle', 'session-rows', 'sessionCollapsed');
     setupZoomedClickToSeek();
     setupSegmentContextMenu();
     setupTimeEdit();
