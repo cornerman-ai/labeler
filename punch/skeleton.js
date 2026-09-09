@@ -16,24 +16,52 @@ Object.assign(state, {
   skeleton: { rounds: [], visible: false },
 });
 
-// Body edges (mediapipe POSE_CONNECTIONS) plus a small head triangle — nose
-// (0) to each eye (2, 5) — wired down to both shoulders. Head position
-// matters for guard height and chin tuck, so it's tracked as more than one
-// floating dot; the rest of the face mesh (eye corners, ears, mouth —
-// joints 1,3,4,6-10) stays out as clutter BlazePose tracks less reliably
-// anyway.
+// Body edges (mediapipe POSE_CONNECTIONS) plus the nose (0) wired down to
+// both shoulders for head position — the rest of the face mesh (eyes, eye
+// corners, ears, mouth — joints 1-10) stays out as clutter BlazePose tracks
+// less reliably anyway.
 const SKELETON_EDGES = [
-  [0, 2], [0, 5], [2, 5],
   [0, 11], [0, 12],
-  [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
-  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  [11, 12], [11, 13], [13, 15],
+  [12, 14], [14, 16],
   [11, 23], [12, 24], [23, 24],
   [23, 25], [25, 27], [27, 29], [29, 31], [27, 31],
   [24, 26], [26, 28], [28, 30], [30, 32], [28, 32],
 ];
-// Joints drawn as dots — the head triangle plus every body landmark.
-const SKELETON_DOT_JOINTS = [0, 2, 5, ...Array.from({ length: 22 }, (_, i) => i + 11)];
-const VISIBILITY_THRESHOLD = 0.5;
+// Joints drawn as dots — the nose, one wrist dot per hand (15/16 — the
+// finer pinky/index/thumb landmarks (17-22) are dropped, they cluttered the
+// hand into a messy blob without adding anything a labeler needs), and
+// every other body landmark.
+const SKELETON_DOT_JOINTS = [
+  0,
+  ...Array.from({ length: 22 }, (_, i) => i + 11).filter(j => ![17, 18, 19, 20, 21, 22].includes(j)),
+];
+
+// Total length of the vertical plumb-line guide (see
+// drawSkeletonVerticalGuide()), as a fraction of the canvas's own height —
+// not a measured height, just "reasonably taller than a person standing in
+// frame" so it reads as a plumb line rather than a random mark.
+const SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION = 0.7;
+
+// A joint is ALWAYS drawn now, however unreliable BlazePose says the
+// estimate is — hiding it entirely below a cutoff (the old
+// VISIBILITY_THRESHOLD) meant a bad frame lost the joint completely, with
+// nothing on screen to say why an arm suddenly had no elbow. Colour carries
+// that instead: green only above the top band, then yellow / orange / red
+// as the model's own confidence drops, checked fresh every frame (BlazePose
+// visibility is per-frame, not a property of the joint) — the dot stays
+// exactly where the data says, the colour is just honest about how much to
+// trust it. Ordered high-to-low so SKELETON_JOINT_TIERS.find() below can
+// just return the first band the value clears.
+const SKELETON_JOINT_TIERS = [
+  { min: 0.75, color: '#5CE65C' },   // confident — the "normal" colour
+  { min: 0.50, color: '#F5D30A' },   // yellow — borderline
+  { min: 0.25, color: '#F5A623' },   // orange — low confidence
+  { min: -Infinity, color: '#E64545' },   // red — least confident, still shown
+];
+function skeletonJointColor(v) {
+  return SKELETON_JOINT_TIERS.find(tier => v >= tier.min).color;
+}
 
 // ============================================================
 // .npy reader — just enough of the format (v1.0/v2.0 header, the dtypes
@@ -216,6 +244,29 @@ function positionSkeletonCanvas() {
   }
 }
 
+// A barely-visible dashed vertical line through the hip midpoint (joints
+// 23/24) — a plumb line, the reference a coach's eye already uses for
+// "is the stance/balance actually vertical here", now on screen for every
+// frame by default whenever the skeleton is on. Centered on the hips and
+// drawn first, BEHIND the skeleton itself, so it reads as the backdrop
+// grid it is rather than competing with the joints for attention.
+function drawSkeletonVerticalGuide(ctx, px, nJoints, canvasH) {
+  if (nJoints <= 24) return;   // no hip joints in this extraction — nothing to center on
+  const [lx, ly] = px(23), [rx, ry] = px(24);
+  const cx = (lx + rx) / 2, cy = (ly + ry) / 2;
+  const half = (canvasH * SKELETON_VERTICAL_GUIDE_HEIGHT_FRACTION) / 2;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.lineWidth = Math.max(1, canvasH / 700);
+  ctx.setLineDash([canvasH / 90, canvasH / 60]);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - half);
+  ctx.lineTo(cx, cy + half);
+  ctx.stroke();
+  ctx.restore();   // setLineDash is context state — undo it before the (solid) bones below
+}
+
 function drawSkeletonFrame(t) {
   const canvas = document.getElementById('skeleton-canvas');
   if (!canvas) return;
@@ -232,18 +283,25 @@ function drawSkeletonFrame(t) {
   const at = (joint, ch) => r.data[base + joint * r.nChannels + ch];
 
   const W = canvas.width, H = canvas.height;
-  const visible = (j) => r.visIdx < 0 || at(j, r.visIdx) >= VISIBILITY_THRESHOLD;
+  // No visibility channel at all (older extractions) reads as fully
+  // confident — there's nothing to grade it against, same as the old
+  // gate's default.
+  const visibility = (j) => r.visIdx < 0 ? 1 : at(j, r.visIdx);
   const px = (j) => [at(j, r.xIdx) * W, at(j, r.yIdx) * H];
+
+  drawSkeletonVerticalGuide(ctx, px, r.nJoints, H);
 
   // Thin light bones, bright filled joints — the same visual language a
   // pose-estimation demo uses: the SKELETON is a faint guide, the JOINTS
   // are what you actually read the pose off of, so they carry the weight
-  // and the contrast.
+  // and the contrast. Every edge draws regardless of either endpoint's
+  // confidence — a joint that's still shown (just recoloured, see below)
+  // needs its bones too, or it reads as detached from the body.
   ctx.lineWidth = Math.max(1, W / 500);
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
   ctx.lineCap = 'round';
   for (const [a, b] of SKELETON_EDGES) {
-    if (a >= r.nJoints || b >= r.nJoints || !visible(a) || !visible(b)) continue;
+    if (a >= r.nJoints || b >= r.nJoints) continue;
     const [ax, ay] = px(a), [bx, by] = px(b);
     ctx.beginPath();
     ctx.moveTo(ax, ay);
@@ -251,12 +309,12 @@ function drawSkeletonFrame(t) {
     ctx.stroke();
   }
   const dotR = Math.max(3, W / 140);
-  ctx.fillStyle = '#5CE65C';
   ctx.strokeStyle = 'rgba(0, 40, 0, 0.55)';
   ctx.lineWidth = Math.max(0.75, dotR / 4);
   for (const j of SKELETON_DOT_JOINTS) {
-    if (j >= r.nJoints || !visible(j)) continue;
+    if (j >= r.nJoints) continue;
     const [x, y] = px(j);
+    ctx.fillStyle = skeletonJointColor(visibility(j));
     ctx.beginPath();
     ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.fill();
