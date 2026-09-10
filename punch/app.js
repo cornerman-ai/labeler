@@ -1249,14 +1249,18 @@ function computeAgreementPanel() {
 
   // A family shows up at all only if SOMEONE logged one of its types — an
   // all-zero family (nobody ever threw an uppercut) stays hidden, same as
-  // before. Once a family is showing, though, each of ITS types that anyone
-  // used lists every owner, zeroes included.
+  // before. Once a family IS showing, though, it shows EVERY one of its
+  // types, not just the ones somebody happened to use — a Lead Slip video
+  // with zero Rear Slips still shows a Rear Slip row (all zeroes) rather
+  // than silently dropping it, since it's the same family and the question
+  // "did they slip the other way at all" has an answer either way.
   return MOVE_FAMILIES
-    .map(fam => ({
-      family: fam,
-      types: fam.ids
-        .filter(id => owners.some(who => countFor(who, id) > 0))
-        .map(id => {
+    .map(fam => {
+      const familyHasAny = fam.ids.some(id => owners.some(who => countFor(who, id) > 0));
+      if (!familyHasAny) return null;
+      return {
+        family: fam,
+        types: fam.ids.map(id => {
           const rows = owners.map(who => ({ who, count: countFor(who, id) }));
           // A count-only pairing, not a timing match — "how many of these
           // could line up 1:1 between the two of them" (the smaller count)
@@ -1274,8 +1278,9 @@ function computeAgreementPanel() {
             : null;
           return { id, label: punchLabel(id), rows, summary };
         }),
-    }))
-    .filter(f => f.types.length);
+      };
+    })
+    .filter(Boolean);
 }
 
 // ============================================================
@@ -1361,19 +1366,23 @@ function agreementVideoName() {
   return state.videoName || document.getElementById('drive-link')?.value.trim() || 'this video';
 }
 
+// Every owner sees the SAME matched count (it's min(A, B), not a per-owner
+// number) but their OWN unmatched leftover — one of the two is always 0.
+// Folded onto each owner's own line rather than a separate summary row
+// underneath, so the count-only pairing stat rides along with whatever it's
+// describing instead of needing its own row to hold it.
+function agreementMatchSuffix(type, r) {
+  if (!type.summary) return '';
+  const unmatched = type.summary.unmatchedBy.find(u => u.who === r.who).n;
+  return ` (${type.summary.matched} matched, ${unmatched} unmatched)`;
+}
+
 // Plain text, not HTML — what a copy button on one line puts on the
 // clipboard, and also each row of the PDF export's own table (built fresh
 // from the same computeAgreementPanel() data rather than scraped off the
 // DOM, so it can't drift from what changing the video would show).
 function agreementLineText(type, r) {
-  return `${type.label} by ${r.who}: ${r.count}`;
-}
-
-// The count-only pairing line under a type's two owner rows — see
-// computeAgreementPanel()'s `summary`.
-function agreementSummaryText(type) {
-  const unmatched = type.summary.unmatchedBy.map(u => `by ${u.who}: ${u.n}`).join(', ');
-  return `Matching pairs: ${type.summary.matched} | Unmatched labels ${unmatched}`;
+  return `${type.label} by ${r.who}: ${r.count}${agreementMatchSuffix(type, r)}`;
 }
 
 function renderAgreement() {
@@ -1390,7 +1399,8 @@ function renderAgreement() {
   // timeline strip — the PDF export uses it too now, so the two read as
   // the same report rather than a plain-text stand-in for a designed one.
   const lineHtml = (type, r) =>
-    `<span class="agr-dot" style="background:${getPunchColor(type.id)}"></span>${type.label} by ${r.who}: <b>${r.count}</b>`;
+    `<span class="agr-dot" style="background:${getPunchColor(type.id)}"></span>${type.label} by ${r.who}: <b>${r.count}</b>` +
+    `<span class="agr-sub">${agreementMatchSuffix(type, r)}</span>`;
   // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
   // use elsewhere in this page — click handlers are wired up below by
   // DOM position rather than embedding the line's text in an HTML
@@ -1400,12 +1410,6 @@ function renderAgreement() {
       <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
     </button>`;
 
-  const summaryHtml = (type) => {
-    if (!type.summary) return '';
-    const unmatched = type.summary.unmatchedBy.map(u => `by ${u.who}: <b>${u.n}</b>`).join(', ');
-    return `<div class="fvd-row agr-summary-row"><span class="agr-line">Matching pairs: <b>${type.summary.matched}</b> &nbsp;|&nbsp; Unmatched labels ${unmatched}</span>${copyBtn}</div>`;
-  };
-
   body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">Video: ${agreementVideoName()}</span>${copyBtn}</p>` +
     families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
@@ -1413,19 +1417,14 @@ function renderAgreement() {
         ${types.map(type => `
           <div class="fvd-rows agr-type-group">
             ${type.rows.map(r => `<div class="fvd-row"><span class="agr-line">${lineHtml(type, r)}</span>${copyBtn}</div>`).join('')}
-            ${summaryHtml(type)}
           </div>`).join('')}
       </div>`).join('');
 
   // Same order as the HTML was just built in (video name first, then every
-  // line, each type's summary right after its own rows), so the Nth button
-  // matches the Nth text — see the comment on copyBtn above for why this
-  // isn't done via a data- attribute instead.
+  // line), so the Nth button matches the Nth text — see the comment on
+  // copyBtn above for why this isn't done via a data- attribute instead.
   const flatLines = [`Video: ${agreementVideoName()}`];
-  families.forEach(({ types }) => types.forEach(type => {
-    type.rows.forEach(r => flatLines.push(agreementLineText(type, r)));
-    if (type.summary) flatLines.push(agreementSummaryText(type));
-  }));
+  families.forEach(({ types }) => types.forEach(type => type.rows.forEach(r => flatLines.push(agreementLineText(type, r)))));
   body.querySelectorAll('.agr-copy').forEach((btn, i) => {
     btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
   });
@@ -1448,12 +1447,10 @@ function exportAgreementPdf() {
   // colour its timeline strip and its .punch-btn dot use), an uppercase
   // eyebrow per family — rather than a bare HTML table that looks like it
   // came from a different tool entirely.
-  const summaryRow = (type) => {
+  const pdfMatchSuffix = (type, r) => {
     if (!type.summary) return '';
-    const unmatched = type.summary.unmatchedBy.map(u => `by ${esc(u.who)}: <b>${u.n}</b>`).join(', ');
-    return `<div class="row summary">
-         <span class="line">Matching pairs: <b>${type.summary.matched}</b> &nbsp;|&nbsp; Unmatched labels ${unmatched}</span>
-       </div>`;
+    const unmatched = type.summary.unmatchedBy.find(u => u.who === r.who).n;
+    return `<span class="sub"> (${type.summary.matched} matched, ${unmatched} unmatched)</span>`;
   };
   const sections = families.map(({ family, types }) => `
     <div class="fam">
@@ -1466,8 +1463,8 @@ function exportAgreementPdf() {
                 <span class="dot" style="background:${getPunchColor(type.id)}"></span>
                 <span class="line">${esc(type.label)} by ${esc(r.who)}</span>
                 <span class="count">${r.count}</span>
+                ${pdfMatchSuffix(type, r)}
               </div>`).join('')}
-            ${summaryRow(type)}
           </div>`).join('')}
       </div>
     </div>`).join('');
@@ -1504,7 +1501,7 @@ function exportAgreementPdf() {
       .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
       .line { flex: 1; min-width: 0; }
       .count { font-weight: 650; font-variant-numeric: tabular-nums; }
-      .row.summary { margin-top: 2px; background: rgba(120,120,128,.20); font-size: 12.5px; }
+      .sub { color: #6e6e73; font-size: 11.5px; font-weight: 400; }
       @media print {
         body { background: #fff; padding: 0; }
         .card { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }
