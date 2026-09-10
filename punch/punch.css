@@ -2059,6 +2059,11 @@ kbd {
   text-transform: uppercase; color: var(--ink-dim);
 }
 .agr-h:first-of-type { margin-top: 4px; }
+/* Holds one .agr-type-group per exact type in the family (Lead Roll, Rear
+   Roll, ...) under their shared .agr-h — the gap between groups is smaller
+   than the gap above the next family's own .agr-h, so the two related
+   types read as visually paired without merging their counts into one. */
+.agr-family { display: flex; flex-direction: column; gap: 8px; }
 .agr-line { flex: 1; min-width: 0; }
 /* Same 22px icon-button shape as #btn-copy-link/#btn-copy-name elsewhere on
    this page, just its own class since this one lives inside .fvd-row

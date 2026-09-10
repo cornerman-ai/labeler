@@ -1209,41 +1209,59 @@ function timeIoU(a, b) {
   return union > 0 ? inter / union : 0;
 }
 
-// One row per EXACT move type (Lead Roll and Rear Roll get their own
-// sections, not folded into one "Rolls") per labeler: how many of that
-// type they logged on this video. Deliberately just a count — no matching,
-// no IoU, no agree/disagree comparison. That lives on the timeline's own
-// Agreement/Disagreement filter (computeAgreedLabelSet(), above) instead;
-// this report answers a simpler question. Ordered the same way the Types
-// filter menu is (TYPE_MENU_ORDER, further down) — Head beside Body,
-// Lead beside Rear — rather than PUNCH_TYPES' own declaration order, which
-// groups all Heads before all Bodies.
+// Two-level: a family header (lead+rear/head+body folded together, just
+// visually — "Rolls" groups Lead Roll and Rear Roll under one heading) over
+// still-separate counts per EXACT type, and every owner on this video gets
+// a line for every type shown, zeroes included — no more "Arianne just
+// isn't in the list" when she simply hasn't thrown one. Deliberately just a
+// count — no matching, no IoU, no agree/disagree comparison. That lives on
+// the timeline's own Agreement/Disagreement filter (computeAgreedLabelSet(),
+// above) instead; this report answers a simpler question.
+const MOVE_FAMILIES = [
+  { key: 'jab', label: 'Jabs', ids: ['jab_head', 'jab_body'] },
+  { key: 'cross', label: 'Crosses', ids: ['cross_head', 'cross_body'] },
+  { key: 'lead_hook', label: 'Lead Hooks', ids: ['lead_hook_head', 'lead_hook_body'] },
+  { key: 'rear_hook', label: 'Rear Hooks', ids: ['rear_hook_head', 'rear_hook_body'] },
+  { key: 'lead_uppercut', label: 'Lead Uppercuts', ids: ['lead_uppercut_head', 'lead_uppercut_body'] },
+  { key: 'rear_uppercut', label: 'Rear Uppercuts', ids: ['rear_uppercut_head', 'rear_uppercut_body'] },
+  { key: 'slip', label: 'Slips', ids: ['lead_slip', 'rear_slip'] },
+  { key: 'roll', label: 'Rolls', ids: ['lead_roll', 'rear_roll'] },
+  { key: 'pull_back', label: 'Pull Backs', ids: ['pull_back'] },
+  { key: 'duck', label: 'Ducks', ids: ['duck'] },
+  { key: 'unsure', label: 'Unsure', ids: ['unsure'] },
+];
+
 function computeAgreementPanel() {
   // owner -> punch id -> count
   const byOwner = new Map();
+  const ownersSet = new Set();
   for (const l of state.labels) {
     if (l.isRoundMarker) continue;
     const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
+    ownersSet.add(who);
     if (!byOwner.has(who)) byOwner.set(who, new Map());
     const typeMap = byOwner.get(who);
     typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
   }
-  const owners = [...byOwner.keys()].sort();
-  const orderedTypes = TYPE_MENU_ORDER
-    .map(id => PUNCH_TYPES.find(p => p.id === id))
-    .filter(p => p && !p.retired);
-  // One section per type anyone actually has rows for, each holding one
-  // line per labeler with rows in it — empty types and labelers that never
-  // touched a given type are just skipped rather than shown as zeroes
-  // nobody asked about.
-  return orderedTypes
-    .map(type => ({
-      family: { label: punchLabel(type.id) },
-      rows: owners
-        .map(who => ({ who, count: byOwner.get(who).get(type.id) }))
-        .filter(r => r.count),
+  const owners = [...ownersSet].sort();
+  if (!owners.length) return [];
+  const countFor = (who, id) => (byOwner.get(who) && byOwner.get(who).get(id)) || 0;
+
+  // A family shows up at all only if SOMEONE logged one of its types — an
+  // all-zero family (nobody ever threw an uppercut) stays hidden, same as
+  // before. Once a family is showing, though, each of ITS types that anyone
+  // used lists every owner, zeroes included.
+  return MOVE_FAMILIES
+    .map(fam => ({
+      family: fam,
+      types: fam.ids
+        .filter(id => owners.some(who => countFor(who, id) > 0))
+        .map(id => ({
+          label: punchLabel(id),
+          rows: owners.map(who => ({ who, count: countFor(who, id) })),
+        })),
     }))
-    .filter(f => f.rows.length);
+    .filter(f => f.types.length);
 }
 
 // ============================================================
@@ -1333,8 +1351,8 @@ function agreementVideoName() {
 // clipboard, and also each row of the PDF export's own table (built fresh
 // from the same computeAgreementPanel() data rather than scraped off the
 // DOM, so it can't drift from what changing the video would show).
-function agreementLineText(fam, r) {
-  return `${fam.label} by ${r.who}: ${r.count}`;
+function agreementLineText(type, r) {
+  return `${type.label} by ${r.who}: ${r.count}`;
 }
 
 function renderAgreement() {
@@ -1347,7 +1365,7 @@ function renderAgreement() {
     return;
   }
 
-  const lineHtml = (fam, r) => `${fam.label} by ${r.who}: <b>${r.count}</b>`;
+  const lineHtml = (type, r) => `${type.label} by ${r.who}: <b>${r.count}</b>`;
   // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
   // use elsewhere in this page — click handlers are wired up below by
   // DOM position rather than embedding the line's text in an HTML
@@ -1358,17 +1376,20 @@ function renderAgreement() {
     </button>`;
 
   body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">Video: ${agreementVideoName()}</span>${copyBtn}</p>` +
-    families.map(({ family, rows }) => `
+    families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
-      <div class="fvd-rows">
-        ${rows.map(r => `<div class="fvd-row"><span class="agr-line">${lineHtml(family, r)}</span>${copyBtn}</div>`).join('')}
+      <div class="agr-family">
+        ${types.map(type => `
+          <div class="fvd-rows agr-type-group">
+            ${type.rows.map(r => `<div class="fvd-row"><span class="agr-line">${lineHtml(type, r)}</span>${copyBtn}</div>`).join('')}
+          </div>`).join('')}
       </div>`).join('');
 
   // Same order as the HTML was just built in (video name first, then every
   // line), so the Nth button matches the Nth text — see the comment on
   // copyBtn above for why this isn't done via a data- attribute instead.
   const flatLines = [`Video: ${agreementVideoName()}`];
-  families.forEach(({ family, rows }) => rows.forEach(r => flatLines.push(agreementLineText(family, r))));
+  families.forEach(({ types }) => types.forEach(type => type.rows.forEach(r => flatLines.push(agreementLineText(type, r)))));
   body.querySelectorAll('.agr-copy').forEach((btn, i) => {
     btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
   });
@@ -1386,15 +1407,15 @@ function exportAgreementPdf() {
   if (!win) { showToast('Could not open the export tab — check your popup blocker.', 'error'); return; }
 
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const sections = families.map(({ family, rows }) => `
+  const sections = families.map(({ family, types }) => `
     <h2>${esc(family.label)}</h2>
     <table>
       <tbody>
-        ${rows.map(r => `
+        ${types.map(type => type.rows.map(r => `
           <tr>
-            <td>${esc(family.label)} by ${esc(r.who)}</td>
+            <td>${esc(type.label)} by ${esc(r.who)}</td>
             <td class="num">${r.count}</td>
-          </tr>`).join('')}
+          </tr>`).join('')).join('')}
       </tbody>
     </table>`).join('');
 
