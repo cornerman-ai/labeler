@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260911e">
+  <link rel="stylesheet" href="punch.css?v=20260911f">
 </head>
 <body>
   <div id="app">
@@ -423,15 +423,23 @@
               <div id="round-markers-scrub"></div>
             </div>
             <div id="seg-tip" hidden></div>
-            <!-- Right-click a chip in #seg-lanes to open this — see
-                 ui.js's setupSegmentContextMenu(). position:fixed and placed
-                 by JS at the click point, so where it lives in the DOM
-                 doesn't matter; kept here, next to the tip it's a sibling
-                 of. -->
-            <div id="seg-context-menu" class="ctx-menu" role="menu" hidden>
-              <button type="button" class="menu-item" role="menuitem" data-action="highlight">Highlight in Labels panel</button>
-              <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete">Delete</button>
-            </div>
+          </div>
+
+          <!-- Right-click a chip in #seg-lanes to open this — see
+               ui.js's setupSegmentContextMenu(). position:fixed and placed
+               by JS at the click point, so where it SITS visually doesn't
+               depend on where it lives in the DOM — but event propagation
+               does: this has to be a sibling of #seek-bar-wrapper, not a
+               child of it, or setupZoomedClickToSeek()'s capture-phase
+               click-to-seek listener on the wrapper (which calls
+               e.stopImmediatePropagation() for anything outside #scrub)
+               swallows every click on "Highlight"/"Delete" before it ever
+               reaches the button — silently, since the menu still opens and
+               looks fine. Confirmed broken when nested inside the wrapper;
+               moved out 2026-09-11. -->
+          <div id="seg-context-menu" class="ctx-menu" role="menu" hidden>
+            <button type="button" class="menu-item" role="menuitem" data-action="highlight">Highlight in Labels panel</button>
+            <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete">Delete</button>
           </div>
 
           <div id="controls-row">
@@ -764,27 +772,27 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260911e"></script>
-  <script src="../shared/player.js?v=20260911e"></script>
-  <script src="skeleton.js?v=20260911e"></script>
+  <script src="../shared/labeler_name.js?v=20260911f"></script>
+  <script src="../shared/player.js?v=20260911f"></script>
+  <script src="skeleton.js?v=20260911f"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260911e"></script>
+  <script src="video-folder.js?v=20260911f"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260911e"></script>
-  <script src="predictions.js?v=20260911e"></script>
-  <script src="app.js?v=20260911e"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260911f"></script>
+  <script src="predictions.js?v=20260911f"></script>
+  <script src="app.js?v=20260911f"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260911e"></script>
+  <script src="problems.js?v=20260911f"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260911e"></script>
+  <script src="ui.js?v=20260911f"></script>
 </body>
 </html>
