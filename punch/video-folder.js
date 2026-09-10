@@ -54,16 +54,29 @@ const VF_SLOTS = {
   },
 };
 
+// One shared, never-closed connection instead of opening/closing a fresh one
+// per get/put/delete — both slots' restore-on-load IIFEs (setupFolderSlot())
+// fire concurrently, and repeatedly opening+closing the same DB from two call
+// sites at once is exactly the kind of thing that's fine 99% of the time and
+// mysteriously drops a write the other 1% — memoizing the connection removes
+// that whole class of doubt. onversionchange closes it so a future schema
+// bump (or this same DB open in another tab) doesn't hang either side.
+let _vfDbPromise = null;
 function vfOpenDb() {
-  return new Promise((resolve, reject) => {
+  if (_vfDbPromise) return _vfDbPromise;
+  _vfDbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(VF_DB_NAME, VF_DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(VF_STORE_NAME)) db.createObjectStore(VF_STORE_NAME);
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      req.result.onversionchange = () => { req.result.close(); _vfDbPromise = null; };
+      resolve(req.result);
+    };
+    req.onerror = () => { _vfDbPromise = null; reject(req.error); };
   });
+  return _vfDbPromise;
 }
 
 async function vfPutHandle(dbKey, handle) {
@@ -74,21 +87,23 @@ async function vfPutHandle(dbKey, handle) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-  db.close();
+  // Read back what was just written rather than trusting oncomplete alone —
+  // cheap, and it turns a silent lost-write into a console entry pointing
+  // straight at this function instead of a confusing "it's just gone" days
+  // later on reload.
+  const verify = await vfGetHandle(dbKey);
+  if (!verify) console.error(`[video-folder] wrote "${dbKey}" but read-back found nothing — the connection may not have persisted it.`);
+  else console.info(`[video-folder] connected and saved "${dbKey}":`, handle.name);
 }
 
 async function vfGetHandle(dbKey) {
   const db = await vfOpenDb();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(VF_STORE_NAME, 'readonly');
-      const req = tx.objectStore(VF_STORE_NAME).get(dbKey);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-  } finally {
-    db.close();
-  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(VF_STORE_NAME, 'readonly');
+    const req = tx.objectStore(VF_STORE_NAME).get(dbKey);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
 }
 
 async function vfDeleteHandle(dbKey) {
@@ -99,7 +114,6 @@ async function vfDeleteHandle(dbKey) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-  db.close();
 }
 
 function vfIsSupported() {
@@ -116,28 +130,33 @@ function vfStem(name) {
 // name matches `target`. Exact stem match wins; otherwise the first file
 // whose stem contains the target (or vice versa) — handles the tracking
 // sheet's name being a truncated/annotated version of the real filename.
-// Bails out early once an exact match is found.
+// Bails out early once an exact match is found. Returns { entry, path } —
+// `path` is the slash-joined route from the connected folder's root down to
+// the file (the closest thing to a "full path" the File System Access API
+// exposes at all: it never hands back the real OS path, only names, so this
+// is built up by hand while walking rather than read off the handle).
 async function vfFindVideoHandle(rootHandle, target) {
   const targetStem = vfStem(target);
   if (!targetStem) return null;
   let partial = null;
 
-  async function visit(dirHandle) {
+  async function visit(dirHandle, prefix) {
     for await (const entry of dirHandle.values()) {
+      const path = prefix ? prefix + '/' + entry.name : entry.name;
       if (entry.kind === 'directory') {
-        const found = await visit(entry);
+        const found = await visit(entry, path);
         if (found) return found;
         continue;
       }
       if (!VF_VIDEO_EXT_RE.test(entry.name)) continue;
       const stem = vfStem(entry.name);
-      if (stem === targetStem) return entry;
-      if (!partial && (stem.includes(targetStem) || targetStem.includes(stem))) partial = entry;
+      if (stem === targetStem) return { entry, path };
+      if (!partial && (stem.includes(targetStem) || targetStem.includes(stem))) partial = { entry, path };
     }
     return null;
   }
 
-  const exact = await visit(rootHandle);
+  const exact = await visit(rootHandle, rootHandle.name);
   return exact || partial;
 }
 
@@ -150,24 +169,27 @@ async function vfFindVideoHandle(rootHandle, target) {
 const VF_SKELETON_MAIN_RE = /^(.*)_blazepose_r\d+(?:_pts)?\.npy$/i;
 const VF_SKELETON_META_RE = /^(.*)_blazepose_r\d+_meta\.json$/i;
 
+// Returns [{ entry, path }, ...] — see vfFindVideoHandle() above for what
+// `path` means and why it's built by hand instead of read off the handle.
 async function vfFindSkeletonHandles(rootHandle, target) {
   const targetStem = vfStem(target);
   if (!targetStem) return [];
   const exact = [];
   const partial = [];
 
-  async function visit(dirHandle) {
+  async function visit(dirHandle, prefix) {
     for await (const entry of dirHandle.values()) {
-      if (entry.kind === 'directory') { await visit(entry); continue; }
+      const path = prefix ? prefix + '/' + entry.name : entry.name;
+      if (entry.kind === 'directory') { await visit(entry, path); continue; }
       const m = entry.name.match(VF_SKELETON_MAIN_RE) || entry.name.match(VF_SKELETON_META_RE);
       if (!m) continue;
       const stem = vfStem(m[1]);
-      if (stem === targetStem) exact.push(entry);
-      else if (stem.includes(targetStem) || targetStem.includes(stem)) partial.push(entry);
+      if (stem === targetStem) exact.push({ entry, path });
+      else if (stem.includes(targetStem) || targetStem.includes(stem)) partial.push({ entry, path });
     }
   }
 
-  await visit(rootHandle);
+  await visit(rootHandle, rootHandle.name);
   return exact.length ? exact : partial;
 }
 
@@ -256,11 +278,15 @@ function setupFolderSlot(slot) {
 
   (async () => {
     let handle;
-    try { handle = await vfGetHandle(cfg.dbKey); } catch { handle = null; }
-    if (!handle) { vfPaint(slot, 'disconnected'); return; }
+    try { handle = await vfGetHandle(cfg.dbKey); } catch (err) {
+      console.error(`[video-folder] restoring "${cfg.dbKey}" failed:`, err);
+      handle = null;
+    }
+    if (!handle) { console.info(`[video-folder] no stored handle for "${cfg.dbKey}" — was never connected, or the connect never persisted.`); vfPaint(slot, 'disconnected'); return; }
     _vfHandles[slot] = handle;
     let perm;
     try { perm = await handle.queryPermission({ mode: 'read' }); } catch { perm = 'denied'; }
+    console.info(`[video-folder] restored "${cfg.dbKey}" (${handle.name}), permission: ${perm}`);
     vfPaint(slot, perm === 'granted' ? 'connected' : 'needs-permission');
   })();
 }
@@ -285,17 +311,24 @@ async function autoLoadSkeletonsFromFolder(name) {
   if (perm !== 'granted') { vfPaint('skeleton', 'needs-permission'); return false; }
   if (typeof loadSkeletonFiles !== 'function' || typeof applySkeletonLoadResult !== 'function') return false;
 
-  let entries;
-  try { entries = await vfFindSkeletonHandles(handle, name); } catch (err) {
+  let hits;
+  try { hits = await vfFindSkeletonHandles(handle, name); } catch (err) {
     console.warn('Skeleton folder search failed:', err);
     return false;
   }
-  if (!entries.length) return false;
+  if (!hits.length) return false;
 
-  const files = await Promise.all(entries.map((e) => e.getFile()));
+  console.info('[video-folder] skeleton files matched:', hits.map((h) => h.path));
+  const files = await Promise.all(hits.map((h) => h.entry.getFile()));
   const result = await loadSkeletonFiles(files);
   const ok = applySkeletonLoadResult(result);
-  if (ok) showToast('Skeletons loaded from skeleton folder.', 'success');
+  if (ok) {
+    // Full paths, not just filenames — with dozens of _blazepose_r<N>
+    // triples per video, "loaded from skeleton folder" alone doesn't say
+    // which files, or from how deep in a subfolder they came.
+    const roundDir = hits[0].path.split('/').slice(0, -1).join('/') || hits[0].path;
+    showToast(`Loaded ${hits.length} skeleton file${hits.length === 1 ? '' : 's'} from ${roundDir}`, 'success');
+  }
   return ok;
 }
 
@@ -309,17 +342,18 @@ async function autoLoadVideoFromFolder(name) {
   try { perm = await handle.queryPermission({ mode: 'read' }); } catch { perm = 'denied'; }
   if (perm !== 'granted') { vfPaint('video', 'needs-permission'); return false; }
 
-  let entry;
-  try { entry = await vfFindVideoHandle(handle, name); } catch (err) {
+  let hit;
+  try { hit = await vfFindVideoHandle(handle, name); } catch (err) {
     console.warn('Video folder search failed:', err);
     return false;
   }
-  if (!entry) {
+  if (!hit) {
     showToast('Video not found in the connected folder — open it manually.', 'info');
     return false;
   }
-  const file = await entry.getFile();
+  console.info('[video-folder] video matched:', hit.path);
+  const file = await hit.entry.getFile();
   loadVideoFileIntoPlayer(file);
-  showToast('Loaded from video folder.', 'success');
+  showToast(`Loaded ${hit.path}`, 'success');
   return true;
 }
