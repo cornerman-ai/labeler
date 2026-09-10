@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260910y">
+  <link rel="stylesheet" href="punch.css?v=20260910z">
 </head>
 <body>
   <div id="app">
@@ -122,9 +122,16 @@
            see maybeShowForeignVideoPopup() in app.js). Opening the local
            video file is the second step, once you know which video you're
            looking at. -->
+      <div class="src-field-wrap">
       <label class="src-field" for="drive-link">
         <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         <input type="text" id="drive-link" placeholder="Paste the video link">
+        <!-- Opens #video-picker-panel — a searchable list of every video on
+             the team's tracking sheet, so a link never has to be hand-copied
+             out of it. app.js's setupVideoPicker(). -->
+        <button type="button" id="btn-pick-video" title="Pick from tracking sheet">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 5.5 7 9.5 11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <!-- Shown once there's a link to copy — app.js's setupDriveLink()/
              copyDriveLink(). The field is already a real, selectable
              <input>; this is the one-click affordance on top of that. -->
@@ -136,6 +143,16 @@
              now nothing on screen said whether it had registered. -->
         <span id="link-status" class="field-status" hidden></span>
       </label>
+      <!-- Populated lazily from the tracking spreadsheet's "progress" tab
+           (Code.js action listTrackingVideos) — kept in the sheet's own row
+           order, filtered by substring as you type. Picking a row fills
+           #drive-link and fires the same debounced load setupDriveLink()
+           already wires up for a pasted link. -->
+      <div id="video-picker-panel" hidden>
+        <input type="text" id="video-picker-search" placeholder="Search videos…">
+        <div id="video-picker-list"></div>
+      </div>
+      </div>
 
       <!-- Same .src-field component as the link row above it — same height,
            fill, radius, trailing copy button and confirmation chip, and the
@@ -716,23 +733,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260910y"></script>
-  <script src="../shared/player.js?v=20260910y"></script>
-  <script src="skeleton.js?v=20260910y"></script>
+  <script src="../shared/labeler_name.js?v=20260910z"></script>
+  <script src="../shared/player.js?v=20260910z"></script>
+  <script src="skeleton.js?v=20260910z"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260910y"></script>
-  <script src="predictions.js?v=20260910y"></script>
-  <script src="app.js?v=20260910y"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260910z"></script>
+  <script src="predictions.js?v=20260910z"></script>
+  <script src="app.js?v=20260910z"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260910y"></script>
+  <script src="problems.js?v=20260910z"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260910y"></script>
+  <script src="ui.js?v=20260910z"></script>
 </body>
 </html>

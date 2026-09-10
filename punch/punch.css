@@ -521,6 +521,42 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #drive-link:focus { outline: none; }
 #drive-link::placeholder { color: var(--ink-on-fill); }
 
+.src-field-wrap { position: relative; width: 100%; }
+
+/* Chevron button opening #video-picker-panel — same slot/sizing as the copy
+   buttons just after it, so the two sit flush together. */
+#btn-pick-video {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; border: 0;
+  background: transparent; color: inherit; opacity: .65;
+}
+#btn-pick-video:hover, #btn-pick-video.open { opacity: 1; background: var(--fill-2); }
+#btn-pick-video svg { width: 12px; height: 12px; }
+#btn-pick-video.open svg { transform: rotate(180deg); }
+
+#video-picker-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+  background: var(--card); border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.14);
+  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+#video-picker-panel[hidden] { display: none; }
+#video-picker-search {
+  height: 30px; padding: 0 10px; border-radius: 7px; border: 0;
+  background: var(--fill); color: var(--ink); font-size: 13px;
+}
+#video-picker-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#video-picker-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.vp-row {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  color: var(--ink); font-size: 12.5px; padding: 7px 9px; border-radius: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vp-row:hover, .vp-row.active { background: var(--fill-2); }
+.vp-empty, .vp-loading {
+  padding: 10px 9px; font-size: 12.5px; color: var(--ink-on-fill); text-align: center;
+}
+
 /* One-click copy on top of each field already being real, selectable text —
    shown only once there's something worth copying. Briefly turns green on
    click, the same "it happened" language #name-field's save flash and the

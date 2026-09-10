@@ -262,6 +262,15 @@ function doGet(e) {
     return doGetBugReport(p, labeler);
   }
 
+  // Tracking-sheet video picker — read-only list of {name, link} from the
+  // team's shared progress spreadsheet (a separate sheet the labelers
+  // maintain by hand, not the punch data sheet). Lets punch/index.html
+  // offer a searchable dropdown instead of everyone copy-pasting Drive
+  // links out of that sheet by hand.
+  if (action === 'listTrackingVideos') {
+    return doGetTrackingVideos();
+  }
+
   // Bodyshot review actions: cross-video sweep over Combined Data.
   if (action === 'listBodyshots' || action === 'reclassify') {
     return doGetBodyshots(p, action);
@@ -1177,6 +1186,34 @@ function isNonPersonLabelerSheet(name) {
 var PUNCH_SPREADSHEET_ID = '1HkKOx4UBcybaDpvQBiUeDO72KbNDiUux4O_KubhTmPk';
 function punchSpreadsheet() {
   return SpreadsheetApp.openById(PUNCH_SPREADSHEET_ID);
+}
+
+// Team's own manually-maintained tracking sheet — video_name/video_link
+// columns plus per-labeler progress notes on the "progress" tab. Read-only:
+// just hands back name+link pairs in original row order.
+var TRACKING_SPREADSHEET_ID = '18TFg6h_8omUYIo_pKsuLT_q-e0teLVEF';
+function doGetTrackingVideos() {
+  var ss = SpreadsheetApp.openById(TRACKING_SPREADSHEET_ID);
+  var sh = ss.getSheetByName('progress');
+  if (!sh) return jsonOut({ status: 'ok', videos: [] });
+  var data = sh.getDataRange().getValues();
+  if (data.length <= 1) return jsonOut({ status: 'ok', videos: [] });
+  var header = data[0];
+  var nameCol = -1, linkCol = -1;
+  for (var c = 0; c < header.length; c++) {
+    var h = String(header[c]).toLowerCase().trim();
+    if (h === 'video_name') nameCol = c;
+    else if (h === 'video_link') linkCol = c;
+  }
+  if (nameCol < 0 || linkCol < 0) return jsonOut({ status: 'ok', videos: [] });
+  var videos = [];
+  for (var r = 1; r < data.length; r++) {
+    var link = String(data[r][linkCol] || '').trim();
+    if (!link) continue;
+    var name = String(data[r][nameCol] || '').trim();
+    videos.push({ name: name || link, link: link });
+  }
+  return jsonOut({ status: 'ok', videos: videos });
 }
 
 // Column order written to Combined Data. Matches the spec in CLAUDE.md:

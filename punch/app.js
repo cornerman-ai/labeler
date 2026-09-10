@@ -303,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateTimestampButton();
   updateRoundIndicator();
   setupDriveLink();
+  setupVideoPicker();
   if (labelerId()) {
     const badge = document.getElementById('labeler-badge');
     const isName = !/^\d+$/.test(labelerId());
@@ -2056,6 +2057,83 @@ function resetVideoForNewLink() {
 
   if (typeof resetSkeletonState === 'function') resetSkeletonState();
   if (typeof resetPredictionsState === 'function') resetPredictionsState();
+}
+
+// ============================================================
+// Video picker (tracking sheet)
+// ============================================================
+// Lets a labeler pick a video by name instead of hand-copying its link out
+// of the team's tracking spreadsheet — Code.js's listTrackingVideos reads
+// that sheet's "progress" tab and returns {name, link} pairs in its own row
+// order, which this keeps as-is: the search box narrows that list, it never
+// re-sorts it.
+let _videoCatalog = null;          // null = not fetched yet, [] = fetched empty
+let _videoCatalogPromise = null;
+
+function fetchVideoCatalog() {
+  if (_videoCatalogPromise) return _videoCatalogPromise;
+  _videoCatalogPromise = fetchJson(sheetUrl({ action: 'listTrackingVideos' }), 20000)
+    .then((result) => {
+      _videoCatalog = Array.isArray(result && result.videos) ? result.videos : [];
+      return _videoCatalog;
+    })
+    .catch(() => { _videoCatalog = []; return _videoCatalog; });
+  return _videoCatalogPromise;
+}
+
+function setupVideoPicker() {
+  const btn = document.getElementById('btn-pick-video');
+  const panel = document.getElementById('video-picker-panel');
+  const search = document.getElementById('video-picker-search');
+  const list = document.getElementById('video-picker-list');
+  const input = document.getElementById('drive-link');
+  if (!btn || !panel || !search || !list || !input) return;
+
+  function renderList(filter) {
+    if (!_videoCatalog) { list.innerHTML = '<div class="vp-loading">Loading videos…</div>'; return; }
+    const q = filter.trim().toLowerCase();
+    const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
+    if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
+    list.innerHTML = rows.map((v, i) =>
+      `<button type="button" class="vp-row" data-idx="${i}">${escapeHtml(v.name)}</button>`
+    ).join('');
+    Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
+      el.addEventListener('click', () => pick(rows[i]));
+    });
+  }
+
+  function pick(video) {
+    input.value = video.link;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    closePanel();
+  }
+
+  function openPanel() {
+    panel.hidden = false;
+    btn.classList.add('open');
+    search.value = '';
+    renderList('');
+    search.focus();
+    if (!_videoCatalog) fetchVideoCatalog().then(() => renderList(search.value));
+  }
+
+  function closePanel() {
+    panel.hidden = true;
+    btn.classList.remove('open');
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (panel.hidden) openPanel(); else closePanel();
+  });
+  search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) closePanel();
+  });
+
+  // Warm the cache in the background so the first open isn't a blank spinner.
+  fetchVideoCatalog();
 }
 
 // One click on top of text that is already selectable on screen — the link
