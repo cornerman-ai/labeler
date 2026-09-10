@@ -2208,6 +2208,23 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // quiet re-fetch after this labeler's own add/edit/delete, which
   // shouldn't block anything the labeler is already mid-way through.
   if (isFreshLoad) { setLoadingLocked(true); showLoadingDialog(); }
+  // Suppresses checkProblems() (problems.js) until BOTH phases below have
+  // landed. Phase 1 alone is always an incomplete picture — literally empty
+  // for admin/Analyst (who own no rows), just this labeler's own for
+  // everyone else — so diffing against it produced a popup for whatever
+  // happened to be detectable at that half-loaded moment, which visibly
+  // disagreed with the full count the badge and "View all" show a moment
+  // later once phase 2's foreign rows land. Also drops any problems left
+  // over from whatever video was open before — their keys are scoped by
+  // punch_uuid only, not by video, so a stale entry surviving a video
+  // switch could wrongly tell the backend an still-open problem on the
+  // OLD video just resolved.
+  if (isFreshLoad) {
+    state.problemsLoadPending = true;
+    state.knownProblems.clear();
+    state.pendingResolveProblems.clear();
+    if (typeof updateProblemsButton === 'function') updateProblemsButton(0);
+  }
 
   // ── phase 1: own rows ────────────────────────────────────────────────
   // Tracked, because the dialog must only advance to "loading others" if
@@ -2280,6 +2297,14 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
       // never sit there loading something nobody is loading.
       if (phase1ok) setLoadingStage('foreign');
       else hideLoadingDialog();
+      // Phase 2 (and the seedProblemsBaseline() call that un-suppresses)
+      // only runs below when phase 1 actually succeeded — on a failure this
+      // is the only place left to clear the flag, or it would stay
+      // suppressed for the rest of the session.
+      if (!phase1ok) {
+        state.problemsLoadPending = false;
+        if (typeof seedProblemsBaseline === 'function') seedProblemsBaseline();
+      }
     }
   }
 
@@ -2334,6 +2359,19 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     // Whatever happened above — success, refusal, timeout — the load is
     // over, so the dialog goes. Never left hanging on a failed second half.
     if (isFreshLoad && current()) hideLoadingDialog();
+    // Un-suppress now that both phases have settled (whatever the outcome)
+    // — see the comment where problemsLoadPending is set, above. Seeds the
+    // baseline silently (seedProblemsBaseline(), problems.js) rather than
+    // running checkProblems(): whatever's already open when the page
+    // finishes loading was never "new" the way a problem an edit just
+    // caused is, so it gets no popup — only real-time detection from here
+    // on does. Guarded on current() the same way hideLoadingDialog() is
+    // just above: a superseded load must not clear the flag the NEWER load
+    // just set for itself.
+    if (isFreshLoad && current()) {
+      state.problemsLoadPending = false;
+      if (typeof seedProblemsBaseline === 'function') seedProblemsBaseline();
+    }
   }
 }
 

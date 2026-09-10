@@ -28,6 +28,12 @@ Object.assign(state, {
   // before the sweep runs cancels the entry (see checkProblems()) rather
   // than round-tripping the backend for a one-render flicker.
   pendingResolveProblems: new Map(),
+  // Suppresses checkProblems() while a fresh video load is only half in —
+  // see fetchLabelsFromSheet() in app.js, which sets/clears this around its
+  // two-phase fetch. Without it, the first popup a labeler sees on login
+  // could reflect just phase 1's incomplete data and visibly disagree with
+  // the full count the badge and "View all" show a moment later.
+  problemsLoadPending: false,
 });
 
 const PROBLEM_SWEEP_MS = 45000;   // "a reasonable amount of time" between resolve pings
@@ -84,6 +90,7 @@ function postResolveProblem(info) {
 // ============================================================
 function checkProblems() {
   if (typeof computeProblems !== 'function') return;
+  if (state.problemsLoadPending) return;
   const current = computeProblems();
   const currentKeys = new Set(current.map(problemKey));
 
@@ -116,6 +123,25 @@ function checkProblems() {
 
   updateProblemsButton(current.length);
   if (newlyAppeared.length) showProblemPopup(newlyAppeared);
+}
+
+// Called once, right when a fresh video load finishes settling (both
+// phases — see fetchLabelsFromSheet() in app.js), instead of checkProblems().
+// Whatever is open on arrival isn't "new" the way a problem introduced by
+// an edit DURING this session is — nobody just did anything to cause it, so
+// popping up a dialog for it the instant the page finishes loading was just
+// noise. This establishes the same baseline checkProblems() would (so the
+// very next real edit diffs against accurate state and the badge/list are
+// correct from the first paint) without the popup or the backend addProblem
+// calls — those already ran whenever this got logged originally;
+// re-announcing it here would just be re-reporting old news.
+function seedProblemsBaseline() {
+  if (typeof computeProblems !== 'function') return;
+  const current = computeProblems();
+  state.knownProblems.clear();
+  for (const p of current) state.knownProblems.set(problemKey(p), p);
+  state.pendingResolveProblems.clear();
+  updateProblemsButton(current.length);
 }
 
 function updateProblemsButton(count) {
