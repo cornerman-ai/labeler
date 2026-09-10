@@ -295,6 +295,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .pred-chip-remove { width: 18px; padding: 0; font-size: 12px; }
 
 .nav-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+/* The two halves either side of .nav-div below — identity/language, then
+   session status and actions on the current video. Each is its own flex
+   run so the gap between its own members stays 8px regardless of the wider
+   gap the divider puts between the halves. */
+.nav-group { display: flex; align-items: center; gap: 8px; }
+/* Same hairline the video-controls toolbar's own .tdiv uses, just closer to
+   .tdiv's spirit than its exact rule (that one assumes it always has a
+   neighbour snug on both sides; this one needs its own left/right breathing
+   room since .nav-group already carries its members' gap). */
+.nav-div { flex: none; width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
 
 /* Your name. A filled field with a person glyph, the way a system settings
    row looks — no border, no label, because the glyph is the label.
@@ -373,21 +383,25 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .adm-lead { font-size: 14px; font-weight: 590; margin-bottom: 8px; }
 .adm-note { font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
 
-/* Admin-only, shown by setupAgreement(). */
+/* Admin-only, shown by setupAgreement(). Same fixed width as #btn-problems
+   below — the two sit side by side in .nav-group and used to size
+   themselves to their own label ("Agreement" vs "Problems" plus its count
+   badge), which read as mismatched buttons rather than one matched pair. */
 #btn-agreement {
-  height: 32px; padding: 0 11px; border-radius: 8px; border: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; min-width: 92px; padding: 0 11px; border-radius: 8px; border: 0;
   background: var(--fill); color: var(--ink);
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
 #btn-agreement[hidden] { display: none; }
 #btn-agreement:hover { background: var(--fill-2); }
 
-/* Everyone's — see problems.js. Same shape as #btn-agreement beside it,
-   plus a count badge (amber, matching every other "worth a look, not an
+/* Everyone's — see problems.js. Same shape/width as #btn-agreement beside
+   it, plus a count badge (amber, matching every other "worth a look, not an
    error" signal in this tool) that only shows once something's open. */
 #btn-problems {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 11px; border-radius: 8px; border: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; min-width: 92px; padding: 0 11px; border-radius: 8px; border: 0;
   background: var(--fill); color: var(--ink);
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
@@ -2211,4 +2225,12 @@ kbd {
      every control reachable instead of clipping whatever runs off the
      right. */
   .nav-actions { flex-wrap: wrap; justify-content: flex-end; row-gap: 8px; }
+  /* .nav-group itself needs the same wrap now that .nav-actions' direct
+     children are the two groups plus the divider between them, not every
+     control individually — otherwise a group wider than the viewport would
+     overflow instead of wrapping control-by-control the way this row did
+     before the groups existed. The divider is a mid-row ornament, not
+     something worth its own wrapped line, so it hides here instead. */
+  .nav-group { flex-wrap: wrap; row-gap: 8px; }
+  .nav-div { display: none; }
 }

@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260910c">
+  <link rel="stylesheet" href="punch.css?v=20260910d">
 </head>
 <body>
   <div id="app">
@@ -26,53 +26,65 @@
       </div>
 
       <div class="nav-actions">
-        <!-- The identity every save is filed under. labeler_name.js keeps this
-             input in sync across the whole suite; committing it here writes
-             through to that same store (see ui.js). -->
-        <div id="name-field">
-          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          <input id="labeler-input" placeholder="Your name" title="Your name"
-                 autocomplete="off" spellcheck="false" maxlength="40">
+        <!-- Identity + display language — who you are and how moves read to
+             you, as distinct from what follows the divider (session status
+             and actions on the current video). -->
+        <div class="nav-group">
+          <!-- The identity every save is filed under. labeler_name.js keeps
+               this input in sync across the whole suite; committing it here
+               writes through to that same store (see ui.js). -->
+          <div id="name-field">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input id="labeler-input" placeholder="Your name" title="Your name"
+                   autocomplete="off" spellcheck="false" maxlength="40">
+          </div>
+
+          <!-- Display language for punch/defense names + descriptions only —
+               app.js's punchLabel()/punchDesc() (see PUNCH_I18N). Everything
+               else in the UI stays English. -->
+          <div id="lang-field" title="Punch/defense language">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 7h11M7 1.5c1.7 1.6 2.6 3.6 2.6 5.5S8.7 11.9 7 13.5C5.3 11.9 4.4 9.9 4.4 8S5.3 2.1 7 1.5Z" stroke="currentColor" stroke-width="1.1"/></svg>
+            <select id="lang-select" aria-label="Punch/defense language"></select>
+          </div>
         </div>
 
-        <!-- Display language for punch/defense names + descriptions only —
-             app.js's punchLabel()/punchDesc() (see PUNCH_I18N). Everything
-             else in the UI stays English. -->
-        <div id="lang-field" title="Punch/defense language">
-          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 7h11M7 1.5c1.7 1.6 2.6 3.6 2.6 5.5S8.7 11.9 7 13.5C5.3 11.9 4.4 9.9 4.4 8S5.3 2.1 7 1.5Z" stroke="currentColor" stroke-width="1.1"/></svg>
-          <select id="lang-select" aria-label="Punch/defense language"></select>
+        <span class="nav-div"></span>
+
+        <div class="nav-group">
+          <!-- Labels that haven't reached the sheet yet. They are already
+               safe on disk (app.js's outbox); this is the promise that they
+               exist and the button that retries them now. Hidden when the
+               queue is empty, which is almost always. -->
+          <button type="button" id="outbox-chip" hidden
+                  title="These labels are saved on this device but not yet in the sheet. Click to retry."></button>
+
+          <!-- Only in admin mode — see setupAgreement() in app.js. Same
+               fixed width as #btn-problems beside it (see .nav-group button
+               below) so the two read as one matched pair of buttons rather
+               than sizing themselves to whatever their label happens to be. -->
+          <button type="button" id="btn-agreement" hidden
+                  title="Inter-rater agreement for this video">Agreement</button>
+
+          <!-- Standing way in to the same list the popup's "View all" opens —
+               see problems.js. Everyone's, not admin-only: it's rows THIS
+               labeler can act on (own always, plus foreign for admin), same
+               scope computeProblems() already uses. Count badge only shows
+               once there's something open; the button itself stays put so
+               it's somewhere predictable to check even at zero. -->
+          <button type="button" id="btn-problems"
+                  title="Timing problems on this video">Problems<span id="problems-count" hidden></span></button>
+
+          <!-- Standing count of other admins working right now — the dialog
+               announces the arrival, this is what remains afterwards so the
+               fact stays visible without nagging. See adminPing(). -->
+          <span id="admin-presence" hidden
+                title="Other people are in admin mode. Saves are serialised, so nothing lands on the wrong label — but if you edit the same punch, the later save wins."></span>
+
+          <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
+                  aria-haspopup="dialog">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+          </button>
         </div>
-
-        <!-- Labels that haven't reached the sheet yet. They are already safe
-             on disk (app.js's outbox); this is the promise that they exist
-             and the button that retries them now. Hidden when the queue is
-             empty, which is almost always. -->
-        <button type="button" id="outbox-chip" hidden
-                title="These labels are saved on this device but not yet in the sheet. Click to retry."></button>
-
-        <!-- Only in admin mode — see setupAgreement() in app.js. -->
-        <button type="button" id="btn-agreement" hidden
-                title="Inter-rater agreement for this video">Agreement</button>
-
-        <!-- Standing way in to the same list the popup's "View all" opens —
-             see problems.js. Everyone's, not admin-only: it's rows THIS
-             labeler can act on (own always, plus foreign for admin), same
-             scope computeProblems() already uses. Count badge only shows
-             once there's something open; the button itself stays put so
-             it's somewhere predictable to check even at zero. -->
-        <button type="button" id="btn-problems"
-                title="Timing problems on this video">Problems<span id="problems-count" hidden></span></button>
-
-        <!-- Standing count of other admins working right now — the dialog
-             announces the arrival, this is what remains afterwards so the
-             fact stays visible without nagging. See adminPing(). -->
-        <span id="admin-presence" hidden
-              title="Other people are in admin mode. Saves are serialised, so nothing lands on the wrong label — but if you edit the same punch, the later save wins."></span>
-
-        <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
-                aria-haspopup="dialog">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
-        </button>
       </div>
 
       <!-- app.js writes the labeler name in here and flips it visible; the
@@ -698,23 +710,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260910c"></script>
-  <script src="../shared/player.js?v=20260910c"></script>
-  <script src="skeleton.js?v=20260910c"></script>
+  <script src="../shared/labeler_name.js?v=20260910d"></script>
+  <script src="../shared/player.js?v=20260910d"></script>
+  <script src="skeleton.js?v=20260910d"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260910c"></script>
-  <script src="predictions.js?v=20260910c"></script>
-  <script src="app.js?v=20260910c"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260910d"></script>
+  <script src="predictions.js?v=20260910d"></script>
+  <script src="app.js?v=20260910d"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260910c"></script>
+  <script src="problems.js?v=20260910d"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260910c"></script>
+  <script src="ui.js?v=20260910d"></script>
 </body>
 </html>
