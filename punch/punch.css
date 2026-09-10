@@ -551,6 +551,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: block; width: 100%; text-align: left; border: 0; background: none;
   color: var(--ink); font-size: 12.5px; padding: 7px 9px; border-radius: 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Without this, a flex column with a capped max-height (below) treats
+     each row's overflow:hidden as an invitation to shrink it past its own
+     content height instead of just scrolling — dozens of rows then get
+     squeezed thinner than their own text line, overlapping into an
+     unreadable smear. flex:none pins every row to its natural height so
+     the LIST scrolls instead of the ROWS collapsing. */
+  flex: none;
 }
 .vp-row:hover, .vp-row.active { background: var(--fill-2); }
 .vp-empty, .vp-loading {
