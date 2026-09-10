@@ -2065,6 +2065,20 @@ kbd {
    types read as visually paired without merging their counts into one. */
 .agr-family { display: flex; flex-direction: column; gap: 8px; }
 .agr-line { flex: 1; min-width: 0; }
+/* Same dot .punch-btn's own carries for this move — see the comment on
+   lineHtml() in renderAgreement(). Inline before the text rather than a
+   flex child of its own, so it sits on the text's own line exactly the
+   way .punch-btn .dot does. */
+.agr-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+/* The count-only pairing line under a type's owner rows — see
+   computeAgreementPanel()'s `summary` and agreementSummaryText() in app.js.
+   Slightly darker fill and smaller text than the rows above it marks it as
+   a derived stat, not a third labeler's row. */
+.agr-summary-row { margin-top: 2px; background: var(--fill-2); font-size: 12.5px; }
 /* Same 22px icon-button shape as #btn-copy-link/#btn-copy-name elsewhere on
    this page, just its own class since this one lives inside .fvd-row
    instead of a .src-field. */

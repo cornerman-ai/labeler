@@ -1256,10 +1256,24 @@ function computeAgreementPanel() {
       family: fam,
       types: fam.ids
         .filter(id => owners.some(who => countFor(who, id) > 0))
-        .map(id => ({
-          label: punchLabel(id),
-          rows: owners.map(who => ({ who, count: countFor(who, id) })),
-        })),
+        .map(id => {
+          const rows = owners.map(who => ({ who, count: countFor(who, id) }));
+          // A count-only pairing, not a timing match — "how many of these
+          // could line up 1:1 between the two of them" (the smaller count)
+          // and "how many are left over with nobody to pair against" (the
+          // difference). Only means anything for exactly two owners; with
+          // one or three+ there's no single "the other person" to pair
+          // against, so it's left off rather than guessed at. Unmatched is
+          // broken out per owner (one of the two is always 0 — whoever
+          // logged fewer has nothing left over) rather than one bare
+          // difference, so "who's over" doesn't need re-deriving from the
+          // two counts above.
+          const matched = rows.length === 2 ? Math.min(rows[0].count, rows[1].count) : null;
+          const summary = rows.length === 2
+            ? { matched, unmatchedBy: rows.map(r => ({ who: r.who, n: r.count - matched })) }
+            : null;
+          return { id, label: punchLabel(id), rows, summary };
+        }),
     }))
     .filter(f => f.types.length);
 }
@@ -1355,6 +1369,13 @@ function agreementLineText(type, r) {
   return `${type.label} by ${r.who}: ${r.count}`;
 }
 
+// The count-only pairing line under a type's two owner rows — see
+// computeAgreementPanel()'s `summary`.
+function agreementSummaryText(type) {
+  const unmatched = type.summary.unmatchedBy.map(u => `by ${u.who}: ${u.n}`).join(', ');
+  return `Matching pairs: ${type.summary.matched} | Unmatched labels ${unmatched}`;
+}
+
 function renderAgreement() {
   const body = document.getElementById('agr-body');
   if (!body) return;
@@ -1365,7 +1386,11 @@ function renderAgreement() {
     return;
   }
 
-  const lineHtml = (type, r) => `${type.label} by ${r.who}: <b>${r.count}</b>`;
+  // Same dot getPunchColor() paints on this type's .punch-btn and its
+  // timeline strip — the PDF export uses it too now, so the two read as
+  // the same report rather than a plain-text stand-in for a designed one.
+  const lineHtml = (type, r) =>
+    `<span class="agr-dot" style="background:${getPunchColor(type.id)}"></span>${type.label} by ${r.who}: <b>${r.count}</b>`;
   // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
   // use elsewhere in this page — click handlers are wired up below by
   // DOM position rather than embedding the line's text in an HTML
@@ -1375,6 +1400,12 @@ function renderAgreement() {
       <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
     </button>`;
 
+  const summaryHtml = (type) => {
+    if (!type.summary) return '';
+    const unmatched = type.summary.unmatchedBy.map(u => `by ${u.who}: <b>${u.n}</b>`).join(', ');
+    return `<div class="fvd-row agr-summary-row"><span class="agr-line">Matching pairs: <b>${type.summary.matched}</b> &nbsp;|&nbsp; Unmatched labels ${unmatched}</span>${copyBtn}</div>`;
+  };
+
   body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">Video: ${agreementVideoName()}</span>${copyBtn}</p>` +
     families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
@@ -1382,14 +1413,19 @@ function renderAgreement() {
         ${types.map(type => `
           <div class="fvd-rows agr-type-group">
             ${type.rows.map(r => `<div class="fvd-row"><span class="agr-line">${lineHtml(type, r)}</span>${copyBtn}</div>`).join('')}
+            ${summaryHtml(type)}
           </div>`).join('')}
       </div>`).join('');
 
   // Same order as the HTML was just built in (video name first, then every
-  // line), so the Nth button matches the Nth text — see the comment on
-  // copyBtn above for why this isn't done via a data- attribute instead.
+  // line, each type's summary right after its own rows), so the Nth button
+  // matches the Nth text — see the comment on copyBtn above for why this
+  // isn't done via a data- attribute instead.
   const flatLines = [`Video: ${agreementVideoName()}`];
-  families.forEach(({ types }) => types.forEach(type => type.rows.forEach(r => flatLines.push(agreementLineText(type, r)))));
+  families.forEach(({ types }) => types.forEach(type => {
+    type.rows.forEach(r => flatLines.push(agreementLineText(type, r)));
+    if (type.summary) flatLines.push(agreementSummaryText(type));
+  }));
   body.querySelectorAll('.agr-copy').forEach((btn, i) => {
     btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
   });
@@ -1407,33 +1443,80 @@ function exportAgreementPdf() {
   if (!win) { showToast('Could not open the export tab — check your popup blocker.', 'error'); return; }
 
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  // Same visual language as the dialog itself — light-grey pill rows on a
+  // white card, a coloured dot per move (getPunchColor(), the exact same
+  // colour its timeline strip and its .punch-btn dot use), an uppercase
+  // eyebrow per family — rather than a bare HTML table that looks like it
+  // came from a different tool entirely.
+  const summaryRow = (type) => {
+    if (!type.summary) return '';
+    const unmatched = type.summary.unmatchedBy.map(u => `by ${esc(u.who)}: <b>${u.n}</b>`).join(', ');
+    return `<div class="row summary">
+         <span class="line">Matching pairs: <b>${type.summary.matched}</b> &nbsp;|&nbsp; Unmatched labels ${unmatched}</span>
+       </div>`;
+  };
   const sections = families.map(({ family, types }) => `
-    <h2>${esc(family.label)}</h2>
-    <table>
-      <tbody>
-        ${types.map(type => type.rows.map(r => `
-          <tr>
-            <td>${esc(type.label)} by ${esc(r.who)}</td>
-            <td class="num">${r.count}</td>
-          </tr>`).join('')).join('')}
-      </tbody>
-    </table>`).join('');
+    <div class="fam">
+      <h2>${esc(family.label)}</h2>
+      <div class="type-group-wrap">
+        ${types.map(type => `
+          <div class="type-group">
+            ${type.rows.map(r => `
+              <div class="row">
+                <span class="dot" style="background:${getPunchColor(type.id)}"></span>
+                <span class="line">${esc(type.label)} by ${esc(r.who)}</span>
+                <span class="count">${r.count}</span>
+              </div>`).join('')}
+            ${summaryRow(type)}
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
 
   win.document.write(`<!doctype html><html><head><meta charset="utf-8">
     <title>Agreement — ${esc(agreementVideoName())}</title>
     <style>
-      body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #1d1d1f; padding: 32px; max-width: 720px; margin: 0 auto; }
-      h1 { font-size: 19px; margin: 0 0 4px; }
-      .lede { font-size: 13px; color: #6e6e73; margin: 0 0 24px; }
-      h2 { font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: #6e6e73; margin: 22px 0 6px; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      td { padding: 6px 4px; border-bottom: 1px solid #e5e5ea; }
-      td.num { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
-      @media print { body { padding: 0; } }
+      :root { color-scheme: light; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body {
+        font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f7; color: #1d1d1f; margin: 0; padding: 28px;
+      }
+      .card {
+        max-width: 640px; margin: 0 auto; background: #fff; border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+        padding: 24px 28px 28px;
+      }
+      .head { border-bottom: 1px solid rgba(0,0,0,.10); padding-bottom: 14px; margin-bottom: 4px; }
+      h1 { font-size: 18px; font-weight: 640; letter-spacing: -.02em; margin: 0 0 4px; }
+      .lede { font-size: 13px; color: #6e6e73; margin: 0; }
+      h2 {
+        font-size: 10.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase;
+        color: #6e6e73; margin: 18px 0 8px;
+      }
+      .fam:first-of-type h2 { margin-top: 16px; }
+      .type-group-wrap { display: flex; flex-direction: column; gap: 8px; }
+      .type-group { display: flex; flex-direction: column; gap: 4px; }
+      .row {
+        display: flex; align-items: center; gap: 8px;
+        background: rgba(120,120,128,.12); border-radius: 8px; padding: 8px 10px;
+        font-size: 13px; page-break-inside: avoid;
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
+      .line { flex: 1; min-width: 0; }
+      .count { font-weight: 650; font-variant-numeric: tabular-nums; }
+      .row.summary { margin-top: 2px; background: rgba(120,120,128,.20); font-size: 12.5px; }
+      @media print {
+        body { background: #fff; padding: 0; }
+        .card { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }
+      }
     </style></head><body>
-    <h1>Agreement on this video</h1>
-    <p class="lede">Video: ${esc(agreementVideoName())}</p>
-    ${sections}
+    <div class="card">
+      <div class="head">
+        <h1>Agreement on this video</h1>
+        <p class="lede">Video: ${esc(agreementVideoName())}</p>
+      </div>
+      ${sections}
+    </div>
     </body></html>`);
   win.document.close();
   win.focus();
