@@ -1209,53 +1209,38 @@ function timeIoU(a, b) {
   return union > 0 ? inter / union : 0;
 }
 
-// One row per move FAMILY (lead+rear/head+body folded together — a "Rolls"
-// line covers both lead_roll and rear_roll) per labeler: how many of that
-// family they logged on this video. Deliberately just a count — no
-// matching, no IoU, no agree/disagree comparison. That lives on the
-// timeline's own Agreement/Disagreement filter (computeAgreedLabelSet(),
-// above) instead; this report answers a simpler question.
-const MOVE_FAMILIES = [
-  { key: 'jab', label: 'Jabs', ids: ['jab_head', 'jab_body'] },
-  { key: 'cross', label: 'Crosses', ids: ['cross_head', 'cross_body'] },
-  { key: 'lead_hook', label: 'Lead Hooks', ids: ['lead_hook_head', 'lead_hook_body'] },
-  { key: 'rear_hook', label: 'Rear Hooks', ids: ['rear_hook_head', 'rear_hook_body'] },
-  { key: 'lead_uppercut', label: 'Lead Uppercuts', ids: ['lead_uppercut_head', 'lead_uppercut_body'] },
-  { key: 'rear_uppercut', label: 'Rear Uppercuts', ids: ['rear_uppercut_head', 'rear_uppercut_body'] },
-  { key: 'slip', label: 'Slips', ids: ['lead_slip', 'rear_slip'] },
-  { key: 'roll', label: 'Rolls', ids: ['lead_roll', 'rear_roll'] },
-  { key: 'pull_back', label: 'Pull Backs', ids: ['pull_back'] },
-  { key: 'duck', label: 'Ducks', ids: ['duck'] },
-  { key: 'unsure', label: 'Unsure', ids: ['unsure'] },
-];
-const MOVE_FAMILY_BY_PUNCH = (() => {
-  const m = {};
-  for (const fam of MOVE_FAMILIES) for (const id of fam.ids) m[id] = fam;
-  return m;
-})();
-
+// One row per EXACT move type (Lead Roll and Rear Roll get their own
+// sections, not folded into one "Rolls") per labeler: how many of that
+// type they logged on this video. Deliberately just a count — no matching,
+// no IoU, no agree/disagree comparison. That lives on the timeline's own
+// Agreement/Disagreement filter (computeAgreedLabelSet(), above) instead;
+// this report answers a simpler question. Ordered the same way the Types
+// filter menu is (TYPE_MENU_ORDER, further down) — Head beside Body,
+// Lead beside Rear — rather than PUNCH_TYPES' own declaration order, which
+// groups all Heads before all Bodies.
 function computeAgreementPanel() {
-  // owner -> family key -> count
+  // owner -> punch id -> count
   const byOwner = new Map();
   for (const l of state.labels) {
     if (l.isRoundMarker) continue;
-    const fam = MOVE_FAMILY_BY_PUNCH[l.punch];
-    if (!fam) continue;   // a retired/unrecognized id — nothing to bucket it into
     const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
     if (!byOwner.has(who)) byOwner.set(who, new Map());
-    const famMap = byOwner.get(who);
-    famMap.set(fam.key, (famMap.get(fam.key) || 0) + 1);
+    const typeMap = byOwner.get(who);
+    typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
   }
   const owners = [...byOwner.keys()].sort();
-  // One section per family that anyone actually has rows for, each holding
-  // one line per labeler with rows in it — empty families and labelers
-  // that never touched a given family are just skipped rather than shown
-  // as zeroes nobody asked about.
-  return MOVE_FAMILIES
-    .map(fam => ({
-      family: fam,
+  const orderedTypes = TYPE_MENU_ORDER
+    .map(id => PUNCH_TYPES.find(p => p.id === id))
+    .filter(p => p && !p.retired);
+  // One section per type anyone actually has rows for, each holding one
+  // line per labeler with rows in it — empty types and labelers that never
+  // touched a given type are just skipped rather than shown as zeroes
+  // nobody asked about.
+  return orderedTypes
+    .map(type => ({
+      family: { label: punchLabel(type.id) },
       rows: owners
-        .map(who => ({ who, count: byOwner.get(who).get(fam.key) }))
+        .map(who => ({ who, count: byOwner.get(who).get(type.id) }))
         .filter(r => r.count),
     }))
     .filter(f => f.rows.length);
