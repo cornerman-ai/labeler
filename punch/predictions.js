@@ -173,6 +173,20 @@ function setPredictionsStatus(kind, text) {
   document.getElementById('predictions-loader')?.classList.toggle('err', kind === 'err');
 }
 
+// Drops every loaded model — called from app.js's setupDriveLink() the
+// moment a NEW drive link is pasted. applyPredictionsToLabels() already
+// only folds in rows that match whatever video is actually open, so a
+// carried-over model was never going to mislabel the new one — this is
+// about the row itself no longer claiming to have predictions loaded for a
+// video that isn't open any more, same as the video file and skeleton rows
+// beside it reset on a new link.
+function resetPredictionsState() {
+  state.predictionModels = [];
+  applyPredictionsToLabels();
+  renderPredictionsList();
+  setPredictionsStatus(null, '');
+}
+
 // In-app modal instead of window.prompt() — this page never uses the
 // browser's own dialog chrome for anything else, and the native prompt()
 // read as a jarring one-off next to every other popup here. Resolves to

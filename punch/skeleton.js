@@ -367,6 +367,23 @@ function setSkeletonToggleLabel() {
   btn.classList.toggle('speed-active', state.skeleton.visible);
 }
 
+// Drops whatever skeleton data was picked for the PREVIOUS video — a wrong-
+// video overlay would be actively misleading, not just stale. Called from
+// two places: player.js's own video-file change handler (a new local file
+// picked), and app.js's setupDriveLink() (a new drive link pasted, which
+// means a new video is coming even before a local file is chosen for it).
+function resetSkeletonState() {
+  state.skeleton.rounds = [];
+  state.skeleton.visible = false;
+  const nameEl = document.getElementById('skeleton-name');
+  if (nameEl) nameEl.textContent = 'No skeletons loaded';
+  const toggleBtn = document.getElementById('btn-toggle-skeleton');
+  if (toggleBtn) toggleBtn.hidden = true;
+  const addMoreBtn = document.getElementById('btn-add-more-skeletons');
+  if (addMoreBtn) addMoreBtn.hidden = true;
+  setSkeletonStatus(null, '');
+}
+
 function setupSkeletonLoader() {
   const input = document.getElementById('skeleton-files');
   const nameEl = document.getElementById('skeleton-name');

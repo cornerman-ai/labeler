@@ -1165,6 +1165,24 @@ function buildPunchButtons() {
       btn.classList.toggle('selected', btn.dataset.punchId === state.selectedPunch);
     });
   }
+  // Fresh buttons start with no `disabled` attribute of their own —
+  // updateMoveButtonsEnabled() normally keeps that in sync with the
+  // workflow, but a rebuild (a language switch, mainly) needs its own
+  // re-apply since the OLD buttons it's replacing are what that sync last
+  // touched.
+  updateMoveButtonsEnabled();
+}
+
+// A move type is meaningless to pick before a start time exists for it to
+// attach to — clicking one used to just set state.selectedPunch and sit
+// there, with nothing to show for it until Start Time was pressed anyway.
+// Disabled instead, so that's obvious without having to click to find out.
+// Reached from updateTimestampButton() (every workflow-step change) and
+// from buildPunchButtons() itself (a rebuild has fresh buttons with no
+// disabled attribute of their own yet).
+function updateMoveButtonsEnabled() {
+  const enabled = !state.labelsLoading && state.mode !== 'start';
+  document.querySelectorAll('.punch-btn').forEach((btn) => { btn.disabled = !enabled; });
 }
 
 // ============================================================
@@ -1736,6 +1754,7 @@ function updateTimestampButton() {
     btn.textContent = 'Loading…';
     btn.className = '';
     btn.disabled = true;
+    updateMoveButtonsEnabled();
     return;
   }
 
@@ -1761,6 +1780,7 @@ function updateTimestampButton() {
       btn.disabled = false;
     }
   }
+  updateMoveButtonsEnabled();
 }
 
 function captureTimestamp() {
@@ -2102,10 +2122,41 @@ function setupDriveLink() {
         // at a label from whatever was open before would be meaningless
         // (and its `idx` would land who-knows-where in the new list).
         state.undoStack = [];
+        resetVideoForNewLink();
         fetchLabelsFromSheet(true);
       }
     }, 500);
   });
+}
+
+// A new link means a new video is coming — the locally opened file, any
+// skeleton data, and any loaded prediction models all belonged to whatever
+// was open before and would just sit there stale (or actively misleading)
+// once the link changes. Local-video half mirrors ui.js's setupVideoName()
+// paint(false) by hand rather than calling it — that closure is private to
+// ui.js's own IIFE. The other two halves are resetSkeletonState()
+// (skeleton.js) and resetPredictionsState() (predictions.js), guarded the
+// same way every other optional cross-file call in this app is.
+function resetVideoForNewLink() {
+  const video = document.getElementById('video-player');
+  if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+  const thumbVideo = document.getElementById('thumb-video');
+  if (thumbVideo) { thumbVideo.removeAttribute('src'); thumbVideo.load(); }
+  const fileInput = document.getElementById('video-file');
+  if (fileInput) fileInput.value = '';
+  state.videoName = null;
+  const nameEl = document.getElementById('video-name');
+  if (nameEl) nameEl.classList.remove('loaded');
+  if (nameEl) nameEl.textContent = 'No video loaded';
+  const field = document.getElementById('video-loader');
+  if (field) { field.classList.remove('ok'); field.title = 'No video open yet.'; }
+  const statusEl = document.getElementById('video-status');
+  if (statusEl) { statusEl.hidden = true; statusEl.innerHTML = ''; }
+  const copyNameBtn = document.getElementById('btn-copy-name');
+  if (copyNameBtn) copyNameBtn.hidden = true;
+
+  if (typeof resetSkeletonState === 'function') resetSkeletonState();
+  if (typeof resetPredictionsState === 'function') resetPredictionsState();
 }
 
 // One click on top of text that is already selectable on screen — the link
@@ -3977,6 +4028,8 @@ function updateVideoOverlay() {
   if (overlay.dataset.activeKey === key) return;
   overlay.dataset.activeKey = key;
 
+  highlightActiveMoveButtons(activeLabels);
+
   overlay.innerHTML = '';
 
   const dimOverlay = document.getElementById('video-dim-overlay');
@@ -4014,4 +4067,20 @@ function updateVideoOverlay() {
     };
     overlay.appendChild(tag);
   }
+}
+
+// Lights up whichever Move Type button(s) match what's playing right now —
+// a jab crossing the playhead highlights Jab in the catalogue the same way
+// the video-overlay tag above already calls it out over the picture, just
+// on the OTHER side of the screen where the catalogue lives. Cell buttons
+// (the offense matrix's Head/Body pair) share .punch-btn + data-punch-id
+// with the named ones, so this reaches both without knowing which kind a
+// given punch id renders as.
+function highlightActiveMoveButtons(activeLabels) {
+  const activeIds = new Set(activeLabels.map(l => l.punch));
+  document.querySelectorAll('.punch-btn').forEach((btn) => {
+    const isActive = activeIds.has(btn.dataset.punchId);
+    btn.classList.toggle('playing-now', isActive);
+    if (isActive) btn.style.setProperty('--play-color', getPunchColor(btn.dataset.punchId));
+  });
 }

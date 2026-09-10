@@ -156,19 +156,10 @@ function setupVideoLoader() {
 
     // A new video invalidates any skeleton data picked for the previous one
     // — wrong-video overlays would be actively misleading, not just stale.
-    if (window.state.skeleton) {
-      state.skeleton.rounds = [];
-      state.skeleton.visible = false;
-      const skName = document.getElementById('skeleton-name');
-      if (skName) skName.textContent = 'No skeletons loaded';
-      const skToggle = document.getElementById('btn-toggle-skeleton');
-      if (skToggle) skToggle.hidden = true;
-      const skAddMore = document.getElementById('btn-add-more-skeletons');
-      if (skAddMore) skAddMore.hidden = true;
-      const skStatus = document.getElementById('skeleton-status');
-      if (skStatus) skStatus.hidden = true;
-      document.getElementById('skeleton-loader')?.classList.remove('ok', 'err');
-    }
+    // resetSkeletonState() (skeleton.js) is guarded the same way every
+    // other cross-file call from this shared player is, since not every
+    // labeler that uses player.js has skeleton.js loaded.
+    if (typeof resetSkeletonState === 'function') resetSkeletonState();
 
     const url = URL.createObjectURL(file);
     video.src = url;

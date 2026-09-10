@@ -795,6 +795,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .punch-btn.selected .shortcut { background: rgba(0,0,0,.25); color: #fff; }
 .punch-btn.selected .dot { box-shadow: 0 0 0 1.5px rgba(255,255,255,.85); }
+/* Nothing to pick a type FOR before a start time exists — see
+   updateMoveButtonsEnabled() in app.js. Dimmed and inert rather than just
+   inert, so it reads as "not yet", not as broken. */
+.punch-btn:disabled { opacity: .4; cursor: not-allowed; }
+.punch-btn:disabled:hover { border-color: var(--line); }
+/* Whatever move is under the playhead RIGHT NOW during playback — see
+   highlightActiveMoveButtons() in app.js, fed by the same activeLabels
+   updateVideoOverlay() already computes for the tags over the video. Its
+   own move's colour (--play-color, set inline), not the flat accent
+   .selected uses — .selected is "this is what I'm about to log", this is
+   "this is what's playing", and the two can be true of different buttons
+   at once (mid-workflow on one move while scrubbing past another). */
+.punch-btn.playing-now {
+  border-color: var(--play-color, var(--accent-solid));
+  background: color-mix(in srgb, var(--play-color, var(--accent-solid)) 14%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--play-color, var(--accent-solid)) 45%, transparent);
+}
 @media (prefers-reduced-motion: reduce) { .punch-btn { transition: none; } }
 
 /* ── centre: the video stage ─────────────────────────────────────────────── */
