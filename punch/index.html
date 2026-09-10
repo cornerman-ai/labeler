@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260910f">
+  <link rel="stylesheet" href="punch.css?v=20260910p">
 </head>
 <body>
   <div id="app">
@@ -74,9 +74,16 @@
           <button type="button" id="btn-problems"
                   title="Timing problems on this video">Problems<span id="problems-count" hidden></span></button>
 
-          <!-- Standing count of other admins working right now — the dialog
-               announces the arrival, this is what remains afterwards so the
-               fact stays visible without nagging. See adminPing(). -->
+          <!-- Separates the two Agreement/Problems action buttons from the
+               status indicators after them (admin presence, help) — same
+               hairline .nav-div already uses between the identity group and
+               this one, just one level in. -->
+          <span class="nav-div"></span>
+
+          <!-- Standing headcount of everyone in admin mode, the viewer
+               included — no popup when someone joins or leaves, just this
+               number updating quietly. See adminPing()/
+               updateAdminPresenceChip() in app.js. -->
           <span id="admin-presence" hidden
                 title="Other people are in admin mode. Saves are serialised, so nothing lands on the wrong label — but if you edit the same punch, the later save wins."></span>
 
@@ -626,27 +633,26 @@
     </div>
   </dialog>
 
-  <!-- ── another admin is working, admin only ────────────────────────────── -->
-  <!-- Raised once by adminPing() when the number of other admins goes up. -->
-  <dialog id="adm-dialog">
-    <div class="sc-head">
-      <h2>You're not alone in here</h2>
-      <button class="icon-btn" id="adm-close" aria-label="Close">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="sc-body" id="adm-body"></div>
-  </dialog>
-
   <!-- ── inter-rater agreement, admin only ───────────────────────────────── -->
   <!-- Filled by app.js's renderAgreement() from the rows already loaded for
-       this video — no request of its own. See computeAgreement(). -->
+       this video — no request of its own. See computeAgreementPanel(). -->
   <dialog id="agr-dialog">
     <div class="sc-head">
       <h2>Agreement on this video</h2>
-      <button class="icon-btn" id="agr-close" aria-label="Close">
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
+      <div class="sc-head-actions">
+        <!-- Opens a plain, print-styled copy of #agr-body in a new tab and
+             calls print() on it — the "save as PDF" that gives, via the
+             browser's own print dialog, is as close to a real export as a
+             static page gets without shipping a PDF-generation library for
+             one button. See exportAgreementPdf() in app.js. -->
+        <button type="button" id="agr-export-pdf" title="Export this report as a PDF">
+          <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M4 1.5h4.5L11 4v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.5 1.5V4H11" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          Export PDF
+        </button>
+        <button class="icon-btn" id="agr-close" aria-label="Close">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
     </div>
     <div class="sc-body" id="agr-body"></div>
   </dialog>
@@ -710,23 +716,23 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260910f"></script>
-  <script src="../shared/player.js?v=20260910f"></script>
-  <script src="skeleton.js?v=20260910f"></script>
+  <script src="../shared/labeler_name.js?v=20260910p"></script>
+  <script src="../shared/player.js?v=20260910p"></script>
+  <script src="skeleton.js?v=20260910p"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260910f"></script>
-  <script src="predictions.js?v=20260910f"></script>
-  <script src="app.js?v=20260910f"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260910p"></script>
+  <script src="predictions.js?v=20260910p"></script>
+  <script src="app.js?v=20260910p"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260910f"></script>
+  <script src="problems.js?v=20260910p"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260910f"></script>
+  <script src="ui.js?v=20260910p"></script>
 </body>
 </html>

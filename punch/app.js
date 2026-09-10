@@ -949,13 +949,13 @@ function shouldHideByTab(label) {
   return label.punch !== 'unsure';
 }
 
-// The "Agreement only" / "Disagreement only" filter — same idea as the
-// admin Agreement report (computeAgreement(), further down) but reduced to
-// a single per-label yes/no so it can gate the list/lanes/minimap like any
-// other filter. A label "agrees" if some OTHER owner has a label of the
-// SAME punch type overlapping it at over 40% IoU, matched greedily
-// best-first per pair of owners exactly like the report does — predictions
-// count as an owner here too, same as they already do in the report.
+// The "Agreement only" / "Disagreement only" timeline filter — a per-label
+// yes/no so it can gate the list/lanes/minimap like any other filter. A
+// label "agrees" if some OTHER owner has a label of the SAME punch type
+// overlapping it at over 40% IoU, matched greedily best-first per pair of
+// owners. Predictions count as an owner here too. The admin Agreement
+// report (computeAgreementPanel(), further down) reuses this same set
+// rather than running its own separate matching pass.
 const TIMELINE_AGREE_IOU_FLOOR = 0.4;
 function computeAgreedLabelSet() {
   const byOwner = new Map();
@@ -1209,223 +1209,56 @@ function timeIoU(a, b) {
   return union > 0 ? inter / union : 0;
 }
 
-// Greedy best-first pairing: take the highest-IoU pair still available,
-// then the next, and so on. Hungarian matching would be optimal, but on
-// punches — which are short and rarely ambiguous about which one they are
-// — greedy gives the same answer for far less machinery.
-const AGREE_IOU_FLOOR = 0.3;
-function matchPunchSets(A, B) {
-  const cands = [];
-  A.forEach((a, i) => B.forEach((b, j) => {
-    const iou = timeIoU(a, b);
-    if (iou >= AGREE_IOU_FLOOR) cands.push({ i, j, iou });
-  }));
-  cands.sort((x, y) => y.iou - x.iou);
-  const usedA = new Set(), usedB = new Set(), pairs = [];
-  for (const c of cands) {
-    if (usedA.has(c.i) || usedB.has(c.j)) continue;
-    usedA.add(c.i); usedB.add(c.j);
-    pairs.push({ a: A[c.i], b: B[c.j], iou: c.iou });
-  }
-  return {
-    pairs,
-    onlyA: A.filter((_, i) => !usedA.has(i)),
-    onlyB: B.filter((_, j) => !usedB.has(j)),
-  };
-}
+// One row per move FAMILY (lead+rear/head+body folded together — a "Rolls"
+// line covers both lead_roll and rear_roll) per labeler: how many of that
+// family they logged on this video. Deliberately just a count — no
+// matching, no IoU, no agree/disagree comparison. That lives on the
+// timeline's own Agreement/Disagreement filter (computeAgreedLabelSet(),
+// above) instead; this report answers a simpler question.
+const MOVE_FAMILIES = [
+  { key: 'jab', label: 'Jabs', ids: ['jab_head', 'jab_body'] },
+  { key: 'cross', label: 'Crosses', ids: ['cross_head', 'cross_body'] },
+  { key: 'lead_hook', label: 'Lead Hooks', ids: ['lead_hook_head', 'lead_hook_body'] },
+  { key: 'rear_hook', label: 'Rear Hooks', ids: ['rear_hook_head', 'rear_hook_body'] },
+  { key: 'lead_uppercut', label: 'Lead Uppercuts', ids: ['lead_uppercut_head', 'lead_uppercut_body'] },
+  { key: 'rear_uppercut', label: 'Rear Uppercuts', ids: ['rear_uppercut_head', 'rear_uppercut_body'] },
+  { key: 'slip', label: 'Slips', ids: ['lead_slip', 'rear_slip'] },
+  { key: 'roll', label: 'Rolls', ids: ['lead_roll', 'rear_roll'] },
+  { key: 'pull_back', label: 'Pull Backs', ids: ['pull_back'] },
+  { key: 'duck', label: 'Ducks', ids: ['duck'] },
+  { key: 'unsure', label: 'Unsure', ids: ['unsure'] },
+];
+const MOVE_FAMILY_BY_PUNCH = (() => {
+  const m = {};
+  for (const fam of MOVE_FAMILIES) for (const id of fam.ids) m[id] = fam;
+  return m;
+})();
 
-// Cohen's kappa over the matched pairs — how much the two agree on WHICH
-// move it was, beyond what they'd hit by chance. A raw percentage flatters
-// a set dominated by jabs: two people who both call everything a jab score
-// 95% and have demonstrated nothing. Kappa divides that out, and is the
-// number this kind of work is normally reported with.
-// Undefined when one class accounts for everything (the chance term hits 1
-// and the denominator vanishes) — reported as null rather than a fake 0.
-function cohensKappa(pairs) {
-  if (!pairs.length) return null;
-  const po = pairs.filter(p => p.a.punch === p.b.punch).length / pairs.length;
-  const fa = {}, fb = {};
-  pairs.forEach(p => {
-    fa[p.a.punch] = (fa[p.a.punch] || 0) + 1;
-    fb[p.b.punch] = (fb[p.b.punch] || 0) + 1;
-  });
-  let pe = 0;
-  for (const k of new Set([...Object.keys(fa), ...Object.keys(fb)])) {
-    pe += ((fa[k] || 0) / pairs.length) * ((fb[k] || 0) / pairs.length);
-  }
-  if (pe > 0.9999) return null;
-  return (po - pe) / (1 - pe);
-}
-
-// The usual plain-language bands for kappa, so the number doesn't need a
-// stats background to act on.
-function kappaBand(k) {
-  if (k === null) return { word: '—', tone: 'na' };
-  if (k < 0.2) return { word: 'poor', tone: 'bad' };
-  if (k < 0.4) return { word: 'fair', tone: 'bad' };
-  if (k < 0.6) return { word: 'moderate', tone: 'mid' };
-  if (k < 0.8) return { word: 'good', tone: 'ok' };
-  return { word: 'very good', tone: 'ok' };
-}
-
-// Spread, not just a mean. A mean IoU of 0.7 can be twenty tight pairs or
-// ten perfect ones and ten scrapes past the 0.3 floor, and those call for
-// different action — the second is a boundary convention that needs
-// agreeing, the first is just noise. Median plus min/max says which.
-function iouStats(values) {
-  if (!values.length) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = s.length % 2
-    ? s[(s.length - 1) / 2]
-    : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
-  return {
-    n: s.length,
-    mean: +(s.reduce((a, b) => a + b, 0) / s.length).toFixed(2),
-    median: +mid.toFixed(2),
-    min: +s[0].toFixed(2),
-    max: +s[s.length - 1].toFixed(2),
-  };
-}
-
-// Everything derivable from one set of matched pairs plus the two solo
-// lists. Factored out because it is computed three times over — for the
-// video as a whole, and again inside each round.
-function pairStats(pairs, onlyA, onlyB) {
-  const agreedPairs = pairs.filter(p => p.a.punch === p.b.punch);
-  const kappa = cohensKappa(pairs);
-  return {
-    matched: pairs.length,
-    typeAgree: agreedPairs.length,
-    // Of the punches BOTH found, how often did they call it the same move.
-    // Kept separate from the count because "we both saw a punch here" and
-    // "we both think it was a jab" fail differently.
-    typePct: pairs.length ? Math.round((agreedPairs.length / pairs.length) * 100) : null,
-    // Timing spread over the pairs they AGREED on — averaging in a
-    // jab-vs-cross pair would be measuring the wrong thing.
-    iou: iouStats(agreedPairs.map(p => p.iou)),
-    kappa: kappa === null ? null : +kappa.toFixed(2),
-    kappaBand: kappaBand(kappa),
-    // Signed, so it reads as a direction rather than a magnitude: a
-    // consistent offset is a habit one of them can correct, which a mean
-    // absolute error would have hidden.
-    offsetMs: pairs.length
-      ? Math.round((pairs.reduce((s, p) => s + (p.a.start - p.b.start), 0) / pairs.length) * 1000)
-      : null,
-    onlyA: onlyA.length,
-    onlyB: onlyB.length,
-    // Punches exactly one person marked. The headline number for coverage:
-    // high here means the two are not even looking at the same events, which
-    // no amount of type agreement makes up for.
-    solo: onlyA.length + onlyB.length,
-  };
-}
-
-// Per-move agreement. The single headline mean hides the thing you'd
-// actually act on: a taxonomy usually fails on ONE distinction, and a
-// timing problem is usually specific to one kind of move (uppercuts start
-// ambiguously; jabs don't). A move counts toward `both` when EITHER labeler
-// called it that, and toward `agreed` only when both did — so a move that
-// one person always sees and the other never does shows up as a low
-// percentage rather than silently vanishing. Solo punches are counted per
-// move too, which is what answers "how many did just one of us catch".
-function perMoveBreakdown(pairs, onlyA, onlyB) {
-  const acc = {};
-  const get = (id) => (acc[id] || (acc[id] = { move: id, both: 0, agreed: 0, ious: [], onlyA: 0, onlyB: 0 }));
-  pairs.forEach(p => {
-    if (p.a.punch === p.b.punch) {
-      const r = get(p.a.punch);
-      r.both++; r.agreed++; r.ious.push(p.iou);
-    } else {
-      get(p.a.punch).both++;
-      get(p.b.punch).both++;
-    }
-  });
-  onlyA.forEach(l => get(l.punch).onlyA++);
-  onlyB.forEach(l => get(l.punch).onlyB++);
-  return Object.values(acc)
-    .map(r => ({
-      ...r,
-      label: punchLabel(r.move),
-      total: r.both + r.onlyA + r.onlyB,
-      pct: r.both ? Math.round((r.agreed / r.both) * 100) : null,
-      iou: iouStats(r.ious),
-    }))
-    .sort((x, y) => y.total - x.total || x.label.localeCompare(y.label));
-}
-
-// Which round a moment falls in — index, or -1 for outside every round.
-function roundIndexAt(t, spans) {
-  for (let i = 0; i < spans.length; i++) {
-    if (t >= spans[i].start && t <= spans[i].end) return i;
-  }
-  return -1;
-}
-
-// The same comparison, sliced per round. Rounds are the unit the pipeline
-// actually consumes, and agreement is rarely uniform across them — the
-// round where someone was still finding their feet is the one worth
-// re-watching, and an average over the whole video buries it.
-function perRoundBreakdown(pairs, onlyA, onlyB) {
-  const spans = roundSpans();
-  if (!spans.length) return [];
-  const bucket = new Map();
-  const slot = (i) => {
-    if (!bucket.has(i)) bucket.set(i, { pairs: [], onlyA: [], onlyB: [] });
-    return bucket.get(i);
-  };
-  // A matched pair is placed by the midpoint of the two starts, so a pair
-  // straddling a boundary lands on one side rather than being dropped.
-  pairs.forEach(p => slot(roundIndexAt((p.a.start + p.b.start) / 2, spans)).pairs.push(p));
-  onlyA.forEach(l => slot(roundIndexAt(l.start, spans)).onlyA.push(l));
-  onlyB.forEach(l => slot(roundIndexAt(l.start, spans)).onlyB.push(l));
-
-  const out = [];
-  for (let i = 0; i < spans.length; i++) {
-    const b = bucket.get(i);
-    if (!b) continue;
-    out.push({ name: 'Round ' + (i + 1), outside: false, ...pairStats(b.pairs, b.onlyA, b.onlyB) });
-  }
-  const o = bucket.get(-1);
-  // Punches outside every round are the ones the pipeline discards, so they
-  // get their own row rather than being folded into a round they aren't in.
-  if (o) out.push({ name: 'Outside rounds', outside: true, ...pairStats(o.pairs, o.onlyA, o.onlyB) });
-  return out;
-}
-
-function computeAgreement() {
+function computeAgreementPanel() {
+  // owner -> family key -> count
   const byOwner = new Map();
   for (const l of state.labels) {
     if (l.isRoundMarker) continue;
+    const fam = MOVE_FAMILY_BY_PUNCH[l.punch];
+    if (!fam) continue;   // a retired/unrecognized id — nothing to bucket it into
     const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
-    if (!byOwner.has(who)) byOwner.set(who, []);
-    byOwner.get(who).push(l);
+    if (!byOwner.has(who)) byOwner.set(who, new Map());
+    const famMap = byOwner.get(who);
+    famMap.set(fam.key, (famMap.get(fam.key) || 0) + 1);
   }
-  const names = [...byOwner.keys()].sort();
-  const rows = [];
-  for (let i = 0; i < names.length; i++) {
-    for (let j = i + 1; j < names.length; j++) {
-      const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
-      const m = matchPunchSets(A, B);
-      rows.push({
-        a: names[i], b: names[j],
-        aCount: A.length, bCount: B.length,
-        ...pairStats(m.pairs, m.onlyA, m.onlyB),
-        perMove: perMoveBreakdown(m.pairs, m.onlyA, m.onlyB),
-        perRound: perRoundBreakdown(m.pairs, m.onlyA, m.onlyB),
-        // Every move pair they disagreed on, commonest first — this is the
-        // part that tells you WHICH distinction the taxonomy is failing.
-        confusions: (() => {
-          const c = {};
-          m.pairs.filter(p => p.a.punch !== p.b.punch).forEach(p => {
-            const k = [punchLabel(p.a.punch), punchLabel(p.b.punch)].join(' ↔ ');
-            c[k] = (c[k] || 0) + 1;
-          });
-          return Object.entries(c).sort((x, y) => y[1] - x[1]);
-        })(),
-      });
-    }
-  }
-  return { names, counts: names.map(n => byOwner.get(n).length), rows };
+  const owners = [...byOwner.keys()].sort();
+  // One section per family that anyone actually has rows for, each holding
+  // one line per labeler with rows in it — empty families and labelers
+  // that never touched a given family are just skipped rather than shown
+  // as zeroes nobody asked about.
+  return MOVE_FAMILIES
+    .map(fam => ({
+      family: fam,
+      rows: owners
+        .map(who => ({ who, count: byOwner.get(who).get(fam.key) }))
+        .filter(r => r.count),
+    }))
+    .filter(f => f.rows.length);
 }
 
 // ============================================================
@@ -1436,7 +1269,9 @@ function computeAgreement() {
 // in apps_script/Code.js) makes that SAFE — no more edits landing on the
 // wrong row — but it cannot make it sensible: two people correcting the
 // same video still overwrite each other's judgement calls without knowing.
-// So say so, once, as soon as we know.
+// The nav bar's standing headcount chip (updateAdminPresenceChip()) is the
+// whole of how this surfaces now — no popup interrupting the labeler every
+// time someone joins or leaves, just the number updating quietly.
 //
 // Per TAB, not per browser: two admin tabs really are two writers, and
 // sessionStorage is scoped exactly that way.
@@ -1451,7 +1286,6 @@ function adminClientId() {
   return id;
 }
 
-let _adminSeen = 0;   // how many others we've already told them about
 async function adminPing() {
   if (!state.isAdmin || !state.scriptUrl) return;
   try {
@@ -1460,45 +1294,37 @@ async function adminPing() {
     }), 15000);
     const others = (res && res.others) || [];
     updateAdminPresenceChip(others.length);
-    // Announce only when the number GOES UP — a standing warning re-shown
-    // every 30 seconds would be the thing people learn to dismiss blind.
-    if (others.length > _adminSeen) showAdminPresenceDialog(others.length);
-    _adminSeen = others.length;
   } catch (e) {
     // A missed heartbeat is not worth a word to the user; the next one
     // covers it, and admin work is not blocked by not knowing.
   }
 }
 
+// Always on once in admin mode, not just once someone else shows up — a
+// standing headcount rather than a warning that only appears at the moment
+// it would already be too late to have planned around. `n` is OTHER admins
+// (what adminPing gets back).
 function updateAdminPresenceChip(n) {
   const chip = document.getElementById('admin-presence');
   if (!chip) return;
-  chip.hidden = !n;
-  chip.textContent = n === 1 ? '1 other admin' : n + ' other admins';
-}
-
-function showAdminPresenceDialog(n) {
-  const dlg = document.getElementById('adm-dialog');
-  const body = document.getElementById('adm-body');
-  if (!dlg || !body) return;
-  body.innerHTML = `
-    <p class="adm-lead">${n === 1
-      ? 'Someone else is in admin mode right now.'
-      : n + ' other people are in admin mode right now.'}</p>
-    <p class="adm-note">Your edits are safe — saves are serialised, so nothing
-      can land on the wrong label. But if you both correct the same punch, the
-      later save wins and neither of you is told. Worth agreeing who takes
-      which video.</p>`;
-  if (!dlg.open) dlg.showModal();
+  chip.hidden = false;
+  chip.textContent = n === 0 ? 'Just you here' : n === 1 ? '1 more person here' : n + ' more people here';
+  // Green alone, amber for a couple more, red once it's crowded enough that
+  // two people quietly overwriting each other's correction on the same
+  // video is a real risk rather than a theoretical one.
+  chip.classList.toggle('tone-solo', n === 0);
+  chip.classList.toggle('tone-busy', n >= 4);
 }
 
 function setupAdminPresence() {
   if (!state.isAdmin) return;
+  // Shows "Just you here" (green) immediately rather than leaving the chip
+  // hidden until the first ping round-trips — that's right (nobody else is
+  // confirmed yet) even before the network answers whether anyone else is
+  // too.
+  updateAdminPresenceChip(0);
   adminPing();
   setInterval(adminPing, ADMIN_PING_MS);
-  const dlg = document.getElementById('adm-dialog');
-  document.getElementById('adm-close')?.addEventListener('click', () => dlg.close());
-  dlg?.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 
 function setupAgreement() {
@@ -1508,120 +1334,107 @@ function setupAgreement() {
   btn.hidden = !state.isAdmin;      // review instrument, not a labelling one
   btn.addEventListener('click', () => { renderAgreement(); dlg.showModal(); });
   document.getElementById('agr-close')?.addEventListener('click', () => dlg.close());
+  document.getElementById('agr-export-pdf')?.addEventListener('click', exportAgreementPdf);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+}
+
+// The video name each line is filed under — shared by the on-screen dialog
+// and the PDF export, so the two can never say a different video.
+function agreementVideoName() {
+  return state.videoName || document.getElementById('drive-link')?.value.trim() || 'this video';
+}
+
+// Plain text, not HTML — what a copy button on one line puts on the
+// clipboard, and also each row of the PDF export's own table (built fresh
+// from the same computeAgreementPanel() data rather than scraped off the
+// DOM, so it can't drift from what changing the video would show).
+function agreementLineText(fam, r) {
+  return `${fam.label} by ${r.who}: ${r.count}`;
 }
 
 function renderAgreement() {
   const body = document.getElementById('agr-body');
   if (!body) return;
-  const { names, counts, rows } = computeAgreement();
+  const families = computeAgreementPanel();
 
-  if (rows.length === 0) {
-    body.innerHTML = `<p class="agr-empty">${names.length < 2
-      ? 'Only one labeler has punches on this video — nothing to compare yet.'
-      : 'No punches on this video yet.'}</p>`;
+  if (!families.length) {
+    body.innerHTML = '<p class="agr-empty">No punches on this video yet.</p>';
     return;
   }
 
-  // Which way the timing leans, in words — a signed number alone makes you
-  // re-derive who "+" refers to every time. Silent when it's negligible.
-  const offsetLine = (r) => {
-    if (r.offsetMs === null || Math.abs(r.offsetMs) < 10) return '';
-    return `${r.offsetMs > 0 ? r.a : r.b} marks ${Math.abs(r.offsetMs)} ms later`;
-  };
+  const lineHtml = (fam, r) => `${fam.label} by ${r.who}: <b>${r.count}</b>`;
+  // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
+  // use elsewhere in this page — click handlers are wired up below by
+  // DOM position rather than embedding the line's text in an HTML
+  // attribute, since a labeler name here is arbitrary sheet-derived text
+  // that has no business being escaped into markup.
+  const copyBtn = `<button type="button" class="agr-copy" title="Copy this line">
+      <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+    </button>`;
 
-  // Every explanation lives in a tooltip rather than on screen. The panel is
-  // read repeatedly by the same person; prose they have already read is
-  // just something to look past to reach the numbers.
-  const cell = (value, label, hint, cls) =>
-    `<div${cls ? ` class="${cls}"` : ''} title="${hint}"><b>${value}</b><span>${label}</span></div>`;
-  const num = (v) => (v === null || v === undefined ? '—' : v);
-  const iouCols = (s) => s
-    ? `<td>${s.mean}</td><td>${s.median}</td><td class="agr-range">${s.min}–${s.max}</td>`
-    : '<td>—</td><td>—</td><td class="agr-range">—</td>';
+  body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">Video: ${agreementVideoName()}</span>${copyBtn}</p>` +
+    families.map(({ family, rows }) => `
+      <h3 class="agr-h">${family.label}</h3>
+      <div class="fvd-rows">
+        ${rows.map(r => `<div class="fvd-row"><span class="agr-line">${lineHtml(family, r)}</span>${copyBtn}</div>`).join('')}
+      </div>`).join('');
 
-  body.innerHTML = rows.map(r => `
-    <section class="agr-pair">
-      <header class="agr-pair-head">
-        <span class="agr-who" style="--who: ${labelerColor(r.a)}">${r.a} <b>${r.aCount}</b></span>
-        <span class="agr-vs">vs</span>
-        <span class="agr-who" style="--who: ${labelerColor(r.b)}">${r.b} <b>${r.bCount}</b></span>
-        ${offsetLine(r) ? `<span class="agr-offset">${offsetLine(r)}</span>` : ''}
-      </header>
+  // Same order as the HTML was just built in (video name first, then every
+  // line), so the Nth button matches the Nth text — see the comment on
+  // copyBtn above for why this isn't done via a data- attribute instead.
+  const flatLines = [`Video: ${agreementVideoName()}`];
+  families.forEach(({ family, rows }) => rows.forEach(r => flatLines.push(agreementLineText(family, r))));
+  body.querySelectorAll('.agr-copy').forEach((btn, i) => {
+    btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
+  });
+}
 
-      <div class="agr-stats">
-        ${cell(r.matched, 'both found', `Punches both marked — paired when they overlap by at least ${Math.round(AGREE_IOU_FLOOR * 100)}%.`)}
-        ${cell(r.typePct === null ? '—' : r.typePct + '%', 'agree on move', 'Of the punches both found, how often they called it the same move.')}
-        ${cell(r.iou ? r.iou.mean : '—', 'mean IoU',
-               'Timing overlap: intersection ÷ union. 1.0 = identical timing. Averaged over pairs they agreed the move of.')}
-        ${cell(r.iou ? r.iou.median : '—', 'median IoU', 'The middle overlap — less swayed by one bad pair than the mean.')}
-        ${cell(r.kappa === null ? 'n/a' : r.kappa, 'κ',
-               r.kappa === null
-                 ? 'Cohen\'s kappa is undefined here — only one move in common, so chance already explains all of it.'
-                 : `Cohen's kappa — agreement on the move corrected for chance (${r.kappaBand.word}). A plain percentage flatters a video that is mostly jabs.`,
-               'agr-k agr-tone-' + r.kappaBand.tone)}
-        ${cell(r.solo, 'caught by one', `Punches exactly one of them marked: ${r.onlyA} only ${r.a}, ${r.onlyB} only ${r.b}.`,
-               'agr-solo')}
-      </div>
+// Opens a plain, print-styled copy of the report in a new tab and calls
+// print() on it. The browser's own "Save as PDF" print destination is the
+// export — there's no PDF library here, and one button doesn't earn adding
+// one. Built fresh from computeAgreementPanel() (not innerHTML-scraped from
+// #agr-body) so it can't inherit any of the dialog's own chrome.
+function exportAgreementPdf() {
+  const families = computeAgreementPanel();
+  if (!families.length) { showToast('Nothing to export — no punches on this video yet.', 'error'); return; }
+  const win = window.open('', '_blank');
+  if (!win) { showToast('Could not open the export tab — check your popup blocker.', 'error'); return; }
 
-      ${r.perMove.length ? `
-        <h3 class="agr-h">By move</h3>
-        <table class="agr-table">
-          <thead><tr>
-            <th>Move</th>
-            <th title="Marked by both, whether or not they agreed what it was">Both</th>
-            <th title="Both called it this move">Agreed</th>
-            <th colspan="3" class="agr-grp" title="Timing overlap across the pairs they agreed on">IoU</th>
-            <th title="Marked by ${r.a} alone">${r.a}</th>
-            <th title="Marked by ${r.b} alone">${r.b}</th>
-          </tr><tr class="agr-sub">
-            <th></th><th></th><th></th>
-            <th>avg</th><th>med</th><th>min–max</th>
-            <th class="agr-solo-h" colspan="2">caught alone</th>
-          </tr></thead>
-          <tbody>${r.perMove.map(m => `
-            <tr class="${m.pct !== null && m.pct < 60 ? 'agr-weak' : ''}">
-              <td><span class="agr-swatch" style="background:${getPunchColor(m.move)}"></span>${m.label}</td>
-              <td>${m.both}</td>
-              <td>${m.agreed}${m.pct === null ? '' : ` <i>${m.pct}%</i>`}</td>
-              ${iouCols(m.iou)}
-              <td class="agr-solo-c">${m.onlyA || '·'}</td>
-              <td class="agr-solo-c">${m.onlyB || '·'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>` : ''}
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const sections = families.map(({ family, rows }) => `
+    <h2>${esc(family.label)}</h2>
+    <table>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${esc(family.label)} by ${esc(r.who)}</td>
+            <td class="num">${r.count}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`).join('');
 
-      ${r.perRound.length ? `
-        <h3 class="agr-h">By round</h3>
-        <table class="agr-table">
-          <thead><tr>
-            <th>Round</th><th>Both</th><th>Agree</th><th>κ</th>
-            <th colspan="3" class="agr-grp">IoU</th>
-            <th>${r.a}</th><th>${r.b}</th>
-          </tr><tr class="agr-sub">
-            <th></th><th></th><th></th><th></th>
-            <th>avg</th><th>med</th><th>min–max</th>
-            <th class="agr-solo-h" colspan="2">caught alone</th>
-          </tr></thead>
-          <tbody>${r.perRound.map(q => `
-            <tr class="${q.outside ? 'agr-outside' : ''}">
-              <td>${q.name}</td>
-              <td>${q.matched}</td>
-              <td>${q.typePct === null ? '—' : q.typePct + '%'}</td>
-              <td>${q.kappa === null ? '—' : q.kappa}</td>
-              ${iouCols(q.iou)}
-              <td class="agr-solo-c">${q.onlyA || '·'}</td>
-              <td class="agr-solo-c">${q.onlyB || '·'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>` : ''}
-
-      ${r.confusions.length ? `
-        <h3 class="agr-h">Confused with</h3>
-        <ul class="agr-conf">${
-          r.confusions.map(([k, n]) => `<li><span>${k}</span><b>${n}</b></li>`).join('')
-        }</ul>` : ''}
-    </section>`).join('');
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8">
+    <title>Agreement — ${esc(agreementVideoName())}</title>
+    <style>
+      body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #1d1d1f; padding: 32px; max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 19px; margin: 0 0 4px; }
+      .lede { font-size: 13px; color: #6e6e73; margin: 0 0 24px; }
+      h2 { font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: #6e6e73; margin: 22px 0 6px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      td { padding: 6px 4px; border-bottom: 1px solid #e5e5ea; }
+      td.num { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+      @media print { body { padding: 0; } }
+    </style></head><body>
+    <h1>Agreement on this video</h1>
+    <p class="lede">Video: ${esc(agreementVideoName())}</p>
+    ${sections}
+    </body></html>`);
+  win.document.close();
+  win.focus();
+  // The print dialog needs the page actually painted first — onload alone
+  // can fire before layout settles on some browsers for a document.write()
+  // page, so this waits one frame rather than calling print() synchronously.
+  win.requestAnimationFrame(() => win.print());
 }
 
 // Clicking a row in the Labels panel lights that row AND its strip on the

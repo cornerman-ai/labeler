@@ -311,9 +311,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    `display:flex !important` is load-bearing: labeler_name.js hides inputs
    with this id by inline style on load, assuming its own bar is the name UI,
    and an inline style only loses to !important. */
+/* min-width shared with #lang-field/#btn-agreement/#btn-problems/
+   #admin-presence beside it — five different kinds of control (a text
+   input, a <select>, two buttons, a status chip) that used to each size to
+   their own content and read as five mismatched widths in a row. 135px is
+   this one's own natural width (icon + the 96px input) — the widest of the
+   five — so it's the floor the other four are set to match rather than an
+   arbitrary number. */
 #name-field {
   display: flex !important; align-items: center; gap: 6px;
-  height: 32px; padding: 0 10px; border-radius: 8px;
+  height: 32px; min-width: 135px; padding: 0 10px; border-radius: 8px;
   background: var(--fill); color: var(--ink-on-fill);
 }
 #name-field svg { width: 13px; height: 13px; flex: none; }
@@ -333,7 +340,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 #lang-field {
   display: flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 8px 0 10px; border-radius: 8px;
+  height: 32px; min-width: 135px; padding: 0 8px 0 10px; border-radius: 8px;
   background: var(--fill); color: var(--ink-on-fill);
 }
 #lang-field svg { width: 13px; height: 13px; flex: none; }
@@ -357,39 +364,37 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   #outbox-chip { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
 }
 
-/* Standing "somebody else is in here too" count — amber, like the unsaved
-   chip: a thing to be aware of, not an error. */
+/* Standing headcount of everyone currently in admin mode (the viewer
+   included) — see updateAdminPresenceChip() in app.js. Amber (the unsaved
+   chip's own "aware of, not an error" colour) is the default/base look —
+   2 to 4 people; .tone-solo (just the viewer) and .tone-busy (5+, crowded
+   enough that two quiet overwrites is a real risk) override it. */
 #admin-presence {
-  display: inline-flex; align-items: center; height: 32px; padding: 0 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; min-width: 135px; padding: 0 11px;
   border-radius: 8px; white-space: nowrap;
   background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200;
   font-size: 12.5px; font-weight: 590;
 }
 #admin-presence[hidden] { display: none; }
+#admin-presence.tone-solo { background: var(--yes-wash); color: var(--yes-on-wash); }
+#admin-presence.tone-busy { background: var(--no-wash); color: var(--no-on-wash); }
 @media (prefers-color-scheme: dark) {
+  /* Base (amber, no tone class) only — .tone-solo/.tone-busy above already
+     win on specificity (ID+class beats this plain ID rule) regardless of
+     the media query, and --yes-wash/--no-wash etc. already carry their own
+     dark-mode redefinitions at the top of this file. */
   #admin-presence { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
 }
 
-#adm-dialog {
-  width: min(440px, calc(100vw - 32px));
-  padding: 0; border: none; border-radius: 16px;
-  background: var(--card); color: var(--ink);
-  box-shadow: 0 24px 64px rgba(0,0,0,.28);
-}
-#adm-dialog::backdrop {
-  background: rgba(0,0,0,.28);
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-}
-.adm-lead { font-size: 14px; font-weight: 590; margin-bottom: 8px; }
-.adm-note { font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
-
-/* Admin-only, shown by setupAgreement(). Same fixed width as #btn-problems
-   below — the two sit side by side in .nav-group and used to size
-   themselves to their own label ("Agreement" vs "Problems" plus its count
-   badge), which read as mismatched buttons rather than one matched pair. */
+/* Admin-only, shown by setupAgreement(). Same min-width as #name-field/
+   #lang-field/#btn-problems/#admin-presence in .nav-group — five different
+   kinds of control that used to each size to their own content and read as
+   five mismatched widths in a row (135px is #name-field's own natural
+   width, the widest of the five — see the comment there). */
 #btn-agreement {
   display: inline-flex; align-items: center; justify-content: center;
-  height: 32px; min-width: 92px; padding: 0 11px; border-radius: 8px; border: 0;
+  height: 32px; min-width: 135px; padding: 0 11px; border-radius: 8px; border: 0;
   background: var(--fill); color: var(--ink);
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
@@ -401,7 +406,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    error" signal in this tool) that only shows once something's open. */
 #btn-problems {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 32px; min-width: 92px; padding: 0 11px; border-radius: 8px; border: 0;
+  height: 32px; min-width: 135px; padding: 0 11px; border-radius: 8px; border: 0;
   background: var(--fill); color: var(--ink);
   font-size: 12.5px; font-weight: 510; white-space: nowrap;
 }
@@ -1844,7 +1849,20 @@ button.ffm-row[aria-checked="true"]::before,
   padding: 16px 20px; border-bottom: 1px solid var(--line);
 }
 .sc-head h2 { font-size: 17px; font-weight: 640; letter-spacing: -.02em; }
+/* Groups a dialog's OTHER header buttons (e.g. #agr-export-pdf) with its
+   close button so .sc-head's own space-between still puts the pair as a
+   whole on the right, next to the title. */
+.sc-head-actions { display: flex; align-items: center; gap: 10px; flex: none; }
 .sc-body { padding: 8px 20px 20px; max-height: 65vh; overflow-y: auto; }
+/* A dialog whose header carries a second button beside close (so far just
+   #agr-export-pdf) wraps onto two lines on a narrow screen instead of
+   squeezing that button into the middle of a title that no longer fits one
+   line — .sc-head-actions' own flex:none keeps it from shrinking, and the
+   title wrapping under it (rather than beside it) is what a plain
+   flex-wrap gives for free here. */
+@media (max-width: 480px) {
+  .sc-head { flex-wrap: wrap; row-gap: 8px; }
+}
 .sc-sec {
   font-size: 11px; font-weight: 590; letter-spacing: .04em;
   text-transform: uppercase; color: var(--ink-dim); margin: 16px 0 6px;
@@ -2026,110 +2044,46 @@ kbd {
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }
 .agr-empty { font-size: 13px; color: var(--ink-dim); padding: 12px 0; }
-/* Same colour a labeler has on the timeline and on their rows — the point
-   of the panel is comparing people, so they have to be identifiable at a
-   glance in all three places. The count rides along here, which is why
-   there is no separate roster block above. */
-.agr-who {
-  padding: 2px 8px; border-radius: 999px;
-  background: var(--who, var(--ink-dim)); color: #fff;
-  font-size: 11px; font-weight: 650;
-}
-.agr-who b { font-weight: 750; opacity: .85; margin-left: 3px; }
-.agr-pair { padding: 2px 0 12px; }
-.agr-pair + .agr-pair { padding-top: 14px; border-top: 1px solid var(--line); }
-.agr-pair-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.agr-vs { font-size: 11px; color: var(--ink-dim); font-weight: 590; }
-/* auto-fit rather than a fixed six columns: the last two cells are named
-   after the labelers, and a long name would otherwise crush the numbers. */
-.agr-stats {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
-  gap: 10px 8px;
-}
-.agr-stats div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.agr-stats b {
-  font-size: 17px; font-weight: 640; letter-spacing: -.02em;
-  font-variant-numeric: tabular-nums;
-}
-.agr-stats span {
-  font-size: 10px; color: var(--ink-dim); line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Kappa is the one cell carrying a verdict, so it is the one that gets a
-   colour — everything else is a plain number. */
-.agr-stats .agr-k b { padding: 0 5px; border-radius: 5px; }
-.agr-stats .agr-k.agr-tone-ok  b { background: var(--yes-wash); color: var(--yes-on-wash); }
-.agr-stats .agr-k.agr-tone-mid b { background: color-mix(in srgb, #b26a00 18%, transparent); color: #8a5200; }
-.agr-stats .agr-k.agr-tone-bad b { background: var(--no-wash); color: var(--no-on-wash); }
-.agr-stats .agr-k.agr-tone-na  b { color: var(--ink-dim); }
-@media (prefers-color-scheme: dark) {
-  .agr-stats .agr-k.agr-tone-mid b { color: #f0b355; background: color-mix(in srgb, #f0b355 22%, transparent); }
-}
-/* One short line, on the pair header rather than a row of its own. */
-.agr-offset { margin-left: auto; font-size: 11.5px; color: var(--ink-dim); }
-/* Coverage is the number that invalidates the others — two people who did
-   not mark the same events have nothing to agree about — so it gets the
-   one non-neutral treatment in the grid besides kappa. */
-.agr-stats .agr-solo b { color: var(--ink); }
-
+/* The video-name line gets the same copy affordance as every family row
+   below it — see .agr-copy further down. Overrides .fvd-lede's own block
+   layout with a row so the button sits at the end instead of wrapping onto
+   its own line under a long name. */
+.agr-video-line { display: flex; align-items: center; gap: 6px; }
+/* One family name per section (Jabs, Rolls, ...) — see
+   computeAgreementPanel()/renderAgreement() in app.js. Rows underneath
+   reuse .fvd-rows/.fvd-row (the "loaded from the sheet" popup's own list
+   style) rather than a table — one line per labeler is all this needs. */
 .agr-h {
   margin: 20px 0 8px;
   font-size: 10.5px; font-weight: 650; letter-spacing: .05em;
   text-transform: uppercase; color: var(--ink-dim);
 }
+.agr-h:first-of-type { margin-top: 4px; }
+.agr-line { flex: 1; min-width: 0; }
+/* Same 22px icon-button shape as #btn-copy-link/#btn-copy-name elsewhere on
+   this page, just its own class since this one lives inside .fvd-row
+   instead of a .src-field. */
+.agr-copy {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; border: 0;
+  background: transparent; color: inherit; opacity: .55;
+}
+.agr-copy:hover { opacity: 1; background: var(--fill-2); }
+.agr-copy svg { width: 12px; height: 12px; }
+.agr-copy.copied { opacity: 1; color: var(--yes); }
 
-/* Shared by the by-move and by-round tables. */
-.agr-table {
-  width: 100%; border-collapse: collapse;
-  font-size: 12px; font-variant-numeric: tabular-nums;
+/* The "Export PDF" button beside the close × — text + icon, same quiet
+   chrome-button language as #btn-agreement/#btn-problems in the nav bar
+   rather than a filled pill, since this is a secondary action on a dialog
+   that's already an admin-only review tool. */
+#agr-export-pdf {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px; border-radius: 8px; border: 0;
+  background: var(--fill); color: var(--ink);
+  font-size: 12px; font-weight: 510; white-space: nowrap;
 }
-.agr-table th {
-  position: sticky; top: 0; z-index: 1; background: var(--card);
-  text-align: right; padding: 4px 7px;
-  font-size: 9.5px; font-weight: 650; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--ink-dim);
-  white-space: nowrap;
-}
-.agr-table thead tr:last-child th { border-bottom: 1px solid var(--line); }
-/* The two-row head groups avg/med/min–max under one "IoU" — three columns
-   of bare numbers otherwise read as three unrelated statistics. */
-.agr-table th.agr-grp, .agr-table th.agr-solo-h {
-  text-align: center; border-bottom: 1px solid var(--line);
-}
-.agr-table tr.agr-sub th { font-size: 9px; letter-spacing: .02em; }
-.agr-table th:first-child, .agr-table td:first-child { text-align: left; }
-.agr-table td { padding: 5px 7px; text-align: right; white-space: nowrap; }
-.agr-table tbody tr + tr td { border-top: 1px solid var(--line); }
-.agr-table td i { color: var(--ink-dim); font-style: normal; margin-left: 3px; }
-.agr-range { color: var(--ink-dim); }
-.agr-solo-c { color: var(--ink-dim); }
-/* The rows worth looking at. Under 60% agreement on a move is the signal
-   that the distinction, not the labeler, is the problem. */
-.agr-table tr.agr-weak td { background: var(--no-wash); }
-.agr-table tr.agr-weak td i { color: var(--no-on-wash); font-weight: 650; }
-/* Punches outside every round — the pipeline discards these, so the row is
-   marked the same amber the Labels panel uses for them. */
-.agr-table tr.agr-outside td {
-  background: color-mix(in srgb, #b26a00 10%, transparent); color: #8a5200;
-}
-@media (prefers-color-scheme: dark) {
-  .agr-table tr.agr-outside td { color: #f0b355; background: color-mix(in srgb, #f0b355 13%, transparent); }
-}
-.agr-swatch {
-  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
-  margin-right: 6px; vertical-align: middle;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
-}
-
-/* Which distinction they actually disagree on — the number that says
-   whether the taxonomy is the problem. */
-.agr-conf { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--fill); }
-.agr-conf li {
-  display: flex; justify-content: space-between; gap: 10px;
-  font-size: 11.5px; padding: 2px 0; list-style: none;
-}
-.agr-conf li span { color: var(--ink-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agr-conf li b { font-variant-numeric: tabular-nums; }
+#agr-export-pdf:hover { background: var(--fill-2); }
+#agr-export-pdf svg { width: 13px; height: 13px; flex: none; }
 
 /* ── toast ───────────────────────────────────────────────────────────────── */
 /* showToast() in player.js hard-codes the three classes below, so the names
