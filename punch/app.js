@@ -2075,6 +2075,11 @@ function fetchVideoCatalog() {
   _videoCatalogPromise = fetchJson(sheetUrl({ action: 'listTrackingVideos' }), 20000)
     .then((result) => {
       _videoCatalog = Array.isArray(result && result.videos) ? result.videos : [];
+      // Fixed 1-based number per video, tied to its row in the tracking
+      // sheet — so it stays the same video's number whether or not a
+      // search is narrowing the list, and matches what someone would count
+      // scrolling down that sheet by hand.
+      _videoCatalog.forEach((v, i) => { v.n = i + 1; });
       return _videoCatalog;
     })
     .catch(() => { _videoCatalog = []; return _videoCatalog; });
@@ -2095,7 +2100,7 @@ function setupVideoPicker() {
     const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
     list.innerHTML = rows.map((v, i) =>
-      `<button type="button" class="vp-row" data-idx="${i}">${escapeHtml(v.name)}</button>`
+      `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span>${escapeHtml(v.name)}</button>`
     ).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));
