@@ -2029,8 +2029,17 @@ function setupDriveLink() {
         // before it dispatches this same 'input' event — has to run AFTER
         // resetVideoForNewLink() above, which would otherwise immediately
         // wipe out the file it's about to load.
-        if (_pendingAutoLoadName && typeof autoLoadVideoFromFolder === 'function') {
-          autoLoadVideoFromFolder(_pendingAutoLoadName);
+        if (_pendingAutoLoadName) {
+          const name = _pendingAutoLoadName;
+          // Sequential, not parallel: loadVideoFileIntoPlayer() (inside the
+          // video search below) calls resetSkeletonState() as a side effect
+          // of opening a "new" video — running the skeleton search
+          // concurrently raced that reset and could get wiped out by it
+          // depending on which search resolved first.
+          (async () => {
+            if (typeof autoLoadVideoFromFolder === 'function') await autoLoadVideoFromFolder(name);
+            if (typeof autoLoadSkeletonsFromFolder === 'function') await autoLoadSkeletonsFromFolder(name);
+          })();
         }
         _pendingAutoLoadName = null;
       }

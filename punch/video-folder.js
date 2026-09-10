@@ -145,7 +145,7 @@ function vfPaint(state_) {
   } else {
     row.classList.remove('ok');
     connectBtn.innerHTML = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 3.5a1 1 0 0 1 1-1h2.6l1.1 1.3h5.3a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Connect Video Folder';
-    if (nameEl) nameEl.textContent = 'Pick the folder with the raw videos once, and picking a video from the list will open it automatically.';
+    if (nameEl) nameEl.textContent = 'Pick a folder once (raw videos, BlazePose exports, or both) and picking a video from the list will load its video and skeletons automatically.';
     if (statusEl) { statusEl.hidden = true; statusEl.innerHTML = ''; }
     if (forgetBtn) forgetBtn.hidden = true;
   }
@@ -199,6 +199,62 @@ function setupVideoFolder() {
     try { perm = await handle.queryPermission({ mode: 'read' }); } catch { perm = 'denied'; }
     vfPaint(perm === 'granted' ? 'connected' : 'needs-permission');
   })();
+}
+
+// Matches skeleton.js's own filename convention (see CLAUDE.md and
+// loadSkeletonFiles() in skeleton.js): one <stem>_blazepose_r<N>.npy +
+// _pts.npy + _meta.json triple per round, all living flat alongside every
+// other video's triples — so unlike the video search above, there's no
+// directory structure grouping them and a whole video's rounds have to be
+// found by stem match across however many _blazepose_r<N> files exist.
+const VF_SKELETON_MAIN_RE = /^(.*)_blazepose_r\d+(?:_pts)?\.npy$/i;
+const VF_SKELETON_META_RE = /^(.*)_blazepose_r\d+_meta\.json$/i;
+
+async function vfFindSkeletonHandles(rootHandle, target) {
+  const targetStem = vfStem(target);
+  if (!targetStem) return [];
+  const exact = [];
+  const partial = [];
+
+  async function visit(dirHandle) {
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'directory') { await visit(entry); continue; }
+      const m = entry.name.match(VF_SKELETON_MAIN_RE) || entry.name.match(VF_SKELETON_META_RE);
+      if (!m) continue;
+      const stem = vfStem(m[1]);
+      if (stem === targetStem) exact.push(entry);
+      else if (stem.includes(targetStem) || targetStem.includes(stem)) partial.push(entry);
+    }
+  }
+
+  await visit(rootHandle);
+  return exact.length ? exact : partial;
+}
+
+// Called alongside autoLoadVideoFromFolder() below — same folder, same
+// video, but a completely different naming convention (flat triples, not a
+// video-extension file), so it gets its own search rather than reusing
+// vfFindVideoHandle(). Silent no-op when nothing's connected/found; the
+// manual "Open Skeletons" picker is always still there as a fallback.
+async function autoLoadSkeletonsFromFolder(name) {
+  if (!_vfRootHandle) return false;
+  let perm;
+  try { perm = await _vfRootHandle.queryPermission({ mode: 'read' }); } catch { perm = 'denied'; }
+  if (perm !== 'granted') return false;
+  if (typeof loadSkeletonFiles !== 'function' || typeof applySkeletonLoadResult !== 'function') return false;
+
+  let entries;
+  try { entries = await vfFindSkeletonHandles(_vfRootHandle, name); } catch (err) {
+    console.warn('Skeleton folder search failed:', err);
+    return false;
+  }
+  if (!entries.length) return false;
+
+  const files = await Promise.all(entries.map((e) => e.getFile()));
+  const result = await loadSkeletonFiles(files);
+  const ok = applySkeletonLoadResult(result);
+  if (ok) showToast('Skeletons loaded from video folder.', 'success');
+  return ok;
 }
 
 // Called by app.js's video picker once a video is chosen from the tracking

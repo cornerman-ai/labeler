@@ -384,6 +384,48 @@ function resetSkeletonState() {
   setSkeletonStatus(null, '');
 }
 
+// Shared by the manual <input type=file multiple> pick above and
+// video-folder.js's automatic per-video search — both end up with a
+// { rounds, incomplete, invalid, invalidReasons } result from
+// loadSkeletonFiles() and just need it merged into state + painted the
+// same way.
+function applySkeletonLoadResult({ rounds, incomplete, invalid, invalidReasons }) {
+  const nameEl = document.getElementById('skeleton-name');
+  const toggleBtn = document.getElementById('btn-toggle-skeleton');
+  const addMoreBtn = document.getElementById('btn-add-more-skeletons');
+
+  // Upsert by round number rather than replacing the whole set — a later
+  // pick (via "+ Add more", or just clicking "Open Skeletons" again) adds
+  // rounds that weren't there yet and overwrites a round re-picked by
+  // mistake, but never loses a round that isn't part of THIS pick. Same
+  // reasoning as predictions.js's "replace by name" upsert for models.
+  if (rounds.length) {
+    const merged = new Map(state.skeleton.rounds.map(r => [r.round, r]));
+    for (const r of rounds) merged.set(r.round, r);
+    state.skeleton.rounds = [...merged.values()].sort((a, b) => a.round - b.round);
+    state.skeleton.visible = true;
+  }
+  const skipped = incomplete + invalid;
+  if (!state.skeleton.rounds.length) {
+    if (nameEl) nameEl.textContent = 'No skeletons loaded';
+    setSkeletonStatus('err', skipped
+      ? `${skipped} round${skipped === 1 ? '' : 's'} skipped — ${
+          invalidReasons.length ? invalidReasons[0] : 'need the .npy, _pts.npy and _meta.json together'}`
+      : 'No matching files');
+    if (toggleBtn) toggleBtn.hidden = true;
+    if (addMoreBtn) addMoreBtn.hidden = true;
+    return false;
+  }
+  const roundList = state.skeleton.rounds.map(r => r.round).join(', ');
+  if (nameEl) nameEl.textContent = `${state.skeleton.rounds.length} round${state.skeleton.rounds.length === 1 ? '' : 's'} (r${roundList})`;
+  setSkeletonStatus('ok', skipped ? `${skipped} skipped` : 'Loaded');
+  if (toggleBtn) { toggleBtn.hidden = false; setSkeletonToggleLabel(); }
+  // Only worth showing once there's something to add TO.
+  if (addMoreBtn) addMoreBtn.hidden = false;
+  drawSkeletonFrame(document.getElementById('video-player')?.currentTime || 0);
+  return true;
+}
+
 function setupSkeletonLoader() {
   const input = document.getElementById('skeleton-files');
   const nameEl = document.getElementById('skeleton-name');
@@ -396,38 +438,9 @@ function setupSkeletonLoader() {
     if (!files || !files.length) return;
     setSkeletonStatus('syncing', 'Reading…');
     try {
-      const { rounds, incomplete, invalid, invalidReasons } = await loadSkeletonFiles(files);
-      // Upsert by round number rather than replacing the whole set — a
-      // later pick (via "+ Add more", or just clicking "Open Skeletons"
-      // again) adds rounds that weren't there yet and overwrites a round
-      // re-picked by mistake, but never loses a round that isn't part of
-      // THIS pick. Same reasoning as predictions.js's "replace by name"
-      // upsert for models.
-      if (rounds.length) {
-        const merged = new Map(state.skeleton.rounds.map(r => [r.round, r]));
-        for (const r of rounds) merged.set(r.round, r);
-        state.skeleton.rounds = [...merged.values()].sort((a, b) => a.round - b.round);
-        state.skeleton.visible = true;
-      }
+      const result = await loadSkeletonFiles(files);
+      applySkeletonLoadResult(result);
       input.value = '';   // lets the same file(s) be re-picked later without a no-op change event
-      const skipped = incomplete + invalid;
-      if (!state.skeleton.rounds.length) {
-        if (nameEl) nameEl.textContent = 'No skeletons loaded';
-        setSkeletonStatus('err', skipped
-          ? `${skipped} round${skipped === 1 ? '' : 's'} skipped — ${
-              invalidReasons.length ? invalidReasons[0] : 'need the .npy, _pts.npy and _meta.json together'}`
-          : 'No matching files');
-        if (toggleBtn) toggleBtn.hidden = true;
-        if (addMoreBtn) addMoreBtn.hidden = true;
-        return;
-      }
-      const roundList = state.skeleton.rounds.map(r => r.round).join(', ');
-      if (nameEl) nameEl.textContent = `${state.skeleton.rounds.length} round${state.skeleton.rounds.length === 1 ? '' : 's'} (r${roundList})`;
-      setSkeletonStatus('ok', skipped ? `${skipped} skipped` : 'Loaded');
-      if (toggleBtn) { toggleBtn.hidden = false; setSkeletonToggleLabel(); }
-      // Only worth showing once there's something to add TO.
-      if (addMoreBtn) addMoreBtn.hidden = false;
-      drawSkeletonFrame(document.getElementById('video-player')?.currentTime || 0);
     } catch (err) {
       console.error('Skeleton load failed:', err);
       setSkeletonStatus('err', 'Could not read those files');
