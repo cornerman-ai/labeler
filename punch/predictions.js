@@ -284,6 +284,17 @@ function renderPredictionsList() {
       applyPredictionsToLabels();
       renderPredictionsList();
       updatePredictionsSummary();
+      // setPredictionsStatus() otherwise only ever runs from a fresh file
+      // pick — removing the last model via a chip's × left the row green
+      // with a stale "N on this video" from whatever was last loaded.
+      // Empty goes back to plain/grey; still having models re-totals the
+      // count across what's left, same reasoning.
+      if (!state.predictionModels.length) {
+        setPredictionsStatus(null, '');
+      } else {
+        const total = state.predictionModels.reduce((n, m) => n + countMatchedPredictionRows(m.modelName), 0);
+        setPredictionsStatus('ok', `${total} on this video`);
+      }
     };
     container.appendChild(chip);
   }
