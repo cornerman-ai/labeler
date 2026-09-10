@@ -304,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateRoundIndicator();
   setupDriveLink();
   setupVideoPicker();
+  if (typeof setupVideoFolder === 'function') setupVideoFolder();
   if (labelerId()) {
     const badge = document.getElementById('labeler-badge');
     const isName = !/^\d+$/.test(labelerId());
@@ -2024,6 +2025,14 @@ function setupDriveLink() {
         state.undoStack = [];
         resetVideoForNewLink();
         fetchLabelsFromSheet(true);
+        // Set by the video picker (see setupVideoPicker()'s pick()) right
+        // before it dispatches this same 'input' event — has to run AFTER
+        // resetVideoForNewLink() above, which would otherwise immediately
+        // wipe out the file it's about to load.
+        if (_pendingAutoLoadName && typeof autoLoadVideoFromFolder === 'function') {
+          autoLoadVideoFromFolder(_pendingAutoLoadName);
+        }
+        _pendingAutoLoadName = null;
       }
     }, 500);
   });
@@ -2069,6 +2078,10 @@ function resetVideoForNewLink() {
 // re-sorts it.
 let _videoCatalog = null;          // null = not fetched yet, [] = fetched empty
 let _videoCatalogPromise = null;
+// Name of the video just picked from the list, consumed by setupDriveLink()'s
+// debounce callback once resetVideoForNewLink() has run — see the comment
+// there for why the ordering matters.
+let _pendingAutoLoadName = null;
 
 function fetchVideoCatalog() {
   if (_videoCatalogPromise) return _videoCatalogPromise;
@@ -2108,6 +2121,7 @@ function setupVideoPicker() {
   }
 
   function pick(video) {
+    _pendingAutoLoadName = video.name;
     input.value = video.link;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     closePanel();

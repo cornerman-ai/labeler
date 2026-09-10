@@ -141,6 +141,36 @@ function setZoom(newLevel, anchorNormalized) {
 // ============================================================
 // Video loader + FPS detection
 // ============================================================
+// Shared by the manual <input type=file> pick below and, on labelers that
+// load video-folder.js, an automatic match against a connected local
+// folder — both end up with a real File/Blob and just need it decoded into
+// the player the same way.
+function loadVideoFileIntoPlayer(file) {
+  const video = document.getElementById('video-player');
+  if (!video || !file) return;
+
+  state.videoName = file.name;
+  const nameEl = document.getElementById('video-name');
+  if (nameEl) nameEl.textContent = file.name;
+
+  // A new video invalidates any skeleton data picked for the previous one
+  // — wrong-video overlays would be actively misleading, not just stale.
+  // resetSkeletonState() (skeleton.js) is guarded the same way every
+  // other cross-file call from this shared player is, since not every
+  // labeler that uses player.js has skeleton.js loaded.
+  if (typeof resetSkeletonState === 'function') resetSkeletonState();
+
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  video.load();
+
+  const thumbVideo = document.getElementById('thumb-video');
+  if (thumbVideo) {
+    thumbVideo.src = url;
+    thumbVideo.load();
+  }
+}
+
 function setupVideoLoader() {
   const input = document.getElementById('video-file');
   const video = document.getElementById('video-player');
@@ -149,27 +179,7 @@ function setupVideoLoader() {
   input.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    state.videoName = file.name;
-    const nameEl = document.getElementById('video-name');
-    if (nameEl) nameEl.textContent = file.name;
-
-    // A new video invalidates any skeleton data picked for the previous one
-    // — wrong-video overlays would be actively misleading, not just stale.
-    // resetSkeletonState() (skeleton.js) is guarded the same way every
-    // other cross-file call from this shared player is, since not every
-    // labeler that uses player.js has skeleton.js loaded.
-    if (typeof resetSkeletonState === 'function') resetSkeletonState();
-
-    const url = URL.createObjectURL(file);
-    video.src = url;
-    video.load();
-
-    const thumbVideo = document.getElementById('thumb-video');
-    if (thumbVideo) {
-      thumbVideo.src = url;
-      thumbVideo.load();
-    }
+    loadVideoFileIntoPlayer(file);
   });
 
   video.addEventListener('loadedmetadata', () => {
