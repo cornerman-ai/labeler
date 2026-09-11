@@ -578,19 +578,38 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #video-picker-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 #video-picker-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .vp-row {
-  display: block; width: 100%; text-align: left; border: 0; background: none;
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; text-align: left; border: 0; background: none;
   color: var(--ink); font-size: 12.5px; padding: 7px 9px; border-radius: 6px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   /* Without this, a flex column with a capped max-height (below) treats
      each row's overflow:hidden as an invitation to shrink it past its own
      content height instead of just scrolling — dozens of rows then get
      squeezed thinner than their own text line, overlapping into an
      unreadable smear. flex:none pins every row to its natural height so
-     the LIST scrolls instead of the ROWS collapsing. */
+     the LIST scrolls instead of the ROWS collapsing. This is the row's OWN
+     flex-item sizing (inside #video-picker-list); it says nothing about
+     .vp-row itself being display:flex for its own children, which is what
+     lets the version badges sit flush right of a truncating name below. */
   flex: none;
 }
 .vp-row:hover, .vp-row.active { background: var(--fill-2); }
-.vp-n { display: inline-block; min-width: 26px; color: var(--ink-on-fill); font-variant-numeric: tabular-nums; }
+.vp-n { flex: none; display: inline-block; min-width: 20px; color: var(--ink-on-fill); font-variant-numeric: tabular-nums; }
+.vp-name {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Which labeling pass a video's rows belong to per labeler (v0/v1/...) —
+   from the tracking sheet's labeling_version_<Name> columns, shown so a
+   re-relabeled video is distinguishable at a glance without opening the
+   sheet. J/A tint just enough to tell the two apart at this size; anything
+   past two labelers would need real color assignment, not worth it yet for
+   a two-person team. */
+.vp-ver {
+  flex: none; font-size: 10px; font-weight: 620; letter-spacing: .02em;
+  padding: 1px 5px; border-radius: 5px; font-variant-numeric: tabular-nums;
+}
+.vp-ver-j { background: var(--accent-wash); color: var(--accent-on-wash); }
+.vp-ver-a { background: var(--yes-wash); color: var(--yes-on-wash); }
 .vp-empty, .vp-loading {
   padding: 10px 9px; font-size: 12.5px; color: var(--ink-on-fill); text-align: center;
 }

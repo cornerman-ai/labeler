@@ -2426,8 +2426,17 @@ function setupVideoPicker() {
     const q = filter.trim().toLowerCase();
     const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
+    // From the tracking sheet's labeling_version_John / labeling_version_Arianne
+    // columns (Code.js's doGetTrackingVideos()) — blank for a video neither
+    // has touched, so most rows show no badges at all.
+    const versionBadges = (v) => {
+      const parts = [];
+      if (v.versionJohn) parts.push(`<span class="vp-ver vp-ver-j" title="John's labeling version">J ${escapeHtml(v.versionJohn)}</span>`);
+      if (v.versionArianne) parts.push(`<span class="vp-ver vp-ver-a" title="Arianne's labeling version">A ${escapeHtml(v.versionArianne)}</span>`);
+      return parts.join('');
+    };
     list.innerHTML = rows.map((v, i) =>
-      `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span>${escapeHtml(v.name)}</button>`
+      `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span>${versionBadges(v)}</button>`
     ).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));

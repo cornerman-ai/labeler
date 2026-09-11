@@ -1206,11 +1206,16 @@ function doGetTrackingVideos() {
   var data = sh.getDataRange().getValues();
   if (data.length <= 1) return jsonOut({ status: 'ok', videos: [] });
   var header = data[0];
-  var nameCol = -1, linkCol = -1;
+  var nameCol = -1, linkCol = -1, johnVerCol = -1, arianneVerCol = -1;
   for (var c = 0; c < header.length; c++) {
     var h = String(header[c]).toLowerCase().trim();
     if (h === 'video_name') nameCol = c;
     else if (h === 'video_link') linkCol = c;
+    // Which labeling pass a video's rows belong to (v0/v1/...) — shown
+    // next to the video in the picker so a re-relabeled video is
+    // distinguishable at a glance, same as the sheet itself shows it.
+    else if (h === 'labeling_version_john') johnVerCol = c;
+    else if (h === 'labeling_version_arianne') arianneVerCol = c;
   }
   if (nameCol < 0 || linkCol < 0) return jsonOut({ status: 'ok', videos: [] });
   var videos = [];
@@ -1218,7 +1223,11 @@ function doGetTrackingVideos() {
     var link = String(data[r][linkCol] || '').trim();
     if (!link) continue;
     var name = String(data[r][nameCol] || '').trim();
-    videos.push({ name: name || link, link: link });
+    videos.push({
+      name: name || link, link: link,
+      versionJohn: johnVerCol >= 0 ? String(data[r][johnVerCol] || '').trim() : '',
+      versionArianne: arianneVerCol >= 0 ? String(data[r][arianneVerCol] || '').trim() : '',
+    });
   }
   return jsonOut({ status: 'ok', videos: videos });
 }
