@@ -255,8 +255,13 @@ Object.assign(state, {
   // setupAgreementVersionFilterMenu()). Empty = show every version. Values
   // are whatever's actually in the sheet ("v0", "v1", ...) plus the literal
   // string 'none' standing in for "no version recorded".
-  agreementVersionFilterJohn: new Set(),
-  agreementVersionFilterArianne: new Set(),
+  // Defaults to v1/v1 — the report is most useful once both have actually
+  // relabeled a video, and a video someone hasn't gotten to yet just adds
+  // noise. Still just a starting point: clearing either filter (pick "All
+  // versions") shows everything, same as before, and the choice sticks for
+  // the rest of the session like every other Agreement filter does.
+  agreementVersionFilterJohn: new Set(['v1']),
+  agreementVersionFilterArianne: new Set(['v1']),
   // Which move-type groups (Offense/Defense/Other) are folded away — see
   // buildPunchButtons()'s header()/wireMoveGroupFold(). One level in from
   // the panel-wide Move Type fold (#move-type-toggle in index.html, wired
@@ -1832,6 +1837,13 @@ async function renderAgreement() {
   const arianneFilterRow = document.getElementById('agr-version-filter-arianne');
   if (johnFilterRow) johnFilterRow.hidden = !allVideos;
   if (arianneFilterRow) arianneFilterRow.hidden = !allVideos;
+  if (allVideos) {
+    // Button text otherwise only updates from inside the menu's own click
+    // handlers — without this the "John: v1 default" filter is silently
+    // active but the button still reads "John: all" until it's opened once.
+    updateAgreementVersionFilterButton('john');
+    updateAgreementVersionFilterButton('arianne');
+  }
 
   // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
   // use elsewhere in this page — click handlers are wired up below by DOM
