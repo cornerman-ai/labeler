@@ -487,6 +487,13 @@ function doGet(e) {
     return jsonOut(adminPresence(p.client, p.who));
   }
 
+  // === AGREEMENT, ALL VIDEOS: move counts per labeler, summed across EVERY
+  // video — what the Agreement dialog shows when no single video is loaded.
+  // Answered before any single-sheet resolution below, same as adminPing. ===
+  if (action === 'agreementAllVideos') {
+    return jsonOut({ status: 'ok', counts: cachedAllVideosPunchCounts(pss) });
+  }
+
   // === LIST FOREIGN: every OTHER labeler's rows for this video. ===
   // Split out of `list` on purpose. This is the expensive half — it walks
   // every labeler sheet (see collectForeignRows) — and making the page wait
@@ -1940,6 +1947,69 @@ function scanAllRowsForVideo(pss, video) {
 // the most rows on a video so an Admin-created label could be filed under
 // somebody. Admin no longer creates labels — it credited work to a person
 // who hadn't done it — so the function went with its only caller.)
+
+// ── Agreement dialog's all-videos overview ────────────────────────────────
+// Same sheet walk as scanAllRowsForVideo() but with no video filter and
+// aggregated server-side into { sheetName: { punchId: count } } — a raw
+// per-row dump across every video would be huge (thousands of rows per
+// labeler); a labeler×type count table is tiny regardless of how much data
+// backs it, and it's exactly the shape punch/app.js's computeAgreementPanel()
+// already builds client-side from a single video's labels, so the client can
+// feed this straight into the same function.
+var AGREEMENT_ALL_VIDEOS_CACHE_KEY = 'agr1:allVideos';
+function cachedAllVideosPunchCounts(pss) {
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  if (cache) {
+    try {
+      var hit = cache.get(AGREEMENT_ALL_VIDEOS_CACHE_KEY);
+      if (hit) return JSON.parse(hit);
+    } catch (e) {}
+  }
+  var counts = allVideosPunchCounts(pss);
+  if (cache) {
+    try {
+      var payload = JSON.stringify(counts);
+      if (payload.length < 90000) cache.put(AGREEMENT_ALL_VIDEOS_CACHE_KEY, payload, 120);
+    } catch (e) {}
+  }
+  return counts;
+}
+
+function allVideosPunchCounts(pss) {
+  var out = {}; // sheetName -> { punchId: count }
+  var sheets = pss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var name = sheet.getName();
+    var isArchive = name === COMBINED_ARCHIVE_NAME;
+    if (!isArchive) {
+      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+      // Not a teammate — see NON_PERSON_LABELER_SHEETS. Skips "Labeled Data
+      // Admin" too (sentinel name, never a real sheet, but cheap to exclude
+      // on principle same as everywhere else this walk happens).
+      if (isNonPersonLabelerSheet(name)) continue;
+    }
+    if (sheet.getLastRow() < 2) continue;
+    var data = sheet.getDataRange().getValues();
+    var cols = findColumns(data[0]);
+    if (cols.punch < 0) continue;
+    var hasEnd = cols.end >= 0;
+    var counts = {};
+    for (var r = 1; r < data.length; r++) {
+      var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
+      if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
+      // A row with an end-time column but no value in it is a round marker
+      // or an incomplete write, not a move — skip it, matching
+      // collectForeignRows()'s endTime !== null gate for punch labels.
+      if (hasEnd && !data[r][cols.end]) continue;
+      counts[lbl] = (counts[lbl] || 0) + 1;
+    }
+    if (Object.keys(counts).length) out[name] = counts;
+  }
+  return out;
+}
 
 // ── Admin's own tab: what admin changed, and to what ─────────────────────
 // Admin's CORRECTIONS still land in the owning labeler's sheet, because

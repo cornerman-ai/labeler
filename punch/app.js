@@ -1241,19 +1241,25 @@ const MOVE_FAMILIES = [
   { key: 'unsure', label: 'Unsure', ids: ['unsure'] },
 ];
 
-function computeAgreementPanel() {
+// `byOwnerOverride` (Map<owner, Map<punchId, count>>) lets the all-videos
+// view (fetchAllVideosByOwnerMap() below) feed pre-aggregated counts through
+// the exact same family/type/pairing logic a single video uses, instead of
+// duplicating it. Omitted — the normal case — it's built fresh from
+// state.labels, i.e. whatever's loaded for the current video.
+function computeAgreementPanel(byOwnerOverride) {
   // owner -> punch id -> count
-  const byOwner = new Map();
-  const ownersSet = new Set();
-  for (const l of state.labels) {
-    if (l.isRoundMarker) continue;
-    const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
-    ownersSet.add(who);
-    if (!byOwner.has(who)) byOwner.set(who, new Map());
-    const typeMap = byOwner.get(who);
-    typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
+  let byOwner = byOwnerOverride;
+  if (!byOwner) {
+    byOwner = new Map();
+    for (const l of state.labels) {
+      if (l.isRoundMarker) continue;
+      const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
+      if (!byOwner.has(who)) byOwner.set(who, new Map());
+      const typeMap = byOwner.get(who);
+      typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
+    }
   }
-  const owners = [...ownersSet].sort();
+  const owners = [...byOwner.keys()].sort();
   if (!owners.length) return [];
   const countFor = (who, id) => (byOwner.get(who) && byOwner.get(who).get(id)) || 0;
 
@@ -1377,11 +1383,55 @@ function setupAgreement() {
   const dlg = document.getElementById('agr-dialog');
   if (!btn || !dlg) return;
   btn.hidden = !state.isAdmin;      // review instrument, not a labelling one
-  btn.addEventListener('click', () => { renderAgreement(); dlg.showModal(); });
+  btn.addEventListener('click', () => {
+    // A fresh open re-fetches the all-videos aggregate (if that's the mode
+    // it opens into) rather than serving a stale one — see
+    // fetchAllVideosByOwnerMap()'s cache.
+    _agrAllVideosCache = null;
+    renderAgreement();
+    dlg.showModal();
+  });
   document.getElementById('agr-close')?.addEventListener('click', () => dlg.close());
   document.getElementById('agr-export-pdf')?.addEventListener('click', exportAgreementPdf);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
   setupAgreementTypeFilterMenu();
+}
+
+// True once nothing identifies a specific video — no pasted link, no local
+// file open. That's the trigger for the Agreement dialog's all-videos
+// overview: rendering the single-video view against an empty state.labels
+// would just be a permanently-empty panel, which is worse than useless
+// (looks broken, not "nothing to show here on purpose").
+function noVideoSelected() {
+  return !document.getElementById('drive-link')?.value.trim() && !state.videoName;
+}
+
+// Memoized per dialog-open (cleared in setupAgreement()'s click handler) so
+// toggling the Moves filter re-renders instantly instead of re-fetching the
+// whole sheet-wide scan on every checkbox click.
+let _agrAllVideosCache = null;
+
+// Server aggregates { sheetName: { punchId: count } } (see
+// allVideosPunchCounts() in Code.js) — turned into the same
+// Map<owner, Map<punchId,count>> shape computeAgreementPanel() already
+// builds from a single video's state.labels, using the exact sheet-name ->
+// display-name stripping foreignOwnerName() uses everywhere else, so an
+// owner reads the same whether their rows came from one video or all of them.
+async function fetchAllVideosByOwnerMap() {
+  if (_agrAllVideosCache) return _agrAllVideosCache;
+  const result = await fetchJson(sheetUrl({ action: 'agreementAllVideos' }), 30000);
+  const byOwner = new Map();
+  const counts = (result && result.counts) || {};
+  for (const [sheetName, punchCounts] of Object.entries(counts)) {
+    const who = String(sheetName).replace(/^Labeled Data (Software )?/, '') || 'other labeler';
+    const typeMap = byOwner.get(who) || new Map();
+    for (const [punchId, n] of Object.entries(punchCounts)) {
+      typeMap.set(punchId, (typeMap.get(punchId) || 0) + n);
+    }
+    byOwner.set(who, typeMap);
+  }
+  _agrAllVideosCache = byOwner;
+  return byOwner;
 }
 
 // ── Agreement dialog's own "Moves" filter ──────────────────────────────────
@@ -1514,15 +1564,33 @@ function agreementLineText(type, r) {
   return `${type.label} by ${r.who}: ${r.count}${agreementMatchSuffix(type, r)}`;
 }
 
-function renderAgreement() {
+async function renderAgreement() {
   const body = document.getElementById('agr-body');
   if (!body) return;
-  const families = computeAgreementPanel();
+
+  const allVideos = noVideoSelected();
+  const headline = allVideos ? 'All videos' : `Video: ${agreementVideoName()}`;
+
+  let byOwner;
+  if (allVideos) {
+    // The fetch can take a moment on a large sheet — paint something rather
+    // than leaving the previous video's report (or nothing at all) sitting
+    // there while it's in flight.
+    body.innerHTML = '<p class="agr-empty">Loading counts across every video…</p>';
+    try {
+      byOwner = await fetchAllVideosByOwnerMap();
+    } catch (err) {
+      console.error('Agreement all-videos fetch failed:', err);
+      body.innerHTML = '<p class="agr-empty">Could not load counts across all videos — try again.</p>';
+      return;
+    }
+  }
+  const families = computeAgreementPanel(byOwner);
 
   if (!families.length) {
     body.innerHTML = state.agreementTypeFilter.size
-      ? '<p class="agr-empty">No data for the selected moves on this video.</p>'
-      : '<p class="agr-empty">No punches on this video yet.</p>';
+      ? `<p class="agr-empty">No data for the selected moves${allVideos ? '' : ' on this video'}.</p>`
+      : `<p class="agr-empty">No punches ${allVideos ? 'logged anywhere yet' : 'on this video yet'}.</p>`;
     return;
   }
 
@@ -1541,7 +1609,7 @@ function renderAgreement() {
       <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 9V2.5A1 1 0 0 1 3.5 1.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
     </button>`;
 
-  body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">Video: ${agreementVideoName()}</span>${copyBtn}</p>` +
+  body.innerHTML = `<p class="fvd-lede agr-video-line"><span class="agr-line">${headline}</span>${copyBtn}</p>` +
     families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
       <div class="agr-family">
@@ -1551,10 +1619,10 @@ function renderAgreement() {
           </div>`).join('')}
       </div>`).join('');
 
-  // Same order as the HTML was just built in (video name first, then every
+  // Same order as the HTML was just built in (headline first, then every
   // line), so the Nth button matches the Nth text — see the comment on
   // copyBtn above for why this isn't done via a data- attribute instead.
-  const flatLines = [`Video: ${agreementVideoName()}`];
+  const flatLines = [headline];
   families.forEach(({ types }) => types.forEach(type => type.rows.forEach(r => flatLines.push(agreementLineText(type, r)))));
   body.querySelectorAll('.agr-copy').forEach((btn, i) => {
     btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
@@ -1566,16 +1634,43 @@ function renderAgreement() {
 // export — there's no PDF library here, and one button doesn't earn adding
 // one. Built fresh from computeAgreementPanel() (not innerHTML-scraped from
 // #agr-body) so it can't inherit any of the dialog's own chrome.
-function exportAgreementPdf() {
-  const families = computeAgreementPanel();
-  if (!families.length) {
-    showToast(state.agreementTypeFilter.size
-      ? 'Nothing to export — no data for the selected moves on this video.'
-      : 'Nothing to export — no punches on this video yet.', 'error');
-    return;
-  }
+async function exportAgreementPdf() {
+  // Opened FIRST, synchronously, before any await — a popup blocker allows
+  // window.open() called directly from a click handler, but not one called
+  // after an awaited fetch has already yielded control back to the event
+  // loop, which is why the all-videos branch below has to write a loading
+  // placeholder into an already-open tab rather than opening it once the
+  // data's ready.
   const win = window.open('', '_blank');
   if (!win) { showToast('Could not open the export tab — check your popup blocker.', 'error'); return; }
+
+  const allVideos = noVideoSelected();
+  const headline = allVideos ? 'All videos' : `Video: ${agreementVideoName()}`;
+  let byOwner;
+  if (allVideos) {
+    win.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px -apple-system,sans-serif;padding:24px;color:#444">Loading…</body>');
+    try {
+      byOwner = await fetchAllVideosByOwnerMap();
+    } catch (err) {
+      console.error('Agreement all-videos fetch failed:', err);
+      win.document.open();
+      win.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px -apple-system,sans-serif;padding:24px;color:#c00">Could not load counts across all videos.</body>');
+      win.document.close();
+      showToast('Could not export — try again.', 'error');
+      return;
+    }
+  }
+
+  const families = computeAgreementPanel(byOwner);
+  if (!families.length) {
+    win.close();
+    showToast(state.agreementTypeFilter.size
+      ? `Nothing to export — no data for the selected moves${allVideos ? '' : ' on this video'}.`
+      : `Nothing to export — no punches ${allVideos ? 'logged anywhere yet' : 'on this video yet'}.`, 'error');
+    return;
+  }
+  // Fresh document, not appending to the loading placeholder above.
+  win.document.open();
 
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   // Same visual language as the dialog itself — light-grey pill rows on a
@@ -1606,7 +1701,7 @@ function exportAgreementPdf() {
     </div>`).join('');
 
   win.document.write(`<!doctype html><html><head><meta charset="utf-8">
-    <title>Agreement — ${esc(agreementVideoName())}</title>
+    <title>Agreement — ${esc(allVideos ? 'All videos' : agreementVideoName())}</title>
     <style>
       :root { color-scheme: light; }
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1645,8 +1740,8 @@ function exportAgreementPdf() {
     </style></head><body>
     <div class="card">
       <div class="head">
-        <h1>Agreement on this video</h1>
-        <p class="lede">Video: ${esc(agreementVideoName())}</p>
+        <h1>Agreement ${allVideos ? 'across all videos' : 'on this video'}</h1>
+        <p class="lede">${esc(headline)}</p>
         ${state.agreementTypeFilter.size ? `<p class="lede">Filtered to: ${esc([...state.agreementTypeFilter].map(punchLabel).join(', '))}</p>` : ''}
       </div>
       ${sections}
