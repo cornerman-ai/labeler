@@ -1570,6 +1570,8 @@ async function renderAgreement() {
 
   const allVideos = noVideoSelected();
   const headline = allVideos ? 'All videos' : `Video: ${agreementVideoName()}`;
+  const titleEl = document.getElementById('agr-title');
+  if (titleEl) titleEl.textContent = allVideos ? 'Agreement across all videos' : 'Agreement on this video';
 
   let byOwner;
   if (allVideos) {
