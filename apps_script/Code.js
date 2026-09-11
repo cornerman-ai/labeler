@@ -1995,15 +1995,21 @@ function allVideosPunchCounts(pss) {
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
     var name = sheet.getName();
-    var isArchive = name === COMBINED_ARCHIVE_NAME;
-    if (!isArchive) {
-      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
-      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
-      // Not a teammate — see NON_PERSON_LABELER_SHEETS. Skips "Labeled Data
-      // Admin" too (sentinel name, never a real sheet, but cheap to exclude
-      // on principle same as everywhere else this walk happens).
-      if (isNonPersonLabelerSheet(name)) continue;
-    }
+    // Unlike scanAllRowsForVideo()/collectForeignRows() (which fold the
+    // frozen Combined Data Archive in as a pseudo-labeler, since it's real
+    // per-video history worth showing on THAT video's timeline), the
+    // Agreement dialog is specifically about comparing the actual TEAM
+    // against each other — John and Arianne, nobody else. The archive
+    // isn't a person and was never a labeler on any of these videos; its
+    // row counts showing up next to real labelers just read as a third,
+    // fictitious "labeler" nobody asked to compare against. Real labeler
+    // sheets only, same gate as every other person-only walk.
+    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+    // Not a teammate — see NON_PERSON_LABELER_SHEETS. Skips "Labeled Data
+    // Admin" too (sentinel name, never a real sheet, but cheap to exclude
+    // on principle same as everywhere else this walk happens).
+    if (isNonPersonLabelerSheet(name)) continue;
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);

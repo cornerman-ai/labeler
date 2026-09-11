@@ -1254,6 +1254,13 @@ function computeAgreementPanel(byOwnerOverride) {
     for (const l of state.labels) {
       if (l.isRoundMarker) continue;
       const who = l.foreign ? foreignOwnerName(l) : (labelerId() || 'You');
+      // The frozen Combined Data Archive rides in as a "foreign" row same as
+      // any real labeler's (see mergeForeignPunchLabels()), and shows up on
+      // the timeline that way on purpose — but Agreement is specifically
+      // about comparing the actual TEAM against each other, and the archive
+      // isn't a person. Same exclusion as allVideosPunchCounts() in Code.js
+      // for the all-videos view; this is the single-video side of it.
+      if (who === 'Combined Data Archive') continue;
       if (!byOwner.has(who)) byOwner.set(who, new Map());
       const typeMap = byOwner.get(who);
       typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
