@@ -242,6 +242,14 @@ Object.assign(state, {
   // Admin only: the punch types picked in the Labels panel's "Types" menu.
   // Empty = off. Narrows every surface the tabs do — see shouldHideByType().
   typeFilter: new Set(),
+  // Separate from the above — the Agreement dialog's own "Moves" filter
+  // (see setupAgreementTypeFilterMenu()). Empty = show everything, same
+  // convention as typeFilter. Deliberately its own Set, not shared with the
+  // Labels-panel filter: a labeler narrowing the timeline to Rolls has
+  // nothing to do with an admin narrowing an Agreement export to Rolls, and
+  // conflating them would mean opening Agreement quietly changes what the
+  // labeler sees on the timeline underneath it.
+  agreementTypeFilter: new Set(),
   // Which move-type groups (Offense/Defense/Other) are folded away — see
   // buildPunchButtons()'s header()/wireMoveGroupFold(). One level in from
   // the panel-wide Move Type fold (#move-type-toggle in index.html, wired
@@ -1249,20 +1257,33 @@ function computeAgreementPanel() {
   if (!owners.length) return [];
   const countFor = (who, id) => (byOwner.get(who) && byOwner.get(who).get(id)) || 0;
 
-  // A family shows up at all only if SOMEONE logged one of its types — an
-  // all-zero family (nobody ever threw an uppercut) stays hidden, same as
-  // before. Once a family IS showing, though, it shows EVERY one of its
-  // types, not just the ones somebody happened to use — a Lead Slip video
-  // with zero Rear Slips still shows a Rear Slip row (all zeroes) rather
-  // than silently dropping it, since it's the same family and the question
-  // "did they slip the other way at all" has an answer either way.
+  // Admin's "Moves" filter on the Agreement dialog — see
+  // setupAgreementTypeFilterMenu(). Empty = the unfiltered behaviour below
+  // (every type in any family with data). Non-empty overrides that
+  // entirely: a family only shows if one of its SELECTED types has data,
+  // and only the selected types render — this is what lets "Rolls" split
+  // into just Rear Roll on its own, without dragging Lead Roll along for
+  // the ride the way the always-show-the-whole-family rule normally would.
+  const filter = state.agreementTypeFilter;
+  const idsToShow = (fam) => filter.size ? fam.ids.filter(id => filter.has(id)) : fam.ids;
+
+  // A family shows up at all only if SOMEONE logged one of its (shown)
+  // types — an all-zero family (nobody ever threw an uppercut) stays
+  // hidden, same as before. Once a family IS showing, though, it shows
+  // EVERY one of its shown types, not just the ones somebody happened to
+  // use — a Lead Slip video with zero Rear Slips still shows a Rear Slip
+  // row (all zeroes) rather than silently dropping it, since it's the same
+  // family and the question "did they slip the other way at all" has an
+  // answer either way.
   return MOVE_FAMILIES
     .map(fam => {
-      const familyHasAny = fam.ids.some(id => owners.some(who => countFor(who, id) > 0));
+      const shownIds = idsToShow(fam);
+      if (!shownIds.length) return null;
+      const familyHasAny = shownIds.some(id => owners.some(who => countFor(who, id) > 0));
       if (!familyHasAny) return null;
       return {
         family: fam,
-        types: fam.ids.map(id => {
+        types: shownIds.map(id => {
           const rows = owners.map(who => ({ who, count: countFor(who, id) }));
           // A count-only pairing, not a timing match — "how many of these
           // could line up 1:1 between the two of them" (the smaller count)
@@ -1360,6 +1381,112 @@ function setupAgreement() {
   document.getElementById('agr-close')?.addEventListener('click', () => dlg.close());
   document.getElementById('agr-export-pdf')?.addEventListener('click', exportAgreementPdf);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  setupAgreementTypeFilterMenu();
+}
+
+// ── Agreement dialog's own "Moves" filter ──────────────────────────────────
+// Same checkbox-grid pop-up as the Labels panel's Types menu (renderTypeFilterMenu()
+// above), same #ffm-row/#tfm-grid markup and CSS — but its own Set
+// (state.agreementTypeFilter) and its own button/menu, so opening Agreement
+// never quietly changes what the labeler sees on the timeline underneath it.
+// Picking specific types is what lets a family like "Rolls" split apart —
+// Rear Roll on its own, without Lead Roll tagging along — see
+// computeAgreementPanel()'s idsToShow().
+function updateAgreementTypeFilterButton() {
+  const label = document.getElementById('agr-type-filter-label');
+  const btn = document.getElementById('btn-agr-type-filter');
+  if (!label || !btn) return;
+  const n = state.agreementTypeFilter.size;
+  label.textContent = n ? `Moves: ${n}` : 'Moves: all';
+  btn.classList.toggle('on', n > 0);
+}
+
+function renderAgreementTypeFilterMenu(menu) {
+  // Counts here are whole-video totals across every labeler (own + foreign),
+  // matching what computeAgreementPanel() itself tallies — so the number
+  // next to each row previews what picking it will actually show, not just
+  // what's on this labeler's own lanes.
+  const counts = {};
+  for (const l of state.labels) {
+    if (l.isRoundMarker) continue;
+    counts[l.punch] = (counts[l.punch] || 0) + 1;
+  }
+
+  menu.innerHTML = '';
+
+  const allRow = document.createElement('button');
+  allRow.type = 'button';
+  allRow.className = 'ffm-row';
+  allRow.setAttribute('role', 'menuitemcheckbox');
+  allRow.setAttribute('aria-checked', String(state.agreementTypeFilter.size === 0));
+  allRow.innerHTML = '<span class="ffm-name">All moves</span>';
+  allRow.onclick = () => {
+    if (state.agreementTypeFilter.size) {
+      state.agreementTypeFilter.clear();
+      updateAgreementTypeFilterButton();
+      renderAgreement();
+    }
+    renderAgreementTypeFilterMenu(menu);
+  };
+  menu.appendChild(allRow);
+
+  const sep = document.createElement('div');
+  sep.className = 'ffm-sep';
+  menu.appendChild(sep);
+
+  const grid = document.createElement('div');
+  grid.className = 'tfm-grid';
+  const orderedTypes = TYPE_MENU_ORDER
+    .map(id => PUNCH_TYPES.find(p => p.id === id))
+    .filter(p => p && !p.retired);
+  for (const p of orderedTypes) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'ffm-row';
+    row.setAttribute('role', 'menuitemcheckbox');
+    row.setAttribute('aria-checked', String(state.agreementTypeFilter.has(p.id)));
+    row.title = punchLabel(p.id);
+    row.innerHTML =
+      `<span class="ffm-dot" style="--who: ${getPunchColor(p.id)}"></span>` +
+      `<span class="ffm-name">${punchLabel(p.id)}</span>` +
+      `<span class="ffm-count">${counts[p.id] || 0}</span>`;
+    row.onclick = () => {
+      if (!state.agreementTypeFilter.delete(p.id)) state.agreementTypeFilter.add(p.id);
+      updateAgreementTypeFilterButton();
+      renderAgreement();
+      renderAgreementTypeFilterMenu(menu);
+    };
+    grid.appendChild(row);
+  }
+  menu.appendChild(grid);
+}
+
+function setupAgreementTypeFilterMenu() {
+  const btn = document.getElementById('btn-agr-type-filter');
+  const menu = document.getElementById('agr-type-filter-menu');
+  if (!btn || !menu) return;
+
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    renderAgreementTypeFilterMenu(menu);
+    menu.hidden = false;
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 6) + 'px';
+    menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 18) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden ? open() : close();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !e.composedPath().includes(menu) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.hidden) close();
+  });
 }
 
 // The video name each line is filed under — shared by the on-screen dialog
@@ -1393,7 +1520,9 @@ function renderAgreement() {
   const families = computeAgreementPanel();
 
   if (!families.length) {
-    body.innerHTML = '<p class="agr-empty">No punches on this video yet.</p>';
+    body.innerHTML = state.agreementTypeFilter.size
+      ? '<p class="agr-empty">No data for the selected moves on this video.</p>'
+      : '<p class="agr-empty">No punches on this video yet.</p>';
     return;
   }
 
@@ -1439,7 +1568,12 @@ function renderAgreement() {
 // #agr-body) so it can't inherit any of the dialog's own chrome.
 function exportAgreementPdf() {
   const families = computeAgreementPanel();
-  if (!families.length) { showToast('Nothing to export — no punches on this video yet.', 'error'); return; }
+  if (!families.length) {
+    showToast(state.agreementTypeFilter.size
+      ? 'Nothing to export — no data for the selected moves on this video.'
+      : 'Nothing to export — no punches on this video yet.', 'error');
+    return;
+  }
   const win = window.open('', '_blank');
   if (!win) { showToast('Could not open the export tab — check your popup blocker.', 'error'); return; }
 
@@ -1513,6 +1647,7 @@ function exportAgreementPdf() {
       <div class="head">
         <h1>Agreement on this video</h1>
         <p class="lede">Video: ${esc(agreementVideoName())}</p>
+        ${state.agreementTypeFilter.size ? `<p class="lede">Filtered to: ${esc([...state.agreementTypeFilter].map(punchLabel).join(', '))}</p>` : ''}
       </div>
       ${sections}
     </div>

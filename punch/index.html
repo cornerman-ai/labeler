@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260911g">
+  <link rel="stylesheet" href="punch.css?v=20260911h">
 </head>
 <body>
   <div id="app">
@@ -696,6 +696,21 @@
     <div class="sc-head">
       <h2>Agreement on this video</h2>
       <div class="sc-head-actions">
+        <!-- Narrows the report (live dialog AND the PDF export, both built
+             from the same computeAgreementPanel()) to specific move types —
+             own Set from the Labels panel's own Types filter, so opening
+             Agreement never quietly changes what the labeler sees on the
+             timeline. Picking types (not just families) is what lets a pair
+             like "Rolls" split apart — Rear Roll on its own, without Lead
+             Roll tagging along. See setupAgreementTypeFilterMenu() in app.js. -->
+        <div id="agr-type-filter">
+          <button id="btn-agr-type-filter" type="button" aria-haspopup="menu"
+                  aria-expanded="false" aria-controls="agr-type-filter-menu">
+            <span id="agr-type-filter-label">Moves: all</span>
+            <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="agr-type-filter-menu" role="menu" hidden></div>
+        </div>
         <!-- Opens a plain, print-styled copy of #agr-body in a new tab and
              calls print() on it — the "save as PDF" that gives, via the
              browser's own print dialog, is as close to a real export as a
@@ -772,27 +787,27 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260911g"></script>
-  <script src="../shared/player.js?v=20260911g"></script>
-  <script src="skeleton.js?v=20260911g"></script>
+  <script src="../shared/labeler_name.js?v=20260911h"></script>
+  <script src="../shared/player.js?v=20260911h"></script>
+  <script src="skeleton.js?v=20260911h"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260911g"></script>
+  <script src="video-folder.js?v=20260911h"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260911g"></script>
-  <script src="predictions.js?v=20260911g"></script>
-  <script src="app.js?v=20260911g"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260911h"></script>
+  <script src="predictions.js?v=20260911h"></script>
+  <script src="app.js?v=20260911h"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260911g"></script>
+  <script src="problems.js?v=20260911h"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260911g"></script>
+  <script src="ui.js?v=20260911h"></script>
 </body>
 </html>
