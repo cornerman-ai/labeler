@@ -1446,6 +1446,23 @@ async function fetchAllVideosBreakdown() {
     }
     return { video, displayName: nameByLink.get(video) || video, byOwner };
   });
+
+  // computeAgreementPanel() only ever zero-fills a TYPE for an owner who's
+  // already in the map — an owner absent from a video's byOwner entirely
+  // (because they never labeled that one) just doesn't get a row, full stop.
+  // For a SINGLE video that's correct — there's no roster to compare
+  // against. Across all of them it reads as a hole: John's Rolls show on a
+  // video where Arianne's don't even appear, with nothing saying whether
+  // that's "she logged zero" or "she never opened this video." Zero-filling
+  // every video with everyone who shows up on ANY video makes that explicit.
+  const allOwners = new Set();
+  for (const e of entries) for (const who of e.byOwner.keys()) allOwners.add(who);
+  for (const e of entries) {
+    for (const who of allOwners) {
+      if (!e.byOwner.has(who)) e.byOwner.set(who, new Map());
+    }
+  }
+
   entries.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }));
   _agrAllVideosCache = entries;
   return entries;
