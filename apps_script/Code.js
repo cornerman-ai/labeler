@@ -1911,12 +1911,14 @@ function cachedAllRowsForVideo(pss, video) {
   return rows;
 }
 
-// The actual walk: every "Labeled Data …" sheet plus the frozen Combined
-// Data Archive, one getValues() per sheet, keeping only rows for this
-// video. `endTime` is null for a sheet with no end-time column, which is
-// what makes collectForeignRows() treat those as round-markers-only —
-// exactly what the old collectForeignPunchLabels() did by skipping such a
-// sheet outright.
+// The actual walk: every "Labeled Data …" sheet — real labelers only, not
+// the frozen Combined Data Archive (used to be folded in here too; the team
+// is just John and Arianne, and archive rows showing up as a third,
+// uneditable "labeler" on every video's timeline was never wanted). One
+// getValues() per sheet, keeping only rows for this video. `endTime` is
+// null for a sheet with no end-time column, which is what makes
+// collectForeignRows() treat those as round-markers-only — exactly what the
+// old collectForeignPunchLabels() did by skipping such a sheet outright.
 function scanAllRowsForVideo(pss, video) {
   var target = normalizeDriveUrl(video);
   var out = [];
@@ -1924,13 +1926,10 @@ function scanAllRowsForVideo(pss, video) {
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
     var name = sheet.getName();
-    var isArchive = name === COMBINED_ARCHIVE_NAME;
-    if (!isArchive) {
-      if (name.indexOf(LABELER_PREFIX) !== 0) continue;
-      if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
-      // Not a teammate — see NON_PERSON_LABELER_SHEETS.
-      if (isNonPersonLabelerSheet(name)) continue;
-    }
+    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME) continue;
+    // Not a teammate — see NON_PERSON_LABELER_SHEETS.
+    if (isNonPersonLabelerSheet(name)) continue;
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
