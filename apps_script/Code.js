@@ -1207,6 +1207,7 @@ function doGetTrackingVideos() {
   if (data.length <= 1) return jsonOut({ status: 'ok', videos: [] });
   var header = data[0];
   var nameCol = -1, linkCol = -1, johnVerCol = -1, arianneVerCol = -1;
+  var johnStatusCol = -1, arianneStatusCol = -1;
   for (var c = 0; c < header.length; c++) {
     var h = String(header[c]).toLowerCase().trim();
     if (h === 'video_name') nameCol = c;
@@ -1216,6 +1217,12 @@ function doGetTrackingVideos() {
     // distinguishable at a glance, same as the sheet itself shows it.
     else if (h === 'labeling_version_john') johnVerCol = c;
     else if (h === 'labeling_version_arianne') arianneVerCol = c;
+    // Where each labeler actually stands on this video (not_started,
+    // relabeling_in_progress, finished_relabeling, finished_before_sync,
+    // finished_empty, excluded, ...) — shown alongside the version so the
+    // picker answers "is this one done" without opening the sheet.
+    else if (h === 'john_progress') johnStatusCol = c;
+    else if (h === 'arianne_progress') arianneStatusCol = c;
   }
   if (nameCol < 0 || linkCol < 0) return jsonOut({ status: 'ok', videos: [] });
   var videos = [];
@@ -1227,6 +1234,8 @@ function doGetTrackingVideos() {
       name: name || link, link: link,
       versionJohn: johnVerCol >= 0 ? String(data[r][johnVerCol] || '').trim() : '',
       versionArianne: arianneVerCol >= 0 ? String(data[r][arianneVerCol] || '').trim() : '',
+      statusJohn: johnStatusCol >= 0 ? String(data[r][johnStatusCol] || '').trim() : '',
+      statusArianne: arianneStatusCol >= 0 ? String(data[r][arianneStatusCol] || '').trim() : '',
     });
   }
   return jsonOut({ status: 'ok', videos: videos });

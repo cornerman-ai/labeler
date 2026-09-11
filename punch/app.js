@@ -2433,17 +2433,44 @@ function setupVideoPicker() {
     const q = filter.trim().toLowerCase();
     const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
-    // From the tracking sheet's labeling_version_John / labeling_version_Arianne
-    // columns (Code.js's doGetTrackingVideos()) — blank for a video neither
-    // has touched, so most rows show no badges at all.
-    const versionBadges = (v) => {
+    // From the tracking sheet's John_progress/Arianne_progress and
+    // labeling_version_John/labeling_version_Arianne columns (Code.js's
+    // doGetTrackingVideos()) — blank status reads as "not started" (the
+    // sheet leaves early rows genuinely empty rather than writing the word
+    // out), and a video neither labeler has touched at all shows no badges.
+    const STATUS_CATEGORY = [
+      [/^excluded$/, 'excluded', 'excl'],
+      [/in_progress/, 'progress', '…'],
+      [/^finished/, 'done', '✓'],
+    ];
+    const statusMeta = (status) => {
+      const s = (status || '').trim();
+      if (!s || s === 'not_started') return { cls: 'none', short: '–' };
+      for (const [re, cls, short] of STATUS_CATEGORY) {
+        if (re.test(s)) return { cls, short };
+      }
+      return { cls: 'none', short: s.slice(0, 4) };
+    };
+    const statusBadges = (v) => {
       const parts = [];
-      if (v.versionJohn) parts.push(`<span class="vp-ver vp-ver-j" title="John's labeling version">J ${escapeHtml(v.versionJohn)}</span>`);
-      if (v.versionArianne) parts.push(`<span class="vp-ver vp-ver-a" title="Arianne's labeling version">A ${escapeHtml(v.versionArianne)}</span>`);
+      // Each labeler gets a fixed-width column (.vp-slot), always rendered
+      // even when there's nothing to show — otherwise a row where only one
+      // of the two has a status pulls that badge into the OTHER one's
+      // position, and John's column stops being a column at all once you
+      // scroll past a few rows with gaps in it.
+      const badge = (letter, status, version, wholeLabel) => {
+        if (!status && !version) return `<span class="vp-slot"></span>`;
+        const meta = statusMeta(status);
+        const text = version ? escapeHtml(version) : meta.short;
+        const title = `${wholeLabel}: ${status || 'not started'}${version ? `, version ${version}` : ''}`;
+        return `<span class="vp-slot"><span class="vp-ver vp-status-${meta.cls}" title="${escapeHtml(title)}">${letter} ${text}</span></span>`;
+      };
+      parts.push(badge('J', v.statusJohn, v.versionJohn, 'John'));
+      parts.push(badge('A', v.statusArianne, v.versionArianne, 'Arianne'));
       return parts.join('');
     };
     list.innerHTML = rows.map((v, i) =>
-      `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span>${versionBadges(v)}</button>`
+      `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span>${statusBadges(v)}</button>`
     ).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));

@@ -598,18 +598,26 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Which labeling pass a video's rows belong to per labeler (v0/v1/...) —
-   from the tracking sheet's labeling_version_<Name> columns, shown so a
-   re-relabeled video is distinguishable at a glance without opening the
-   sheet. J/A tint just enough to tell the two apart at this size; anything
-   past two labelers would need real color assignment, not worth it yet for
-   a two-person team. */
+/* One badge per labeler (J/A) — from the tracking sheet's John_progress/
+   Arianne_progress + labeling_version_<Name> columns (Code.js's
+   doGetTrackingVideos(), statusBadges() in app.js). Text is the version
+   when there is one, else a short status glyph; color always tracks
+   status (done/in-progress/not-started/excluded) so "is this one ready"
+   reads at a glance without opening the sheet — the full raw status and
+   version sit in the title tooltip regardless. */
 .vp-ver {
   flex: none; font-size: 10px; font-weight: 620; letter-spacing: .02em;
   padding: 1px 5px; border-radius: 5px; font-variant-numeric: tabular-nums;
 }
-.vp-ver-j { background: var(--accent-wash); color: var(--accent-on-wash); }
-.vp-ver-a { background: var(--yes-wash); color: var(--yes-on-wash); }
+.vp-status-done     { background: var(--yes-wash); color: var(--yes-on-wash); }
+.vp-status-progress { background: var(--accent-wash); color: var(--accent-on-wash); }
+.vp-status-excluded { background: var(--no-wash); color: var(--no-on-wash); }
+.vp-status-none      { background: var(--fill-2); color: var(--ink-dim); }
+/* Fixed-width column per labeler (John's, then Arianne's) — always
+   rendered even when empty, so a row where only one of the two has a
+   badge doesn't pull it into the other's slot. Right-aligned within its
+   own column so the badge itself still hugs the row's trailing edge. */
+.vp-slot { flex: none; width: 42px; display: flex; justify-content: flex-end; }
 .vp-empty, .vp-loading {
   padding: 10px 9px; font-size: 12.5px; color: var(--ink-on-fill); text-align: center;
 }
