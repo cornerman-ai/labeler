@@ -2125,6 +2125,13 @@ kbd {
    layout with a row so the button sits at the end instead of wrapping onto
    its own line under a long name. */
 .agr-video-line { display: flex; align-items: center; gap: 6px; }
+/* All-videos view only — one of these per video with data (renderAgreement()
+   in app.js), each holding its own .agr-video-line + families. A hairline
+   above every one after the first marks where a new video starts, since
+   there's no dialog chrome between them the way separate videos otherwise
+   get. */
+.agr-video-block { padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--line); }
+.agr-video-block:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
 /* One family name per section (Jabs, Rolls, ...) — see
    computeAgreementPanel()/renderAgreement() in app.js. Rows underneath
    reuse .fvd-rows/.fvd-row (the "loaded from the sheet" popup's own list

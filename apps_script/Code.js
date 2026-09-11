@@ -1976,8 +1976,12 @@ function cachedAllVideosPunchCounts(pss) {
   return counts;
 }
 
+// Bucketed by video FIRST, not summed across all of them — the Agreement
+// dialog's all-videos view renders one section per video (see
+// renderAgreement() in app.js), so it needs per-video counts, not one grand
+// total. Shape: { videoUrl: { sheetName: { punchId: count } } }.
 function allVideosPunchCounts(pss) {
-  var out = {}; // sheetName -> { punchId: count }
+  var out = {};
   var sheets = pss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
@@ -1994,9 +1998,8 @@ function allVideosPunchCounts(pss) {
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
-    if (cols.punch < 0) continue;
+    if (cols.punch < 0 || cols.video < 0) continue;
     var hasEnd = cols.end >= 0;
-    var counts = {};
     for (var r = 1; r < data.length; r++) {
       var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
       if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
@@ -2004,9 +2007,12 @@ function allVideosPunchCounts(pss) {
       // or an incomplete write, not a move — skip it, matching
       // collectForeignRows()'s endTime !== null gate for punch labels.
       if (hasEnd && !data[r][cols.end]) continue;
-      counts[lbl] = (counts[lbl] || 0) + 1;
+      var video = normalizeDriveUrl(data[r][cols.video]);
+      if (!video) continue;
+      if (!out[video]) out[video] = {};
+      if (!out[video][name]) out[video][name] = {};
+      out[video][name][lbl] = (out[video][name][lbl] || 0) + 1;
     }
-    if (Object.keys(counts).length) out[name] = counts;
   }
   return out;
 }
