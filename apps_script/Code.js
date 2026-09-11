@@ -487,11 +487,15 @@ function doGet(e) {
     return jsonOut(adminPresence(p.client, p.who));
   }
 
-  // === AGREEMENT, ALL VIDEOS: move counts per labeler, summed across EVERY
+  // === AGREEMENT, ALL VIDEOS: every label's start/end time per labeler, per
   // video — what the Agreement dialog shows when no single video is loaded.
-  // Answered before any single-sheet resolution below, same as adminPing. ===
+  // Real times (not just counts) so the client can run the same time-IoU
+  // matching the timeline's Agreement/Disagreement filter uses — see
+  // allVideosPunchLabels() for why. Answered before any single-sheet
+  // resolution below, same as adminPing. ===
   if (action === 'agreementAllVideos') {
-    return jsonOut({ status: 'ok', counts: cachedAllVideosPunchCounts(pss) });
+    var allVideos = cachedAllVideosPunchLabels(pss);
+    return jsonOut({ status: 'ok', videos: allVideos.videos, punchTypes: allVideos.punchTypes });
   }
 
   // === LIST FOREIGN: every OTHER labeler's rows for this video. ===
@@ -1966,15 +1970,25 @@ function scanAllRowsForVideo(pss, video) {
 // who hadn't done it — so the function went with its only caller.)
 
 // ── Agreement dialog's all-videos overview ────────────────────────────────
-// Same sheet walk as scanAllRowsForVideo() but with no video filter and
-// aggregated server-side into { sheetName: { punchId: count } } — a raw
-// per-row dump across every video would be huge (thousands of rows per
-// labeler); a labeler×type count table is tiny regardless of how much data
-// backs it, and it's exactly the shape punch/app.js's computeAgreementPanel()
-// already builds client-side from a single video's labels, so the client can
-// feed this straight into the same function.
-var AGREEMENT_ALL_VIDEOS_CACHE_KEY = 'agr1:allVideos';
-function cachedAllVideosPunchCounts(pss) {
+// Same sheet walk as scanAllRowsForVideo() but with no video filter,
+// bucketed server-side into { videoUrl: { sheetName: [[startSec, endSec,
+// punchIndex], ...] } } — a two-element start/end pair plus an index into
+// `punchTypes` rather than three named fields per label, since this can be
+// many thousands of rows across the whole team's history and repeating
+// "punch"/"start"/"end" as object keys on every single one bloats the
+// payload for no reason JSON.stringify can't easily undo.
+//
+// This used to be a count — { sheetName: { punchId: count } } — because a
+// bare count is tiny regardless of how much data backs it. But
+// punch/app.js's computeAgreementPanel() needs each label's actual
+// start/end to compute REAL time-IoU matching (the same >40%-overlap
+// definition the timeline's Agreement/Disagreement filter already uses,
+// via pairLabelsByIoU() — see the comment there), and a count has nowhere
+// to keep that. There is exactly one definition of "matched" in this tool
+// now; sending times instead of counts is what makes it possible to apply
+// that definition here too, not a second, weaker approximation.
+var AGREEMENT_ALL_VIDEOS_CACHE_KEY = 'agr2:allVideos';
+function cachedAllVideosPunchLabels(pss) {
   var cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) {}
   if (cache) {
@@ -1983,22 +1997,42 @@ function cachedAllVideosPunchCounts(pss) {
       if (hit) return JSON.parse(hit);
     } catch (e) {}
   }
-  var counts = allVideosPunchCounts(pss);
+  var result = allVideosPunchLabels(pss);
   if (cache) {
     try {
-      var payload = JSON.stringify(counts);
+      var payload = JSON.stringify(result);
+      // Real per-label data is much bigger than the old count table — most
+      // real payloads will land over CacheService's 100KB cap and simply go
+      // uncached (every call re-scans), which is correct behaviour, not a
+      // bug: this is an admin-only, occasional view, and a live scan beats
+      // ever serving stale label data for something computing "did these
+      // two labels actually match."
       if (payload.length < 90000) cache.put(AGREEMENT_ALL_VIDEOS_CACHE_KEY, payload, 120);
     } catch (e) {}
   }
-  return counts;
+  return result;
 }
 
 // Bucketed by video FIRST, not summed across all of them — the Agreement
 // dialog's all-videos view renders one section per video (see
-// renderAgreement() in app.js), so it needs per-video counts, not one grand
-// total. Shape: { videoUrl: { sheetName: { punchId: count } } }.
-function allVideosPunchCounts(pss) {
-  var out = {};
+// renderAgreement() in app.js). Shape:
+//   { videoUrl: { sheetName: [[startSec, endSec, punchIndex], ...] } }
+// `punchTypes` (on the returned object, alongside `videos`) is the shared
+// index → punch-id lookup every [start, end, punchIndex] triple points
+// into, so the id string is sent once per distinct type instead of once
+// per label.
+function allVideosPunchLabels(pss) {
+  var videos = {};
+  var punchTypes = [];
+  var punchIndex = {}; // punch id -> index into punchTypes
+  function idxFor(punch) {
+    if (!(punch in punchIndex)) {
+      punchIndex[punch] = punchTypes.length;
+      punchTypes.push(punch);
+    }
+    return punchIndex[punch];
+  }
+
   var sheets = pss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
@@ -2009,7 +2043,7 @@ function allVideosPunchCounts(pss) {
     // Agreement dialog is specifically about comparing the actual TEAM
     // against each other — John and Arianne, nobody else. The archive
     // isn't a person and was never a labeler on any of these videos; its
-    // row counts showing up next to real labelers just read as a third,
+    // rows showing up next to real labelers just read as a third,
     // fictitious "labeler" nobody asked to compare against. Real labeler
     // sheets only, same gate as every other person-only walk.
     if (name.indexOf(LABELER_PREFIX) !== 0) continue;
@@ -2021,23 +2055,26 @@ function allVideosPunchCounts(pss) {
     if (sheet.getLastRow() < 2) continue;
     var data = sheet.getDataRange().getValues();
     var cols = findColumns(data[0]);
-    if (cols.punch < 0 || cols.video < 0) continue;
-    var hasEnd = cols.end >= 0;
+    if (cols.punch < 0 || cols.video < 0 || cols.start < 0 || cols.end < 0) continue;
     for (var r = 1; r < data.length; r++) {
       var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
       if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
-      // A row with an end-time column but no value in it is a round marker
-      // or an incomplete write, not a move — skip it, matching
-      // collectForeignRows()'s endTime !== null gate for punch labels.
-      if (hasEnd && !data[r][cols.end]) continue;
+      // A row with no end-time value is a round marker or an incomplete
+      // write, not a move — skip it, matching collectForeignRows()'s
+      // endTime !== null gate for punch labels.
+      if (!data[r][cols.end]) continue;
       var video = normalizeDriveUrl(data[r][cols.video]);
       if (!video) continue;
-      if (!out[video]) out[video] = {};
-      if (!out[video][name]) out[video][name] = {};
-      out[video][name][lbl] = (out[video][name][lbl] || 0) + 1;
+      if (!videos[video]) videos[video] = {};
+      if (!videos[video][name]) videos[video][name] = [];
+      videos[video][name].push([
+        toSeconds(data[r][cols.start]),
+        toSeconds(data[r][cols.end]),
+        idxFor(lbl),
+      ]);
     }
   }
-  return out;
+  return { videos: videos, punchTypes: punchTypes };
 }
 
 // ── Admin's own tab: what admin changed, and to what ─────────────────────

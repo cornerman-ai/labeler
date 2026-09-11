@@ -970,10 +970,40 @@ function shouldHideByTab(label) {
 // yes/no so it can gate the list/lanes/minimap like any other filter. A
 // label "agrees" if some OTHER owner has a label of the SAME punch type
 // overlapping it at over 40% IoU, matched greedily best-first per pair of
-// owners. Predictions count as an owner here too. The admin Agreement
-// report (computeAgreementPanel(), further down) reuses this same set
-// rather than running its own separate matching pass.
+// owners. Predictions count as an owner here too.
+//
+// This is the ONE definition of "matched"/"agreement" in the whole tool —
+// pairLabelsByIoU() below is the single place that decides whether two
+// labels correspond to each other, and everything that needs that answer
+// (this timeline filter, and the admin Agreement report's matched/unmatched
+// counts in computeAgreementPanel()) calls it rather than approximating its
+// own. There used to be a second, weaker definition in the Agreement report
+// (matched = min(countA, countB), no timing involved at all) — replaced;
+// see computeAgreementPanel()'s own comment for that history.
 const TIMELINE_AGREE_IOU_FLOOR = 0.4;
+
+// Greedy best-match-first, one-to-one: every (a, b) pair from the two
+// arrays with the SAME punch type and IoU over the floor is a candidate;
+// taken highest-IoU-first, and once either index is used it's out of the
+// running for anything lower. Returns the matched INDEX sets (into
+// labelsA/labelsB respectively) — callers turn those into whatever they
+// actually need (a Set of label objects, a matched count, ...).
+function pairLabelsByIoU(labelsA, labelsB) {
+  const cands = [];
+  labelsA.forEach((a, ai) => labelsB.forEach((b, bi) => {
+    if (a.punch !== b.punch) return;
+    const iou = timeIoU(a, b);
+    if (iou > TIMELINE_AGREE_IOU_FLOOR) cands.push({ ai, bi, iou });
+  }));
+  cands.sort((x, y) => y.iou - x.iou);
+  const usedA = new Set(), usedB = new Set();
+  for (const c of cands) {
+    if (usedA.has(c.ai) || usedB.has(c.bi)) continue;
+    usedA.add(c.ai); usedB.add(c.bi);
+  }
+  return { usedA, usedB };
+}
+
 function computeAgreedLabelSet() {
   const byOwner = new Map();
   for (const l of state.labels) {
@@ -987,19 +1017,9 @@ function computeAgreedLabelSet() {
   for (let i = 0; i < names.length; i++) {
     for (let j = i + 1; j < names.length; j++) {
       const A = byOwner.get(names[i]), B = byOwner.get(names[j]);
-      const cands = [];
-      A.forEach((a, ai) => B.forEach((b, bi) => {
-        if (a.punch !== b.punch) return;
-        const iou = timeIoU(a, b);
-        if (iou > TIMELINE_AGREE_IOU_FLOOR) cands.push({ ai, bi, iou });
-      }));
-      cands.sort((x, y) => y.iou - x.iou);
-      const usedA = new Set(), usedB = new Set();
-      for (const c of cands) {
-        if (usedA.has(c.ai) || usedB.has(c.bi)) continue;
-        usedA.add(c.ai); usedB.add(c.bi);
-        agreed.add(A[c.ai]); agreed.add(B[c.bi]);
-      }
+      const { usedA, usedB } = pairLabelsByIoU(A, B);
+      usedA.forEach(ai => agreed.add(A[ai]));
+      usedB.forEach(bi => agreed.add(B[bi]));
     }
   }
   return agreed;
@@ -1248,13 +1268,21 @@ const MOVE_FAMILIES = [
   { key: 'unsure', label: 'Unsure', ids: ['unsure'] },
 ];
 
-// `byOwnerOverride` (Map<owner, Map<punchId, count>>) lets the all-videos
-// view (fetchAllVideosByOwnerMap() below) feed pre-aggregated counts through
-// the exact same family/type/pairing logic a single video uses, instead of
-// duplicating it. Omitted — the normal case — it's built fresh from
-// state.labels, i.e. whatever's loaded for the current video.
+// `byOwnerOverride` (Map<owner, label[]>, each label a { punch, start, end })
+// lets the all-videos view (fetchAllVideosBreakdown() below) feed real
+// per-label times through the exact same family/type/pairing logic a single
+// video uses, instead of duplicating it. Omitted — the normal case — it's
+// built fresh from state.labels, i.e. whatever's loaded for the current
+// video.
 function computeAgreementPanel(byOwnerOverride) {
-  // owner -> punch id -> count
+  // owner -> label[]. Real label objects (or the all-videos view's
+  // { punch, start, end } stand-ins — see fetchAllVideosBreakdown()), not
+  // pre-aggregated counts, because "matched" means real time-IoU pairing
+  // now (pairLabelsByIoU(), same definition the timeline's Agreement/
+  // Disagreement filter uses) — a plain count has nowhere to keep the
+  // timing a real match needs. This used to take counts and approximate
+  // "matched" as min(countA, countB) with no timing involved at all;
+  // replaced so there is exactly one definition of "matched" in the tool.
   let byOwner = byOwnerOverride;
   if (!byOwner) {
     byOwner = new Map();
@@ -1265,17 +1293,17 @@ function computeAgreementPanel(byOwnerOverride) {
       // any real labeler's (see mergeForeignPunchLabels()), and shows up on
       // the timeline that way on purpose — but Agreement is specifically
       // about comparing the actual TEAM against each other, and the archive
-      // isn't a person. Same exclusion as allVideosPunchCounts() in Code.js
+      // isn't a person. Same exclusion as allVideosPunchLabels() in Code.js
       // for the all-videos view; this is the single-video side of it.
       if (who === 'Combined Data Archive') continue;
-      if (!byOwner.has(who)) byOwner.set(who, new Map());
-      const typeMap = byOwner.get(who);
-      typeMap.set(l.punch, (typeMap.get(l.punch) || 0) + 1);
+      if (!byOwner.has(who)) byOwner.set(who, []);
+      byOwner.get(who).push(l);
     }
   }
   const owners = [...byOwner.keys()].sort();
   if (!owners.length) return [];
-  const countFor = (who, id) => (byOwner.get(who) && byOwner.get(who).get(id)) || 0;
+  const labelsFor = (who, id) => (byOwner.get(who) || []).filter(l => l.punch === id);
+  const countFor = (who, id) => labelsFor(who, id).length;
 
   // Admin's "Moves" filter on the Agreement dialog — see
   // setupAgreementTypeFilterMenu(). Empty = the unfiltered behaviour below
@@ -1305,20 +1333,25 @@ function computeAgreementPanel(byOwnerOverride) {
         family: fam,
         types: shownIds.map(id => {
           const rows = owners.map(who => ({ who, count: countFor(who, id) }));
-          // A count-only pairing, not a timing match — "how many of these
-          // could line up 1:1 between the two of them" (the smaller count)
-          // and "how many are left over with nobody to pair against" (the
-          // difference). Only means anything for exactly two owners; with
-          // one or three+ there's no single "the other person" to pair
-          // against, so it's left off rather than guessed at. Unmatched is
-          // broken out per owner (one of the two is always 0 — whoever
-          // logged fewer has nothing left over) rather than one bare
-          // difference, so "who's over" doesn't need re-deriving from the
-          // two counts above.
-          const matched = rows.length === 2 ? Math.min(rows[0].count, rows[1].count) : null;
-          const summary = rows.length === 2
-            ? { matched, unmatchedBy: rows.map(r => ({ who: r.who, n: r.count - matched })) }
-            : null;
+          // Real time-IoU matching (pairLabelsByIoU()) between this type's
+          // two owners' labels — "how many of these actually overlap the
+          // other person's at >40% IoU", not just how many there are of
+          // each. Only means anything for exactly two owners; with one or
+          // three+ there's no single "the other person" to pair against,
+          // so it's left off rather than guessed at. Unmatched is broken
+          // out per owner (each owner's own count minus the shared matched
+          // number) rather than one bare difference, so "who's over"
+          // doesn't need re-deriving from the two counts above.
+          let summary = null;
+          if (rows.length === 2) {
+            const [oa, ob] = owners;
+            const A = labelsFor(oa, id), B = labelsFor(ob, id);
+            const matched = pairLabelsByIoU(A, B).usedA.size;
+            summary = { matched, unmatchedBy: [
+              { who: oa, n: A.length - matched },
+              { who: ob, n: B.length - matched },
+            ] };
+          }
           return { id, label: punchLabel(id), rows, summary };
         }),
       };
@@ -1427,16 +1460,22 @@ function noVideoSelected() {
 // whole sheet-wide scan on every checkbox click.
 let _agrAllVideosCache = null;
 
-// Server aggregates { videoUrl: { sheetName: { punchId: count } } } (see
-// allVideosPunchCounts() in Code.js) — one entry per VIDEO, each turned into
-// the same Map<owner, Map<punchId,count>> shape computeAgreementPanel()
-// already builds from a single video's state.labels, using the exact
-// sheet-name -> display-name stripping foreignOwnerName() uses everywhere
-// else. Display names come from the tracking-sheet video catalog
-// (fetchVideoCatalog() — same one the video picker uses) by matching the
-// normalized link; a video the catalog doesn't know about (deleted from the
-// sheet, or never listed there) just falls back to showing its raw link,
-// same as agreementVideoName() does for the single-video header.
+// Server sends { videos: { videoUrl: { sheetName: [[start,end,punchIdx],...] } },
+// punchTypes: [...] } (see allVideosPunchLabels() in Code.js) — real label
+// times, not counts, so computeAgreementPanel() can run the exact same
+// time-IoU matching (pairLabelsByIoU()) here that it does for a single
+// video's state.labels; a bare count has nowhere to keep the timing a real
+// match needs. Each [start, end, punchIdx] triple becomes a
+// { punch, start, end } object — punchTypes[punchIdx] is the shared string
+// table every triple across every video points into, so the id string
+// isn't repeated per label over the wire.
+// Owner names use the exact sheet-name -> display-name stripping
+// foreignOwnerName() uses everywhere else. Display names come from the
+// tracking-sheet video catalog (fetchVideoCatalog() — same one the video
+// picker uses) by matching the normalized link; a video the catalog
+// doesn't know about (deleted from the sheet, or never listed there) just
+// falls back to showing its raw link, same as agreementVideoName() does
+// for the single-video header.
 // Ordered the same way the picker numbers its own list (the catalog's own
 // `.n`, i.e. the tracking sheet's own row order) rather than alphabetically,
 // so a video's position means the same thing in both places. Anything the
@@ -1444,7 +1483,7 @@ let _agrAllVideosCache = null;
 async function fetchAllVideosBreakdown() {
   if (_agrAllVideosCache) return _agrAllVideosCache;
   const [result, catalog] = await Promise.all([
-    fetchJson(sheetUrl({ action: 'agreementAllVideos' }), 45000),
+    fetchJson(sheetUrl({ action: 'agreementAllVideos' }), 90000),
     (typeof fetchVideoCatalog === 'function' ? fetchVideoCatalog() : Promise.resolve([])),
   ]);
   // Keyed by normalized link, not just name — carries the whole tracking-sheet
@@ -1455,16 +1494,17 @@ async function fetchAllVideosBreakdown() {
     const key = normalizeDriveUrl(v.link);
     if (key) catalogByLink.set(key, v);
   }
-  const byVideo = (result && result.counts) || {};
-  const entries = Object.entries(byVideo).map(([video, sheetCounts]) => {
+  const punchTypes = (result && result.punchTypes) || [];
+  const byVideo = (result && result.videos) || {};
+  const entries = Object.entries(byVideo).map(([video, sheetLabels]) => {
     const byOwner = new Map();
-    for (const [sheetName, punchCounts] of Object.entries(sheetCounts)) {
+    for (const [sheetName, triples] of Object.entries(sheetLabels)) {
       const who = String(sheetName).replace(/^Labeled Data (Software )?/, '') || 'other labeler';
-      const typeMap = byOwner.get(who) || new Map();
-      for (const [punchId, n] of Object.entries(punchCounts)) {
-        typeMap.set(punchId, (typeMap.get(punchId) || 0) + n);
+      const labels = byOwner.get(who) || [];
+      for (const [start, end, punchIdx] of triples) {
+        labels.push({ punch: punchTypes[punchIdx], start, end });
       }
-      byOwner.set(who, typeMap);
+      byOwner.set(who, labels);
     }
     const cat = catalogByLink.get(video);
     return { video, displayName: (cat && cat.name) || video, catalog: cat || null, byOwner };
