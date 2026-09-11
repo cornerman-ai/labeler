@@ -250,6 +250,13 @@ Object.assign(state, {
   // conflating them would mean opening Agreement quietly changes what the
   // labeler sees on the timeline underneath it.
   agreementTypeFilter: new Set(),
+  // All-videos view only — narrows which videos get a section by John's /
+  // Arianne's tracking-sheet labeling_version (see
+  // setupAgreementVersionFilterMenu()). Empty = show every version. Values
+  // are whatever's actually in the sheet ("v0", "v1", ...) plus the literal
+  // string 'none' standing in for "no version recorded".
+  agreementVersionFilterJohn: new Set(),
+  agreementVersionFilterArianne: new Set(),
   // Which move-type groups (Offense/Defense/Other) are folded away — see
   // buildPunchButtons()'s header()/wireMoveGroupFold(). One level in from
   // the panel-wide Move Type fold (#move-type-toggle in index.html, wired
@@ -1402,6 +1409,8 @@ function setupAgreement() {
   document.getElementById('agr-export-pdf')?.addEventListener('click', exportAgreementPdf);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
   setupAgreementTypeFilterMenu();
+  setupAgreementVersionFilterMenu('john');
+  setupAgreementVersionFilterMenu('arianne');
 }
 
 // True once nothing identifies a specific video — no pasted link, no local
@@ -1428,17 +1437,23 @@ let _agrAllVideosCache = null;
 // normalized link; a video the catalog doesn't know about (deleted from the
 // sheet, or never listed there) just falls back to showing its raw link,
 // same as agreementVideoName() does for the single-video header.
-// Sorted alphabetically by whatever name ends up showing.
+// Ordered the same way the picker numbers its own list (the catalog's own
+// `.n`, i.e. the tracking sheet's own row order) rather than alphabetically,
+// so a video's position means the same thing in both places. Anything the
+// catalog doesn't know about (no `.n`) sorts after everything that does.
 async function fetchAllVideosBreakdown() {
   if (_agrAllVideosCache) return _agrAllVideosCache;
   const [result, catalog] = await Promise.all([
     fetchJson(sheetUrl({ action: 'agreementAllVideos' }), 45000),
     (typeof fetchVideoCatalog === 'function' ? fetchVideoCatalog() : Promise.resolve([])),
   ]);
-  const nameByLink = new Map();
+  // Keyed by normalized link, not just name — carries the whole tracking-sheet
+  // entry (status/version fields included) so each video's Agreement section
+  // can show the exact same badges the picker does, not just its name.
+  const catalogByLink = new Map();
   for (const v of catalog || []) {
     const key = normalizeDriveUrl(v.link);
-    if (key) nameByLink.set(key, v.name);
+    if (key) catalogByLink.set(key, v);
   }
   const byVideo = (result && result.counts) || {};
   const entries = Object.entries(byVideo).map(([video, sheetCounts]) => {
@@ -1451,9 +1466,26 @@ async function fetchAllVideosBreakdown() {
       }
       byOwner.set(who, typeMap);
     }
-    return { video, displayName: nameByLink.get(video) || video, byOwner };
+    const cat = catalogByLink.get(video);
+    return { video, displayName: (cat && cat.name) || video, catalog: cat || null, byOwner };
   });
-  entries.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }));
+  entries.sort((a, b) => {
+    const an = a.catalog ? a.catalog.n : Infinity;
+    const bn = b.catalog ? b.catalog.n : Infinity;
+    if (an !== bn) return an - bn;
+    return a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
+  });
+  const unmatched = entries.filter((e) => !e.catalog);
+  if (unmatched.length) {
+    // Diagnostic, not a bug report — a video shows up here whenever its
+    // labels' video_file link doesn't normalize to anything currently in
+    // the tracking sheet's video_link column (re-uploaded under a new
+    // Drive id since it was labeled, removed from the sheet, or never
+    // added). Logged so a mismatch is checkable against the sheet instead
+    // of just reading as "the number's missing, why."
+    console.warn(`[agreement] ${unmatched.length} video(s) with labels but no tracking-sheet match:`,
+      unmatched.map((e) => e.video));
+  }
   _agrAllVideosCache = entries;
   return entries;
 }
@@ -1563,6 +1595,134 @@ function setupAgreementTypeFilterMenu() {
   });
 }
 
+// ── Agreement dialog's John/Arianne version filters (all-videos only) ─────
+// Same checkmark-pop-up idiom as the Moves filter above, but single-column
+// (a handful of version values, not nineteen move types) and parameterized
+// by which labeler ('john' / 'arianne') since the two are otherwise
+// identical. Narrows which videos get a section in the all-videos view —
+// meaningless for a single video, so these two buttons only show there
+// (see renderAgreement()).
+function agrVersionFilterSet(labelerKey) {
+  return labelerKey === 'john' ? state.agreementVersionFilterJohn : state.agreementVersionFilterArianne;
+}
+
+// Shared by both loops that walk the all-videos breakdown (renderAgreement()
+// and exportAgreementPdf()) so the live dialog and the PDF can never
+// disagree about which videos the version filters let through. `catalog` is
+// the video's tracking-sheet row (or null if unmatched — see
+// fetchAllVideosBreakdown()'s console.warn for that case); an unmatched
+// video has no version to check against a non-empty filter, so it's
+// excluded rather than guessed into either bucket.
+function agrVersionMatches(catalog) {
+  const johnSet = state.agreementVersionFilterJohn;
+  const ariSet = state.agreementVersionFilterArianne;
+  if (!johnSet.size && !ariSet.size) return true;
+  if (!catalog) return false;
+  const vj = (catalog.versionJohn || '').trim() || 'none';
+  const va = (catalog.versionArianne || '').trim() || 'none';
+  if (johnSet.size && !johnSet.has(vj)) return false;
+  if (ariSet.size && !ariSet.has(va)) return false;
+  return true;
+}
+
+function updateAgreementVersionFilterButton(labelerKey) {
+  const set = agrVersionFilterSet(labelerKey);
+  const label = document.getElementById(`agr-version-${labelerKey}-label`);
+  const btn = document.getElementById(`btn-agr-version-${labelerKey}`);
+  if (!label || !btn) return;
+  const name = labelerKey === 'john' ? 'John' : 'Arianne';
+  const n = set.size;
+  label.textContent = n ? `${name}: ${n}` : `${name}: all`;
+  btn.classList.toggle('on', n > 0);
+}
+
+// Every distinct version value seen across the currently-fetched all-videos
+// breakdown for this labeler — 'none' standing in for "no version recorded"
+// (same convention statusBadges()/versionMeta() use), sorted with real
+// versions numerically first and 'none' always last.
+function agrDistinctVersions(labelerKey) {
+  const field = labelerKey === 'john' ? 'versionJohn' : 'versionArianne';
+  const values = new Set();
+  for (const e of (_agrAllVideosCache || [])) {
+    const raw = (e.catalog && e.catalog[field] || '').trim();
+    values.add(raw || 'none');
+  }
+  return [...values].sort((a, b) => {
+    if (a === 'none') return b === 'none' ? 0 : 1;
+    if (b === 'none') return -1;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+function renderAgreementVersionFilterMenu(labelerKey, menu) {
+  const set = agrVersionFilterSet(labelerKey);
+  menu.innerHTML = '';
+
+  const allRow = document.createElement('button');
+  allRow.type = 'button';
+  allRow.className = 'ffm-row';
+  allRow.setAttribute('role', 'menuitemcheckbox');
+  allRow.setAttribute('aria-checked', String(set.size === 0));
+  allRow.innerHTML = '<span class="ffm-name">All versions</span>';
+  allRow.onclick = () => {
+    if (set.size) {
+      set.clear();
+      updateAgreementVersionFilterButton(labelerKey);
+      renderAgreement();
+    }
+    renderAgreementVersionFilterMenu(labelerKey, menu);
+  };
+  menu.appendChild(allRow);
+
+  const sep = document.createElement('div');
+  sep.className = 'ffm-sep';
+  menu.appendChild(sep);
+
+  for (const v of agrDistinctVersions(labelerKey)) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'ffm-row';
+    row.setAttribute('role', 'menuitemcheckbox');
+    row.setAttribute('aria-checked', String(set.has(v)));
+    row.innerHTML = `<span class="ffm-name">${escapeHtml(v)}</span>`;
+    row.onclick = () => {
+      if (!set.delete(v)) set.add(v);
+      updateAgreementVersionFilterButton(labelerKey);
+      renderAgreement();
+      renderAgreementVersionFilterMenu(labelerKey, menu);
+    };
+    menu.appendChild(row);
+  }
+}
+
+function setupAgreementVersionFilterMenu(labelerKey) {
+  const btn = document.getElementById(`btn-agr-version-${labelerKey}`);
+  const menu = document.getElementById(`agr-version-menu-${labelerKey}`);
+  if (!btn || !menu) return;
+
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    renderAgreementVersionFilterMenu(labelerKey, menu);
+    menu.hidden = false;
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 6) + 'px';
+    menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 18) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden ? open() : close();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !e.composedPath().includes(menu) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.hidden) close();
+  });
+}
+
 // The video name each line is filed under — shared by the on-screen dialog
 // and the PDF export, so the two can never say a different video.
 function agreementVideoName() {
@@ -1596,11 +1756,17 @@ function agreementLineText(type, r) {
 // video's headline + family/type breakdown, as both HTML and the flat line
 // list its copy buttons need (matched up by DOM order, not a data
 // attribute — see the copyBtn comment below for why).
-function agreementBlockHtml(headline, families, copyBtn) {
+// `catalogEntry` (a tracking-sheet row — see fetchVideoCatalog()) is
+// optional: when given, its John/Arianne progress badges (same ones the
+// video picker shows — statusBadges() above) render next to the headline,
+// so a video's readiness is visible without leaving Agreement. Absent for
+// a video the tracking sheet doesn't know about.
+function agreementBlockHtml(headline, families, copyBtn, catalogEntry) {
   const lineHtml = (type, r) =>
     `<span class="agr-dot" style="background:${getPunchColor(type.id)}"></span>${type.label} by ${r.who}: <b>${r.count}</b>` +
     `<span class="agr-sub">${agreementMatchSuffix(type, r)}</span>`;
-  const html = `<p class="fvd-lede agr-video-line"><span class="agr-line">${headline}</span>${copyBtn}</p>` +
+  const badges = catalogEntry ? `<span class="agr-video-badges">${statusBadges(catalogEntry)}</span>` : '';
+  const html = `<p class="fvd-lede agr-video-line"><span class="agr-line">${headline}</span>${badges}${copyBtn}</p>` +
     families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
       <div class="agr-family">
@@ -1621,6 +1787,11 @@ async function renderAgreement() {
   const allVideos = noVideoSelected();
   const titleEl = document.getElementById('agr-title');
   if (titleEl) titleEl.textContent = allVideos ? 'Agreement across all videos' : 'Agreement on this video';
+  // Version filters only mean anything with more than one video to filter.
+  const johnFilterRow = document.getElementById('agr-version-filter-john');
+  const arianneFilterRow = document.getElementById('agr-version-filter-arianne');
+  if (johnFilterRow) johnFilterRow.hidden = !allVideos;
+  if (arianneFilterRow) arianneFilterRow.hidden = !allVideos;
 
   // The copy icon markup, same one #btn-copy-link/#btn-copy-name already
   // use elsewhere in this page — click handlers are wired up below by DOM
@@ -1639,7 +1810,14 @@ async function renderAgreement() {
         : '<p class="agr-empty">No punches on this video yet.</p>';
       return;
     }
-    const { html, lines } = agreementBlockHtml(`Video: ${agreementVideoName()}`, families, copyBtn);
+    // Best-effort — the catalog may still be loading, or this video may not
+    // be in the tracking sheet at all; either way agreementBlockHtml() just
+    // skips the badges when there's nothing to match.
+    const currentLink = normalizeDriveUrl(document.getElementById('drive-link')?.value.trim() || '');
+    const catalogEntry = currentLink && Array.isArray(_videoCatalog)
+      ? _videoCatalog.find((v) => normalizeDriveUrl(v.link) === currentLink)
+      : null;
+    const { html, lines } = agreementBlockHtml(`Video: ${agreementVideoName()}`, families, copyBtn, catalogEntry);
     body.innerHTML = html;
     body.querySelectorAll('.agr-copy').forEach((btn, i) => {
       btn.addEventListener('click', () => copyTextToClipboard(lines[i], btn, 'line'));
@@ -1663,9 +1841,16 @@ async function renderAgreement() {
   }
 
   const blocks = [];
-  for (const { displayName, byOwner } of breakdown) {
+  for (const { displayName, catalog, byOwner } of breakdown) {
+    if (!agrVersionMatches(catalog)) continue;
     const families = computeAgreementPanel(byOwner);
-    if (families.length) blocks.push(agreementBlockHtml(`Video: ${displayName}`, families, copyBtn));
+    if (!families.length) continue;
+    // Same number the picker shows for this video (catalog.n, its row in
+    // the tracking sheet) — not a fresh recount of just what's visible
+    // here, so "video #47" means the same thing in both places even once
+    // the Moves filter has dropped some out.
+    const numberPrefix = catalog ? `${catalog.n}. ` : '';
+    blocks.push(agreementBlockHtml(`${numberPrefix}Video: ${displayName}`, families, copyBtn, catalog));
   }
 
   if (!blocks.length) {
@@ -1740,7 +1925,12 @@ async function exportAgreementPdf() {
       return;
     }
     docTitle = agreementVideoName();
-    bodyHtml = `<p class="lede">Video: ${esc(agreementVideoName())}</p>${pdfSections(families)}`;
+    const currentLink = normalizeDriveUrl(document.getElementById('drive-link')?.value.trim() || '');
+    const catalogEntry = currentLink && Array.isArray(_videoCatalog)
+      ? _videoCatalog.find((v) => normalizeDriveUrl(v.link) === currentLink)
+      : null;
+    const badges = catalogEntry ? statusBadges(catalogEntry) : '';
+    bodyHtml = `<p class="lede">Video: ${esc(agreementVideoName())}${badges}</p>${pdfSections(families)}`;
   } else {
     win.document.write('<!doctype html><meta charset="utf-8"><body style="font:14px -apple-system,sans-serif;padding:24px;color:#444">Loading…</body>');
     let breakdown;
@@ -1758,10 +1948,13 @@ async function exportAgreementPdf() {
     // rule as the live dialog — there can be hundreds of these, and an empty
     // header for each one that didn't have the selected move(s) is just noise.
     const videoBlocks = [];
-    for (const { displayName, byOwner } of breakdown) {
+    for (const { displayName, catalog, byOwner } of breakdown) {
+      if (!agrVersionMatches(catalog)) continue;
       const families = computeAgreementPanel(byOwner);
       if (families.length) {
-        videoBlocks.push(`<div class="video-block"><p class="video-name">${esc(displayName)}</p>${pdfSections(families)}</div>`);
+        const badges = catalog ? statusBadges(catalog) : '';
+        const numberPrefix = catalog ? `${catalog.n}. ` : '';
+        videoBlocks.push(`<div class="video-block"><p class="video-name">${numberPrefix}${esc(displayName)}${badges}</p>${pdfSections(families)}</div>`);
       }
     }
     if (!videoBlocks.length) {
@@ -1794,6 +1987,19 @@ async function exportAgreementPdf() {
       .head { border-bottom: 1px solid rgba(0,0,0,.10); padding-bottom: 14px; margin-bottom: 4px; }
       h1 { font-size: 18px; font-weight: 640; letter-spacing: -.02em; margin: 0 0 4px; }
       .lede { font-size: 13px; color: #6e6e73; margin: 0; }
+      /* John/Arianne progress badges next to a "Video: X" line — same
+         statusBadges() markup the app itself uses, restyled here since this
+         standalone document can't reach the app's CSS custom properties. */
+      .video-name .vp-slot, .lede .vp-slot { display: inline-flex; }
+      .vp-ver {
+        display: inline-flex; align-items: center; margin-left: 5px;
+        font-size: 10px; font-weight: 650; letter-spacing: .02em;
+        padding: 1px 5px; border-radius: 5px;
+      }
+      .vp-v-v1    { background: #d1f2dd; color: #146c2e; }
+      .vp-v-v0    { background: #fbe8c6; color: #8a5200; }
+      .vp-v-empty { background: #ffe1df; color: #b42318; }
+      .vp-v-other { background: rgba(120,120,128,.12); color: #6e6e73; }
       h2 {
         font-size: 10.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase;
         color: #6e6e73; margin: 18px 0 8px;
@@ -1813,9 +2019,21 @@ async function exportAgreementPdf() {
       /* Each video's own sub-section in the all-videos export — a hairline
          above every one after the first marks where a new video starts,
          same idea as .agr-video-block does in the live dialog. */
-      .video-block { padding-top: 14px; margin-top: 14px; border-top: 1px solid rgba(0,0,0,.10); }
-      .video-block:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
-      .video-name { font-size: 14px; font-weight: 620; margin: 0 0 2px; }
+      .video-block {
+        padding-top: 14px; margin-top: 14px; border-top: 1px solid rgba(0,0,0,.10);
+        /* Keep a video's own header glued to at least its first line of
+           content — without this a page break can land between
+           .video-name and the rows under it, so the printed page starts
+           mid-video with no name in sight and the previous page ends on an
+           orphaned heading. Doesn't guarantee the WHOLE block stays on one
+           page (a video with dozens of rows still has to split somewhere),
+           just that it never splits at that one worst spot. */
+        break-inside: avoid-page; page-break-inside: avoid;
+      }
+      .video-name {
+        font-size: 14px; font-weight: 620; margin: 0 0 2px;
+        break-after: avoid-page; page-break-after: avoid;
+      }
       @media print {
         body { background: #fff; padding: 0; }
         .card { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }
@@ -2420,6 +2638,44 @@ function fetchVideoCatalog() {
   return _videoCatalogPromise;
 }
 
+// From the tracking sheet's John_progress/Arianne_progress and
+// labeling_version_John/labeling_version_Arianne columns (Code.js's
+// doGetTrackingVideos()) — blank status reads as "not started" (the sheet
+// leaves early rows genuinely empty rather than writing the word out).
+// Shared by the video picker (setupVideoPicker() below) and the Agreement
+// dialog's all-videos view (renderAgreement()), so a video's status badges
+// look and mean the same thing in both places.
+// Color and text are driven by the VERSION itself, not the progress status
+// text — v1 is green, v0 is yellow, anything else non-empty falls back to a
+// neutral tag showing its own text (v2, v3, ...), and no version at all is
+// red "none". The raw status still rides along in the tooltip since it's
+// useful context, just not what decides the badge's look anymore.
+// `bothEmpty` downgrades the red "empty" look to the same neutral grey
+// "other" gets — a video NEITHER labeler has started is just unassigned,
+// not a problem. Red stays reserved for the actually-worth-noticing case:
+// one of the two has a version and the other doesn't, a real gap between
+// them on a video that's otherwise in progress.
+function versionMeta(version, bothEmpty) {
+  const v = (version || '').trim().toLowerCase();
+  if (v === 'v1') return { cls: 'v1', text: 'v1' };
+  if (v === 'v0') return { cls: 'v0', text: 'v0' };
+  if (!v) return bothEmpty ? { cls: 'other', text: 'none' } : { cls: 'empty', text: 'none' };
+  return { cls: 'other', text: version.trim() };
+}
+// Each labeler gets a fixed-width column (.vp-slot), always rendered —
+// otherwise a video where only one of the two has a version pulls that
+// badge into the OTHER one's position, and John's column stops being a
+// column at all once there's a gap in it.
+function statusBadges(v) {
+  const bothEmpty = !(v.versionJohn || '').trim() && !(v.versionArianne || '').trim();
+  const badge = (letter, version, status, wholeLabel) => {
+    const meta = versionMeta(version, bothEmpty);
+    const title = `${wholeLabel}: ${status || 'not started'}${version ? `, version ${version}` : ''}`;
+    return `<span class="vp-slot"><span class="vp-ver vp-v-${meta.cls}" title="${escapeHtml(title)}">${letter} ${escapeHtml(meta.text)}</span></span>`;
+  };
+  return badge('J', v.versionJohn, v.statusJohn, 'John') + badge('A', v.versionArianne, v.statusArianne, 'Arianne');
+}
+
 function setupVideoPicker() {
   const btn = document.getElementById('btn-pick-video');
   const panel = document.getElementById('video-picker-panel');
@@ -2433,42 +2689,6 @@ function setupVideoPicker() {
     const q = filter.trim().toLowerCase();
     const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
-    // From the tracking sheet's John_progress/Arianne_progress and
-    // labeling_version_John/labeling_version_Arianne columns (Code.js's
-    // doGetTrackingVideos()) — blank status reads as "not started" (the
-    // sheet leaves early rows genuinely empty rather than writing the word
-    // out), and a video neither labeler has touched at all shows no badges.
-    const STATUS_CATEGORY = [
-      [/^excluded$/, 'excluded', 'excl'],
-      [/in_progress/, 'progress', '…'],
-      [/^finished/, 'done', '✓'],
-    ];
-    const statusMeta = (status) => {
-      const s = (status || '').trim();
-      if (!s || s === 'not_started') return { cls: 'none', short: '–' };
-      for (const [re, cls, short] of STATUS_CATEGORY) {
-        if (re.test(s)) return { cls, short };
-      }
-      return { cls: 'none', short: s.slice(0, 4) };
-    };
-    const statusBadges = (v) => {
-      const parts = [];
-      // Each labeler gets a fixed-width column (.vp-slot), always rendered
-      // even when there's nothing to show — otherwise a row where only one
-      // of the two has a status pulls that badge into the OTHER one's
-      // position, and John's column stops being a column at all once you
-      // scroll past a few rows with gaps in it.
-      const badge = (letter, status, version, wholeLabel) => {
-        if (!status && !version) return `<span class="vp-slot"></span>`;
-        const meta = statusMeta(status);
-        const text = version ? escapeHtml(version) : meta.short;
-        const title = `${wholeLabel}: ${status || 'not started'}${version ? `, version ${version}` : ''}`;
-        return `<span class="vp-slot"><span class="vp-ver vp-status-${meta.cls}" title="${escapeHtml(title)}">${letter} ${text}</span></span>`;
-      };
-      parts.push(badge('J', v.statusJohn, v.versionJohn, 'John'));
-      parts.push(badge('A', v.statusArianne, v.versionArianne, 'Arianne'));
-      return parts.join('');
-    };
     list.innerHTML = rows.map((v, i) =>
       `<button type="button" class="vp-row" data-idx="${i}"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span>${statusBadges(v)}</button>`
     ).join('');

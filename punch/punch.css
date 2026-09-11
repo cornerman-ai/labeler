@@ -180,6 +180,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    deliberately NOT overridden: it has to match .src-field's, or the trailing
    copy button lands a couple of px off the one in the row below. */
 #video-loader { padding-left: 4px; }
+/* All five video-source leading buttons (Open Video, Connect Video Folder /
+   Reconnect, Open Skeletons, Connect Skeleton Folder, Open Predictions)
+   share this min-width, sized to the longest label ("Connect Skeleton
+   Folder") — otherwise each one is only as wide as its own text and the
+   row reads as five differently-sized buttons instead of one column. */
+#btn-pick-file, .btn-connect-folder, #btn-pick-skeleton, #btn-pick-predictions {
+  min-width: 168px;
+}
 #btn-pick-file {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   height: 26px; padding: 0 8px; border-radius: 6px;
@@ -598,21 +606,24 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* One badge per labeler (J/A) — from the tracking sheet's John_progress/
-   Arianne_progress + labeling_version_<Name> columns (Code.js's
-   doGetTrackingVideos(), statusBadges() in app.js). Text is the version
-   when there is one, else a short status glyph; color always tracks
-   status (done/in-progress/not-started/excluded) so "is this one ready"
-   reads at a glance without opening the sheet — the full raw status and
-   version sit in the title tooltip regardless. */
+/* One badge per labeler (J/A) — from the tracking sheet's
+   labeling_version_<Name> columns (Code.js's doGetTrackingVideos(),
+   statusBadges()/versionMeta() in app.js). Color and text both track the
+   VERSION itself: v1 green, v0 yellow, no version at all red "none" — the
+   full John_progress/Arianne_progress status text sits in the title
+   tooltip regardless, since it's still useful context, just not what
+   decides the badge's look. */
 .vp-ver {
   flex: none; font-size: 10px; font-weight: 620; letter-spacing: .02em;
   padding: 1px 5px; border-radius: 5px; font-variant-numeric: tabular-nums;
 }
-.vp-status-done     { background: var(--yes-wash); color: var(--yes-on-wash); }
-.vp-status-progress { background: var(--accent-wash); color: var(--accent-on-wash); }
-.vp-status-excluded { background: var(--no-wash); color: var(--no-on-wash); }
-.vp-status-none      { background: var(--fill-2); color: var(--ink-dim); }
+.vp-v-v1    { background: var(--yes-wash); color: var(--yes-on-wash); }
+.vp-v-v0    { background: color-mix(in srgb, #b26a00 16%, transparent); color: #8a5200; }
+.vp-v-empty { background: var(--no-wash); color: var(--no-on-wash); }
+.vp-v-other { background: var(--fill-2); color: var(--ink-dim); }
+@media (prefers-color-scheme: dark) {
+  .vp-v-v0 { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
+}
 /* Fixed-width column per labeler (John's, then Arianne's) — always
    rendered even when empty, so a row where only one of the two has a
    badge doesn't pull it into the other's slot. Right-aligned within its
@@ -1688,29 +1699,35 @@ body.analyst-mode #round-indicator {
 
 #label-count { color: var(--ink); font-variant-numeric: tabular-nums; }
 #foreign-filter { position: relative; margin-left: auto; }
-#type-filter, #agr-type-filter { position: relative; }
-#btn-foreign-filter, #btn-type-filter, #btn-unsure-filter, #btn-agr-type-filter {
+#type-filter, #agr-type-filter, .agr-version-filter { position: relative; }
+#btn-foreign-filter, #btn-type-filter, #btn-unsure-filter, #btn-agr-type-filter,
+#btn-agr-version-john, #btn-agr-version-arianne {
   display: flex; align-items: center; gap: 4px;
   padding: 3px 8px; border-radius: 6px; border: none;
   background: var(--fill); color: var(--ink-on-fill);
   font-size: 10.5px; font-weight: 590; letter-spacing: 0; text-transform: none;
 }
-#btn-foreign-filter.on, #btn-type-filter.on, #btn-unsure-filter.on, #btn-agr-type-filter.on {
+#btn-foreign-filter.on, #btn-type-filter.on, #btn-unsure-filter.on, #btn-agr-type-filter.on,
+#btn-agr-version-john.on, #btn-agr-version-arianne.on {
   background: var(--accent-wash); color: var(--accent-on-wash);
 }
-#btn-foreign-filter svg, #btn-type-filter svg, #btn-agr-type-filter svg {
+#btn-foreign-filter svg, #btn-type-filter svg, #btn-agr-type-filter svg,
+#btn-agr-version-john svg, #btn-agr-version-arianne svg {
   width: 8px; height: 8px; opacity: .7; transition: transform .15s ease;
 }
 #btn-foreign-filter[aria-expanded="true"] svg,
 #btn-type-filter[aria-expanded="true"] svg,
-#btn-agr-type-filter[aria-expanded="true"] svg { transform: rotate(180deg); }
+#btn-agr-type-filter[aria-expanded="true"] svg,
+#btn-agr-version-john[aria-expanded="true"] svg,
+#btn-agr-version-arianne[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* Same pop-up chrome and checkmark-row idiom as #speed-menu — a master
    "Show others" row, then one row per foreign owner currently on this
    video, each independently toggleable (see isLabelerHidden() in app.js).
    Rebuilt on open from whoever's actually present, so it never goes stale
    the way a fixed list would as labelers come and go video to video. */
-#foreign-filter-menu, #type-filter-menu, #agr-type-filter-menu {
+#foreign-filter-menu, #type-filter-menu, #agr-type-filter-menu,
+#agr-version-menu-john, #agr-version-menu-arianne {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
   min-width: 190px; max-width: 240px; padding: 6px; border-radius: 12px;
   background: var(--chrome);
@@ -1720,7 +1737,8 @@ body.analyst-mode #round-indicator {
   box-shadow: 0 8px 32px rgba(0,0,0,.18);
   text-transform: none; letter-spacing: 0;
 }
-#foreign-filter-menu[hidden], #type-filter-menu[hidden], #agr-type-filter-menu[hidden] { display: none; }
+#foreign-filter-menu[hidden], #type-filter-menu[hidden], #agr-type-filter-menu[hidden],
+#agr-version-menu-john[hidden], #agr-version-menu-arianne[hidden] { display: none; }
 /* Admin's Types menu (and the Agreement dialog's own copy of it) — the same
    pop-up, with one checkmark row per catalogue entry laid out two across
    (lead beside rear, head row above body row, as the catalogue does):
@@ -1729,6 +1747,13 @@ body.analyst-mode #round-indicator {
 #type-filter-menu, #agr-type-filter-menu {
   position: fixed; top: auto; right: auto;   /* placed by setupTypeFilterMenu()/setupAgreementTypeFilterMenu() */
   width: 360px; max-width: none; overflow-y: auto;
+}
+/* The two version filters have only a handful of rows (v0, v1, none, ...) —
+   single column, so they stay the same fixed-position/placed-by-JS pop-up
+   as the others but don't need the wide two-across grid. */
+#agr-version-menu-john, #agr-version-menu-arianne {
+  position: fixed; top: auto; right: auto; left: auto;   /* placed by setupAgreementVersionFilterMenu() */
+  width: 160px; max-width: none; overflow-y: auto;
 }
 .tfm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; }
 .tfm-grid .ffm-row { gap: 6px; font-size: 12px; }
@@ -2152,13 +2177,28 @@ kbd {
    layout with a row so the button sits at the end instead of wrapping onto
    its own line under a long name. */
 .agr-video-line { display: flex; align-items: center; gap: 6px; }
+/* John/Arianne progress badges next to a video's headline — reuses the
+   video picker's own .vp-slot/.vp-ver/.vp-status-* markup (statusBadges()
+   in app.js) so a video reads the same way here as it does in the picker.
+   Its own flex row so the (fixed-width, individually-flex) .vp-slot
+   children lay out side by side instead of stacking. */
+.agr-video-badges { display: flex; align-items: center; gap: 4px; flex: none; }
 /* All-videos view only — one of these per video with data (renderAgreement()
    in app.js), each holding its own .agr-video-line + families. A hairline
    above every one after the first marks where a new video starts, since
    there's no dialog chrome between them the way separate videos otherwise
    get. */
-.agr-video-block { padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--line); }
+.agr-video-block {
+  padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--line);
+  /* Only matters if this dialog itself gets printed (Ctrl+P), not the
+     normal on-screen scroll — same fix as .video-block gets in the PDF
+     export's own stylesheet (exportAgreementPdf() in app.js): without it a
+     page break can separate a video's header from its rows, so a printed
+     page can open mid-video with no name in sight. */
+  break-inside: avoid-page; page-break-inside: avoid;
+}
 .agr-video-block:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
+.agr-video-block .agr-video-line { break-after: avoid-page; page-break-after: avoid; }
 /* One family name per section (Jabs, Rolls, ...) — see
    computeAgreementPanel()/renderAgreement() in app.js. Rows underneath
    reuse .fvd-rows/.fvd-row (the "loaded from the sheet" popup's own list

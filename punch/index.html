@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260911p">
+  <link rel="stylesheet" href="punch.css?v=20260911x">
 </head>
 <body>
   <div id="app">
@@ -714,6 +714,27 @@
           </button>
           <div id="agr-type-filter-menu" role="menu" hidden></div>
         </div>
+        <!-- All-videos view only (hidden for a single video — there's only
+             one to filter there). Narrows which videos get a section by
+             John's/Arianne's tracking-sheet labeling_version, same distinct
+             values statusBadges() already shows on each video's line — see
+             setupAgreementVersionFilterMenu() in app.js. -->
+        <div id="agr-version-filter-john" class="agr-version-filter" hidden>
+          <button id="btn-agr-version-john" type="button" aria-haspopup="menu"
+                  aria-expanded="false" aria-controls="agr-version-menu-john">
+            <span id="agr-version-john-label">John: all</span>
+            <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="agr-version-menu-john" role="menu" hidden></div>
+        </div>
+        <div id="agr-version-filter-arianne" class="agr-version-filter" hidden>
+          <button id="btn-agr-version-arianne" type="button" aria-haspopup="menu"
+                  aria-expanded="false" aria-controls="agr-version-menu-arianne">
+            <span id="agr-version-arianne-label">Arianne: all</span>
+            <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="agr-version-menu-arianne" role="menu" hidden></div>
+        </div>
         <!-- Opens a plain, print-styled copy of #agr-body in a new tab and
              calls print() on it — the "save as PDF" that gives, via the
              browser's own print dialog, is as close to a real export as a
@@ -790,27 +811,27 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260911p"></script>
-  <script src="../shared/player.js?v=20260911p"></script>
-  <script src="skeleton.js?v=20260911p"></script>
+  <script src="../shared/labeler_name.js?v=20260911x"></script>
+  <script src="../shared/player.js?v=20260911x"></script>
+  <script src="skeleton.js?v=20260911x"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260911p"></script>
+  <script src="video-folder.js?v=20260911x"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260911p"></script>
-  <script src="predictions.js?v=20260911p"></script>
-  <script src="app.js?v=20260911p"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260911x"></script>
+  <script src="predictions.js?v=20260911x"></script>
+  <script src="app.js?v=20260911x"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260911p"></script>
+  <script src="problems.js?v=20260911x"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260911p"></script>
+  <script src="ui.js?v=20260911x"></script>
 </body>
 </html>
