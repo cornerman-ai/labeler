@@ -1793,6 +1793,53 @@ function agreementLineText(type, r) {
   return `${type.label} by ${r.who}: ${r.count}${agreementMatchSuffix(type, r)}`;
 }
 
+// Sums a list of already-computed per-video family/type breakdowns (each
+// one computeAgreementPanel()'s own output) into one combined total — the
+// all-videos view's trailing "Summary across N videos" section. Matched
+// counts are the SUM of each video's own already-computed matched number,
+// never recomputed by pooling raw labels across videos: two labels from
+// different videos can share a timestamp by pure coincidence, and time-IoU
+// pairing (pairLabelsByIoU()) only ever means something within one video's
+// own timeline. This is arithmetic on numbers Agreement already trusts, not
+// a second matching pass.
+function aggregateFamilies(perVideoFamiliesList) {
+  const totals = new Map(); // family.key -> { family, types: Map(id -> ...) }
+  for (const families of perVideoFamiliesList) {
+    for (const { family, types } of families) {
+      let famEntry = totals.get(family.key);
+      if (!famEntry) { famEntry = { family, types: new Map() }; totals.set(family.key, famEntry); }
+      for (const type of types) {
+        let typeEntry = famEntry.types.get(type.id);
+        if (!typeEntry) {
+          typeEntry = { id: type.id, label: type.label, rowsByOwner: new Map(), matched: 0, unmatchedByOwner: new Map(), hasSummary: false };
+          famEntry.types.set(type.id, typeEntry);
+        }
+        for (const r of type.rows) {
+          typeEntry.rowsByOwner.set(r.who, (typeEntry.rowsByOwner.get(r.who) || 0) + r.count);
+        }
+        if (type.summary) {
+          typeEntry.hasSummary = true;
+          typeEntry.matched += type.summary.matched;
+          for (const u of type.summary.unmatchedBy) {
+            typeEntry.unmatchedByOwner.set(u.who, (typeEntry.unmatchedByOwner.get(u.who) || 0) + u.n);
+          }
+        }
+      }
+    }
+  }
+  return [...totals.values()].map(({ family, types }) => ({
+    family,
+    types: [...types.values()].map((t) => {
+      const owners = [...t.rowsByOwner.keys()].sort();
+      const rows = owners.map((who) => ({ who, count: t.rowsByOwner.get(who) || 0 }));
+      const summary = (t.hasSummary && owners.length === 2)
+        ? { matched: t.matched, unmatchedBy: owners.map((who) => ({ who, n: t.unmatchedByOwner.get(who) || 0 })) }
+        : null;
+      return { id: t.id, label: t.label, rows, summary };
+    }),
+  }));
+}
+
 // Same dot getPunchColor() paints on this type's .punch-btn and its
 // timeline strip — the PDF export uses its own version of this too, so the
 // two read as the same report rather than a plain-text stand-in for a
@@ -1893,10 +1940,12 @@ async function renderAgreement() {
   }
 
   const blocks = [];
+  const perVideoFamilies = [];
   for (const { displayName, catalog, byOwner } of breakdown) {
     if (!agrVersionMatches(catalog)) continue;
     const families = computeAgreementPanel(byOwner);
     if (!families.length) continue;
+    perVideoFamilies.push(families);
     // Same number the picker shows for this video (catalog.n, its row in
     // the tracking sheet) — not a fresh recount of just what's visible
     // here, so "video #47" means the same thing in both places even once
@@ -1912,7 +1961,22 @@ async function renderAgreement() {
     return;
   }
 
-  body.innerHTML = blocks.map(b => `<div class="agr-video-block">${b.html}</div>`).join('');
+  // Trailing totals across every video shown above — depends on the exact
+  // same Moves/version filters (a video excluded above never contributes
+  // here either), so it always describes exactly what's on screen, not
+  // some separately-filtered universe.
+  const summaryFamilies = aggregateFamilies(perVideoFamilies);
+  let hasSummaryBlock = false;
+  if (summaryFamilies.length) {
+    const n = perVideoFamilies.length;
+    blocks.push(agreementBlockHtml(`Summary across ${n} video${n === 1 ? '' : 's'}`, summaryFamilies, copyBtn));
+    hasSummaryBlock = true;
+  }
+
+  body.innerHTML = blocks.map((b, i) => {
+    const isSummary = hasSummaryBlock && i === blocks.length - 1;
+    return `<div class="agr-video-block${isSummary ? ' agr-summary-block' : ''}">${b.html}</div>`;
+  }).join('');
   // Same DOM order the HTML was just built in, blocks back to back, so the
   // Nth button matches the Nth line across the whole concatenated list.
   const flatLines = blocks.flatMap(b => b.lines);
@@ -2000,10 +2064,12 @@ async function exportAgreementPdf() {
     // rule as the live dialog — there can be hundreds of these, and an empty
     // header for each one that didn't have the selected move(s) is just noise.
     const videoBlocks = [];
+    const perVideoFamiliesPdf = [];
     for (const { displayName, catalog, byOwner } of breakdown) {
       if (!agrVersionMatches(catalog)) continue;
       const families = computeAgreementPanel(byOwner);
       if (families.length) {
+        perVideoFamiliesPdf.push(families);
         const badges = catalog ? statusBadges(catalog) : '';
         const numberPrefix = catalog ? `${catalog.n}. ` : '';
         videoBlocks.push(`<div class="video-block"><p class="video-name">${numberPrefix}${esc(displayName)}${badges}</p>${pdfSections(families)}</div>`);
@@ -2015,6 +2081,12 @@ async function exportAgreementPdf() {
         ? 'Nothing to export — no data for the selected moves on any video.'
         : 'Nothing to export — no punches logged anywhere yet.', 'error');
       return;
+    }
+    // Same trailing totals the live dialog shows — see aggregateFamilies().
+    const summaryFamiliesPdf = aggregateFamilies(perVideoFamiliesPdf);
+    if (summaryFamiliesPdf.length) {
+      const n = perVideoFamiliesPdf.length;
+      videoBlocks.push(`<div class="video-block summary-block"><p class="video-name">Summary across ${n} video${n === 1 ? '' : 's'}</p>${pdfSections(summaryFamiliesPdf)}</div>`);
     }
     docTitle = 'All videos';
     bodyHtml = videoBlocks.join('');
@@ -2086,6 +2158,10 @@ async function exportAgreementPdf() {
         font-size: 14px; font-weight: 620; margin: 0 0 2px;
         break-after: avoid-page; page-break-after: avoid;
       }
+      /* Trailing "Summary across N videos" block — same rows as every other
+         video, visually called out as a total rather than one more video. */
+      .summary-block { border-top: 2px solid #1d1d1f; padding-top: 18px; margin-top: 18px; }
+      .summary-block .video-name { font-size: 15px; }
       @media print {
         body { background: #fff; padding: 0; }
         .card { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }

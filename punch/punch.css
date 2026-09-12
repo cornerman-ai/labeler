@@ -180,14 +180,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    deliberately NOT overridden: it has to match .src-field's, or the trailing
    copy button lands a couple of px off the one in the row below. */
 #video-loader { padding-left: 4px; }
-/* All five video-source leading buttons (Open Video, Connect Video Folder /
-   Reconnect, Open Skeletons, Connect Skeleton Folder, Open Predictions)
-   share this min-width, sized to the longest label ("Connect Skeleton
-   Folder") — otherwise each one is only as wide as its own text and the
-   row reads as five differently-sized buttons instead of one column. */
-#btn-pick-file, .btn-connect-folder, #btn-pick-skeleton, #btn-pick-predictions {
-  min-width: 168px;
-}
 #btn-pick-file {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   height: 26px; padding: 0 8px; border-radius: 6px;
@@ -220,7 +212,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    wash once a folder is actually connected (see vfPaint() in
    video-folder.js). Shared classes since the two rows are otherwise
    identical, just pointed at different IDs by video-folder.js. */
-.folder-connect-row { padding-left: 4px; }
+/* .src-field.folder-connect-row, not just .folder-connect-row: both are
+   single-class selectors otherwise, so whichever one's rule comes LATER in
+   this file wins on equal specificity — and .src-field's own shorthand
+   (padding: 0 8px 0 12px, further down) was winning that fight and
+   resetting padding-left back to 12px, silently indenting these two rows
+   past #video-loader/#skeleton-loader/#predictions-loader (ID selectors,
+   which always win regardless of order). Two classes beats one regardless
+   of source order — same fix as guaranteed there. */
+.src-field.folder-connect-row { padding-left: 4px; }
 .btn-connect-folder {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   height: 26px; padding: 0 8px; border-radius: 6px;
@@ -2199,6 +2199,12 @@ kbd {
 }
 .agr-video-block:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
 .agr-video-block .agr-video-line { break-after: avoid-page; page-break-after: avoid; }
+/* The trailing "Summary across N videos" block (renderAgreement()) — same
+   family/type rows as every other block, just visually called out as a
+   total rather than one more video: a thicker, double-style top border and
+   a bolder headline instead of the plain hairline every other block gets. */
+.agr-summary-block { border-top: 2px solid var(--ink-dim); padding-top: 20px; margin-top: 20px; }
+.agr-summary-block .agr-video-line .agr-line { font-weight: 650; font-size: 13.5px; }
 /* One family name per section (Jabs, Rolls, ...) — see
    computeAgreementPanel()/renderAgreement() in app.js. Rows underneath
    reuse .fvd-rows/.fvd-row (the "loaded from the sheet" popup's own list
