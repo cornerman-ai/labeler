@@ -1853,12 +1853,20 @@ function aggregateFamilies(perVideoFamiliesList) {
 // video picker shows — statusBadges() above) render next to the headline,
 // so a video's readiness is visible without leaving Agreement. Absent for
 // a video the tracking sheet doesn't know about.
-function agreementBlockHtml(headline, families, copyBtn, catalogEntry) {
+// `clickable` (true for a per-video block in the all-videos view, false/
+// omitted for the single-video header and the trailing Summary block —
+// neither has one specific OTHER video to jump to) turns the headline into
+// a button; renderAgreement() wires its click after the fact by DOM order
+// (agrVideoLinks), same reasoning as the copyBtn comment below.
+function agreementBlockHtml(headline, families, copyBtn, catalogEntry, clickable) {
   const lineHtml = (type, r) =>
     `<span class="agr-dot" style="background:${getPunchColor(type.id)}"></span>${type.label} by ${r.who}: <b>${r.count}</b>` +
     `<span class="agr-sub">${agreementMatchSuffix(type, r)}</span>`;
   const badges = catalogEntry ? `<span class="agr-video-badges">${statusBadges(catalogEntry)}</span>` : '';
-  const html = `<p class="fvd-lede agr-video-line"><span class="agr-line">${headline}</span>${badges}${copyBtn}</p>` +
+  const headlineHtml = clickable
+    ? `<button type="button" class="agr-line agr-video-link" title="Open this video">${headline}</button>`
+    : `<span class="agr-line">${headline}</span>`;
+  const html = `<p class="fvd-lede agr-video-line">${headlineHtml}${badges}${copyBtn}</p>` +
     families.map(({ family, types }) => `
       <h3 class="agr-h">${family.label}</h3>
       <div class="agr-family">
@@ -1941,7 +1949,12 @@ async function renderAgreement() {
 
   const blocks = [];
   const perVideoFamilies = [];
-  for (const { displayName, catalog, byOwner } of breakdown) {
+  // Parallel to `blocks` — the (video link, name-for-folder-matching) a
+  // click on that block's headline should open, or null for the Summary
+  // block appended after this loop (nothing single to open). Wired up by
+  // DOM order once body.innerHTML is set, same reasoning as flatLines below.
+  const blockVideoLinks = [];
+  for (const { video, displayName, catalog, byOwner } of breakdown) {
     if (!agrVersionMatches(catalog)) continue;
     const families = computeAgreementPanel(byOwner);
     if (!families.length) continue;
@@ -1951,7 +1964,8 @@ async function renderAgreement() {
     // here, so "video #47" means the same thing in both places even once
     // the Moves filter has dropped some out.
     const numberPrefix = catalog ? `${catalog.n}. ` : '';
-    blocks.push(agreementBlockHtml(`${numberPrefix}Video: ${displayName}`, families, copyBtn, catalog));
+    blocks.push(agreementBlockHtml(`${numberPrefix}Video: ${displayName}`, families, copyBtn, catalog, true));
+    blockVideoLinks.push({ video, name: displayName });
   }
 
   if (!blocks.length) {
@@ -1983,6 +1997,29 @@ async function renderAgreement() {
   body.querySelectorAll('.agr-copy').forEach((btn, i) => {
     btn.addEventListener('click', () => copyTextToClipboard(flatLines[i], btn, 'line'));
   });
+  // Same DOM order the per-video blocks were built in — the Summary block
+  // has no .agr-video-link at all (clickable=false), so this list is
+  // exactly as long as blockVideoLinks and lines up 1:1 with it.
+  body.querySelectorAll('.agr-video-link').forEach((btn, i) => {
+    const { video, name } = blockVideoLinks[i];
+    btn.addEventListener('click', () => agrOpenVideo(video, name));
+  });
+}
+
+// Clicking a video's headline in the all-videos Agreement view — closes the
+// dialog and loads it exactly the way picking it from the tracking-sheet
+// dropdown does (setupVideoPicker()'s pick()): same _pendingAutoLoadName
+// hand-off, same debounced fetch/auto-load-from-folder pipeline, so a
+// disagreement spotted here goes straight to "look at it" in one click
+// instead of closing Agreement and hunting for the video in the picker.
+function agrOpenVideo(video, name) {
+  const dlg = document.getElementById('agr-dialog');
+  const input = document.getElementById('drive-link');
+  if (!input) return;
+  dlg?.close();
+  _pendingAutoLoadName = name;
+  input.value = video;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // Opens a plain, print-styled copy of the report in a new tab and calls

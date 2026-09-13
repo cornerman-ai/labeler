@@ -2229,6 +2229,17 @@ kbd {
 #agr-body .fvd-rows { gap: 6px; }
 #agr-body .fvd-row { padding: 11px 14px; }
 .agr-line { flex: 1; min-width: 0; }
+/* The all-videos view's per-video headline is a <button> (agreementBlockHtml()'s
+   `clickable`) so a spotted gap/disagreement goes straight to opening that
+   video (agrOpenVideo() in app.js) — reset off the default button chrome,
+   left-align the text same as the plain <span> version, and give it just
+   enough hover/underline affordance to read as clickable without looking
+   like a different kind of control than the rest of this line. */
+.agr-video-link {
+  border: 0; background: none; padding: 0; margin: 0; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.agr-video-link:hover { text-decoration: underline; color: var(--accent); }
 /* Same dot .punch-btn's own carries for this move — see the comment on
    lineHtml() in renderAgreement(). Inline before the text rather than a
    flex child of its own, so it sits on the text's own line exactly the
