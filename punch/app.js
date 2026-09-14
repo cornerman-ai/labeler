@@ -3785,7 +3785,15 @@ function openEditLabel(idx) {
       <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
       <label class="edit-lbl">Move</label>
       <div class="edit-row">
-        <select class="edit-punch">${punchOpts}</select>
+        <!-- Picking a type is a complete, deliberate action the moment the
+             dropdown closes — unlike start/end (typed character by
+             character, where firing on every keystroke would be wrong) it
+             doesn't need the separate Save click, and drag-to-move/resize
+             already commits the instant you release the mouse. Requiring
+             an extra Save here was the one edit path that DIDN'T feel
+             immediate the way every other edit does. Save still works too
+             (idempotent — saveEditLabel() just re-reads the same value). -->
+        <select class="edit-punch" onchange="saveEditLabel(${idx})">${punchOpts}</select>
       </div>
       <label class="edit-lbl">Start &rarr; end</label>
       <div class="edit-row">
