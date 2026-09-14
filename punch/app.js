@@ -2340,6 +2340,60 @@ function pasteLabelAtPlayhead() {
   showToast(`Pasted: ${punchLabel(label.punch)} at ${formatTime(label.start)}`, 'success');
 }
 
+// The real sheet name behind a lane's display owner — e.g. "John" ->
+// "Labeled Data John". Looked up from an already-loaded label rather than
+// reconstructed from the string (see foreignOwnerName()), so it can't drift
+// out of sync with however the sheet is actually named (Software N vs a
+// person's name, capitalization, …).
+function sheetNameForOwner(ownerDisplayName) {
+  const found = state.labels.find(l => l.foreign && !l.isPrediction && foreignOwnerName(l) === ownerDisplayName);
+  return found ? found.sheetName : null;
+}
+
+// Admin drags a move from one labeler's lane onto another's — see
+// setupSegmentEditing()'s mouseup handler in ui.js, which is the only
+// caller. There is no "change owner" write on the backend (a row lives on
+// exactly one person's sheet); this is really a delete-from-old +
+// add-to-new, done in that order (add first) so a network failure leaves a
+// harmless duplicate rather than losing the row outright.
+async function reassignLabelOwner(label, newOwnerDisplayName) {
+  if (label.id == null) { showToast('Still saving — try the move again in a moment', 'error'); return; }
+  const newSheetName = sheetNameForOwner(newOwnerDisplayName);
+  if (!newSheetName) { showToast('Cannot resolve sheet for ' + newOwnerDisplayName, 'error'); return; }
+  const oldSheetName = label.sheetName;
+  const oldId = label.id;
+  const oldOwnerDisplayName = foreignOwnerName(label);
+  const oldVideoName = label.videoName;
+
+  label.sheetName = newSheetName;
+  label.id = null;
+  // A fresh identity for the new sheet — the old row (same punch_uuid) is
+  // about to be deleted, but not deleted yet, and two live rows sharing one
+  // uuid is exactly the ambiguity punch_uuid exists to rule out (the rules
+  // labeler joins Form Labels to this by uuid).
+  label.punch_uuid = crypto.randomUUID();
+  // Optimistic: the strip jumps to its new lane right away, same as every
+  // other edit path in this app — the network round-trip below is not what
+  // the admin is watching for.
+  renderLabels();
+  showToast(`Moving to ${newOwnerDisplayName}’s timeline…`, 'info');
+  await pushLabelToSheet(label);
+  // pushLabelToSheet only ever fills label.id back in once the add actually
+  // lands (see its own try/catch) — still null means it failed, and the
+  // old row must NOT be deleted: better a duplicate on the old sheet than
+  // a row that exists nowhere.
+  if (label.id == null) return;
+  await deleteLabelFromSheet({ id: oldId, videoName: oldVideoName, foreign: true, sheetName: oldSheetName });
+  pushUndo({
+    label,
+    desc: 'Undid move to ' + newOwnerDisplayName,
+    undo: () => reassignLabelOwner(label, oldOwnerDisplayName),
+  });
+  renderLabels();
+  fetchLabelsFromSheet();
+  showToast(`Moved to ${newOwnerDisplayName}’s timeline`, 'success');
+}
+
 function selectPunch(punchId) {
   // Reached via the move-type buttons AND the digit/letter keyboard
   // shortcuts alike — this is the one funnel both go through, so it's the
@@ -2638,11 +2692,6 @@ async function pushLabelToSheet(label) {
 }
 
 function addRoundMarker(markerType) {
-  // Same rule as captureTimestamp(): admin corrects, it does not author.
-  if (state.isAdmin) {
-    showToast('Admin can edit and delete any label, but not create new ones.', 'error');
-    return;
-  }
   if (state.isAnalyst) {
     showToast('View only — Analyst mode cannot add round markers', 'error');
     return;
@@ -2661,6 +2710,24 @@ function addRoundMarker(markerType) {
     isRoundMarker: true,
     timestamp: new Date().toISOString(),
   };
+  // Admin owns no sheet of its own (same as a move — see
+  // pasteLabelAtPlayhead()), but unlike a move there's no lane or copied
+  // row to read a target owner from: the round ribbon merges every
+  // labeler's boundaries into one shared strip, not one per lane. So
+  // there's genuinely no "which one did you mean" signal here — the first
+  // visible teammate is picked, and the save toast below names them so it
+  // is never a silent guess.
+  if (state.isAdmin) {
+    const owner = visibleForeignOwners()[0];
+    if (!owner) {
+      showToast('Admin needs at least one labeler’s rows visible to add a round marker', 'error');
+      return;
+    }
+    const sheetName = sheetNameForOwner(owner);
+    if (!sheetName) { showToast('Cannot resolve sheet for ' + owner, 'error'); return; }
+    label.foreign = true;
+    label.sheetName = sheetName;
+  }
   state.labels.push(label);
   pushUndo({
     label,
@@ -2700,6 +2767,15 @@ async function pushRoundMarkerToSheet(label) {
     startTime: time,
     endTime: time,
   };
+  // Admin authoring a round marker "from scratch" (see addRoundMarker()):
+  // same owner-redirect as pushLabelToSheet, so it lands on that labeler's
+  // own sheet rather than a "Labeled Data Admin" one.
+  if (label.foreign) {
+    const owner = foreignOwnerLabelerParam(label);
+    if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
+    params.labeler = owner;
+    params.actor = labelerId();
+  }
   outboxAdd({ punchUuid: label.punch_uuid, params });
   try {
     const result = await sendQueued({ params });
@@ -2707,7 +2783,7 @@ async function pushRoundMarkerToSheet(label) {
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
     if (label._pendingCancel) { deleteLabelFromSheet(label); return; }
-    showToast(`${label.punch} saved at ${formatTime(label.start)}`, 'success');
+    showToast(`${label.punch} saved at ${formatTime(label.start)}` + (label.foreign ? ` (${foreignOwnerName(label)})` : ''), 'success');
     fetchLabelsFromSheet();
   } catch (e) {
     console.error('Round marker push failed:', e);

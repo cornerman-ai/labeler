@@ -571,7 +571,8 @@
       // rows give you in the side panel.
       if (!label || isForeignLabel(label)) return;
       drag = { idx, zone: zoneOf(el, e.clientX), grab: timeAt(e.clientX),
-               start0: label.start, end0: label.end };
+               start0: label.start, end0: label.end,
+               startClientX: e.clientX, startClientY: e.clientY };
       moved = false;
       el.classList.add('dragging');
       e.preventDefault();     // no text selection, no native drag
@@ -583,7 +584,10 @@
       const label = state.labels[drag.idx];
       if (!label) { drag = null; return; }
       const dt = timeAt(e.clientX) - drag.grab;
-      if (Math.abs(dt) > 1e-4) moved = true;
+      // Vertical-only movement never changes `dt` (time only reads clientX),
+      // but it's still what tells an admin's drop-on-another-lane apart from
+      // a click — see the mouseup handler below.
+      if (Math.abs(dt) > 1e-4 || Math.abs(e.clientY - drag.startClientY) > 2) moved = true;
 
       if (drag.zone === 'move') {
         const span = drag.end0 - drag.start0;
@@ -602,14 +606,42 @@
       if (el) { el.classList.add('dragging'); showTip(el, label); }
     });
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (e) => {
       if (!drag) return;
       const label = state.labels[drag.idx];
       const { start0, end0 } = drag;
       const changed = moved && label && (label.start !== start0 || label.end !== end0);
+
+      // Admin-only: dropping a foreign strip onto a DIFFERENT owner's lane
+      // in the SAME bucket (offense/defense) reassigns which labeler's
+      // sheet the move lives on — see reassignLabelOwner() in app.js. Only
+      // a plain "move" drag counts, not a start/end resize. Detected by
+      // where the pointer actually IS at release, not by which lane the
+      // strip is drawn in — a lane clips its own strips (.seg-lane overflow:
+      // hidden), so the strip never visually leaves its row while dragging;
+      // this is the only signal a cross-lane drop has.
+      let targetOwner = null;
+      if (state.isAdmin && label && moved && drag.zone === 'move') {
+        const dropEl = document.elementFromPoint(e.clientX, e.clientY);
+        const laneEl = dropEl && dropEl.closest('.seg-lane');
+        if (laneEl && laneEl.dataset.owner && laneEl.dataset.bucket === punchBucket(label.punch)) {
+          const currentOwner = foreignOwnerName(label);
+          if (laneEl.dataset.owner !== currentOwner) targetOwner = laneEl.dataset.owner;
+        }
+      }
+
       drag = null;
       lanes.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
       hideTip();
+
+      if (targetOwner) {
+        // The drag's own retiming (if any) is already baked into
+        // label.start/end — reassignLabelOwner() pushes the row as-is, so
+        // this both moves the time AND changes the owner in one drop.
+        reassignLabelOwner(label, targetOwner);
+        return;
+      }
+
       if (!changed) return;
       if (typeof pushUndo === 'function') {
         pushUndo({
