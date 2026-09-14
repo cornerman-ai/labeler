@@ -783,6 +783,18 @@ function updateUnsureFilterButton() {
 // model's row lives only in this tab's memory, was never on any sheet to
 // begin with, and isForeignLabel() refuses it for admin same as anyone
 // else. Checked first, so the admin bypass below never even gets asked.
+// A round marker borrowed from the "Combined Data" sheet — see
+// scanAllRowsForVideo() in apps_script/Code.js: when NEITHER John nor
+// Arianne has marked rounds for a video, the server falls back to whatever
+// round_start/round_end rows Combined Data already has for it, rather than
+// showing none. Combined Data is a merged, historical view (rebuilt by
+// rebuildCombinedData() from reviewed rows), not a live per-labeler sheet —
+// there is no owner to redirect a write to (foreignOwnerLabelerParam()
+// can't parse "Combined Data" into a person), so this stays read-only for
+// EVERYONE, admin included, same as a model prediction.
+function isCombinedDataRow(label) {
+  return !!(label && label.sheetName === 'Combined Data');
+}
 function isForeignLabel(label) {
   if (!label) return false;
   // Analyst has no escape hatch anywhere, unlike admin's isAdmin bypass
@@ -790,6 +802,7 @@ function isForeignLabel(label) {
   // never are any — see the DOMContentLoaded block that sets isAnalyst).
   if (state.isAnalyst) return true;
   if (label.isPrediction) return true;
+  if (isCombinedDataRow(label)) return true;
   return !!label.foreign && !state.isAdmin;
 }
 function refuseForeign(label) {
@@ -798,7 +811,9 @@ function refuseForeign(label) {
     ? 'View only — Analyst mode cannot edit, delete, or drag labels'
     : (label.isPrediction
       ? 'Read-only — this is a model prediction, not a label'
-      : 'Read-only — added by another labeler'), 'error');
+      : (isCombinedDataRow(label)
+        ? 'Read-only — borrowed from Combined Data, not a live labeler sheet'
+        : 'Read-only — added by another labeler')), 'error');
   return true;
 }
 
@@ -880,7 +895,10 @@ function labelerColor(name) {
 // anyone new is appended alphabetically, and anyone who's gone drops out.
 function foreignOwnersInOrder() {
   const present = new Set();
-  for (const l of state.labels) if (l.foreign) present.add(foreignOwnerName(l));
+  // Combined Data's borrowed round markers (see isCombinedDataRow()) don't
+  // get a lane and aren't a teammate to show/hide — they're not attached to
+  // anyone, just a fallback for when nobody real has marked rounds yet.
+  for (const l of state.labels) if (l.foreign && !isCombinedDataRow(l)) present.add(foreignOwnerName(l));
   const ordered = state.labelerOrder.filter(n => present.has(n));
   for (const n of [...present].sort()) if (!ordered.includes(n)) ordered.push(n);
   state.labelerOrder = ordered;

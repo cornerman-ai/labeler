@@ -1941,6 +1941,7 @@ function cachedAllRowsForVideo(pss, video) {
 function scanAllRowsForVideo(pss, video) {
   var target = normalizeDriveUrl(video);
   var out = [];
+  var sawRoundMarker = false;
   var sheets = pss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
@@ -1958,6 +1959,7 @@ function scanAllRowsForVideo(pss, video) {
       var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
       if (!lbl) continue;
       if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
+      if (lbl === 'round_start' || lbl === 'round_end') sawRoundMarker = true;
       out.push({
         id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
         punch: lbl,
@@ -1965,6 +1967,39 @@ function scanAllRowsForVideo(pss, video) {
         endTime: hasEnd ? toSeconds(data[r][cols.end]) : null,
         sheet: name,
       });
+    }
+  }
+  // Fallback: some videos were only ever round-marked in Combined Data (its
+  // rows can predate a labeler's own sheet, or came in through a rebuild —
+  // see rebuildCombinedData()) — if NEITHER real labeler has a round marker
+  // for this video, borrow Combined Data's instead of showing no rounds at
+  // all. Round markers only, never punches — Combined Data is a merged,
+  // historical view, not a live per-labeler sheet, and pulling its punch
+  // rows in too would resurrect Combined Data Archive's old problem of a
+  // third, unattributable "labeler" (removed earlier — see
+  // scanAllRowsForVideo's own header comment). Tagged with the real
+  // COMBINED_NAME so the client's isCombinedDataRow() (punch/app.js) can
+  // keep these permanently read-only, admin included — there's no owner to
+  // redirect a write to.
+  if (!sawRoundMarker) {
+    var combined = pss.getSheetByName(COMBINED_NAME);
+    if (combined && combined.getLastRow() >= 2) {
+      var cdata = combined.getDataRange().getValues();
+      var ccols = findColumns(cdata[0]);
+      if (ccols.punch >= 0 && ccols.video >= 0 && ccols.start >= 0) {
+        for (var cr = 1; cr < cdata.length; cr++) {
+          var clbl = String(cdata[cr][ccols.punch] || '').toLowerCase().trim();
+          if (clbl !== 'round_start' && clbl !== 'round_end') continue;
+          if (normalizeDriveUrl(cdata[cr][ccols.video]) !== target) continue;
+          out.push({
+            id: ccols.id >= 0 ? (parseInt(cdata[cr][ccols.id]) || (cr + 1)) : (cr + 1),
+            punch: clbl,
+            startTime: toSeconds(cdata[cr][ccols.start]),
+            endTime: null,
+            sheet: COMBINED_NAME,
+          });
+        }
+      }
     }
   }
   return out;
