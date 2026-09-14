@@ -657,6 +657,12 @@ function doGet(e) {
     // This video's cross-labeler row cache now describes the sheet as it was
     // a moment ago — drop it so the next listForeign re-scans.
     invalidateVideoRowCache(p.videoName);
+    // Admin pasting a copied move onto John's/Arianne's own sheet: `labeler`
+    // arrives already redirected to the real owner (punch/app.js's
+    // pasteLabelAtPlayhead()), so from here it's indistinguishable from that
+    // person adding their own row — `actor` is what leaves a trail.
+    logAdminAction(p, 'add', sheetName, newId, '(none)',
+      (p.punchId || '') + ' ' + (p.startTime || '') + '→' + (p.endTime || ''));
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'ok', action: 'added', id: newId,

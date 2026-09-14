@@ -1134,6 +1134,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 /* Yours reads as the primary row — the one you can actually drag. */
 .seg-lane.lane-own::before { color: var(--ink); }
+/* Admin owns no rows (see isForeignLabel() in app.js) — this "own" lane can
+   never hold a real move, unlike everyone else's. Muted rather than removed
+   so the lane stack keeps the same shape video to video: a diagonal hatch
+   in place of the solid fill reads as "not a place things live" at a
+   glance, and low opacity keeps the caption from competing with the real
+   lanes below it. */
+.seg-lane.lane-admin-empty {
+  opacity: .35;
+  background-image: repeating-linear-gradient(-45deg, var(--ink-dim) 0, var(--ink-dim) 1px, transparent 1px, transparent 6px);
+  background-color: var(--fill);
+}
+.seg-lane.lane-admin-empty::before { color: var(--ink-dim); }
 
 .seg-lane .seek-segment {
   position: absolute; top: 2px; height: 10px; border-radius: 3px;

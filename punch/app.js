@@ -2254,7 +2254,15 @@ function highlightLabel(label) {
 function copyHighlightedLabel() {
   const label = state.highlightedLabel;
   if (!label || label.isRoundMarker) return;
-  state.clipboardLabel = { punch: label.punch, angle: label.angle, duration: label.end - label.start };
+  // sheetName rides along so admin's paste can land on the SAME owner's
+  // sheet this was copied from — see pasteLabelAtPlayhead(). Undefined for
+  // a normal labeler's own label (own paste never needs it), and also for a
+  // prediction (label.sheetName is unset), which correctly falls through to
+  // pasteLabelAtPlayhead()'s "copy an existing move first" refusal for admin.
+  state.clipboardLabel = {
+    punch: label.punch, angle: label.angle, duration: label.end - label.start,
+    sheetName: label.foreign ? label.sheetName : null,
+  };
   showToast(`Copied: ${punchLabel(label.punch)}`, 'info');
 }
 
@@ -2274,16 +2282,23 @@ function cutHighlightedLabel() {
 // captureTimestamp() makes a fresh one from wherever the video is paused.
 // Duration is preserved from the copy so a repeated combo keeps its shape.
 function pasteLabelAtPlayhead() {
-  if (state.isAdmin) {
-    showToast('Admin can edit and delete any label, but not create new ones.', 'error');
-    return;
-  }
   if (state.isAnalyst) {
     showToast('View only — Analyst mode cannot add labels', 'error');
     return;
   }
   const clip = state.clipboardLabel;
   if (!clip) return;
+  // Admin never authors its own moves (see captureTimestamp()) — but pasting
+  // a COPY of an existing John/Arianne move back onto that SAME owner's
+  // timeline is just correcting/extending their work, the same way editing
+  // or dragging one of their rows already is. copyHighlightedLabel() only
+  // fills in clip.sheetName when what was copied was a real foreign row, so
+  // this is the one gate: no sheetName means either a normal own-label copy
+  // (fine — admin has none of those) or a prediction (never a real sheet).
+  if (state.isAdmin && !clip.sheetName) {
+    showToast('Admin can only paste onto John’s or Arianne’s timeline — copy an existing move from one of their lanes first.', 'error');
+    return;
+  }
   const video = document.getElementById('video-player');
   const start = video.currentTime;
   const label = {
@@ -2296,6 +2311,17 @@ function pasteLabelAtPlayhead() {
     videoName: normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName,
     timestamp: new Date().toISOString(),
   };
+  if (state.isAdmin && clip.sheetName) {
+    // Marks it as the owner's row from the moment it's created, so it
+    // renders in their lane and routes through the same admin-redirect
+    // (foreignOwnerLabelerParam) every edit/delete on a foreign row uses —
+    // see pushLabelToSheet(), isForeignLabel(), foreignOwnerName(). Gated to
+    // admin only: a normal labeler can also copy a teammate's (read-only)
+    // move, but their own paste must still land on their OWN sheet, not
+    // silently redirect into someone else's the way admin's is allowed to.
+    label.foreign = true;
+    label.sheetName = clip.sheetName;
+  }
   state.labels.push(label);
   pushUndo({
     label,
@@ -2580,6 +2606,16 @@ async function pushLabelToSheet(label) {
     startTime: formatTimeSheet(label.start),
     endTime: formatTimeSheet(label.end),
   };
+  // Admin pasting a copy onto the owner's own timeline (see
+  // pasteLabelAtPlayhead()): same owner-redirect as updateLabelInSheet/
+  // deleteLabelFromSheet, so the row lands on THAT person's sheet, not a
+  // "Labeled Data Admin" one — admin never gets one of its own.
+  if (label.foreign) {
+    const owner = foreignOwnerLabelerParam(label);
+    if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
+    params.labeler = owner;
+    params.actor = labelerId();
+  }
   // Queued FIRST. If the tab dies between here and the response, the label
   // is still on disk and the next load will send it.
   outboxAdd({ punchUuid: label.punch_uuid, params });
@@ -4428,7 +4464,12 @@ function buildSegLanes(container, markersLayer, overlay) {
   const addPair = (owner) => {
     for (const bucket of buckets) {
       const lane = document.createElement('div');
-      lane.className = 'seg-lane' + (owner ? ' lane-foreign' : ' lane-own');
+      // Admin owns no rows (see isForeignLabel()) — this "own" lane can
+      // never hold anything real for it, unlike a normal labeler's. Muted
+      // rather than removed: it still marks where "you" would be, same
+      // position every video, just visibly not a place moves live.
+      lane.className = 'seg-lane' + (owner ? ' lane-foreign' : ' lane-own')
+        + (!owner && state.isAdmin ? ' lane-admin-empty' : '');
       lane.dataset.bucket = bucket;
       const bucketName = bucket === 'offense' ? 'Offense' : 'Defense';
       // With one bucket on screen the tab already says which it is, so the
@@ -4440,6 +4481,9 @@ function buildSegLanes(container, markersLayer, overlay) {
         lane.style.setProperty('--lane-tint', labelerColor(owner));
         lane.dataset.laneLabel = owner + suffix;
         lane.setAttribute('aria-label', owner + ' ' + bucketName);
+      } else if (state.isAdmin) {
+        lane.dataset.laneLabel = 'Admin (no moves)' + suffix;
+        lane.setAttribute('aria-label', 'Admin — unused' + suffix);
       } else {
         // "You" only earns its place once somebody else has a lane too —
         // on a video only you have labeled it would be noise.
