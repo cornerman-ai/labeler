@@ -27,13 +27,28 @@ const prob = {
   hoverT: null,
   collapsed: false,
   height: PROB_DEFAULT_H,
+  userThr: null,      // null = each round's own fold threshold
 };
 
 try {
   prob.collapsed = localStorage.getItem('probCurveCollapsed') === 'true';
   const h = parseInt(localStorage.getItem('probCurveHeight'), 10);
   if (Number.isFinite(h)) prob.height = Math.max(PROB_MIN_H, Math.min(PROB_MAX_H, h));
+  const thr = parseFloat(localStorage.getItem('probCurveThreshold'));
+  if (Number.isFinite(thr)) prob.userThr = probClampThr(thr);
 } catch (_) { /* storage blocked: defaults */ }
+
+function probClampThr(v) { return Math.round(Math.max(0.01, Math.min(0.99, v)) * 100) / 100; }
+function probThrOf(r) { return prob.userThr ?? r.thr; }
+
+function probSetThr(v) {
+  prob.userThr = v == null ? null : probClampThr(v);
+  try {
+    if (prob.userThr == null) localStorage.removeItem('probCurveThreshold');
+    else localStorage.setItem('probCurveThreshold', String(prob.userThr));
+  } catch (_) {}
+  renderProbCurve();
+}
 
 function probNormName(s) {
   return String(s || '').normalize('NFKC').toLowerCase()
@@ -68,7 +83,7 @@ function probCandidateNames() {
 }
 
 function probCanShow() {
-  return (state.isAdmin || state.isAnalyst) && visibleBuckets().includes('defense');
+  return visibleBuckets().includes('defense');
 }
 
 function probEnsureLoaded() {
@@ -124,7 +139,7 @@ function probValueAt(t) {
   for (const r of prob.rounds) {
     if (t < r.from || t >= r.t1) continue;
     const i = Math.min(r.n - 1, Math.max(0, Math.round((t - r.t0) / r.dt)));
-    return { v: r.probs[i], thr: r.thr };
+    return { v: r.probs[i], thr: probThrOf(r) };
   }
   return null;
 }
@@ -140,6 +155,7 @@ function probEls() {
     model: lane.querySelector('.prob-model'),
     readout: lane.querySelector('.prob-readout'),
     dot: lane.querySelector('.prob-dot'),
+    thr: lane.querySelector('.prob-thr'),
     grabber: lane.querySelector('.prob-grabber'),
   };
 }
@@ -226,7 +242,7 @@ function renderProbCurve() {
     ctx.fill(area);
 
     // Above the fold's threshold is what the decoder would call a roll.
-    const yThr = yOf(r.thr);
+    const yThr = yOf(probThrOf(r));
     ctx.save();
     ctx.beginPath();
     ctx.rect(pts[0][0], 0, pts[pts.length - 1][0] - pts[0][0], yThr);
@@ -255,7 +271,31 @@ function renderProbCurve() {
       ctx.restore();
     }
   }
+  probPlaceThrHandle(els, H, yOf, tLeft, tRight);
   updateProbReadout();
+}
+
+// The handle sits on the line at the right edge. With no user threshold it
+// shows the fold threshold of the round under the playhead (rounds can differ).
+function probPlaceThrHandle(els, H, yOf, tLeft, tRight) {
+  els.thr.hidden = prob.collapsed;
+  if (prob.collapsed) return;
+  let thr = prob.userThr;
+  if (thr == null) {
+    const t = document.getElementById('video-player')?.currentTime ?? 0;
+    const r = prob.rounds.find(x => t >= x.from && t < x.t1)
+      || prob.rounds.find(x => x.t1 > tLeft && x.from < tRight) || prob.rounds[0];
+    thr = r.thr;
+  }
+  const text = thr.toFixed(2);
+  if (els.thr.textContent !== text) els.thr.textContent = text;
+  els.thr.classList.toggle('custom', prob.userThr != null);
+  els.thr.setAttribute('aria-valuenow', text);
+  els.thr.title = prob.userThr != null
+    ? `Threshold ${text} (yours) — drag or ↑/↓ to change · double-click for the model's`
+    : `Threshold ${text} (the model's) — drag or ↑/↓ to set your own`;
+  const y = Math.max(PROB_CAPTION_H + 7, Math.min(H - 7, yOf(thr)));
+  els.thr.style.top = y + 'px';
 }
 
 function updateProbReadout(tPlay) {
@@ -268,6 +308,11 @@ function updateProbReadout(tPlay) {
   const text = hit ? hit.v.toFixed(2) + (hovering ? '  ·  ' + formatTime(t) : '') : (hovering ? formatTime(t) : '—');
   if (els.readout.textContent !== text) els.readout.textContent = text;
   els.readout.classList.toggle('above', !!hit && hit.v >= hit.thr);
+  // Playing into a round with a different fold threshold moves the handle.
+  if (!hovering && hit && prob.userThr == null && !prob.collapsed && els.thr.textContent !== hit.thr.toFixed(2)) {
+    renderProbCurve();
+    return;
+  }
 
   if (!hovering || !hit) { els.dot.hidden = true; return; }
   const duration = getTimelineDuration();
@@ -295,6 +340,39 @@ function setupProbCurve() {
     updateProbReadout();
   });
   els.lane.addEventListener('mouseleave', () => { prob.hoverT = null; updateProbReadout(); });
+
+  let thrDrag = null;
+  const thrFromY = (clientY) => {
+    const rect = els.lane.getBoundingClientRect();
+    const { top, bottom } = probPlotBox(rect.height);
+    return (bottom - (clientY - rect.top)) / (bottom - top);
+  };
+  els.thr.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { els.thr.setPointerCapture(e.pointerId); } catch (_) {}
+    thrDrag = true;
+    els.lane.classList.add('thr-dragging');
+    els.thr.focus({ preventScroll: true });
+  });
+  els.thr.addEventListener('pointermove', (e) => {
+    if (thrDrag) probSetThr(thrFromY(e.clientY));
+  });
+  const endThr = () => { thrDrag = null; els.lane.classList.remove('thr-dragging'); };
+  els.thr.addEventListener('pointerup', endThr);
+  els.thr.addEventListener('pointercancel', endThr);
+  els.thr.addEventListener('dblclick', () => probSetThr(null));
+  els.thr.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 0.05 : 0.01;
+    const current = prob.userThr ?? parseFloat(els.thr.textContent);
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') probSetThr(current + step);
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') probSetThr(current - step);
+    else if (e.key === 'Backspace' || e.key === 'Delete') probSetThr(null);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();   // keep the page's own arrow/frame shortcuts out of it
+  });
 
   let resize = null;
   els.grabber.addEventListener('pointerdown', (e) => {

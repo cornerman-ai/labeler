@@ -1218,6 +1218,27 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   pointer-events: none;
 }
 .prob-dot[hidden] { display: none; }
+/* The threshold's handle, riding the dashed line at the right edge. Neutral
+   while it shows the model's fold threshold; accent once you've set your own. */
+.prob-thr {
+  position: absolute; right: 4px; z-index: 5; transform: translateY(-50%);
+  height: 13px; padding: 0 5px; border-radius: 7px;
+  display: flex; align-items: center; gap: 3px;
+  font: 600 9px/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums;
+  color: var(--ink-on-fill); background: var(--card);
+  box-shadow: 0 0 0 .5px var(--line), 0 1px 3px rgba(0,0,0,.12);
+  cursor: ns-resize; user-select: none; touch-action: none;
+}
+.prob-thr::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  border: 1px dashed currentColor; opacity: .7;
+}
+.prob-thr[hidden] { display: none; }
+.prob-thr:hover { color: var(--ink); }
+.prob-thr.custom { color: #fff; background: var(--accent-solid); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.prob-thr.custom::before { border-style: solid; background: currentColor; opacity: .9; }
+.prob-thr:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#prob-lane.thr-dragging .prob-thr { box-shadow: 0 0 0 2px var(--accent-wash), 0 1px 4px rgba(0,0,0,.2); }
 /* Bottom-edge grabber, the sheet-handle idiom: invisible until the row is
    hovered, so a resting timeline carries no extra chrome. */
 .prob-grabber {
