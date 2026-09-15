@@ -4548,8 +4548,10 @@ function buildSegLanes(container, markersLayer, overlay) {
   // Detach before clearing: the rounds ribbon and the playhead are children
   // of this container and innerHTML='' would take them with the lanes.
   const playhead = document.getElementById('playhead');
+  const probLane = document.getElementById('prob-lane');
   if (markersLayer && markersLayer.parentNode === container) markersLayer.remove();
   if (playhead && playhead.parentNode === container) playhead.remove();
+  if (probLane && probLane.parentNode === container) probLane.remove();
   container.innerHTML = '';
   // Rounds ribbon first — it reads as a header over the lanes it spans.
   if (markersLayer) container.appendChild(markersLayer);
@@ -4590,6 +4592,7 @@ function buildSegLanes(container, markersLayer, overlay) {
   };
   addPair(null);
   owners.forEach(addPair);
+  if (probLane) container.appendChild(probLane);
   // Playhead last so it sits over every lane.
   if (playhead) container.appendChild(playhead);
   return lanes;
@@ -4826,6 +4829,7 @@ function renderTimelineOverlay() {
   renderMinimap();
   updateMinimapChrome();
   renderTimeTicks();
+  if (typeof renderProbCurve === 'function') renderProbCurve();
 }
 
 function renderMinimap() {
@@ -4873,6 +4877,7 @@ function updateVideoOverlay() {
   // skeleton.js is optional (loads after player.js, before this file) —
   // guarded so a stale cache or a future page without it still works.
   if (typeof drawSkeletonFrame === 'function') drawSkeletonFrame(t);
+  if (typeof updateProbReadout === 'function') updateProbReadout(t);
 
   const roundStarts = state.labels
     .filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))

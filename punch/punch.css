@@ -1173,6 +1173,68 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) { .seg-lane .seek-segment { transition: none; } }
 
+/* The roll detector's p(roll), under the lanes — prob-curve.js. One lane tall
+   when folded (a sparkline), user-sized when open. `color` is the curve's
+   colour: the canvas reads it back, since it cannot resolve var() itself. */
+#prob-lane {
+  position: relative; flex: none; margin-top: 3px;
+  border-radius: 6px; background: var(--fill); overflow: hidden;
+  color: var(--accent);
+}
+#prob-lane > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.prob-caption {
+  position: absolute; top: 0; left: 2px; height: 14px; z-index: 2;
+  display: flex; align-items: center; gap: 3px; pointer-events: none;
+}
+.prob-fold {
+  pointer-events: auto; width: 14px; height: 14px; padding: 0; border: 0; border-radius: 4px;
+  display: grid; place-items: center; background: none; color: var(--ink-dim); cursor: pointer;
+}
+.prob-fold:hover { color: var(--ink); background: var(--fill-2); }
+.prob-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.prob-fold svg { width: 9px; height: 9px; transition: transform .15s ease; }
+.prob-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.prob-title, .prob-model, .prob-readout {
+  text-shadow: 0 0 3px var(--card), 0 0 3px var(--card), 0 0 3px var(--card);
+  white-space: nowrap;
+}
+.prob-title {
+  font-size: 8px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--ink);
+}
+.prob-model {
+  font: 500 8.5px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-dim);
+}
+.prob-readout {
+  position: absolute; top: 0; right: 6px; height: 14px; z-index: 2;
+  display: flex; align-items: center; pointer-events: none; white-space: pre;
+  font: 600 9.5px/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+.prob-readout.above { color: var(--accent-on-wash); }
+.prob-dot {
+  position: absolute; z-index: 3; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1.5px var(--card);
+  pointer-events: none;
+}
+.prob-dot[hidden] { display: none; }
+/* Bottom-edge grabber, the sheet-handle idiom: invisible until the row is
+   hovered, so a resting timeline carries no extra chrome. */
+.prob-grabber {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 8px; z-index: 4;
+  display: grid; place-items: end center; padding-bottom: 2px; cursor: row-resize;
+}
+.prob-grabber span {
+  width: 32px; height: 3px; border-radius: 2px; background: var(--ink-dim);
+  opacity: 0; transition: opacity .15s ease;
+}
+#prob-lane:hover .prob-grabber span { opacity: .35; }
+.prob-grabber:hover span, #prob-lane.resizing .prob-grabber span { opacity: .75; }
+#prob-lane.collapsed .prob-grabber { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .prob-fold svg, .prob-grabber span { transition: none; }
+}
+
 /* What you are about to drag, named. Follows the pointer along the lane and
    is the only place the punch's exact times appear next to the picture. */
 #seg-tip {

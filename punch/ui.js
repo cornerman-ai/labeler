@@ -320,7 +320,7 @@
       if (!video.duration) return;
       // .round-span / .round-tick replaced the old .round-mark flags when
       // rounds became spans in their own ribbon — see renderRoundStrip().
-      if (e.target.closest('#scrub') ||
+      if (e.target.closest('#scrub') || e.target.closest('.prob-no-seek') ||
           e.target.closest('.round-span') || e.target.closest('.round-tick')) return;
       e.stopImmediatePropagation();
       const rect = seekBar.getBoundingClientRect();
