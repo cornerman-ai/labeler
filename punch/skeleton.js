@@ -13,8 +13,9 @@
 // ============================================================
 
 Object.assign(state, {
-  skeleton: { rounds: [], visible: false },
+  skeleton: { rounds: [], visible: false, showDip: true },
 });
+try { state.skeleton.showDip = localStorage.getItem('noseDipVisible') !== 'false'; } catch (_) {}
 
 // Body edges (mediapipe POSE_CONNECTIONS) plus the nose (0) wired down to
 // both shoulders for head position — the rest of the face mesh (eyes, eye
@@ -165,13 +166,15 @@ async function loadSkeletonFiles(fileList) {
       if (ptsNpy.shape.length !== 1 || ptsNpy.shape[0] !== nFrames) {
         throw new Error(`round ${roundNum}: pts array has ${ptsNpy.data.length} entries, meta says ${nFrames} frames`);
       }
-      rounds.push({
+      const round = {
         round: Number(roundNum),
         nFrames, nJoints, nChannels,
         xIdx, yIdx, visIdx: channels.indexOf('visibility'),
         data: mainNpy.data,
         pts: ptsNpy.data,
-      });
+      };
+      round.dip = computeNoseDip(round);
+      rounds.push(round);
     } catch (err) {
       console.error(`Skeleton round ${roundNum} skipped:`, err);
       invalidReasons.push(String(err.message || err));
@@ -179,6 +182,104 @@ async function loadSkeletonFiles(fileList) {
   }
   rounds.sort((a, b) => a.round - b.round);
   return { rounds, incomplete, invalid: invalidReasons.length, invalidReasons };
+}
+
+// ============================================================
+// Nose dip — the roll detector's own head_drop_dev channel, computed the way
+// cornerman-backend's roll_data_mathe.derived_channels() does, so the number
+// on screen is the one the model reads:
+//   gaps (undetected frames) linearly interpolated, edges held;
+//   resampled onto a 30 fps grid from the round's first pts;
+//   torso      = |shoulder-mid − hip-mid|, rolling median 1 s;
+//   head_drop  = (nose_y − hip-mid_y) / torso        (image y grows down);
+//   dip        = head_drop − its rolling median over 2 s.
+// Positive = the nose is below where it has been sitting; units are torsos.
+// Image-normalized x/y throughout, as in the backend. Mirroring a southpaw
+// changes neither quantity, so there is no stance to know here.
+// ============================================================
+const DIP_GRID_FPS = 30;
+const DIP_TORSO_MEDIAN_S = 1;
+const DIP_BASELINE_S = 2;
+const DIP_JOINTS = { nose: 0, lSh: 11, rSh: 12, lHip: 23, rHip: 24 };
+
+function dipOddWindow(seconds) {
+  const n = Math.round(seconds * DIP_GRID_FPS);
+  return Math.max(3, n % 2 === 0 ? n + 1 : n);
+}
+
+// scipy.ndimage.median_filter(x, size, mode='nearest')
+function dipRollingMedian(x, size) {
+  const n = x.length, h = size >> 1, out = new Float32Array(n), buf = new Float64Array(size);
+  for (let i = 0; i < n; i++) {
+    for (let k = -h; k <= h; k++) buf[k + h] = x[Math.min(n - 1, Math.max(0, i + k))];
+    buf.sort();
+    out[i] = buf[h];
+  }
+  return out;
+}
+
+// numpy.interp over the non-NaN samples; null when nothing was detected.
+function dipFillGaps(series) {
+  const n = series.length, valid = [];
+  for (let i = 0; i < n; i++) if (Number.isFinite(series[i])) valid.push(i);
+  if (!valid.length) return null;
+  const out = Float32Array.from(series);
+  let v = 0;
+  for (let i = 0; i < n; i++) {
+    if (Number.isFinite(out[i])) continue;
+    while (v < valid.length - 1 && valid[v + 1] < i) v++;
+    const a = valid[v], b = valid[Math.min(v + 1, valid.length - 1)];
+    if (i < valid[0]) out[i] = series[valid[0]];
+    else if (i > valid[valid.length - 1]) out[i] = series[valid[valid.length - 1]];
+    else out[i] = series[a] + (series[b] - series[a]) * (i - a) / (b - a || 1);
+  }
+  return out;
+}
+
+function computeNoseDip(r) {
+  const J = DIP_JOINTS;
+  if (r.nJoints <= J.rHip || r.nFrames < 2) return null;
+  const read = (joint, ch) => {
+    const s = new Float32Array(r.nFrames);
+    for (let f = 0; f < r.nFrames; f++) s[f] = r.data[f * r.nJoints * r.nChannels + joint * r.nChannels + ch];
+    return dipFillGaps(s);
+  };
+  const noseY = read(J.nose, r.yIdx);
+  const cols = [read(J.lSh, r.xIdx), read(J.lSh, r.yIdx), read(J.rSh, r.xIdx), read(J.rSh, r.yIdx),
+                read(J.lHip, r.xIdx), read(J.lHip, r.yIdx), read(J.rHip, r.xIdx), read(J.rHip, r.yIdx)];
+  if (!noseY || cols.some(c => !c)) return null;
+  const [lsx, lsy, rsx, rsy, lhx, lhy, rhx, rhy] = cols;
+
+  const pts = r.pts, t0 = Number(pts[0]), tEnd = Number(pts[pts.length - 1]);
+  const n = Math.floor((tEnd - t0) * DIP_GRID_FPS) + 1;
+  const torsoRaw = new Float32Array(n), dropNum = new Float32Array(n);
+  let f = 0;
+  for (let i = 0; i < n; i++) {
+    const t = t0 + i / DIP_GRID_FPS;
+    while (f < pts.length - 2 && pts[f + 1] <= t) f++;
+    const span = pts[f + 1] - pts[f];
+    const w = span > 0 ? Math.min(1, Math.max(0, (t - pts[f]) / span)) : 0;
+    const lerp = (s) => s[f] + (s[f + 1] - s[f]) * w;
+    const shx = (lerp(lsx) + lerp(rsx)) / 2, shy = (lerp(lsy) + lerp(rsy)) / 2;
+    const hx = (lerp(lhx) + lerp(rhx)) / 2, hy = (lerp(lhy) + lerp(rhy)) / 2;
+    torsoRaw[i] = Math.hypot(shx - hx, shy - hy);
+    dropNum[i] = lerp(noseY) - hy;
+  }
+  const torso = dipRollingMedian(torsoRaw, dipOddWindow(DIP_TORSO_MEDIAN_S));
+  const drop = new Float32Array(n);
+  for (let i = 0; i < n; i++) { torso[i] = Math.max(torso[i], 1e-4); drop[i] = dropNum[i] / torso[i]; }
+  const base = dipRollingMedian(drop, dipOddWindow(DIP_BASELINE_S));
+  const dev = new Float32Array(n);
+  for (let i = 0; i < n; i++) dev[i] = drop[i] - base[i];
+  return { t0, n, dev, torso };
+}
+
+function noseDipAt(round, t) {
+  const d = round.dip;
+  if (!d) return null;
+  const i = Math.round((t - d.t0) * DIP_GRID_FPS);
+  if (i < 0 || i >= d.n) return null;
+  return { dev: d.dev[i], torso: d.torso[i] };
 }
 
 // ============================================================
@@ -298,7 +399,8 @@ function drawSkeletonFrame(t) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!state.skeleton.visible || !canvas.width || !canvas.height) return;
+  const showSkeleton = state.skeleton.visible, showDip = state.skeleton.showDip;
+  if ((!showSkeleton && !showDip) || !canvas.width || !canvas.height) return;
 
   const hit = findSkeletonFrame(t);
   if (!hit) return;
@@ -313,6 +415,79 @@ function drawSkeletonFrame(t) {
   const visibility = (j) => r.visIdx < 0 ? 1 : at(j, r.visIdx);
   const px = (j) => [at(j, r.xIdx) * W, at(j, r.yIdx) * H];
 
+  if (showSkeleton) drawSkeletonBody(ctx, r, px, visibility, W, H);
+  if (showDip) drawNoseDip(ctx, r, px, t, W, H);
+}
+
+// When the stem turns orange. On "Heavy Bag … Session 2" John's rolls peak at
+// a median 0.16 (IQR 0.10–0.25) while one frame in ten sits above 0.08 anyway,
+// so 0.10 lights most rolls without flickering through ordinary bobbing.
+// Ducks (0.12) and slips (0.09) dip too — this is a cue, not a roll detector.
+const DIP_ACTIVE = 0.10;
+
+// Where the nose has been sitting (the 2 s baseline) as a short dashed rule,
+// a stem from there to where the nose is now, and the dip in torsos beside
+// it. The stem and figure turn orange once the head is actually going down.
+function drawNoseDip(ctx, r, px, t, W, H) {
+  const d = noseDipAt(r, t);
+  if (!d) return;
+  const [nx, ny] = px(DIP_JOINTS.nose);
+  if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+  const by = ny - d.dev * d.torso * H;
+  const half = Math.max(W / 60, d.torso * H * 0.35);
+  const active = d.dev >= DIP_ACTIVE;
+  const tint = active ? '255, 159, 10' : '255, 255, 255';
+  const scale = Math.max(1, H / 720);
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.setLineDash([4 * scale, 3 * scale]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.lineWidth = 1.5 * scale;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 3 * scale;
+  ctx.beginPath();
+  ctx.moveTo(nx - half, by);
+  ctx.lineTo(nx + half, by);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (Math.abs(ny - by) > 1) {
+    ctx.strokeStyle = `rgba(${tint}, ${active ? 0.95 : 0.6})`;
+    ctx.lineWidth = 2.5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(nx, by);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  const arrow = d.dev >= 0 ? '↓' : '↑';
+  const value = `${arrow} ${Math.abs(d.dev).toFixed(2)}`;
+  const unit = ' torso';
+  const fs = Math.round(12 * scale);
+  ctx.font = `600 ${fs}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
+  const vw = ctx.measureText(value).width;
+  ctx.font = `500 ${Math.round(fs * 0.85)}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
+  const uw = ctx.measureText(unit).width;
+  const padX = 7 * scale, h = fs + 9 * scale, w = vw + uw + padX * 2;
+  let x = nx + half + 6 * scale;
+  if (x + w > W - 4) x = nx - half - 6 * scale - w;
+  const y = Math.max(4, Math.min(H - h - 4, (by + ny) / 2 - h / 2));
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${fs}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = active ? 'rgb(255, 179, 64)' : 'rgba(255, 255, 255, 0.95)';
+  ctx.fillText(value, x + padX, y + h / 2);
+  ctx.font = `500 ${Math.round(fs * 0.85)}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.fillText(unit, x + padX + vw, y + h / 2);
+  ctx.restore();
+}
+
+function drawSkeletonBody(ctx, r, px, visibility, W, H) {
   drawSkeletonVerticalGuide(ctx, px, r.nJoints, H);
   drawSkeletonHorizontalGuide(ctx, px, r.nJoints, W);
 
@@ -362,9 +537,15 @@ function setSkeletonStatus(kind, text) {
 
 function setSkeletonToggleLabel() {
   const btn = document.getElementById('btn-toggle-skeleton');
-  if (!btn) return;
-  btn.textContent = state.skeleton.visible ? 'Hide' : 'Show';
-  btn.classList.toggle('speed-active', state.skeleton.visible);
+  if (btn) {
+    btn.textContent = state.skeleton.visible ? 'Hide' : 'Show';
+    btn.classList.toggle('speed-active', state.skeleton.visible);
+  }
+  const dip = document.getElementById('btn-toggle-dip');
+  if (dip) {
+    dip.classList.toggle('speed-active', state.skeleton.showDip);
+    dip.setAttribute('aria-pressed', String(state.skeleton.showDip));
+  }
 }
 
 // Drops whatever skeleton data was picked for the PREVIOUS video — a wrong-
@@ -379,6 +560,8 @@ function resetSkeletonState() {
   if (nameEl) nameEl.textContent = 'No skeletons loaded';
   const toggleBtn = document.getElementById('btn-toggle-skeleton');
   if (toggleBtn) toggleBtn.hidden = true;
+  const dipBtn = document.getElementById('btn-toggle-dip');
+  if (dipBtn) dipBtn.hidden = true;
   const addMoreBtn = document.getElementById('btn-add-more-skeletons');
   if (addMoreBtn) addMoreBtn.hidden = true;
   setSkeletonStatus(null, '');
@@ -406,6 +589,8 @@ function applySkeletonLoadResult({ rounds, incomplete, invalid, invalidReasons }
     state.skeleton.visible = true;
   }
   const skipped = incomplete + invalid;
+  const dipBtn = document.getElementById('btn-toggle-dip');
+  if (dipBtn) dipBtn.hidden = !state.skeleton.rounds.some(r => r.dip);
   if (!state.skeleton.rounds.length) {
     if (nameEl) nameEl.textContent = 'No skeletons loaded';
     setSkeletonStatus('err', skipped
@@ -449,6 +634,13 @@ function setupSkeletonLoader() {
 
   toggleBtn?.addEventListener('click', () => {
     state.skeleton.visible = !state.skeleton.visible;
+    setSkeletonToggleLabel();
+    drawSkeletonFrame(document.getElementById('video-player')?.currentTime || 0);
+  });
+
+  document.getElementById('btn-toggle-dip')?.addEventListener('click', () => {
+    state.skeleton.showDip = !state.skeleton.showDip;
+    try { localStorage.setItem('noseDipVisible', String(state.skeleton.showDip)); } catch (_) {}
     setSkeletonToggleLabel();
     drawSkeletonFrame(document.getElementById('video-player')?.currentTime || 0);
   });

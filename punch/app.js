@@ -221,6 +221,9 @@ Object.assign(state, {
   // pasting makes a genuinely new label (own id, own punch_uuid), not a
   // second reference to the one that was copied. See copyHighlightedLabel().
   clipboardLabel: null,
+  // Admin only: the labeler whose lane was clicked last — where Ctrl+V lands.
+  // A display name (foreignOwnerName), null = the copied row's own owner.
+  activeLaneOwner: null,
   roundActive: false,
   unsureFilter: false,
   // Other labelers' punch/defense rows are fetched every load (see
@@ -2270,7 +2273,10 @@ function highlightLabel(label) {
 // pushUndo() — to what's actually a labeling action.
 // ============================================================
 function copyHighlightedLabel() {
-  const label = state.highlightedLabel;
+  copyLabel(state.highlightedLabel);
+}
+
+function copyLabel(label) {
   if (!label || label.isRoundMarker) return;
   // sheetName rides along so admin's paste can land on the SAME owner's
   // sheet this was copied from — see pasteLabelAtPlayhead(). Undefined for
@@ -2281,7 +2287,41 @@ function copyHighlightedLabel() {
     punch: label.punch, angle: label.angle, duration: label.end - label.start,
     sheetName: label.foreign ? label.sheetName : null,
   };
+  refreshLaneTarget();
   showToast(`Copied: ${punchLabel(label.punch)}`, 'info');
+}
+
+// A lane whose rows live on a real labeler sheet — the only kind admin can
+// paste or move onto (not a prediction model's lane, not admin's own).
+function writableLaneOwner(owner) {
+  if (!owner || !visibleForeignOwners().includes(owner)) return null;
+  return sheetNameForOwner(owner) ? owner : null;
+}
+
+function setActiveLaneOwner(owner) {
+  if (!state.isAdmin) return;
+  state.activeLaneOwner = owner || null;
+  refreshLaneTarget();
+}
+
+// The ring only means something once there is a copy to paste.
+function refreshLaneTarget() {
+  const target = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
+  document.querySelectorAll('#seg-lanes .seg-lane').forEach(lane => {
+    lane.classList.toggle('lane-target', !!target && lane.dataset.owner === target);
+  });
+}
+
+function deleteHighlightedLabel() {
+  const label = state.highlightedLabel;
+  const idx = label ? state.labels.indexOf(label) : -1;
+  if (idx === -1) return false;
+  if (refuseForeign(label)) return true;
+  state.highlightedLabel = null;
+  const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
+  deleteLabel(idx);
+  showToast(`Deleted ${label.isRoundMarker ? 'round marker' : punchLabel(label.punch)}${owner} — Z to undo`, 'info');
+  return true;
 }
 
 function cutHighlightedLabel() {
@@ -2299,26 +2339,29 @@ function cutHighlightedLabel() {
 // since "paste" here means "make another one of these, now", the same way
 // captureTimestamp() makes a fresh one from wherever the video is paused.
 // Duration is preserved from the copy so a repeated combo keeps its shape.
-function pasteLabelAtPlayhead() {
+// opts.time pastes somewhere other than the playhead (the lane's right-click
+// "Paste here"); opts.owner names the target lane for admin.
+function pasteLabelAtPlayhead(opts = {}) {
   if (state.isAnalyst) {
     showToast('View only — Analyst mode cannot add labels', 'error');
     return;
   }
   const clip = state.clipboardLabel;
   if (!clip) return;
-  // Admin never authors its own moves (see captureTimestamp()) — but pasting
-  // a COPY of an existing John/Arianne move back onto that SAME owner's
-  // timeline is just correcting/extending their work, the same way editing
-  // or dragging one of their rows already is. copyHighlightedLabel() only
-  // fills in clip.sheetName when what was copied was a real foreign row, so
-  // this is the one gate: no sheetName means either a normal own-label copy
-  // (fine — admin has none of those) or a prediction (never a real sheet).
-  if (state.isAdmin && !clip.sheetName) {
-    showToast('Admin can only paste onto John’s or Arianne’s timeline — copy an existing move from one of their lanes first.', 'error');
-    return;
+  // Admin never authors a move of its own (see captureTimestamp()); a paste
+  // always lands on a labeler's sheet: the lane picked (clicked, or right-
+  // clicked), else the lane the copy came from.
+  let targetSheet = null;
+  if (state.isAdmin) {
+    const owner = writableLaneOwner(opts.owner !== undefined ? opts.owner : state.activeLaneOwner);
+    targetSheet = owner ? sheetNameForOwner(owner) : clip.sheetName;
+    if (!targetSheet) {
+      showToast('Click a labeler’s timeline first, then paste — Admin has no timeline of its own.', 'error');
+      return;
+    }
   }
   const video = document.getElementById('video-player');
-  const start = video.currentTime;
+  const start = Number.isFinite(opts.time) ? opts.time : video.currentTime;
   const label = {
     id: null,
     punch_uuid: crypto.randomUUID(),
@@ -2329,7 +2372,7 @@ function pasteLabelAtPlayhead() {
     videoName: normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName,
     timestamp: new Date().toISOString(),
   };
-  if (state.isAdmin && clip.sheetName) {
+  if (targetSheet) {
     // Marks it as the owner's row from the moment it's created, so it
     // renders in their lane and routes through the same admin-redirect
     // (foreignOwnerLabelerParam) every edit/delete on a foreign row uses —
@@ -2338,7 +2381,7 @@ function pasteLabelAtPlayhead() {
     // move, but their own paste must still land on their OWN sheet, not
     // silently redirect into someone else's the way admin's is allowed to.
     label.foreign = true;
-    label.sheetName = clip.sheetName;
+    label.sheetName = targetSheet;
   }
   state.labels.push(label);
   pushUndo({
@@ -2355,7 +2398,8 @@ function pasteLabelAtPlayhead() {
   });
   renderLabels();
   pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
-  showToast(`Pasted: ${punchLabel(label.punch)} at ${formatTime(label.start)}`, 'success');
+  const onto = targetSheet ? ` onto ${foreignOwnerName(label)}’s timeline` : '';
+  showToast(`Pasted: ${punchLabel(label.punch)}${onto} at ${formatTime(label.start)}`, 'success');
 }
 
 // The real sheet name behind a lane's display owner — e.g. "John" ->
@@ -4398,6 +4442,13 @@ function setupKeyboardShortcuts() {
           pasteLabelAtPlayhead();
         }
         break;
+      // The highlighted row. Admin can remove anyone's; isForeignLabel()
+      // refuses the rest, same as the row's ×.
+      case 'Delete':
+      case 'Backspace':
+        if (e.ctrlKey || e.metaKey || e.altKey) break;
+        if (deleteHighlightedLabel()) e.preventDefault();
+        break;
 
       // Numpad: plain = head punch, Shift = body punch
       case 'Numpad1': selectPunch(e.shiftKey ? 'jab_body' : 'jab_head'); break;
@@ -4557,6 +4608,7 @@ function buildSegLanes(container, markersLayer, overlay) {
   if (markersLayer) container.appendChild(markersLayer);
 
   const lanes = new Map();
+  const pasteTarget = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
   const addPair = (owner) => {
     for (const bucket of buckets) {
       const lane = document.createElement('div');
@@ -4565,7 +4617,8 @@ function buildSegLanes(container, markersLayer, overlay) {
       // rather than removed: it still marks where "you" would be, same
       // position every video, just visibly not a place moves live.
       lane.className = 'seg-lane' + (owner ? ' lane-foreign' : ' lane-own')
-        + (!owner && state.isAdmin ? ' lane-admin-empty' : '');
+        + (!owner && state.isAdmin ? ' lane-admin-empty' : '')
+        + (owner && owner === pasteTarget ? ' lane-target' : '');
       lane.dataset.bucket = bucket;
       const bucketName = bucket === 'offense' ? 'Offense' : 'Defense';
       // With one bucket on screen the tab already says which it is, so the

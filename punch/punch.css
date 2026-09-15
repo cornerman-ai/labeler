@@ -511,6 +511,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font: inherit; text-align: left;
 }
 .ctx-menu .menu-item-danger:hover { color: var(--no); background: var(--fill-2); }
+.ctx-sep { height: 1px; margin: 5px 10px; background: var(--line); }
 
 /* ── video source ─────────────────────────────────────────────────────────── */
 /* What this video IS — the local file AND the Drive link that keys the
@@ -1146,6 +1147,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background-color: var(--fill);
 }
 .seg-lane.lane-admin-empty::before { color: var(--ink-dim); }
+/* Admin's paste target — the lane clicked last, once something is copied. */
+.seg-lane.lane-target {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
 
 .seg-lane .seek-segment {
   position: absolute; top: 2px; height: 10px; border-radius: 3px;

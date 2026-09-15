@@ -874,23 +874,76 @@
   // #seg-lanes for the same reason setupSegmentEditing() is. Foreign strips
   // get no menu at all — same "look, don't touch" rule as dragging, and the
   // browser's own context menu shows instead.
+  // Rebuilt on every open: what it offers depends on the row (yours, a
+  // teammate's, a prediction), on who you are, and on what's been copied.
+  // A strip gets Highlight / Copy / Move to… / Delete; an empty spot on a lane
+  // gets "Paste here" at the time under the pointer.
   function setupSegmentContextMenu() {
-    const lanes = $('seg-lanes'), menu = $('seg-context-menu');
+    const lanes = $('seg-lanes'), menu = $('seg-context-menu'), seekBar = $('seek-bar');
     if (!lanes || !menu) return;
-    const btnHighlight = menu.querySelector('[data-action="highlight"]');
-    const btnDelete = menu.querySelector('[data-action="delete"]');
-    let targetIdx = null;
+    let ctx = null;
 
-    const close = () => { menu.hidden = true; targetIdx = null; };
+    const close = () => { menu.hidden = true; ctx = null; };
+    const item = (action, text, extra = {}) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'menu-item' + (extra.danger ? ' menu-item-danger' : '');
+      b.setAttribute('role', 'menuitem');
+      b.dataset.action = action;
+      if (extra.owner) b.dataset.owner = extra.owner;
+      b.textContent = text;
+      return b;
+    };
+    const sep = () => { const s = document.createElement('div'); s.className = 'ctx-sep'; s.setAttribute('role', 'separator'); return s; };
+
+    // Admin also clicks a lane to pick where Ctrl+V lands.
+    lanes.addEventListener('mousedown', (e) => {
+      if (!state.isAdmin || e.button !== 0) return;
+      const lane = e.target.closest('.seg-lane');
+      if (lane) setActiveLaneOwner(lane.dataset.owner || null);
+    });
 
     lanes.addEventListener('contextmenu', (e) => {
+      close();
+      if (state.isAnalyst) return;
+      const lane = e.target.closest('.seg-lane');
+      if (!lane) return;
+      const rows = [];
       const el = e.target.closest('.seek-segment');
-      if (!el) return;
-      const label = state.labels[+el.dataset.labelIdx];
-      if (!label || isForeignLabel(label)) return;
-      e.preventDefault();
-      targetIdx = +el.dataset.labelIdx;
 
+      if (el) {
+        const idx = +el.dataset.labelIdx, label = state.labels[idx];
+        if (!label) return;
+        const locked = isForeignLabel(label);
+        ctx = { idx, label };
+        rows.push(item('highlight', 'Highlight in Labels panel'));
+        if (!label.isRoundMarker) rows.push(item('copy', 'Copy'));
+        const owner = label.foreign ? foreignOwnerName(label) : null;
+        if (state.isAdmin && !locked && owner && !label.isRoundMarker) {
+          const targets = visibleForeignOwners().filter(o => o !== owner && writableLaneOwner(o));
+          if (targets.length) {
+            rows.push(sep());
+            targets.forEach(o => rows.push(item('move', `Move to ${o}’s timeline`, { owner: o })));
+          }
+        }
+        if (!locked) { rows.push(sep()); rows.push(item('delete', 'Delete', { danger: true })); }
+      } else {
+        const clip = state.clipboardLabel;
+        const duration = getTimelineDuration();
+        if (!clip || !duration) return;
+        const owner = lane.dataset.owner || null;
+        const ok = state.isAdmin ? writableLaneOwner(owner) : lane.classList.contains('lane-own');
+        if (!ok) return;
+        const r = seekBar.getBoundingClientRect();
+        const time = Math.max(0, Math.min(duration,
+          viewportPctToTime(((e.clientX - r.left) / r.width) * 100, duration)));
+        ctx = { owner, time };
+        if (state.isAdmin) setActiveLaneOwner(owner);
+        rows.push(item('paste', `Paste ${punchLabel(clip.punch)} here${state.isAdmin ? ` — ${owner}’s timeline` : ''}`));
+      }
+
+      e.preventDefault();
+      menu.replaceChildren(...rows);
       // Shown then measured then placed, all before the next paint — same
       // order setupSpeed()'s open() uses for the same reason: no flicker at
       // the wrong spot first.
@@ -900,13 +953,20 @@
       menu.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - mh - 8)) + 'px';
     });
 
-    btnHighlight.addEventListener('click', () => {
-      if (targetIdx !== null) highlightLabelInPanel(targetIdx);
+    menu.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-action]');
+      if (!b || !ctx) return;
+      const c = ctx;
       close();
-    });
-    btnDelete.addEventListener('click', () => {
-      if (targetIdx !== null) deleteLabel(targetIdx);
-      close();
+      if (b.dataset.action === 'paste') { pasteLabelAtPlayhead({ time: c.time, owner: c.owner }); return; }
+      if (b.dataset.action === 'copy') { copyLabel(c.label); return; }
+      // A sheet refresh may have landed while the menu was open; act on the
+      // row only if it is still there, at wherever it now sits.
+      const idx = state.labels.indexOf(c.label);
+      if (idx === -1) { showToast('That label was just refreshed — right-click it again', 'error'); return; }
+      if (b.dataset.action === 'highlight') highlightLabelInPanel(idx);
+      else if (b.dataset.action === 'move') reassignLabelOwner(c.label, b.dataset.owner);
+      else if (b.dataset.action === 'delete') deleteLabel(idx);
     });
 
     document.addEventListener('click', (e) => {
@@ -914,11 +974,11 @@
     });
     // A right-click elsewhere opens the BROWSER's menu on top of ours — that
     // one closing again fires no event we'd see, so without this ours would
-    // just sit there under it. Right-clicking a chip is exempt: the lanes
-    // listener above has already retargeted and repositioned this same menu
-    // by the time this one runs (bubble order puts #seg-lanes first).
+    // just sit there under it. The lanes are exempt: their listener above
+    // has already rebuilt or closed this menu by the time this one runs
+    // (bubble order puts #seg-lanes first).
     document.addEventListener('contextmenu', (e) => {
-      if (!menu.hidden && !e.target.closest('.seek-segment')) close();
+      if (!menu.hidden && !e.target.closest('#seg-lanes')) close();
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.hidden) close();

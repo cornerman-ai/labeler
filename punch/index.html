@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260915b">
+  <link rel="stylesheet" href="punch.css?v=20260915d">
 </head>
 <body>
   <div id="app">
@@ -213,6 +213,9 @@
         <button type="button" id="btn-add-more-skeletons" title="Load more round files without losing the ones already loaded" hidden
                 onclick="document.getElementById('skeleton-files').click()">+ Add more</button>
         <button type="button" id="btn-toggle-skeleton" title="Show/hide skeleton overlay" hidden>Show</button>
+        <!-- The roll model's head_drop_dev on the picture: how far the nose
+             sits below its 2 s baseline, in torsos. skeleton.js. -->
+        <button type="button" id="btn-toggle-dip" title="Show/hide how far the nose has dipped below where it was sitting (in torso lengths)" hidden>Nose dip</button>
         <span id="skeleton-status" class="field-status" hidden></span>
       </div>
 
@@ -455,10 +458,8 @@
                reaches the button — silently, since the menu still opens and
                looks fine. Confirmed broken when nested inside the wrapper;
                moved out 2026-09-11. -->
-          <div id="seg-context-menu" class="ctx-menu" role="menu" hidden>
-            <button type="button" class="menu-item" role="menuitem" data-action="highlight">Highlight in Labels panel</button>
-            <button type="button" class="menu-item menu-item-danger" role="menuitem" data-action="delete">Delete</button>
-          </div>
+          <!-- Filled on every open by setupSegmentContextMenu(). -->
+          <div id="seg-context-menu" class="ctx-menu" role="menu" hidden></div>
 
           <div id="controls-row">
             <!-- Transport. #btn-play and #btn-mute are left empty here: ui.js
@@ -652,11 +653,14 @@
       <div class="sc-row"><span>Cancel the move being built</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Undo your last action (add, delete, edit, or drag — punches and rounds alike)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Z</kbd></span></div>
       <div class="sc-row"><span>Copy / cut the highlighted punch</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>X</kbd></span></div>
-      <div class="sc-row"><span>Paste it at the playhead</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
+      <div class="sc-row"><span>Paste it at the playhead (Admin: onto the lane you clicked last)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
+      <div class="sc-row"><span>Paste at a spot on a lane</span><span class="sc-keys"><kbd>Right-click the lane</kbd></span></div>
+      <div class="sc-row"><span>Delete the highlighted punch (Admin: anyone&rsquo;s)</span><span class="sc-keys"><kbd>Delete</kbd> or <kbd>&#9003;</kbd></span></div>
 
       <p class="sc-sec">Fixing a label</p>
       <div class="sc-row"><span>Slide a punch along the timeline</span><span class="sc-keys"><kbd>Drag its strip</kbd></span></div>
       <div class="sc-row"><span>Stretch its start or end</span><span class="sc-keys"><kbd>Drag the strip&rsquo;s edge</kbd></span></div>
+      <div class="sc-row"><span>Admin: move it to another labeler&rsquo;s timeline</span><span class="sc-keys"><kbd>Drag onto their lane</kbd> or <kbd>Right-click</kbd></span></div>
       <div class="sc-row"><span>Abandon a drag</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Edit the type and times by hand</span><span class="sc-keys"><kbd>Click the row</kbd></span></div>
 
@@ -829,30 +833,30 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260915b"></script>
-  <script src="../shared/player.js?v=20260915b"></script>
-  <script src="skeleton.js?v=20260915b"></script>
+  <script src="../shared/labeler_name.js?v=20260915d"></script>
+  <script src="../shared/player.js?v=20260915d"></script>
+  <script src="skeleton.js?v=20260915d"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260915b"></script>
+  <script src="video-folder.js?v=20260915d"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260915b"></script>
-  <script src="predictions.js?v=20260915b"></script>
-  <script src="app.js?v=20260915b"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260915d"></script>
+  <script src="predictions.js?v=20260915d"></script>
+  <script src="app.js?v=20260915d"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260915b"></script>
+  <script src="problems.js?v=20260915d"></script>
   <!-- After app.js: reads _videoCatalog/fetchVideoCatalog()/visibleBuckets()/
        getTimelineDuration() from it. -->
-  <script src="prob-curve.js?v=20260915b"></script>
+  <script src="prob-curve.js?v=20260915d"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260915b"></script>
+  <script src="ui.js?v=20260915d"></script>
 </body>
 </html>
