@@ -198,7 +198,29 @@ const PUNCH_COLORS = {
   unsure:      '#8e8e93',
   round_start: '#1c7c33',
   round_end:   '#5a5a5f',
+  unusable_start: '#c92a2a',
+  unusable_end:   '#c92a2a',
 };
+
+// Boundary markers: a start and an end row, each an instant, paired into
+// spans. Rounds say where the take is; unusable spans say which stretch of it
+// can't be used (the skeleton tracked someone else, …). Every marker carries
+// `isRoundMarker: true` — that flag means "a boundary, not a move" and is what
+// keeps both kinds out of the lanes, the list count, copy/paste and problems.
+// Anything that needs to know WHICH kind reads markerKind().
+const MARKER_KINDS = {
+  round:    { start: 'round_start',    end: 'round_end',    name: 'Round' },
+  unusable: { start: 'unusable_start', end: 'unusable_end', name: 'Unusable' },
+};
+function markerKind(punch) {
+  for (const [kind, m] of Object.entries(MARKER_KINDS)) if (punch === m.start || punch === m.end) return kind;
+  return null;
+}
+function markerText(punch) {
+  const kind = markerKind(punch);
+  if (!kind) return punch;
+  return `${MARKER_KINDS[kind].name} ${punch === MARKER_KINDS[kind].start ? 'Start' : 'End'}`;
+}
 
 function getPunchColor(punchId) {
   return PUNCH_COLORS[punchId] || '#533483';
@@ -225,6 +247,7 @@ Object.assign(state, {
   // A display name (foreignOwnerName), null = the copied row's own owner.
   activeLaneOwner: null,
   roundActive: false,
+  unusableActive: false,   // an unusable_start with no end yet — X closes it
   unsureFilter: false,
   // Other labelers' punch/defense rows are fetched every load (see
   // mergeForeignPunchLabels) but stay folded away by default — this is just
@@ -2320,7 +2343,7 @@ function deleteHighlightedLabel() {
   state.highlightedLabel = null;
   const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
   deleteLabel(idx);
-  showToast(`Deleted ${label.isRoundMarker ? 'round marker' : punchLabel(label.punch)}${owner} — Z to undo`, 'info');
+  showToast(`Deleted ${label.isRoundMarker ? markerText(label.punch) : punchLabel(label.punch)}${owner} — Z to undo`, 'info');
   return true;
 }
 
@@ -2753,10 +2776,13 @@ async function pushLabelToSheet(label) {
   }
 }
 
+// Rounds (S/E) and unusable spans (X) alike — see MARKER_KINDS.
 function addRoundMarker(markerType) {
+  const kind = markerKind(markerType);
+  const kindWord = kind === 'unusable' ? 'unusable markers' : 'round markers';
   if (state.isAnalyst) {
-    showToast('View only — Analyst mode cannot add round markers', 'error');
-    return;
+    showToast(`View only — Analyst mode cannot add ${kindWord}`, 'error');
+    return false;
   }
   const video = document.getElementById('video-player');
   const time = video.currentTime;
@@ -2782,27 +2808,30 @@ function addRoundMarker(markerType) {
   if (state.isAdmin) {
     const owner = visibleForeignOwners()[0];
     if (!owner) {
-      showToast('Admin needs at least one labeler’s rows visible to add a round marker', 'error');
-      return;
+      showToast(`Admin needs at least one labeler’s rows visible to add ${kindWord}`, 'error');
+      return false;
     }
     const sheetName = sheetNameForOwner(owner);
-    if (!sheetName) { showToast('Cannot resolve sheet for ' + owner, 'error'); return; }
+    if (!sheetName) { showToast('Cannot resolve sheet for ' + owner, 'error'); return false; }
     label.foreign = true;
     label.sheetName = sheetName;
   }
   state.labels.push(label);
   pushUndo({
     label,
-    desc: 'Undid: ' + (markerType === 'round_start' ? 'Round Start' : 'Round End'),
+    desc: 'Undid: ' + markerText(markerType),
     undo: () => {
       const i = state.labels.indexOf(label);
       if (i === -1) return;
       state.labels.splice(i, 1);
-      // S/E flip state.roundActive BEFORE calling this — undoing the
+      // S/E (and X) flip the active flag BEFORE calling this — undoing the
       // marker has to undo that flip too, or S would refuse a moment later
       // claiming a round is already active that no longer has a start.
-      state.roundActive = markerType !== 'round_start';
-      localStorage.setItem('roundActive', String(state.roundActive));
+      if (kind === 'unusable') setUnusableActive(markerType !== MARKER_KINDS.unusable.start);
+      else {
+        state.roundActive = markerType !== 'round_start';
+        localStorage.setItem('roundActive', String(state.roundActive));
+      }
       updateRoundIndicator();
       renderLabels();
       if (label.id != null) deleteLabelFromSheet(label);
@@ -2811,6 +2840,7 @@ function addRoundMarker(markerType) {
   });
   renderLabels();
   pushRoundMarkerToSheet(label);
+  return true;
 }
 
 // Same outbox as pushLabelToSheet — a round boundary is as expensive to
@@ -3212,7 +3242,7 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
 
     const sheetLabels = (result.labels || []).map(l => {
       const punch = mapPunchType(l.punch);
-      const isRound = punch === 'round_start' || punch === 'round_end';
+      const isRound = !!markerKind(punch);
       return {
         id: l.id,
         punch_uuid: l.punch_uuid || '',
@@ -3429,11 +3459,11 @@ function countLabelBucket(labels) {
   // of the two you are looking at changes whether it is worth re-labelling.
   // Round markers are counted apart: they are structure, not moves, and
   // folding them into either bucket would overstate it.
-  const c = { total: 0, offense: 0, defense: 0, rounds: 0, other: 0 };
+  const c = { total: 0, offense: 0, defense: 0, rounds: 0, unusable: 0, other: 0 };
   for (const l of labels) {
     c.total++;
     if (l.isRoundMarker) {
-      c.rounds++;
+      if (markerKind(l.punch) === 'unusable') c.unusable++; else c.rounds++;
       continue;
     }
     const bucket = reportBucket(l.punch);
@@ -3451,6 +3481,7 @@ function fvdRow(who, c, strong) {
   const parts = [`<span class="fvd-off">${c.offense} offense</span>`,
                  `<span class="fvd-def">${c.defense} defense</span>`];
   if (c.rounds) parts.push(`<span class="fvd-rnd">${c.rounds} round mark${c.rounds === 1 ? '' : 's'}</span>`);
+  if (c.unusable) parts.push(`<span class="fvd-unu">${c.unusable} unusable mark${c.unusable === 1 ? '' : 's'}</span>`);
   if (c.other) parts.push(`<span class="fvd-oth">${c.other} other</span>`);
   const name = strong ? `<strong>${who}</strong>` : who;
   return `<div class="fvd-row">
@@ -3514,35 +3545,39 @@ function maybeShowForeignVideoPopup() {
 // edited or deleted from here. Own markers of the same type nearby win.
 function mergeForeignRoundMarkers(result, driveLink) {
   if (!Array.isArray(result.foreign_round_markers)) return;
-  for (const fm of result.foreign_round_markers) {
-    const t = typeof fm.startTime === 'number' ? fm.startTime : parseSheetTime(fm.startTime);
-    if (!Number.isFinite(t)) continue;
-    // A row Admin just added (addRoundMarker(), attributed by the backend
-    // to whoever labels this video most — see resolveMajorityLabelerSheet
-    // in apps_script/Code.js) comes back HERE, not in `labels`: Admin's own
-    // list is always empty. Adopt the still-local optimistic entry in place
-    // instead of pushing a duplicate, so it picks up `foreign`/`sheetName`
-    // and a later edit redirects to the right owner sheet
-    // (foreignOwnerLabelerParam()) instead of hitting "Admin has no sheet".
-    const existing = state.labels.find(l => l.isRoundMarker && !l.foreign &&
-      (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5));
-    if (existing) {
-      Object.assign(existing, { foreign: true, sheetName: fm.sheet, fromSheet: true, videoName: driveLink });
-      if (fm.id != null) existing.id = fm.id;
-      continue;
-    }
-    const dupe = state.labels.some(l =>
-      l.isRoundMarker && l.punch === fm.punch && Math.abs(l.start - t) < 0.5);
-    if (dupe) continue;
-    state.labels.push({
-      // `id` (and a real videoName, not null) only matter once an admin can
-      // write back to this row — see updateLabelInSheet/deleteLabelFromSheet
-      // and foreignOwnerLabelerParam(). Everyone else's UI never reads them.
-      id: fm.id != null ? fm.id : null, punch_uuid: '', punch: fm.punch, start: t, end: t,
-      videoName: driveLink, fromSheet: true, isRoundMarker: true,
-      foreign: true, sheetName: fm.sheet,
-    });
+  for (const fm of result.foreign_round_markers) mergeForeignMarker(fm, driveLink);
+}
+
+// One boundary row from another labeler's sheet, round or unusable.
+function mergeForeignMarker(raw, driveLink) {
+  const fm = Object.assign({}, raw, { punch: mapPunchType(raw.punch) });
+  const t = typeof fm.startTime === 'number' ? fm.startTime : parseSheetTime(fm.startTime);
+  if (!Number.isFinite(t)) return;
+  // A row Admin just added (addRoundMarker(), attributed by the backend
+  // to whoever labels this video most — see resolveMajorityLabelerSheet
+  // in apps_script/Code.js) comes back HERE, not in `labels`: Admin's own
+  // list is always empty. Adopt the still-local optimistic entry in place
+  // instead of pushing a duplicate, so it picks up `foreign`/`sheetName`
+  // and a later edit redirects to the right owner sheet
+  // (foreignOwnerLabelerParam()) instead of hitting "Admin has no sheet".
+  const existing = state.labels.find(l => l.isRoundMarker && !l.foreign &&
+    (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5));
+  if (existing) {
+    Object.assign(existing, { foreign: true, sheetName: fm.sheet, fromSheet: true, videoName: driveLink });
+    if (fm.id != null) existing.id = fm.id;
+    return;
   }
+  const dupe = state.labels.some(l =>
+    l.isRoundMarker && l.punch === fm.punch && Math.abs(l.start - t) < 0.5);
+  if (dupe) return;
+  state.labels.push({
+    // `id` (and a real videoName, not null) only matter once an admin can
+    // write back to this row — see updateLabelInSheet/deleteLabelFromSheet
+    // and foreignOwnerLabelerParam(). Everyone else's UI never reads them.
+    id: fm.id != null ? fm.id : null, punch_uuid: '', punch: fm.punch, start: t, end: t,
+    videoName: driveLink, fromSheet: true, isRoundMarker: true,
+    foreign: true, sheetName: fm.sheet,
+  });
 }
 
 // Punch/defense rows from OTHER labelers' sheets (list response
@@ -3556,6 +3591,8 @@ function mergeForeignRoundMarkers(result, driveLink) {
 function mergeForeignPunchLabels(result, driveLink) {
   if (!Array.isArray(result.foreign_punch_labels)) return;
   for (const fp of result.foreign_punch_labels) {
+    // A deployment older than the unusable markers sends them here, as moves.
+    if (markerKind(mapPunchType(fp.punch))) { mergeForeignMarker(fp, driveLink); continue; }
     const start = typeof fp.startTime === 'number' ? fp.startTime : parseSheetTime(fp.startTime);
     const end = typeof fp.endTime === 'number' ? fp.endTime : parseSheetTime(fp.endTime);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
@@ -3588,6 +3625,8 @@ function mapPunchType(sheetPunch) {
   const p = String(sheetPunch).toLowerCase().trim();
   if (p === 'round_start' || p === 'round start') return 'round_start';
   if (p === 'round_end' || p === 'round end') return 'round_end';
+  if (p === 'unusable_start' || p === 'unusable start') return 'unusable_start';
+  if (p === 'unusable_end' || p === 'unusable end') return 'unusable_end';
   if (PUNCH_TYPES.find(t => t.id === p)) return p;
   const byLabel = PUNCH_TYPES.find(t => t.label.toLowerCase() === p);
   if (byLabel) return byLabel.id;
@@ -3676,12 +3715,14 @@ function renderLabels() {
       // timeline's own round flags \u2014 see .round-mark in punch.css);
       // rm-foreign keeps it at the old muted, colourless look, since the
       // tint is reserved for a boundary this labeler can actually act on.
-      const isStart = label.punch === 'round_start';
+      const kind = markerKind(label.punch);
+      const isStart = label.punch === MARKER_KINDS[kind].start;
       const who = foreignOwnerName(label);
       entry.className = 'label-entry round-marker ' + (isStart ? 'rm-start' : 'rm-end') +
+        (kind === 'unusable' ? ' rm-unusable' : '') +
         (label.foreign && !state.isAdmin ? ' rm-foreign' : '');
       const icon = isStart ? '\u25B6' : '\u25A0';
-      const text = isStart ? 'Round Start' : 'Round End';
+      const text = markerText(label.punch);
       if (label.foreign && !state.isAdmin) {
         entry.innerHTML = `
           <span class="label-text">
@@ -3846,10 +3887,8 @@ const PROBLEM_MAX_MOVE_DURATION = 8;   // seconds — no real punch/defense move
 // used per-owner below so an overlap check never crosses between two
 // different people's independent round tracks.
 function pairRoundSpans(labels) {
-  const starts = labels.filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))
-    .sort((a, b) => a.start - b.start);
-  const ends = labels.filter(l => l.punch === 'round_end' || (l.isRoundMarker && l.punch?.includes?.('end')))
-    .sort((a, b) => a.start - b.start);
+  const starts = labels.filter(l => l.punch === 'round_start').sort((a, b) => a.start - b.start);
+  const ends = labels.filter(l => l.punch === 'round_end').sort((a, b) => a.start - b.start);
   return starts.map(s => {
     const e = ends.find(x => x.start > s.start);
     return { start: s.start, end: e ? e.start : Infinity, startLabel: s };
@@ -3994,7 +4033,7 @@ function openEditRoundMarker(idx) {
 
   entry.classList.add('editing');
 
-  const text = label.punch === 'round_start' ? 'Round Start' : 'Round End';
+  const text = markerText(label.punch);
 
   entry.innerHTML = `
     <div class="edit-form">
@@ -4031,7 +4070,7 @@ function saveEditRoundMarker(idx) {
   const before = { start: label.start, end: label.end };
   pushUndo({
     label,
-    desc: 'Undid edit: ' + (label.punch === 'round_start' ? 'Round Start' : 'Round End'),
+    desc: 'Undid edit: ' + markerText(label.punch),
     undo: () => {
       Object.assign(label, before);
       renderLabels();
@@ -4044,7 +4083,7 @@ function saveEditRoundMarker(idx) {
 
   entry.classList.remove('editing');
   renderLabels();
-  showToast('Round marker updated, syncing...', 'success');
+  showToast(`${markerText(label.punch)} updated, syncing...`, 'success');
   updateLabelInSheet(label).then(() => {
     showToast(`Synced #${label.id} to sheet`, 'info');
   });
@@ -4099,9 +4138,7 @@ function deleteLabel(idx) {
   if (refuseForeign(label)) return;
   pushUndo({
     label,
-    desc: 'Restored: ' + (label.isRoundMarker
-      ? (label.punch === 'round_start' ? 'Round Start' : 'Round End')
-      : punchLabel(label.punch)),
+    desc: 'Restored: ' + (label.isRoundMarker ? markerText(label.punch) : punchLabel(label.punch)),
     undo: () => {
       // The sheet delete below is a hard row-delete (see doGet's `delete`
       // action) — there's no row left to resurrect, so undo re-creates it
@@ -4433,6 +4470,9 @@ function setupKeyboardShortcuts() {
           if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
           e.preventDefault();
           cutHighlightedLabel();
+        } else if (!e.altKey && !e.shiftKey) {
+          e.preventDefault();
+          toggleUnusableMarker();
         }
         break;
       case 'KeyV':
@@ -4493,12 +4533,17 @@ function setupKeyboardShortcuts() {
 // separate round_start/round_end markers, and moving an edge means mutating
 // and saving whichever one of those it actually is.
 function roundSpansWithIdx() {
-  const marks = (which) => state.labels
+  return markerSpansWithIdx('round');
+}
+
+// Same pairing for either kind of boundary — see MARKER_KINDS.
+function markerSpansWithIdx(kind) {
+  const m = MARKER_KINDS[kind];
+  const marks = (punch) => state.labels
     .map((l, idx) => ({ l, idx }))
-    .filter(({ l }) => (l.punch === 'round_' + which || (l.isRoundMarker && l.punch?.includes?.(which)))
-                     && !isLabelerHidden(l))
+    .filter(({ l }) => l.punch === punch && !isLabelerHidden(l))
     .sort((a, b) => a.l.start - b.l.start);
-  const starts = marks('start'), ends = marks('end');
+  const starts = marks(m.start), ends = marks(m.end);
   return starts.map(s => {
     const e = ends.find(x => x.l.start > s.l.start);
     return { start: s.l.start, end: e ? e.l.start : Infinity, startIdx: s.idx, endIdx: e ? e.idx : null };
@@ -4530,10 +4575,31 @@ function syncRoundActiveFromLabels() {
   }
   state.roundActive = active;
   localStorage.setItem('roundActive', String(active));
+  const uStarts = state.labels.filter(l => l.punch === 'unusable_start').map(l => l.start);
+  const uEnds = state.labels.filter(l => l.punch === 'unusable_end').map(l => l.start);
+  setUnusableActive(uStarts.some(s => !uEnds.some(e => e > s)));
+  updateRoundIndicator();
+}
+
+function setUnusableActive(active) {
+  state.unusableActive = active;
+}
+
+// X: opens an unusable span at the playhead, or closes the open one.
+function toggleUnusableMarker() {
+  const next = !state.unusableActive;
+  setUnusableActive(next);
+  if (!addRoundMarker(next ? 'unusable_start' : 'unusable_end')) setUnusableActive(!next);
   updateRoundIndicator();
 }
 
 function updateRoundIndicator() {
+  const unusable = document.getElementById('unusable-indicator');
+  if (unusable) {
+    unusable.className = state.unusableActive ? 'unusable-active' : 'unusable-idle';
+    unusable.textContent = state.unusableActive ? 'Unusable — press X to end' : 'Press X to mark unusable';
+    unusable.onclick = toggleUnusableMarker;
+  }
   const indicator = document.getElementById('round-indicator');
   if (!indicator) return;
   if (state.roundActive) {
@@ -4600,11 +4666,14 @@ function buildSegLanes(container, markersLayer, overlay) {
   // of this container and innerHTML='' would take them with the lanes.
   const playhead = document.getElementById('playhead');
   const probLane = document.getElementById('prob-lane');
+  const unusableLayer = document.getElementById('unusable-markers');
+  if (unusableLayer && unusableLayer.parentNode === container) unusableLayer.remove();
   if (markersLayer && markersLayer.parentNode === container) markersLayer.remove();
   if (playhead && playhead.parentNode === container) playhead.remove();
   if (probLane && probLane.parentNode === container) probLane.remove();
   container.innerHTML = '';
-  // Rounds ribbon first — it reads as a header over the lanes it spans.
+  // Unusable over rounds, rounds over the lanes — headers for what they span.
+  if (unusableLayer) container.appendChild(unusableLayer);
   if (markersLayer) container.appendChild(markersLayer);
 
   const lanes = new Map();
@@ -4721,6 +4790,38 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
   }
 }
 
+// Unusable spans: their own ribbon directly above the rounds, shown only when
+// the video has one, and a red wash over the same stretch of the scrub track.
+// Spans carry the same data-start-idx/data-end-idx as a round span, so ui.js's
+// boundary dragging works on them unchanged.
+function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
+  if (!layer || !spans.length) return;
+  layer.hidden = false;
+  spans.forEach((r) => {
+    const l = timeToViewportPct(r.start, duration);
+    const rt = timeToViewportPct(r.end, duration);
+    if (rt >= 0 && l <= 100) {
+      const span = document.createElement('div');
+      span.className = 'round-span unusable-span';
+      span.style.left = Math.max(0, l) + '%';
+      span.style.width = Math.max(Math.min(100, rt) - Math.max(0, l), 0.4) + '%';
+      span.title = `Unusable — ${formatTime(r.start)} → ${formatTime(r.end)}`;
+      span.innerHTML = '<span class="round-span-label">Unusable</span>';
+      span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
+      span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
+      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; });
+      layer.appendChild(span);
+    }
+    if (scrubOverlay) {
+      const seg = document.createElement('div');
+      seg.className = 'seek-segment unusable-scrub';
+      seg.style.left = timeToScrubPct(r.start, duration) + '%';
+      seg.style.width = Math.max(timeToScrubPct(r.end, duration) - timeToScrubPct(r.start, duration), 0.2) + '%';
+      scrubOverlay.appendChild(seg);
+    }
+  });
+}
+
 // The lanes/minimap need SOME duration to turn a label's start/end into a
 // percentage — normally video.duration. But the sheet answers as soon as a
 // Drive link is pasted, well before a local video file is picked (the two
@@ -4759,8 +4860,10 @@ function renderTimelineOverlay() {
   // visible can change between two of them (a hide, a reorder, phase 2 of a
   // load landing).
   const laneMap = buildSegLanes(document.getElementById('seg-lanes'), markersLayer, overlay);
+  const unusableLayer = document.getElementById('unusable-markers');
   if (markersLayer) markersLayer.innerHTML = '';
   if (markersScrub) markersScrub.innerHTML = '';
+  if (unusableLayer) { unusableLayer.innerHTML = ''; unusableLayer.hidden = true; }
   if (!duration || duration <= 0) return;
 
   // One shared definition — see roundSpansWithIdx(). An unclosed round comes
@@ -4806,6 +4909,11 @@ function renderTimelineOverlay() {
   // tall — there is no room for a labelled span there), but they are
   // bottom-anchored stubs now rather than a full-height line.
   renderRoundStrip(markersLayer, markersScrub, rounds, duration, video);
+
+  const unusable = markerSpansWithIdx('unusable').map(r => ({
+    start: r.start, end: Number.isFinite(r.end) ? r.end : duration, startIdx: r.startIdx, endIdx: r.endIdx,
+  }));
+  renderUnusableStrip(unusableLayer, overlay, unusable, duration, video);
 
   updatePlayhead();
 
@@ -4933,13 +5041,14 @@ function updateVideoOverlay() {
   if (typeof updateProbReadout === 'function') updateProbReadout(t);
 
   const roundStarts = state.labels
-    .filter(l => l.punch === 'round_start' || (l.isRoundMarker && l.punch?.includes?.('start')))
+    .filter(l => l.punch === 'round_start')
     .map(l => l.start)
     .sort((a, b) => a - b);
   const roundEnds = state.labels
-    .filter(l => l.punch === 'round_end' || (l.isRoundMarker && l.punch?.includes?.('end')))
+    .filter(l => l.punch === 'round_end')
     .map(l => l.start)
     .sort((a, b) => a - b);
+  const insideUnusable = markerSpansWithIdx('unusable').some(u => t >= u.start && t <= u.end);
 
   const rounds = [];
   for (let i = 0; i < roundStarts.length; i++) {
@@ -4964,7 +5073,7 @@ function updateVideoOverlay() {
     t >= l.start && t <= l.end && !shouldHideByUnsure(l) && !shouldHideByType(l)
   );
 
-  const roundKey = currentRound ? 'R' + currentRound : 'out';
+  const roundKey = (currentRound ? 'R' + currentRound : 'out') + (insideUnusable ? '|U' : '');
   const key = roundKey + '|' + activeLabels.map(l => l.id).join(',') + '|' + state.unsureFilter + '|' + state.showForeign +
     '|' + [...state.typeFilter].join(',');
   if (overlay.dataset.activeKey === key) return;
@@ -4992,6 +5101,12 @@ function updateVideoOverlay() {
     // longer matched anything else on screen. See .round-in/.round-out.
     tag.className = 'video-overlay-tag ' + (insideRound ? 'round-in' : 'round-out');
     tag.textContent = insideRound ? 'Round ' + currentRound : 'Outside Round';
+    overlay.appendChild(tag);
+  }
+  if (insideUnusable) {
+    const tag = document.createElement('div');
+    tag.className = 'video-overlay-tag unusable-in';
+    tag.textContent = 'Unusable';
     overlay.appendChild(tag);
   }
 

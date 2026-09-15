@@ -1823,7 +1823,11 @@ function punchDirHeaderIndex(headerRow) {
 }
 
 // Round-marker labels in Combined Data — never labelable as punches.
-var NON_PUNCH_LABELS = ['round_start', 'round_end', 'rest_start', 'rest_end'];
+var NON_PUNCH_LABELS = ['round_start', 'round_end', 'rest_start', 'rest_end', 'unusable_start', 'unusable_end'];
+
+// Instant boundary rows (start === end) rather than moves: rounds, and the
+// unusable stretches the punch labeler marks with X.
+var BOUNDARY_LABELS = ['round_start', 'round_end', 'unusable_start', 'unusable_end'];
 
 // Round markers AND punch/defense rows for a video across every OTHER
 // labeler sheet + the frozen Combined Data Archive, in ONE pass per sheet.
@@ -1869,7 +1873,7 @@ function collectForeignRows(pss, video, ownSheetName) {
     // payload is caller-independent: one cache entry per video serves every
     // labeler (and Admin, whose sentinel sheet name matches nothing).
     if (row.sheet === ownSheetName) continue;
-    if (row.punch === 'round_start' || row.punch === 'round_end') {
+    if (BOUNDARY_LABELS.indexOf(row.punch) !== -1) {
       roundMarkers.push({ id: row.id, punch: row.punch, startTime: row.startTime, sheet: row.sheet });
     } else if (row.endTime !== null) {
       punchLabels.push({
@@ -2099,7 +2103,7 @@ function allVideosPunchLabels(pss) {
     if (cols.punch < 0 || cols.video < 0 || cols.start < 0 || cols.end < 0) continue;
     for (var r = 1; r < data.length; r++) {
       var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
-      if (!lbl || lbl === 'round_start' || lbl === 'round_end') continue;
+      if (!lbl || BOUNDARY_LABELS.indexOf(lbl) !== -1) continue;
       // A row with no end-time value is a round marker or an incomplete
       // write, not a move — skip it, matching collectForeignRows()'s
       // endTime !== null gate for punch labels.

@@ -18,6 +18,12 @@ Web-based video labeling tool for boxing punch annotation.
 - Labels are saved to Google Sheets via GET requests to the Apps Script web app
 - Sheet naming: "Labeled Data Software {N}" per labeler, "Combined Data" for merged view
 - All CRUD operations (list/add/update/delete) go through `doGet` with URL params
+- **Boundary markers** (punch labeler): `round_start`/`round_end` (S/E) and
+  `unusable_start`/`unusable_end` (X — a stretch that can't be used, e.g. the
+  skeleton tracked someone else) are instant rows (start = end) in the same
+  `punch_type` column, paired into spans. Both carry `isRoundMarker` on the page
+  ("a boundary, not a move"); `markerKind()` says which. Unusable spans get
+  their own ribbon above the rounds, shown only when a video has one.
 - **Admin mode** (punch labeler): type the name `admin`. Admin owns no rows
   (`list` answers empty, `add` is refused) — everything it sees arrives via
   `listForeign`, every labeler's rows in their own timeline lanes, editable

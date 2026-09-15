@@ -1040,6 +1040,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: color-mix(in srgb, var(--no) 32%, rgba(0,0,0,.55));
 }
 .video-overlay-tag.round-out:hover { background: color-mix(in srgb, var(--no) 40%, rgba(0,0,0,.75)); }
+.video-overlay-tag.unusable-in {
+  border-left-color: var(--no);
+  background: color-mix(in srgb, var(--no) 32%, rgba(0,0,0,.55));
+}
 
 /* ── timeline ────────────────────────────────────────────────────────────── */
 #video-controls {
@@ -1317,6 +1321,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 8.5px; font-weight: 700; letter-spacing: .03em;
   text-transform: uppercase; color: var(--accent-on-wash);
   white-space: nowrap; pointer-events: none;
+}
+
+/* Unusable spans: the same ribbon idiom one row up, in red and hatched — a
+   stretch to leave out, not a period of the take. */
+#unusable-markers { position: relative; height: 13px; flex: none; }
+#unusable-markers[hidden] { display: none; }
+.round-span.unusable-span {
+  background-color: var(--no-wash);
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, color-mix(in srgb, var(--no) 16%, transparent) 3px 6px);
+  border-left-color: var(--no); border-right-color: var(--no);
+}
+.round-span.unusable-span:hover { background-color: color-mix(in srgb, var(--no) 24%, transparent); }
+.round-span.unusable-span.dragging-round { background-color: color-mix(in srgb, var(--no) 32%, transparent); }
+.round-span.unusable-span .round-span-label { color: var(--no-on-wash); }
+.seek-segment.unusable-scrub {
+  opacity: 1; border-radius: 0;
+  background: color-mix(in srgb, var(--no) 45%, transparent);
 }
 
 /* The scrub overview keeps boundary ticks — it is 8px tall, with no room
@@ -1631,7 +1652,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
    surfaces (timelines, the Labels list, filters) are untouched. */
 body.analyst-mode #punch-panel,
 body.analyst-mode #cap,
-body.analyst-mode #round-indicator {
+body.analyst-mode #round-indicator,
+body.analyst-mode #unusable-indicator {
   opacity: .45; filter: grayscale(.4); pointer-events: none;
 }
 
@@ -1657,6 +1679,22 @@ body.analyst-mode #round-indicator {
   #round-indicator.round-active { animation: none; }
   #round-indicator { transition: none; }
 }
+/* The quieter sibling: most of a session has no unusable stretch open, so it
+   rests as a slim secondary control and only turns red while one is. */
+#unusable-indicator {
+  flex: none;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 32px; padding: 6px 12px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 590; text-align: center; cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+#unusable-indicator.unusable-idle { background: var(--fill); color: var(--ink-on-fill); }
+#unusable-indicator.unusable-idle:hover { color: var(--ink); background: var(--fill-2); }
+#unusable-indicator.unusable-active {
+  background: color-mix(in srgb, var(--no) 78%, black); color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--no) 22%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { #unusable-indicator { transition: none; } }
 
 /* The three-step capture flow, drawn from the ONE piece of state the page
    already publishes: the class on #btn-timestamp. app.js sets `.ready` in
@@ -1966,6 +2004,8 @@ button.ffm-row[aria-checked="true"]::before,
 .label-entry.round-marker .label-text strong { font-weight: 590; }
 .label-entry.round-marker.rm-start .label-text strong { color: var(--yes-on-wash); }
 .label-entry.round-marker.rm-end   .label-text strong { color: var(--accent-on-wash); }
+.label-entry.round-marker.rm-unusable { background: var(--no-wash); border-left-color: var(--no); }
+.label-entry.round-marker.rm-unusable .label-text strong { color: var(--no-on-wash); }
 /* --ink-on-fill, not plain --ink-dim: the wash backgrounds above pull it to
    4.1–4.2:1, just under the bar — same trap --ink-on-fill already exists to
    fix everywhere else a dim label sits on a tint instead of bare --card. */
@@ -2139,6 +2179,7 @@ kbd {
 .fvd-off::before { background: var(--no); }
 .fvd-def::before { background: var(--accent); }
 .fvd-rnd::before { background: var(--yes-solid); }
+.fvd-unu::before { background: var(--no); }
 .fvd-oth::before { background: var(--ink-dim); }
 .fvd-total {
   flex: none; font-size: 15px; font-weight: 640; color: var(--ink);
