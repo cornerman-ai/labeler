@@ -194,8 +194,11 @@ async function loadSkeletonFiles(fileList) {
 //   head_drop  = (nose_y − hip-mid_y) / torso        (image y grows down);
 //   dip        = head_drop − its rolling median over 2 s.
 // Positive = the nose is below where it has been sitting; units are torsos.
-// Image-normalized x/y throughout, as in the backend. Mirroring a southpaw
-// changes neither quantity, so there is no stance to know here.
+// The sideways number is the same thing on x — (nose_x − hip-mid_x) / torso
+// minus its 2 s median, geometric_baseline_mathe's lat_dev — signed as seen in
+// the picture (+ = right). The backend mirrors southpaws before this, which
+// only flips that sign; magnitudes are identical, so no stance is needed.
+// Image-normalized x/y throughout, as in the backend.
 // ============================================================
 const DIP_GRID_FPS = 30;
 const DIP_TORSO_MEDIAN_S = 1;
@@ -244,15 +247,15 @@ function computeNoseDip(r) {
     for (let f = 0; f < r.nFrames; f++) s[f] = r.data[f * r.nJoints * r.nChannels + joint * r.nChannels + ch];
     return dipFillGaps(s);
   };
-  const noseY = read(J.nose, r.yIdx);
+  const noseY = read(J.nose, r.yIdx), noseX = read(J.nose, r.xIdx);
   const cols = [read(J.lSh, r.xIdx), read(J.lSh, r.yIdx), read(J.rSh, r.xIdx), read(J.rSh, r.yIdx),
                 read(J.lHip, r.xIdx), read(J.lHip, r.yIdx), read(J.rHip, r.xIdx), read(J.rHip, r.yIdx)];
-  if (!noseY || cols.some(c => !c)) return null;
+  if (!noseY || !noseX || cols.some(c => !c)) return null;
   const [lsx, lsy, rsx, rsy, lhx, lhy, rhx, rhy] = cols;
 
   const pts = r.pts, t0 = Number(pts[0]), tEnd = Number(pts[pts.length - 1]);
   const n = Math.floor((tEnd - t0) * DIP_GRID_FPS) + 1;
-  const torsoRaw = new Float32Array(n), dropNum = new Float32Array(n);
+  const torsoRaw = new Float32Array(n), dropNum = new Float32Array(n), latNum = new Float32Array(n);
   let f = 0;
   for (let i = 0; i < n; i++) {
     const t = t0 + i / DIP_GRID_FPS;
@@ -264,14 +267,20 @@ function computeNoseDip(r) {
     const hx = (lerp(lhx) + lerp(rhx)) / 2, hy = (lerp(lhy) + lerp(rhy)) / 2;
     torsoRaw[i] = Math.hypot(shx - hx, shy - hy);
     dropNum[i] = lerp(noseY) - hy;
+    latNum[i] = lerp(noseX) - hx;
   }
   const torso = dipRollingMedian(torsoRaw, dipOddWindow(DIP_TORSO_MEDIAN_S));
-  const drop = new Float32Array(n);
-  for (let i = 0; i < n; i++) { torso[i] = Math.max(torso[i], 1e-4); drop[i] = dropNum[i] / torso[i]; }
-  const base = dipRollingMedian(drop, dipOddWindow(DIP_BASELINE_S));
-  const dev = new Float32Array(n);
-  for (let i = 0; i < n; i++) dev[i] = drop[i] - base[i];
-  return { t0, n, dev, torso };
+  const drop = new Float32Array(n), lat = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    torso[i] = Math.max(torso[i], 1e-4);
+    drop[i] = dropNum[i] / torso[i];
+    lat[i] = latNum[i] / torso[i];
+  }
+  const win = dipOddWindow(DIP_BASELINE_S);
+  const base = dipRollingMedian(drop, win), latBase = dipRollingMedian(lat, win);
+  const dev = new Float32Array(n), devX = new Float32Array(n);
+  for (let i = 0; i < n; i++) { dev[i] = drop[i] - base[i]; devX[i] = lat[i] - latBase[i]; }
+  return { t0, n, dev, devX, torso };
 }
 
 function noseDipAt(round, t) {
@@ -279,7 +288,7 @@ function noseDipAt(round, t) {
   if (!d) return null;
   const i = Math.round((t - d.t0) * DIP_GRID_FPS);
   if (i < 0 || i >= d.n) return null;
-  return { dev: d.dev[i], torso: d.torso[i] };
+  return { dev: d.dev[i], devX: d.devX[i], torso: d.torso[i] };
 }
 
 // ============================================================
@@ -419,71 +428,54 @@ function drawSkeletonFrame(t) {
   if (showDip) drawNoseDip(ctx, r, px, t, W, H);
 }
 
-// When the stem turns orange. On "Heavy Bag … Session 2" John's rolls peak at
-// a median 0.16 (IQR 0.10–0.25) while one frame in ten sits above 0.08 anyway,
-// so 0.10 lights most rolls without flickering through ordinary bobbing.
-// Ducks (0.12) and slips (0.09) dip too — this is a cue, not a roll detector.
+// When each number turns orange, both picked on "Heavy Bag … Session 2":
+// dip — John's rolls peak at a median 0.16 (IQR 0.10–0.25), one frame in ten
+//   sits above 0.08 anyway; ducks (0.12) and slips (0.09) dip too.
+// sideways — rolls peak at 0.17 (IQR 0.11–0.22), 7% of frames pass 0.15;
+//   ducks barely move sideways (0.08), slips 0.11.
+// Cues, not a roll detector.
 const DIP_ACTIVE = 0.10;
+const SHIFT_ACTIVE = 0.15;
 
-// Where the nose has been sitting (the 2 s baseline) as a short dashed rule,
-// a stem from there to where the nose is now, and the dip in torsos beside
-// it. The stem and figure turn orange once the head is actually going down.
+const DIP_FONT = '-apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif';
+
+// Beside the nose: how far it sits below (↓) and to the side of (← →, as seen
+// in the picture) its last-2-seconds position, in torsos.
 function drawNoseDip(ctx, r, px, t, W, H) {
   const d = noseDipAt(r, t);
   if (!d) return;
   const [nx, ny] = px(DIP_JOINTS.nose);
   if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
-  const by = ny - d.dev * d.torso * H;
-  const half = Math.max(W / 60, d.torso * H * 0.35);
-  const active = d.dev >= DIP_ACTIVE;
-  const tint = active ? '255, 159, 10' : '255, 255, 255';
+  const gap = Math.max(W / 60, d.torso * H * 0.35);
   const scale = Math.max(1, H / 720);
+  const fs = Math.round(12 * scale), unitFs = Math.round(fs * 0.85);
+
+  const parts = [
+    { text: `${d.dev >= 0 ? '↓' : '↑'} ${Math.abs(d.dev).toFixed(2)}`, font: `600 ${fs}px ${DIP_FONT}`,
+      color: d.dev >= DIP_ACTIVE ? 'rgb(255, 179, 64)' : 'rgba(255, 255, 255, 0.95)' },
+    { text: '   ', font: `600 ${fs}px ${DIP_FONT}` },
+    { text: `${d.devX >= 0 ? '→' : '←'} ${Math.abs(d.devX).toFixed(2)}`, font: `600 ${fs}px ${DIP_FONT}`,
+      color: Math.abs(d.devX) >= SHIFT_ACTIVE ? 'rgb(255, 179, 64)' : 'rgba(255, 255, 255, 0.95)' },
+    { text: ' torso', font: `500 ${unitFs}px ${DIP_FONT}`, color: 'rgba(255, 255, 255, 0.6)' },
+  ];
 
   ctx.save();
-  ctx.lineCap = 'round';
-  ctx.setLineDash([4 * scale, 3 * scale]);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.lineWidth = 1.5 * scale;
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  ctx.shadowBlur = 3 * scale;
-  ctx.beginPath();
-  ctx.moveTo(nx - half, by);
-  ctx.lineTo(nx + half, by);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  if (Math.abs(ny - by) > 1) {
-    ctx.strokeStyle = `rgba(${tint}, ${active ? 0.95 : 0.6})`;
-    ctx.lineWidth = 2.5 * scale;
-    ctx.beginPath();
-    ctx.moveTo(nx, by);
-    ctx.lineTo(nx, ny);
-    ctx.stroke();
-  }
-  ctx.shadowBlur = 0;
-
-  const arrow = d.dev >= 0 ? '↓' : '↑';
-  const value = `${arrow} ${Math.abs(d.dev).toFixed(2)}`;
-  const unit = ' torso';
-  const fs = Math.round(12 * scale);
-  ctx.font = `600 ${fs}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
-  const vw = ctx.measureText(value).width;
-  ctx.font = `500 ${Math.round(fs * 0.85)}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
-  const uw = ctx.measureText(unit).width;
-  const padX = 7 * scale, h = fs + 9 * scale, w = vw + uw + padX * 2;
-  let x = nx + half + 6 * scale;
-  if (x + w > W - 4) x = nx - half - 6 * scale - w;
-  const y = Math.max(4, Math.min(H - h - 4, (by + ny) / 2 - h / 2));
+  let textW = 0;
+  for (const p of parts) { ctx.font = p.font; p.w = ctx.measureText(p.text).width; textW += p.w; }
+  const padX = 7 * scale, h = fs + 9 * scale, w = textW + padX * 2;
+  let x = nx + gap;
+  if (x + w > W - 4) x = nx - gap - w;
+  const y = Math.max(4, Math.min(H - h - 4, ny - h / 2));
   ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.fill();
   ctx.textBaseline = 'middle';
-  ctx.font = `600 ${fs}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
-  ctx.fillStyle = active ? 'rgb(255, 179, 64)' : 'rgba(255, 255, 255, 0.95)';
-  ctx.fillText(value, x + padX, y + h / 2);
-  ctx.font = `500 ${Math.round(fs * 0.85)}px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.fillText(unit, x + padX + vw, y + h / 2);
+  let cx = x + padX;
+  for (const p of parts) {
+    if (p.color) { ctx.font = p.font; ctx.fillStyle = p.color; ctx.fillText(p.text, cx, y + h / 2); }
+    cx += p.w;
+  }
   ctx.restore();
 }
 
