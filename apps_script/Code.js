@@ -989,6 +989,11 @@ function withPunchWriteLock(fn) {
   try {
     return fn();
   } finally {
+    // Flush BEFORE releasing: Sheets buffers writes until the execution ends,
+    // so without this the next request can take the lock, read the tab
+    // without this row, and hand out the same nextId() — which is how two
+    // quick X presses left unusable_start and unusable_end sharing one id.
+    try { SpreadsheetApp.flush(); } catch (e) {}
     try { lock.releaseLock(); } catch (e) {}
   }
 }

@@ -3258,12 +3258,14 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
       };
     });
     for (const sl of sheetLabels) {
-      const isDuplicate = state.labels.some(ll =>
+      // Only against this labeler's own rows: ids restart in every labeler's
+      // tab, so a teammate's row can carry the same number as one of mine.
+      const isDuplicate = state.labels.some(ll => !ll.foreign && (
         ll.id === sl.id ||
         (ll.punch === sl.punch &&
          Math.abs(ll.start - sl.start) < 0.01 &&
          Math.abs(ll.end - sl.end) < 0.01)
-      );
+      ));
       if (!isDuplicate) state.labels.push(sl);
     }
 
@@ -3561,7 +3563,9 @@ function mergeForeignMarker(raw, driveLink) {
   // instead of pushing a duplicate, so it picks up `foreign`/`sheetName`
   // and a later edit redirects to the right owner sheet
   // (foreignOwnerLabelerParam()) instead of hitting "Admin has no sheet".
-  const existing = state.labels.find(l => l.isRoundMarker && !l.foreign &&
+  // Admin only: everyone else's un-foreign rows are their OWN, and a
+  // teammate's row can share an id with one of them (ids are per tab).
+  const existing = state.isAdmin && state.labels.find(l => l.isRoundMarker && !l.foreign &&
     (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5));
   if (existing) {
     Object.assign(existing, { foreign: true, sheetName: fm.sheet, fromSheet: true, videoName: driveLink });
@@ -3603,7 +3607,8 @@ function mergeForeignPunchLabels(result, driveLink) {
     // list is always empty. Adopt the still-local optimistic entry in place
     // instead of pushing a duplicate — same reasoning as
     // mergeForeignRoundMarkers() above.
-    const existing = state.labels.find(l => !l.isRoundMarker && !l.foreign &&
+    // Admin only — see the same guard in mergeForeignMarker().
+    const existing = state.isAdmin && state.labels.find(l => !l.isRoundMarker && !l.foreign &&
       (l.id != null && fp.id != null
         ? l.id === fp.id
         : l.punch === mapPunchType(fp.punch) && Math.abs(l.start - start) < 0.01 && Math.abs(l.end - end) < 0.01));

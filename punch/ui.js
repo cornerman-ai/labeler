@@ -570,14 +570,56 @@
       // the same "can still look, can't touch" the read-only round-marker
       // rows give you in the side panel.
       if (!label || isForeignLabel(label)) return;
-      drag = { idx, zone: zoneOf(el, e.clientX), grab: timeAt(e.clientX),
+      const zone = zoneOf(el, e.clientX);
+      drag = { idx, zone, grab: timeAt(e.clientX),
                start0: label.start, end0: label.end,
                startClientX: e.clientX, startClientY: e.clientY };
+      // Admin Alt+drag: leave the original where it is and drag a copy of it —
+      // same lane or any labeler's lane. The copy is saved on drop, never
+      // before, so letting go without moving leaves nothing behind.
+      if (state.isAdmin && e.altKey && zone === 'move' && !label.isRoundMarker) {
+        const copy = {
+          id: null, punch_uuid: crypto.randomUUID(), punch: label.punch, angle: label.angle || '',
+          start: label.start, end: label.end, videoName: label.videoName,
+          foreign: label.foreign, sheetName: label.sheetName, isRoundMarker: false,
+          timestamp: new Date().toISOString(),
+        };
+        state.labels.push(copy);
+        drag.idx = state.labels.length - 1;
+        drag.duplicate = true;
+        lanes.classList.add('drag-copy');
+        renderTimelineOverlay();
+      }
       moved = false;
-      el.classList.add('dragging');
+      (lanes.querySelector('.seek-segment[data-label-idx="' + drag.idx + '"]') || el).classList.add('dragging');
       e.preventDefault();     // no text selection, no native drag
       e.stopPropagation();    // and the wrapper must not seek out from under us
     });
+
+    // Admin, whole-strip drags: the labeler lane the pointer is over, when a
+    // drop there would change the row's owner (same offense/defense bucket,
+    // a real labeler's sheet). Lanes clip their strips, so this is the only
+    // sign during the drag of where it will land.
+    const dropOwnerAt = (clientX, clientY, label) => {
+      if (!state.isAdmin || !drag || drag.zone !== 'move' || !label) return null;
+      // Rectangles, not elementFromPoint: a tooltip or popup over the lanes
+      // must not swallow the drop.
+      const laneEl = [...lanes.querySelectorAll('.seg-lane')].find(l => {
+        const r = l.getBoundingClientRect();
+        return clientX >= r.left && clientX <= r.right && clientY >= r.top - 1.5 && clientY <= r.bottom + 1.5;
+      });
+      if (!laneEl || !laneEl.dataset.owner || laneEl.dataset.bucket !== punchBucket(label.punch)) return null;
+      const owner = writableLaneOwner(laneEl.dataset.owner);
+      return owner && owner !== foreignOwnerName(label) ? owner : null;
+    };
+    const markDropLane = (owner, bucket) => {
+      lanes.querySelectorAll('.seg-lane').forEach(l => l.classList.toggle('lane-drop',
+        !!owner && l.dataset.owner === owner && l.dataset.bucket === bucket));
+    };
+    const removeCopy = () => {
+      const i = state.labels.findIndex((l, k) => k === drag.idx && l.id == null);
+      if (i !== -1) state.labels.splice(i, 1);
+    };
 
     window.addEventListener('mousemove', (e) => {
       if (!drag) return;
@@ -604,6 +646,12 @@
       renderTimelineOverlay();
       const el = lanes.querySelector('.seek-segment[data-label-idx="' + drag.idx + '"]');
       if (el) { el.classList.add('dragging'); showTip(el, label); }
+      const bucket = punchBucket(label.punch), target = dropOwnerAt(e.clientX, e.clientY, label);
+      markDropLane(target, bucket);
+      // The strip follows the pointer into that lane now, so time and lane are
+      // chosen in one motion; the row itself changes owner only on drop.
+      const targetLane = target && lanes.querySelector(`.seg-lane[data-owner="${CSS.escape(target)}"][data-bucket="${bucket}"]`);
+      if (el && targetLane) targetLane.appendChild(el);
     });
 
     window.addEventListener('mouseup', (e) => {
@@ -620,19 +668,36 @@
       // strip is drawn in — a lane clips its own strips (.seg-lane overflow:
       // hidden), so the strip never visually leaves its row while dragging;
       // this is the only signal a cross-lane drop has.
-      let targetOwner = null;
-      if (state.isAdmin && label && moved && drag.zone === 'move') {
-        const dropEl = document.elementFromPoint(e.clientX, e.clientY);
-        const laneEl = dropEl && dropEl.closest('.seg-lane');
-        if (laneEl && laneEl.dataset.owner && laneEl.dataset.bucket === punchBucket(label.punch)) {
-          const currentOwner = foreignOwnerName(label);
-          if (laneEl.dataset.owner !== currentOwner) targetOwner = laneEl.dataset.owner;
-        }
-      }
+      const targetOwner = moved ? dropOwnerAt(e.clientX, e.clientY, label) : null;
+      const duplicate = !!drag.duplicate;
 
+      if (duplicate && !moved) removeCopy();
       drag = null;
+      lanes.classList.remove('drag-copy');
       lanes.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+      markDropLane(null);
       hideTip();
+
+      if (duplicate) {
+        if (!moved) { renderTimelineOverlay(); return; }
+        if (targetOwner) label.sheetName = sheetNameForOwner(targetOwner);
+        pushUndo({
+          label,
+          desc: 'Undid duplicate: ' + punchLabel(label.punch),
+          undo: () => {
+            const i = state.labels.indexOf(label);
+            if (i === -1) return;
+            state.labels.splice(i, 1);
+            renderLabels();
+            if (label.id != null) deleteLabelFromSheet(label);
+            else label._pendingCancel = true;
+          },
+        });
+        renderLabels();
+        pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
+        showToast(`Duplicated ${punchLabel(label.punch)} onto ${foreignOwnerName(label)}’s timeline at ${formatTime(label.start)}`, 'success');
+        return;
+      }
 
       if (targetOwner) {
         // The drag's own retiming (if any) is already baked into
@@ -693,8 +758,11 @@
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !drag) return;
       const label = state.labels[drag.idx];
-      if (label) { label.start = drag.start0; label.end = drag.end0; }
+      if (drag.duplicate) removeCopy();
+      else if (label) { label.start = drag.start0; label.end = drag.end0; }
       drag = null; moved = false;
+      lanes.classList.remove('drag-copy');
+      markDropLane(null);
       lanes.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
       hideTip(); renderLabels();
       e.stopPropagation();   // and do not also cancel a half-built label
