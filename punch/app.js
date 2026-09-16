@@ -3681,24 +3681,33 @@ function renderLabels() {
   count.textContent = `(${visible.length})`;
 
   // Capture open editors before wiping (keyed by array index —
-  // unique within a render call, unlike label.id which can collide)
+  // unique within a render call, unlike label.id which can collide).
+  // Only what the user actually TYPED is kept: a field still equal to what
+  // the editor was opened with (defaultValue = the value attribute
+  // openEditLabel() wrote) comes back null, so the reopened editor shows
+  // the label's CURRENT value instead. That matters when the label moved
+  // underneath an open editor — a timeline drag saves the new times, then
+  // re-renders here; keeping the pre-drag text would make the next Save
+  // click quietly write the old times back over the drag (2026-09-16).
+  const typed = (el) => (el && el.value !== el.defaultValue) ? el.value : null;
+  const chosen = (sel) => {
+    if (!sel) return null;
+    const def = Array.from(sel.options).find(o => o.defaultSelected);
+    return (def && sel.value !== def.value) ? sel.value : null;
+  };
   const openEditors = {};
   log.querySelectorAll('.label-entry.editing').forEach(entry => {
     const idx = parseInt(entry.dataset.labelIdx);
     const label = state.labels[idx];
     if (!label) return;
     if (label.isRoundMarker) {
-      const startInput = entry.querySelector('.edit-start');
-      openEditors[idx] = { isRoundMarker: true, start: startInput ? startInput.value : null };
+      openEditors[idx] = { isRoundMarker: true, start: typed(entry.querySelector('.edit-start')) };
     } else {
-      const punchSel = entry.querySelector('.edit-punch');
-      const startInput = entry.querySelector('.edit-start');
-      const endInput = entry.querySelector('.edit-end');
       openEditors[idx] = {
         isRoundMarker: false,
-        punch: punchSel ? punchSel.value : null,
-        start: startInput ? startInput.value : null,
-        end: endInput ? endInput.value : null,
+        punch: chosen(entry.querySelector('.edit-punch')),
+        start: typed(entry.querySelector('.edit-start')),
+        end: typed(entry.querySelector('.edit-end')),
       };
     }
   });
@@ -3828,7 +3837,8 @@ function renderLabels() {
     log.appendChild(entry);
   });
 
-  // Restore open editors with their unsaved values
+  // Reopen the editors that were open, restoring only the values the user
+  // typed (see the capture above); everything else follows the label.
   sorted.forEach(({ label, idx }) => {
     const saved = openEditors[idx];
     if (!saved) return;
