@@ -2344,7 +2344,7 @@ function refreshLaneTarget() {
 function deleteHighlightedLabel() {
   const label = state.highlightedLabel;
   const idx = label ? state.labels.indexOf(label) : -1;
-  if (idx === -1) return false;
+  if (idx === -1) return deleteSelectedSpan();
   if (refuseForeign(label)) return true;
   state.highlightedLabel = null;
   const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
@@ -2906,6 +2906,84 @@ function addMarkerPair(kind, start, end, sheetName) {
   return [a, b];
 }
 
+// Delete key / right-click Delete on a selected span: both of its rows, one undo.
+function deleteSelectedSpan() {
+  const sp = state.selectedSpan;
+  if (!sp || !state.labels.includes(sp.startLabel)) return false;
+  const rows = [sp.startLabel, sp.endLabel].filter(l => l && state.labels.includes(l));
+  if (rows.some(refuseForeign)) return true;
+  const name = MARKER_KINDS[sp.kind].name;
+  state.selectedSpan = null;
+  state.labels = state.labels.filter(l => !rows.includes(l));
+  pushUndo({
+    label: rows[0],
+    desc: `Restored: ${name}`,
+    undo: () => {
+      for (const l of rows) { l.id = null; state.labels.push(l); }
+      syncRoundActiveFromLabels();
+      renderLabels();
+      rows.reduce((p, l) => p.then(() => pushRoundMarkerToSheet(l)), Promise.resolve());
+    },
+  });
+  syncRoundActiveFromLabels();
+  renderLabels();
+  for (const l of rows) deleteLabelFromSheet(l);
+  const owner = rows[0].foreign ? ` from ${foreignOwnerName(rows[0])}’s timeline` : '';
+  showToast(`Deleted ${name}${owner} — Z to undo`, 'info');
+  return true;
+}
+
+// A round or unusable span that sits entirely inside another one of the SAME
+// labeler's — including an exact duplicate — is redundant, and its two rows
+// are deleted. Markers carry no pairing, so spans are read as nested
+// brackets: each end closes the most recent open start, and a pair closed
+// while an outer start is still open lies inside that outer span. Only once
+// the outer span is closed too (never mid-marking), only saved rows this
+// labeler may edit, and never across labelers — two people's rounds
+// overlapping is inter-rater data, not a mistake.
+function removeNestedSpans() {
+  if (state.isAnalyst || document.querySelector('.round-span.dragging-round')) return;
+  const groups = new Map();
+  for (const l of state.labels) {
+    const kind = markerKind(l.punch);
+    if (!kind || !Number.isFinite(l.start) || isCombinedDataRow(l)) continue;
+    const key = kind + '|' + (l.foreign ? l.sheetName : '');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(l);
+  }
+  const doomed = [];
+  for (const marks of groups.values()) {
+    marks.sort(compareLabelsByTime);
+    const open = [], nested = [], closedStarts = new Set();
+    for (const m of marks) {
+      if (m.punch.endsWith('_start')) { open.push(m); continue; }
+      if (!open.length) continue;              // a stray end — leave it alone
+      const s = open.pop();
+      closedStarts.add(s);
+      if (open.length) nested.push({ s, e: m, outer: open[open.length - 1] });
+    }
+    for (const n of nested) {
+      if (!closedStarts.has(n.outer)) continue;
+      if ([n.s, n.e].some(l => l.id == null || isForeignLabel(l))) continue;
+      doomed.push(n.s, n.e);
+    }
+  }
+  if (!doomed.length) return;
+  state.labels = state.labels.filter(l => !doomed.includes(l));
+  if (state.selectedSpan && doomed.includes(state.selectedSpan.startLabel)) state.selectedSpan = null;
+  syncRoundActiveFromLabels();
+  renderLabels();
+  for (const l of doomed) deleteLabelFromSheet(l);
+  const counts = {};
+  for (let i = 0; i < doomed.length; i += 2) {
+    const who = doomed[i].foreign ? ` (${foreignOwnerName(doomed[i])})` : '';
+    const k = MARKER_KINDS[markerKind(doomed[i].punch)].name.toLowerCase() + who;
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  showToast('Removed duplicate spans inside another: ' +
+    Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', '), 'info');
+}
+
 function pasteSpanAtPlayhead(clip) {
   const video = document.getElementById('video-player');
   const start = video.currentTime;
@@ -3343,6 +3421,7 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
 
     syncRoundActiveFromLabels();
     renderLabels();
+    removeNestedSpans();
     // predictions.js is optional — reapplies whatever model file is loaded
     // against THIS video now that state.labels was just rebuilt from
     // scratch above (the filter a few lines up drops everything that
@@ -3407,6 +3486,7 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     // again (they carry `foreign: true` too, same as any real foreign row).
     if (typeof applyPredictionsToLabels === 'function') applyPredictionsToLabels();
     else renderLabels();
+    if (state.isAdmin) removeNestedSpans();   // everyone else's own spans were checked in phase 1
     updateForeignFilterButton();
     // Down BEFORE the "already labeled" popup — otherwise the two stack,
     // and the one that matters ends up behind the one that doesn't.
@@ -4188,6 +4268,7 @@ function saveEditRoundMarker(idx) {
   showToast(`${markerText(label.punch)} updated, syncing...`, 'success');
   updateLabelInSheet(label).then(() => {
     showToast(`Synced #${label.id} to sheet`, 'info');
+    removeNestedSpans();
   });
 }
 
@@ -4263,8 +4344,8 @@ function deleteLabel(idx) {
 // flash it, so "which one did I just right-click" has an answer.
 function highlightLabelInPanel(idx) {
   const label = state.labels[idx];
-  if (!label || label.isRoundMarker) return;
-  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
+  if (!label) return;
+  if (!label.isRoundMarker && state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
     setLabelTab(punchBucket(label.punch));
   }
   const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);

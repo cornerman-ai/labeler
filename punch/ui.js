@@ -929,7 +929,8 @@
       showToast(d.mode === 'span'
         ? `${name} moved to ${formatTime(d.items[0].label.start)}`
         : `${markerText(changed[0].label.punch)} moved to ${formatTime(changed[0].label.start)}`, 'success');
-      for (const it of changed) updateLabelInSheet(it.label);
+      // A span dragged inside another of the same labeler's is now redundant.
+      Promise.all(changed.map(it => updateLabelInSheet(it.label))).then(() => removeNestedSpans());
     });
 
     // After a drag the span under the pointer was re-rendered, so the click
@@ -1037,9 +1038,24 @@
     lanes.addEventListener('contextmenu', (e) => {
       close();
       if (state.isAnalyst) return;
+      const rows = [];
+      // A round or unusable span on its ribbon.
+      const spanEl = e.target.closest('.round-span');
+      if (spanEl) {
+        const s = state.labels[+spanEl.dataset.startIdx];
+        const en = spanEl.dataset.endIdx === '' ? null : state.labels[+spanEl.dataset.endIdx];
+        if (!s) return;
+        selectSpan(s, en);
+        ctx = { span: true, startLabel: s };
+        rows.push(item('highlight', 'Highlight in Labels panel'));
+        if (en) rows.push(item('copy', 'Copy'));
+        if (![s, en].filter(Boolean).some(isForeignLabel)) { rows.push(sep()); rows.push(item('delete', 'Delete', { danger: true })); }
+        e.preventDefault();
+        openAt(rows, e);
+        return;
+      }
       const lane = e.target.closest('.seg-lane');
       if (!lane) return;
-      const rows = [];
       const el = e.target.closest('.seek-segment');
 
       if (el) {
@@ -1074,21 +1090,36 @@
       }
 
       e.preventDefault();
+      openAt(rows, e);
+    });
+
+    // Shown then measured then placed, all before the next paint — same
+    // order setupSpeed()'s open() uses for the same reason: no flicker at
+    // the wrong spot first.
+    function openAt(rows, e) {
       menu.replaceChildren(...rows);
-      // Shown then measured then placed, all before the next paint — same
-      // order setupSpeed()'s open() uses for the same reason: no flicker at
-      // the wrong spot first.
       menu.hidden = false;
       const mw = menu.offsetWidth, mh = menu.offsetHeight;
       menu.style.left = Math.max(4, Math.min(e.clientX, window.innerWidth - mw - 8)) + 'px';
       menu.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - mh - 8)) + 'px';
-    });
+    }
 
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('[data-action]');
       if (!b || !ctx) return;
       const c = ctx;
       close();
+      if (c.span) {
+        // selectSpan() ran on right-click; a refresh since then drops it.
+        if (!state.selectedSpan || !state.labels.includes(c.startLabel)) {
+          showToast('That span was just refreshed — right-click it again', 'error');
+          return;
+        }
+        if (b.dataset.action === 'highlight') highlightLabelInPanel(state.labels.indexOf(c.startLabel));
+        else if (b.dataset.action === 'copy') copySelectedSpan();
+        else if (b.dataset.action === 'delete') deleteSelectedSpan();
+        return;
+      }
       if (b.dataset.action === 'paste') { pasteLabelAtPlayhead({ time: c.time, owner: c.owner }); return; }
       if (b.dataset.action === 'copy') { copyLabel(c.label); return; }
       // A sheet refresh may have landed while the menu was open; act on the
@@ -1109,7 +1140,9 @@
     // has already rebuilt or closed this menu by the time this one runs
     // (bubble order puts #seg-lanes first).
     document.addEventListener('contextmenu', (e) => {
-      if (!menu.hidden && !e.target.closest('#seg-lanes')) close();
+      // composedPath, not closest(): opening the menu re-renders the ribbon,
+      // so the right-clicked span is already detached by the time this runs.
+      if (!menu.hidden && !e.composedPath().includes(lanes)) close();
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.hidden) close();
