@@ -547,6 +547,42 @@
                       title="Show only moves no other labeler agrees with">Disagreement only</button>
             </div>
 
+            <!-- Export clip — admin only (export-clip.js unhides it): a
+                 piece of the open video, from the highlighted label or a
+                 typed begin → end, cut in the browser and downloaded, for
+                 the reference set of what is and isn't a roll. -->
+            <div class="seg" id="export-clip-seg" hidden>
+              <button type="button" id="btn-export-clip" aria-haspopup="dialog" aria-expanded="false"
+                      aria-controls="export-clip-pop"
+                      title="Download a piece of the open video (the highlighted label, or a typed span)">Export clip</button>
+              <div id="export-clip-pop" role="dialog" aria-label="Export clip" hidden>
+                <div class="ec-from" id="ec-from"></div>
+                <div class="ec-row">
+                  <label for="ec-begin">Begin</label>
+                  <input type="text" id="ec-begin" spellcheck="false" autocomplete="off">
+                  <button type="button" class="ec-now" data-for="ec-begin" title="Set to the playhead">playhead</button>
+                </div>
+                <div class="ec-row">
+                  <label for="ec-end">End</label>
+                  <input type="text" id="ec-end" spellcheck="false" autocomplete="off">
+                  <button type="button" class="ec-now" data-for="ec-end" title="Set to the playhead">playhead</button>
+                </div>
+                <div class="ec-row">
+                  <label for="ec-pad">Pad</label>
+                  <input type="number" id="ec-pad" min="0" step="0.1" value="0.5">
+                  <small>s before and after</small>
+                </div>
+                <div class="ec-row">
+                  <label for="ec-tag">Tag</label>
+                  <input type="text" id="ec-tag" placeholder="roll / not_roll / …" spellcheck="false" autocomplete="off">
+                </div>
+                <div class="ec-actions">
+                  <button type="button" id="ec-use-label" title="Fill begin, end and tag from the highlighted label">Use selected label</button>
+                  <button type="button" id="ec-export" class="ec-primary">Export</button>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </main>
@@ -853,6 +889,8 @@
   <script src="../shared/xlsx.full.min.js?v=20260916a"></script>
   <script src="predictions.js?v=20260916a"></script>
   <script src="app.js?v=20260916a"></script>
+  <!-- After app.js: reads state.highlightedLabel, foreignOwnerName(), punchLabel(). -->
+  <script src="export-clip.js?v=20260916a"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded

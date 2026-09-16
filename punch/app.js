@@ -376,6 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.showForeign = true;   // no point being admin over a folded-away queue
     const badge = document.getElementById('labeler-badge');
     if (badge) badge.textContent += ' (admin)';
+    if (typeof updateExportClipButton === 'function') updateExportClipButton();   // export-clip.js
   }
   // Strictly view-only: sees everyone's rows (same listForeign pull as
   // admin — see fetchLabelsFromSheet()'s phase 2), same as admin, but with

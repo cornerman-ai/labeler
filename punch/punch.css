@@ -1635,6 +1635,47 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 #speed-menu button[aria-checked="true"]::before { opacity: 1; }
 #speed-menu button[aria-checked="true"] { font-weight: 700; }
 
+/* ── Export clip (admin, export-clip.js) — its pop-up sits above the button,
+   right-aligned so it stays on screen at the toolbar's far end. Same chrome
+   as #speed-menu. ──────────────────────────────────────────────────────── */
+#export-clip-seg { position: relative; }
+#export-clip-pop {
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 40;
+  width: 316px; padding: 10px; border-radius: 12px; text-align: left;
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--chrome);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+#export-clip-pop[hidden] { display: none; }
+.ec-from { font-size: 11.5px; color: var(--ink-dim); min-height: 14px; }
+.ec-row { display: flex; align-items: center; gap: 6px; }
+.ec-row label { flex: none; width: 40px; font-size: 12px; color: var(--ink-dim); }
+.ec-row input {
+  flex: 1; min-width: 0; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  font: 500 12.5px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.ec-row input:focus { outline: none; border-color: var(--accent); }
+.ec-row small { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+.ec-now {
+  flex: none; padding: 5px 8px; border-radius: 7px; border: 0;
+  background: var(--fill); color: var(--ink); font-size: 11.5px; white-space: nowrap;
+}
+.ec-now:hover { background: var(--fill-2); }
+.ec-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px; }
+.ec-actions button {
+  padding: 6px 10px; border-radius: 7px; border: 0;
+  background: var(--fill); color: var(--ink); font-size: 12.5px; font-weight: 500;
+}
+.ec-actions button:hover { background: var(--fill-2); }
+.ec-actions .ec-primary { background: var(--accent-solid); color: #fff; font-weight: 590; }
+.ec-actions button:disabled { opacity: .45; }
+body.exporting-clip #btn-export-clip { opacity: .6; }
+
 
 /* ── right sidebar: the labeling workflow ────────────────────────────────── */
 #label-panel {
