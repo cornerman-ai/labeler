@@ -246,6 +246,9 @@ Object.assign(state, {
   // Admin only: the labeler whose lane was clicked last — where Ctrl+V lands.
   // A display name (foreignOwnerName), null = the copied row's own owner.
   activeLaneOwner: null,
+  // A clicked round/unusable span — {kind, startLabel, endLabel} — what
+  // Ctrl+C copies when no move is highlighted.
+  selectedSpan: null,
   roundActive: false,
   unusableActive: false,   // an unusable_start with no end yet — X closes it
   unsureFilter: false,
@@ -2275,6 +2278,7 @@ async function exportAgreementPdf() {
 function highlightLabel(label) {
   const turningOn = state.highlightedLabel !== label;
   state.highlightedLabel = turningOn ? label : null;
+  if (turningOn) state.selectedSpan = null;
   renderLabels();
   // Scroll-to only on the way IN — toggling a highlight off shouldn't yank
   // the panel's scroll position back to wherever that row happened to be.
@@ -2330,7 +2334,8 @@ function setActiveLaneOwner(owner) {
 
 // The ring only means something once there is a copy to paste.
 function refreshLaneTarget() {
-  const target = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
+  const target = state.isAdmin && state.clipboardLabel && !state.clipboardLabel.span
+    ? writableLaneOwner(state.activeLaneOwner) : null;
   document.querySelectorAll('#seg-lanes .seg-lane').forEach(lane => {
     lane.classList.toggle('lane-target', !!target && lane.dataset.owner === target);
   });
@@ -2372,6 +2377,7 @@ function pasteLabelAtPlayhead(opts = {}) {
   }
   const clip = state.clipboardLabel;
   if (!clip) return;
+  if (clip.span) { pasteSpanAtPlayhead(clip); return; }
   // Admin never authors a move of its own (see captureTimestamp()); a paste
   // always lands on a labeler's sheet: the lane picked (clicked, or right-
   // clicked), else the lane the copy came from.
@@ -2842,6 +2848,72 @@ function addRoundMarker(markerType) {
   renderLabels();
   pushRoundMarkerToSheet(label);
   return true;
+}
+
+// ── spans (a round or unusable stretch) as one thing to select, copy, paste ──
+function selectSpan(startLabel, endLabel) {
+  state.selectedSpan = { kind: markerKind(startLabel.punch), startLabel, endLabel: endLabel || null };
+  state.highlightedLabel = null;
+  renderLabels();
+}
+
+function copySelectedSpan() {
+  const sp = state.selectedSpan;
+  if (!sp || !state.labels.includes(sp.startLabel)) return;
+  const name = MARKER_KINDS[sp.kind].name;
+  if (!sp.endLabel) { showToast(`This ${name.toLowerCase()} has no end yet — close it before copying`, 'error'); return; }
+  state.clipboardLabel = {
+    span: true, kind: sp.kind,
+    duration: sp.endLabel.start - sp.startLabel.start,
+    sheetName: sp.startLabel.foreign ? sp.startLabel.sheetName : null,
+  };
+  refreshLaneTarget();
+  showToast(`Copied: ${name} (${formatTime(sp.endLabel.start - sp.startLabel.start)})`, 'info');
+}
+
+// A start + end marker pair saved as two new rows — for paste and Alt+drag.
+// Spans live on one shared ribbon, so a copy stays with the source's owner
+// (admin) or goes to the labeler's own sheet (everyone else).
+function addMarkerPair(kind, start, end, sheetName) {
+  const m = MARKER_KINDS[kind];
+  if (state.isAnalyst) { showToast('View only — Analyst mode cannot add markers', 'error'); return null; }
+  if (state.isAdmin && !sheetName) { showToast('Admin has no timeline of its own — copy a labeler’s span first', 'error'); return null; }
+  const videoName = normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName;
+  const mk = (punch, t) => Object.assign({
+    id: null, punch_uuid: crypto.randomUUID(), punch, start: t, end: t, videoName,
+    isRoundMarker: true, timestamp: new Date().toISOString(),
+  }, state.isAdmin ? { foreign: true, sheetName } : {});
+  const a = mk(m.start, start), b = mk(m.end, end);
+  state.labels.push(a, b);
+  pushUndo({
+    label: a,
+    desc: `Undid: ${m.name} added`,
+    undo: () => {
+      for (const l of [a, b]) {
+        const i = state.labels.indexOf(l);
+        if (i !== -1) state.labels.splice(i, 1);
+        if (l.id != null) deleteLabelFromSheet(l); else l._pendingCancel = true;
+      }
+      syncRoundActiveFromLabels();
+      renderLabels();
+    },
+  });
+  syncRoundActiveFromLabels();
+  renderLabels();
+  // One after the other: both rows land in the same tab, and each add reads
+  // the tab to pick its id.
+  pushRoundMarkerToSheet(a).then(() => pushRoundMarkerToSheet(b));
+  return [a, b];
+}
+
+function pasteSpanAtPlayhead(clip) {
+  const video = document.getElementById('video-player');
+  const start = video.currentTime;
+  const duration = getTimelineDuration();
+  const end = duration > 0 ? Math.min(duration, start + clip.duration) : start + clip.duration;
+  if (addMarkerPair(clip.kind, start, end, state.isAdmin ? clip.sheetName : null)) {
+    showToast(`Pasted: ${MARKER_KINDS[clip.kind].name} ${formatTime(start)} → ${formatTime(end)}`, 'success');
+  }
 }
 
 // Same outbox as pushLabelToSheet — a round boundary is as expensive to
@@ -3679,6 +3751,20 @@ function parseSheetTime(timeStr) {
 // ============================================================
 // Labels Rendering & Storage
 // ============================================================
+// Chronological order for anything in state.labels. At one instant: span
+// starts, then moves, then span ends — a move at a span's edge counts as
+// inside it (see isOutsideRound()), so it always lists between that span's
+// start and end. One fixed rank, not pairwise rules: those formed a cycle
+// (end < start < move < end), which is not an order and scrambles a sort.
+// A row whose time didn't parse sorts before everything.
+function compareLabelsByTime(a, b) {
+  const t = (v) => (Number.isFinite(v) ? v : -Infinity);
+  const sa = t(a.start), sb = t(b.start);
+  if (sa !== sb) return sa < sb ? -1 : 1;
+  const rank = (l) => (!markerKind(l.punch) ? 1 : l.punch.endsWith('_start') ? 0 : 2);
+  return (rank(a) - rank(b)) || (t(a.end) - t(b.end)) || 0;
+}
+
 function renderLabels() {
   refreshAgreedLabelCache();
   const log = document.getElementById('label-log');
@@ -3720,7 +3806,7 @@ function renderLabels() {
 
   log.innerHTML = '';
   const sorted = state.labels.map((label, idx) => ({ label, idx }));
-  sorted.sort((a, b) => b.label.start - a.label.start);
+  sorted.sort((a, b) => compareLabelsByTime(b.label, a.label));   // latest first
   sorted.forEach(({ label, idx }) => {
     if (shouldHideByTab(label)) return;
     const entry = document.createElement('div');
@@ -4474,6 +4560,11 @@ function setupKeyboardShortcuts() {
       // selection elsewhere on the page is left alone.
       case 'KeyC':
         if (e.ctrlKey || e.metaKey) {
+          if (!state.highlightedLabel && state.selectedSpan) {
+            e.preventDefault();
+            copySelectedSpan();
+            break;
+          }
           if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
           e.preventDefault();
           copyHighlightedLabel();
@@ -4693,7 +4784,8 @@ function buildSegLanes(container, markersLayer, overlay) {
   if (markersLayer) container.appendChild(markersLayer);
 
   const lanes = new Map();
-  const pasteTarget = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
+  const pasteTarget = state.isAdmin && state.clipboardLabel && !state.clipboardLabel.span
+    ? writableLaneOwner(state.activeLaneOwner) : null;
   const addPair = (owner) => {
     for (const bucket of buckets) {
       const lane = document.createElement('div');
@@ -4784,7 +4876,11 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       // previous render.
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      span.addEventListener('click', seek(r.start));
+      if (state.selectedSpan && state.selectedSpan.startLabel === state.labels[r.startIdx]) span.classList.add('span-selected');
+      span.addEventListener('click', (e) => {
+        seek(r.start)(e);
+        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null);
+      });
       markersLayer.appendChild(span);
     });
   }
@@ -4825,7 +4921,12 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.innerHTML = '<span class="round-span-label">Unusable</span>';
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; });
+      if (state.selectedSpan && state.selectedSpan.startLabel === state.labels[r.startIdx]) span.classList.add('span-selected');
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        video.currentTime = r.start;
+        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null);
+      });
       layer.appendChild(span);
     }
     if (scrubOverlay) {
