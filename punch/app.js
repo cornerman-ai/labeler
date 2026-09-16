@@ -322,6 +322,9 @@ Object.assign(state, {
   // silently move the highlight onto some unrelated punch. Object identity
   // simply stops matching after a rebuild, which is the right behaviour.
   highlightedLabel: null,
+  // Shift+click adds to this — see toggleMultiSelect(). Delete then
+  // removes every row in it (and the highlighted one) at once.
+  multiSelected: new Set(),
 });
 
 // ============================================================
@@ -2273,6 +2276,7 @@ async function exportAgreementPdf() {
 // which is what makes that scroll the Labels panel to match: same "which of
 // these is the one I'm looking at" question, just asked from the other side.
 function highlightLabel(label) {
+  state.multiSelected.clear();   // a plain click starts a fresh selection
   const turningOn = state.highlightedLabel !== label;
   state.highlightedLabel = turningOn ? label : null;
   renderLabels();
@@ -2336,19 +2340,83 @@ function refreshLaneTarget() {
   });
 }
 
+// ── multi-select ─────────────────────────────────────────────────────────
+// Shift+click on a timeline strip, a round/unusable span or a
+// Labels-panel row adds it to (or takes it out of) the selection; Delete
+// then removes all of them in one go, with one undo. A plain click goes back
+// to a single selection (highlightLabel() clears the set).
+function isLabelSelected(label) {
+  return label === state.highlightedLabel || state.multiSelected.has(label);
+}
+
+function isMultiSelectEvent(e) {
+  return !!e && e.shiftKey;
+}
+
+function toggleMultiSelect(label) {
+  const sel = state.multiSelected;
+  if (state.highlightedLabel) sel.add(state.highlightedLabel);
+  if (sel.has(label)) sel.delete(label); else sel.add(label);
+  state.highlightedLabel = sel.has(label) ? label : ([...sel].pop() || null);
+  renderLabels();
+}
+
+// The panel rows' click handlers: true when the click was a multi-select one
+// (and has been handled), so the caller skips its own highlight + seek.
+function multiSelectClick(e, label) {
+  if (!isMultiSelectEvent(e)) return false;
+  toggleMultiSelect(label);
+  return true;
+}
+
 // Clicking a round/unusable span on the ribbon selects it: its opening row
 // (or closing row, for a span with no start) becomes the highlighted label,
 // so the Labels panel scrolls to where the span begins and Delete removes it.
-function selectMarkerSpan(r) {
+function selectMarkerSpan(r, e) {
   const row = state.labels[r.startIdx != null ? r.startIdx : r.endIdx];
   if (!row) return;
+  if (isMultiSelectEvent(e)) { toggleMultiSelect(row); return; }
   if (state.highlightedLabel === row) state.highlightedLabel = null;   // re-click keeps it selected
   highlightLabel(row);
 }
 
 function spanIsSelected(r) {
-  const h = state.highlightedLabel;
-  return !!h && (h === state.labels[r.startIdx] || (r.endIdx != null && h === state.labels[r.endIdx]));
+  return [state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null]
+    .some(l => l && isLabelSelected(l));
+}
+
+// Everything selected, rounds/unusable expanded to both boundary rows.
+function deleteSelectedLabels() {
+  const rows = [];
+  const add = (l) => { if (l && state.labels.includes(l) && !rows.includes(l)) rows.push(l); };
+  for (const l of new Set([...state.multiSelected, state.highlightedLabel])) {
+    if (!l) continue;
+    if (l.isRoundMarker && markerKind(l.punch)) markerSpanRows(l).forEach(add); else add(l);
+  }
+  const allowed = rows.filter(l => !isForeignLabel(l));
+  if (!allowed.length) { if (rows.length) refuseForeign(rows[0]); return; }
+  const skipped = rows.length - allowed.length;
+  const at = new Map(allowed.map(l => [l, state.labels.indexOf(l)]));
+  pushUndo({
+    label: allowed[0],
+    desc: `Restored ${allowed.length} deleted rows`,
+    undo: () => {
+      [...at.entries()].sort((a, b) => a[1] - b[1]).forEach(([l, i]) => {
+        l.id = null;
+        state.labels.splice(Math.min(i, state.labels.length), 0, l);
+      });
+      renderLabels();
+      allowed.filter(l => l.isRoundMarker).forEach(l => pushRoundMarkerToSheet(l));
+      Promise.all(allowed.filter(l => !l.isRoundMarker).map(l => pushLabelToSheet(l)))
+        .then(() => fetchLabelsFromSheet());
+    },
+  });
+  state.multiSelected.clear();
+  state.highlightedLabel = null;
+  allowed.forEach(l => state.labels.splice(state.labels.indexOf(l), 1));
+  renderLabels();
+  allowed.forEach(l => deleteLabelFromSheet(l));
+  showToast(`Deleted ${allowed.length} rows${skipped ? ` (${skipped} read-only kept)` : ''} — Z to undo`, 'info');
 }
 
 // Both boundary rows of the span a highlighted marker belongs to.
@@ -2382,6 +2450,7 @@ function deleteMarkerSpan(label) {
 
 function deleteHighlightedLabel() {
   const label = state.highlightedLabel;
+  if (state.multiSelected.size > 1) { deleteSelectedLabels(); return true; }
   const idx = label ? state.labels.indexOf(label) : -1;
   if (idx === -1) return false;
   if (refuseForeign(label)) return true;
@@ -3822,7 +3891,8 @@ function renderLabels() {
           <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
         `;
         entry.querySelector('.label-text').style.cursor = 'pointer';
-        entry.querySelector('.label-text').onclick = () => {
+        entry.querySelector('.label-text').onclick = (e) => {
+          if (multiSelectClick(e, label)) return;
           highlightLabel(label);
           document.getElementById('video-player').currentTime = label.start;
         };
@@ -3852,7 +3922,8 @@ function renderLabels() {
         </span>
       `;
       entry.querySelector('.label-text').style.cursor = 'pointer';
-      entry.querySelector('.label-text').onclick = () => {
+      entry.querySelector('.label-text').onclick = (e) => {
+        if (multiSelectClick(e, label)) return;
         highlightLabel(label);
         document.getElementById('video-player').currentTime = label.start;
       };
@@ -3884,13 +3955,14 @@ function renderLabels() {
       // while scanning; opening an edit form every time you looked at one
       // meant half the list was a form you then had to dismiss. The pencil
       // is the way in to editing, and it is right there on the row.
-      entry.querySelector('.label-text').onclick = () => {
+      entry.querySelector('.label-text').onclick = (e) => {
+        if (multiSelectClick(e, label)) return;
         highlightLabel(label);
         document.getElementById('video-player').currentTime = label.start;
       };
     }
 
-    if (label === state.highlightedLabel) entry.classList.add('label-selected');
+    if (isLabelSelected(label)) entry.classList.add('label-selected');
     // "Outside every round" used to also flag the row right here (a class
     // plus a tooltip) — removed because it duplicated the Problems card
     // with a DIFFERENT scope (every visible row, foreign included, vs.
@@ -4885,7 +4957,7 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
       if (spanIsSelected(r)) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => { seek(r.start)(e); selectMarkerSpan(r); });
+      span.addEventListener('click', (e) => { if (isMultiSelectEvent(e)) e.stopPropagation(); else seek(r.start)(e); selectMarkerSpan(r, e); });
       markersLayer.appendChild(span);
     });
   }
@@ -4927,7 +4999,7 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
       if (spanIsSelected(r)) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; selectMarkerSpan(r); });
+      span.addEventListener('click', (e) => { e.stopPropagation(); if (!isMultiSelectEvent(e)) video.currentTime = r.start; selectMarkerSpan(r, e); });
       layer.appendChild(span);
     }
     if (scrubOverlay) {
@@ -5066,7 +5138,7 @@ function renderTimelineOverlay() {
     // has no admin bypass — see isForeignLabel()).
     seg.className = 'seek-segment'
       + (label.isPrediction || (label.foreign && !state.isAdmin) ? ' seg-foreign' : '')
-      + (label === state.highlightedLabel ? ' seg-selected' : '');
+      + (isLabelSelected(label) ? ' seg-selected' : '');
     seg.dataset.labelIdx = idx;
     // Clipped at the viewport edges for DRAWING, but the untruncated times go
     // on the element too: a strip half off-screen at high zoom still has to

@@ -748,6 +748,8 @@
       // two listeners end up same-target regardless.)
       e.stopImmediatePropagation();
       e.preventDefault();
+      // Shift+click adds to the selection instead — see toggleMultiSelect().
+      if (typeof isMultiSelectEvent === 'function' && isMultiSelectEvent(e)) { toggleMultiSelect(label); return; }
       // Seek BEFORE re-rendering, so this write is the last one either way.
       const video = $('video-player');
       if (video && video.duration) video.currentTime = label.start;
