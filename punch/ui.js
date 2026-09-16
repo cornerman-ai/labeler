@@ -852,12 +852,15 @@
     const startDuplicate = () => {
       const [a, b] = drag.items;
       if (!b) { showToast('This span has no end yet — close it before duplicating', 'error'); drag.duplicate = false; return false; }
-      const copy = (l) => Object.assign({}, l, { id: null, punch_uuid: crypto.randomUUID(), fromSheet: false, _dragCopy: true });
+      const copy = (l) => Object.assign({}, l, { id: null, punch_uuid: crypto.randomUUID(), fromSheet: false, _dragCopy: true, _pairEnd: null });
       drag.items = [a, b].map(({ label, start0 }) => {
         const c = copy(label);
         state.labels.push(c);
         return { label: c, start0 };
       });
+      // Tie the copy's start to the copy's end, so while it overlaps the
+      // original it is drawn as itself instead of borrowing the original's end.
+      drag.items[0].label._pairEnd = drag.items[1].label;
       return true;
     };
     const dropCopies = () => {
