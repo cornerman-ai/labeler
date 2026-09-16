@@ -2336,11 +2336,60 @@ function refreshLaneTarget() {
   });
 }
 
+// Clicking a round/unusable span on the ribbon selects it: its opening row
+// (or closing row, for a span with no start) becomes the highlighted label,
+// so the Labels panel scrolls to where the span begins and Delete removes it.
+function selectMarkerSpan(r) {
+  const row = state.labels[r.startIdx != null ? r.startIdx : r.endIdx];
+  if (!row) return;
+  if (state.highlightedLabel === row) state.highlightedLabel = null;   // re-click keeps it selected
+  highlightLabel(row);
+}
+
+function spanIsSelected(r) {
+  const h = state.highlightedLabel;
+  return !!h && (h === state.labels[r.startIdx] || (r.endIdx != null && h === state.labels[r.endIdx]));
+}
+
+// Both boundary rows of the span a highlighted marker belongs to.
+function markerSpanRows(label) {
+  const kind = markerKind(label.punch);
+  const idx = state.labels.indexOf(label);
+  const r = kind && markerSpansWithIdx(kind).find(s => s.startIdx === idx || s.endIdx === idx);
+  if (!r) return [label];
+  return [state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null].filter(Boolean);
+}
+
+function deleteMarkerSpan(label) {
+  const rows = markerSpanRows(label);
+  const locked = rows.find(l => isForeignLabel(l));
+  if (locked) { refuseForeign(locked); return; }
+  const name = MARKER_KINDS[markerKind(label.punch)].name;
+  pushUndo({
+    label: rows[0],
+    desc: 'Restored: ' + name,
+    undo: () => {
+      rows.forEach(l => { l.id = null; state.labels.push(l); pushRoundMarkerToSheet(l); });
+      renderLabels();
+    },
+  });
+  rows.forEach(l => state.labels.splice(state.labels.indexOf(l), 1));
+  renderLabels();
+  rows.forEach(l => deleteLabelFromSheet(l));
+  const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
+  showToast(`Deleted ${name}${owner} — Z to undo`, 'info');
+}
+
 function deleteHighlightedLabel() {
   const label = state.highlightedLabel;
   const idx = label ? state.labels.indexOf(label) : -1;
   if (idx === -1) return false;
   if (refuseForeign(label)) return true;
+  if (label.isRoundMarker && markerKind(label.punch)) {
+    state.highlightedLabel = null;
+    deleteMarkerSpan(label);
+    return true;
+  }
   state.highlightedLabel = null;
   const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
   deleteLabel(idx);
@@ -4835,7 +4884,8 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       // previous render.
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      span.addEventListener('click', seek(r.start));
+      if (spanIsSelected(r)) span.classList.add('span-selected');
+      span.addEventListener('click', (e) => { seek(r.start)(e); selectMarkerSpan(r); });
       markersLayer.appendChild(span);
     });
   }
@@ -4876,7 +4926,8 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.innerHTML = '<span class="round-span-label">Unusable</span>';
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; });
+      if (spanIsSelected(r)) span.classList.add('span-selected');
+      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; selectMarkerSpan(r); });
       layer.appendChild(span);
     }
     if (scrubOverlay) {

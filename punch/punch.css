@@ -1342,6 +1342,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .round-span.unusable-span:hover { background-color: color-mix(in srgb, var(--no) 24%, transparent); }
 .round-span.unusable-span.dragging-round { background-color: color-mix(in srgb, var(--no) 32%, transparent); }
 .round-span.unusable-span .round-span-label { color: var(--no-on-wash); }
+/* Clicked on the ribbon — see selectMarkerSpan() in app.js. Delete removes it. */
+.round-span.span-selected { box-shadow: inset 0 0 0 1.5px var(--accent-solid); background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.round-span.unusable-span.span-selected { box-shadow: inset 0 0 0 1.5px var(--no); background-color: color-mix(in srgb, var(--no) 28%, transparent); }
 .seek-segment.unusable-scrub {
   opacity: 1; border-radius: 0;
   background: color-mix(in srgb, var(--no) 45%, transparent);
