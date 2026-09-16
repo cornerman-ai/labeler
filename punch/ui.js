@@ -787,9 +787,7 @@
     if (!layers.length || !video || !seekBar) return;
 
     const EDGE = 7;
-    const MOVE_PX = 3;     // under this it's a click (seek + select), not a drag
-    // drag: { mode: 'edge'|'span', items: [{label, start0}], grab, x0, duplicate, kind }
-    let drag = null, moved = false, suppressClick = false;
+    let drag = null, moved = false;
 
     const timeAt = (clientX) => {
       const r = seekBar.getBoundingClientRect();
@@ -799,27 +797,25 @@
       const f = state.frameDuration || 1 / 30;
       return Math.max(0, Math.min(video.duration || 0, Math.round(t / f) * f));
     };
-    // Edges retime one boundary; the middle moves the whole span (both rows).
-    // Too narrow for both — the whole span moves, as a narrow move strip does.
+    // null in the middle: that's the span's own click-to-seek territory,
+    // not a resize — same "narrower than EDGE*2 just isn't grabbable at
+    // either end" tradeoff setupSegmentEditing() makes for punch strips.
     const zoneOf = (el, clientX) => {
       const r = el.getBoundingClientRect();
-      if (r.width < 22) return 'span';
       if (clientX - r.left <= EDGE) return 'start';
       if (r.right - clientX <= EDGE) return 'end';
-      return 'span';
+      return null;
     };
-    const labelAt = (raw) => (raw === '' || raw === undefined ? null : state.labels[+raw] || null);
-    const locked = (l) => typeof isForeignLabel === 'function' && isForeignLabel(l);
-    // Markers are instant rows: start === end, always.
-    const place = (l, t) => { l.start = t; l.end = t; };
-    const clearDragClass = () => document.querySelectorAll('.round-span.dragging-round')
-      .forEach(el => el.classList.remove('dragging-round'));
+    const idxFor = (el, zone) => {
+      const raw = zone === 'start' ? el.dataset.startIdx : el.dataset.endIdx;
+      return raw === '' || raw === undefined ? null : +raw;
+    };
 
     for (const layer of layers) {
       layer.addEventListener('mousemove', (e) => {
         const el = e.target.closest('.round-span');
         if (drag || !el) return;
-        el.style.cursor = zoneOf(el, e.clientX) === 'span' ? 'grab' : 'ew-resize';
+        el.style.cursor = zoneOf(el, e.clientX) ? 'ew-resize' : '';
       });
       layer.addEventListener('mouseleave', (e) => {
         const el = e.target.closest && e.target.closest('.round-span');
@@ -830,17 +826,15 @@
         const el = e.target.closest('.round-span');
         if (!el || e.button !== 0 || !video.duration) return;   // no video: timeAt() is NaN
         const zone = zoneOf(el, e.clientX);
-        const s = labelAt(el.dataset.startIdx), en = labelAt(el.dataset.endIdx);
-        const items = zone === 'start' ? [s] : zone === 'end' ? [en] : [s, en];
-        // A span whose rows this labeler can't edit isn't a drag handle; the
-        // click still seeks and selects, like anywhere else on the span.
-        if (!items[0] || items.filter(Boolean).some(locked)) return;
-        drag = {
-          mode: zone === 'span' ? 'span' : 'edge',
-          items: items.filter(Boolean).map(label => ({ label, start0: label.start })),
-          grab: timeAt(e.clientX), x0: e.clientX,
-          duplicate: zone === 'span' && e.altKey, kind: markerKind(s.punch),
-        };
+        if (!zone) return;   // middle — let the span's own click-to-seek run
+        const idx = idxFor(el, zone);
+        const label = idx != null ? state.labels[idx] : null;
+        // Same silent fall-through as setupSegmentEditing()'s own mousedown
+        // guard: a foreign boundary (non-admin) just isn't a drag handle, so
+        // the click behaves like clicking anywhere else on the span instead
+        // of popping a toast for what looked like an ordinary click.
+        if (!label || (typeof isForeignLabel === 'function' && isForeignLabel(label))) return;
+        drag = { idx, grab: timeAt(e.clientX), start0: label.start };
         moved = false;
         el.classList.add('dragging-round');
         e.preventDefault();
@@ -848,109 +842,52 @@
       });
     }
 
-    // Alt+drag: the original stays, the dragged pair is a local copy until drop.
-    const startDuplicate = () => {
-      const [a, b] = drag.items;
-      if (!b) { showToast('This span has no end yet — close it before duplicating', 'error'); drag.duplicate = false; return false; }
-      const copy = (l) => Object.assign({}, l, { id: null, punch_uuid: crypto.randomUUID(), fromSheet: false, _dragCopy: true, _pairEnd: null });
-      drag.items = [a, b].map(({ label, start0 }) => {
-        const c = copy(label);
-        state.labels.push(c);
-        return { label: c, start0 };
-      });
-      // Tie the copy's start to the copy's end, so while it overlaps the
-      // original it is drawn as itself instead of borrowing the original's end.
-      drag.items[0].label._pairEnd = drag.items[1].label;
-      return true;
-    };
-    const dropCopies = () => {
-      state.labels = state.labels.filter(l => !drag.items.some(it => it.label === l && l._dragCopy));
-    };
-
     window.addEventListener('mousemove', (e) => {
       if (!drag) return;
-      if (!moved) {
-        if (Math.abs(e.clientX - drag.x0) < MOVE_PX) return;
-        moved = true;
-        if (drag.duplicate && !startDuplicate()) { drag = null; clearDragClass(); return; }
-      }
+      const label = state.labels[drag.idx];
+      if (!label) { drag = null; return; }
       const dt = timeAt(e.clientX) - drag.grab;
-      if (drag.mode === 'edge') {
-        const it = drag.items[0];
-        place(it.label, snap(it.start0 + dt));
-        video.currentTime = it.label.start;
-      } else {
-        const [a, b] = drag.items;
-        const len = b ? b.start0 - a.start0 : 0;
-        const t = Math.max(0, Math.min((video.duration || 0) - len, snap(a.start0 + dt)));
-        place(a.label, t);
-        if (b) place(b.label, t + len);
-        video.currentTime = t;
-      }
+      if (Math.abs(dt) > 1e-4) moved = true;
+      label.start = snap(drag.start0 + dt);
+      // Round markers are instant flags (start === end at creation — see
+      // mergeForeignRoundMarkers()/addRoundMarker() in app.js); keep that
+      // invariant true after a drag too, same as any other reader of this
+      // row would expect.
+      label.end = label.start;
+      video.currentTime = label.start;
       if (typeof renderTimelineOverlay === 'function') renderTimelineOverlay();
-      document.querySelectorAll('#round-markers .round-span, #unusable-markers .round-span').forEach(el => {
-        if (state.labels[+el.dataset.startIdx] === drag.items[0].label ||
-            state.labels[+el.dataset.endIdx] === drag.items[0].label) el.classList.add('dragging-round');
-      });
     });
 
     window.addEventListener('mouseup', () => {
       if (!drag) return;
-      const d = drag;
+      const label = state.labels[drag.idx];
+      const { start0 } = drag;
+      const changed = moved && label && label.start !== start0;
       drag = null;
-      clearDragClass();
-      if (!moved) return;   // a click — the span's own listener seeks and selects
-      suppressClick = true;
-      setTimeout(() => { suppressClick = false; }, 0);
-      const name = MARKER_KINDS[d.kind].name;
-
-      if (d.duplicate) {
-        const [a, b] = d.items.map(it => it.label);
-        const sheet = a.foreign ? a.sheetName : null;
-        state.labels = state.labels.filter(l => l !== a && l !== b);
-        if (addMarkerPair(d.kind, a.start, b.start, sheet)) {
-          showToast(`Duplicated ${name}: ${formatTime(a.start)} → ${formatTime(b.start)}`, 'success');
-        } else {
-          renderLabels();
-        }
-        return;
+      document.querySelectorAll('.round-span.dragging-round').forEach(el => el.classList.remove('dragging-round'));
+      if (!changed) return;
+      if (typeof pushUndo === 'function') {
+        pushUndo({
+          label,
+          desc: 'Undid moving ' + markerText(label.punch),
+          undo: () => {
+            label.start = start0; label.end = start0;
+            renderLabels();
+            updateLabelInSheet(label);
+          },
+        });
       }
-
-      const changed = d.items.filter(it => it.label.start !== it.start0);
-      if (!changed.length) return;
-      pushUndo({
-        label: changed[0].label,
-        desc: 'Undid moving ' + (d.mode === 'span' ? name : markerText(changed[0].label.punch)),
-        undo: () => {
-          for (const it of changed) { place(it.label, it.start0); updateLabelInSheet(it.label); }
-          syncRoundActiveFromLabels();
-          renderLabels();
-        },
-      });
-      syncRoundActiveFromLabels();
       renderLabels();
-      showToast(d.mode === 'span'
-        ? `${name} moved to ${formatTime(d.items[0].label.start)}`
-        : `${markerText(changed[0].label.punch)} moved to ${formatTime(changed[0].label.start)}`, 'success');
-      // A span dragged inside another of the same labeler's is now redundant.
-      Promise.all(changed.map(it => updateLabelInSheet(it.label))).then(() => removeNestedSpans());
+      showToast(markerText(label.punch) + ' moved to ' + formatTime(label.start), 'success');
+      updateLabelInSheet(label);
     });
-
-    // After a drag the span under the pointer was re-rendered, so the click
-    // lands on the ribbon itself — which would otherwise seek to that pixel.
-    window.addEventListener('click', (e) => {
-      if (!suppressClick) return;
-      suppressClick = false;
-      e.stopImmediatePropagation();
-      e.preventDefault();
-    }, true);
 
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !drag) return;
-      if (drag.duplicate && moved) dropCopies();
-      else for (const it of drag.items) place(it.label, it.start0);
+      const label = state.labels[drag.idx];
+      if (label) { label.start = drag.start0; label.end = drag.start0; }
       drag = null; moved = false;
-      clearDragClass();
+      document.querySelectorAll('.round-span.dragging-round').forEach(el => el.classList.remove('dragging-round'));
       renderLabels();
       e.stopPropagation();
     }, true);
@@ -1041,24 +978,9 @@
     lanes.addEventListener('contextmenu', (e) => {
       close();
       if (state.isAnalyst) return;
-      const rows = [];
-      // A round or unusable span on its ribbon.
-      const spanEl = e.target.closest('.round-span');
-      if (spanEl) {
-        const s = state.labels[+spanEl.dataset.startIdx];
-        const en = spanEl.dataset.endIdx === '' ? null : state.labels[+spanEl.dataset.endIdx];
-        if (!s) return;
-        selectSpan(s, en);
-        ctx = { span: true, startLabel: s };
-        rows.push(item('highlight', 'Highlight in Labels panel'));
-        if (en) rows.push(item('copy', 'Copy'));
-        if (![s, en].filter(Boolean).some(isForeignLabel)) { rows.push(sep()); rows.push(item('delete', 'Delete', { danger: true })); }
-        e.preventDefault();
-        openAt(rows, e);
-        return;
-      }
       const lane = e.target.closest('.seg-lane');
       if (!lane) return;
+      const rows = [];
       const el = e.target.closest('.seek-segment');
 
       if (el) {
@@ -1080,7 +1002,7 @@
       } else {
         const clip = state.clipboardLabel;
         const duration = getTimelineDuration();
-        if (!clip || clip.span || !duration) return;   // a copied span pastes onto its ribbon (Ctrl+V), not a lane
+        if (!clip || !duration) return;
         const owner = lane.dataset.owner || null;
         const ok = state.isAdmin ? writableLaneOwner(owner) : lane.classList.contains('lane-own');
         if (!ok) return;
@@ -1093,36 +1015,21 @@
       }
 
       e.preventDefault();
-      openAt(rows, e);
-    });
-
-    // Shown then measured then placed, all before the next paint — same
-    // order setupSpeed()'s open() uses for the same reason: no flicker at
-    // the wrong spot first.
-    function openAt(rows, e) {
       menu.replaceChildren(...rows);
+      // Shown then measured then placed, all before the next paint — same
+      // order setupSpeed()'s open() uses for the same reason: no flicker at
+      // the wrong spot first.
       menu.hidden = false;
       const mw = menu.offsetWidth, mh = menu.offsetHeight;
       menu.style.left = Math.max(4, Math.min(e.clientX, window.innerWidth - mw - 8)) + 'px';
       menu.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - mh - 8)) + 'px';
-    }
+    });
 
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('[data-action]');
       if (!b || !ctx) return;
       const c = ctx;
       close();
-      if (c.span) {
-        // selectSpan() ran on right-click; a refresh since then drops it.
-        if (!state.selectedSpan || !state.labels.includes(c.startLabel)) {
-          showToast('That span was just refreshed — right-click it again', 'error');
-          return;
-        }
-        if (b.dataset.action === 'highlight') highlightLabelInPanel(state.labels.indexOf(c.startLabel));
-        else if (b.dataset.action === 'copy') copySelectedSpan();
-        else if (b.dataset.action === 'delete') deleteSelectedSpan();
-        return;
-      }
       if (b.dataset.action === 'paste') { pasteLabelAtPlayhead({ time: c.time, owner: c.owner }); return; }
       if (b.dataset.action === 'copy') { copyLabel(c.label); return; }
       // A sheet refresh may have landed while the menu was open; act on the
@@ -1143,9 +1050,7 @@
     // has already rebuilt or closed this menu by the time this one runs
     // (bubble order puts #seg-lanes first).
     document.addEventListener('contextmenu', (e) => {
-      // composedPath, not closest(): opening the menu re-renders the ribbon,
-      // so the right-clicked span is already detached by the time this runs.
-      if (!menu.hidden && !e.composedPath().includes(lanes)) close();
+      if (!menu.hidden && !e.target.closest('#seg-lanes')) close();
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.hidden) close();

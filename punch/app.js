@@ -246,9 +246,6 @@ Object.assign(state, {
   // Admin only: the labeler whose lane was clicked last — where Ctrl+V lands.
   // A display name (foreignOwnerName), null = the copied row's own owner.
   activeLaneOwner: null,
-  // A clicked round/unusable span — {kind, startLabel, endLabel} — what
-  // Ctrl+C copies when no move is highlighted.
-  selectedSpan: null,
   roundActive: false,
   unusableActive: false,   // an unusable_start with no end yet — X closes it
   unsureFilter: false,
@@ -2278,7 +2275,6 @@ async function exportAgreementPdf() {
 function highlightLabel(label) {
   const turningOn = state.highlightedLabel !== label;
   state.highlightedLabel = turningOn ? label : null;
-  if (turningOn) state.selectedSpan = null;
   renderLabels();
   // Scroll-to only on the way IN — toggling a highlight off shouldn't yank
   // the panel's scroll position back to wherever that row happened to be.
@@ -2334,8 +2330,7 @@ function setActiveLaneOwner(owner) {
 
 // The ring only means something once there is a copy to paste.
 function refreshLaneTarget() {
-  const target = state.isAdmin && state.clipboardLabel && !state.clipboardLabel.span
-    ? writableLaneOwner(state.activeLaneOwner) : null;
+  const target = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
   document.querySelectorAll('#seg-lanes .seg-lane').forEach(lane => {
     lane.classList.toggle('lane-target', !!target && lane.dataset.owner === target);
   });
@@ -2344,7 +2339,7 @@ function refreshLaneTarget() {
 function deleteHighlightedLabel() {
   const label = state.highlightedLabel;
   const idx = label ? state.labels.indexOf(label) : -1;
-  if (idx === -1) return deleteSelectedSpan();
+  if (idx === -1) return false;
   if (refuseForeign(label)) return true;
   state.highlightedLabel = null;
   const owner = label.foreign ? ` from ${foreignOwnerName(label)}’s timeline` : '';
@@ -2377,7 +2372,6 @@ function pasteLabelAtPlayhead(opts = {}) {
   }
   const clip = state.clipboardLabel;
   if (!clip) return;
-  if (clip.span) { pasteSpanAtPlayhead(clip); return; }
   // Admin never authors a move of its own (see captureTimestamp()); a paste
   // always lands on a labeler's sheet: the lane picked (clicked, or right-
   // clicked), else the lane the copy came from.
@@ -2858,211 +2852,10 @@ function addRoundMarker(markerType) {
   return true;
 }
 
-// ── spans (a round or unusable stretch) as one thing to select, copy, paste ──
-// { reveal: true } — a click on the ribbon: bring the span's start row into
-// view in the Labels panel, the way clicking a move strip does.
-function selectSpan(startLabel, endLabel, { reveal = false } = {}) {
-  state.selectedSpan = { kind: markerKind(startLabel.punch), startLabel, endLabel: endLabel || null };
-  state.highlightedLabel = null;
-  renderLabels();
-  if (reveal) highlightLabelInPanel(state.labels.indexOf(startLabel));
-}
-
-function copySelectedSpan() {
-  const sp = state.selectedSpan;
-  if (!sp || !state.labels.includes(sp.startLabel)) return;
-  const name = MARKER_KINDS[sp.kind].name;
-  if (!sp.endLabel) { showToast(`This ${name.toLowerCase()} has no end yet — close it before copying`, 'error'); return; }
-  state.clipboardLabel = {
-    span: true, kind: sp.kind,
-    duration: sp.endLabel.start - sp.startLabel.start,
-    sheetName: sp.startLabel.foreign ? sp.startLabel.sheetName : null,
-  };
-  refreshLaneTarget();
-  showToast(`Copied: ${name} (${formatTime(sp.endLabel.start - sp.startLabel.start)})`, 'info');
-}
-
-// A start + end marker pair saved as two new rows — for paste and Alt+drag.
-// Spans live on one shared ribbon, so a copy stays with the source's owner
-// (admin) or goes to the labeler's own sheet (everyone else).
-function addMarkerPair(kind, start, end, sheetName) {
-  const m = MARKER_KINDS[kind];
-  if (state.isAnalyst) { showToast('View only — Analyst mode cannot add markers', 'error'); return null; }
-  if (state.isAdmin && !sheetName) { showToast('Admin has no timeline of its own — copy a labeler’s span first', 'error'); return null; }
-  const videoName = normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName;
-  const mk = (punch, t) => Object.assign({
-    id: null, punch_uuid: crypto.randomUUID(), punch, start: t, end: t, videoName,
-    isRoundMarker: true, timestamp: new Date().toISOString(),
-  }, state.isAdmin ? { foreign: true, sheetName } : {});
-  const a = mk(m.start, start), b = mk(m.end, end);
-  a._pairEnd = b;
-  b._saveNotStarted = true;
-  state.labels.push(a, b);
-  pushUndo({
-    label: a,
-    desc: `Undid: ${m.name} added`,
-    undo: () => {
-      for (const l of [a, b]) {
-        const i = state.labels.indexOf(l);
-        if (i !== -1) state.labels.splice(i, 1);
-        if (l.id != null) deleteLabelFromSheet(l); else l._pendingCancel = true;
-      }
-      syncRoundActiveFromLabels();
-      renderLabels();
-    },
-  });
-  syncRoundActiveFromLabels();
-  renderLabels();
-  // One after the other: both rows land in the same tab, and each add reads
-  // the tab to pick its id.
-  pushRoundMarkerToSheet(a).then(() => pushRoundMarkerToSheet(b));
-  return [a, b];
-}
-
-// Delete key / right-click Delete on a selected span: both of its rows, one undo.
-function deleteSelectedSpan() {
-  const sp = state.selectedSpan;
-  if (!sp || !state.labels.includes(sp.startLabel)) return false;
-  const rows = [sp.startLabel, sp.endLabel].filter(l => l && state.labels.includes(l));
-  if (rows.some(refuseForeign)) return true;
-  const name = MARKER_KINDS[sp.kind].name;
-  state.selectedSpan = null;
-  state.labels = state.labels.filter(l => !rows.includes(l));
-  pushUndo({
-    label: rows[0],
-    desc: `Restored: ${name}`,
-    undo: () => {
-      for (const l of rows) { l.id = null; state.labels.push(l); }
-      syncRoundActiveFromLabels();
-      renderLabels();
-      rows.reduce((p, l) => p.then(() => pushRoundMarkerToSheet(l)), Promise.resolve());
-    },
-  });
-  syncRoundActiveFromLabels();
-  renderLabels();
-  for (const l of rows) deleteLabelFromSheet(l);
-  const owner = rows[0].foreign ? ` from ${foreignOwnerName(rows[0])}’s timeline` : '';
-  showToast(`Deleted ${name}${owner} — Z to undo`, 'info');
-  return true;
-}
-
-// Boundary markers carry no link to their partner row, so spans are read per
-// labeler and per kind as nested brackets: each end closes that labeler's most
-// recent open start. A start created on this page knows its end (`_pairEnd` —
-// a paste, or an Alt+drag copy still being dragged) and pairs with it
-// directly, so a copy overlapping its original never borrows the original's
-// end. At one instant an end sorts before a start: back-to-back spans stay two.
-function markerOrder(a, b) {
-  if (a.start === b.start) {
-    const ea = a.punch.endsWith('_end'), eb = b.punch.endsWith('_end');
-    if (ea !== eb) return ea ? -1 : 1;
-  }
-  return compareLabelsByTime(a, b);
-}
-
-// → [{s, e (null while open), outer (the enclosing open start, or null)}]
-function pairMarkers(marks) {
-  const sorted = [...marks].sort(markerOrder);
-  const inSet = new Set(sorted);
-  // Only while unsaved: once both rows are in the sheet they are read like any
-  // other rows (and an overlap with the original merges — removeNestedSpans()).
-  const linkOf = (m) => (m._pairEnd && inSet.has(m._pairEnd) && (m.id == null || m._pairEnd.id == null) ? m._pairEnd : null);
-  const linkedEnds = new Set(sorted.map(linkOf).filter(Boolean));
-  const spans = [], open = [], strayEnds = [];
-  for (const m of sorted) {
-    if (linkedEnds.has(m)) continue;
-    if (m.punch.endsWith('_start')) {
-      if (linkOf(m)) spans.push({ s: m, e: m._pairEnd, outer: null });
-      else open.push(m);
-      continue;
-    }
-    if (!open.length) { strayEnds.push(m); continue; }   // nothing to close
-    const s = open.pop();
-    spans.push({ s, e: m, outer: open.length ? open[open.length - 1] : null });
-  }
-  for (const s of open) spans.push({ s, e: null, outer: null });
-  spans.strayEnds = strayEnds;
-  spans.last = sorted[sorted.length - 1] || null;
-  return spans;
-}
-
-// Owner key for grouping markers: one labeler's tab (or this labeler's own).
-const markerOwnerKey = (l) => (l.foreign ? l.sheetName || '' : '');
-
-// A round or unusable span lying inside another of the SAME labeler's —
-// nested, duplicated, or overlapping it partway (the rows can't tell those
-// apart) — is merged into it: the inner start and end rows are deleted, which
-// leaves the outer start and the later end, i.e. the union. Only once the
-// outer span is closed (never mid-marking), only saved rows this labeler may
-// edit, never across labelers — two people's rounds overlapping is inter-rater
-// data, not a mistake.
-//
-// { orphans: true } (a video just opened) also deletes half a span — a start
-// that never got its end, or an end with no start — which otherwise grabs a
-// neighbouring span's boundary. Except a start that is that labeler's last
-// marker of its kind: that is a round still being marked. Not after edits in
-// a session, where a start pressed out of order is waiting for its end.
-function removeNestedSpans({ orphans = false } = {}) {
-  if (state.isAnalyst || document.querySelector('.round-span.dragging-round')) return;
-  const groups = new Map();
-  for (const l of state.labels) {
-    const kind = markerKind(l.punch);
-    if (!kind || !Number.isFinite(l.start) || isCombinedDataRow(l)) continue;
-    const key = kind + '|' + markerOwnerKey(l);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(l);
-  }
-  const editable = (l) => l.id != null && !isForeignLabel(l);
-  const merged = [], halves = [];
-  for (const marks of groups.values()) {
-    const spans = pairMarkers(marks);
-    const closed = new Set(spans.filter(sp => sp.e).map(sp => sp.s));
-    for (const n of spans) {
-      if (!n.e || !n.outer || !closed.has(n.outer)) continue;
-      if (editable(n.s) && editable(n.e)) merged.push(n.s, n.e);
-    }
-    if (!orphans) continue;
-    for (const n of spans) if (!n.e && n.s !== spans.last && editable(n.s)) halves.push(n.s);
-    for (const e of spans.strayEnds) if (editable(e)) halves.push(e);
-  }
-  const doomed = [...merged, ...halves];
-  if (!doomed.length) return;
-  state.labels = state.labels.filter(l => !doomed.includes(l));
-  if (state.selectedSpan && (doomed.includes(state.selectedSpan.startLabel) || doomed.includes(state.selectedSpan.endLabel))) state.selectedSpan = null;
-  syncRoundActiveFromLabels();
-  renderLabels();
-  for (const l of doomed) deleteLabelFromSheet(l);
-  const describe = (rows, per) => {
-    const counts = {};
-    for (let i = 0; i < rows.length; i += per) {
-      const who = rows[i].foreign ? ` (${foreignOwnerName(rows[i])})` : '';
-      const k = MARKER_KINDS[markerKind(rows[i].punch)].name.toLowerCase() + who;
-      counts[k] = (counts[k] || 0) + 1;
-    }
-    return Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ');
-  };
-  const parts = [];
-  if (merged.length) parts.push('merged overlapping spans: ' + describe(merged, 2));
-  if (halves.length) parts.push('deleted spans missing a start or end: ' + describe(halves, 1));
-  showToast('Cleaned up — ' + parts.join('; '), 'info');
-}
-
-function pasteSpanAtPlayhead(clip) {
-  const video = document.getElementById('video-player');
-  const start = video.currentTime;
-  const duration = getTimelineDuration();
-  const end = duration > 0 ? Math.min(duration, start + clip.duration) : start + clip.duration;
-  if (addMarkerPair(clip.kind, start, end, state.isAdmin ? clip.sheetName : null)) {
-    showToast(`Pasted: ${MARKER_KINDS[clip.kind].name} ${formatTime(start)} → ${formatTime(end)}`, 'success');
-  }
-}
-
 // Same outbox as pushLabelToSheet — a round boundary is as expensive to
 // re-find as a punch, and the old version dropped it on any failure.
 async function pushRoundMarkerToSheet(label) {
   if (!state.scriptUrl) return;
-  label._saveNotStarted = false;
-  if (label._pendingCancel && label.id == null) return;   // deleted before its turn to save
   const time = formatTimeSheet(label.start);
   const params = {
     action: 'add',
@@ -3090,7 +2883,7 @@ async function pushRoundMarkerToSheet(label) {
     if (result.id != null) label.id = result.id;
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
-    if (applyEditsAfterSave(label)) return;
+    if (label._pendingCancel) { deleteLabelFromSheet(label); return; }
     showToast(`${label.punch} saved at ${formatTime(label.start)}` + (label.foreign ? ` (${foreignOwnerName(label)})` : ''), 'success');
     fetchLabelsFromSheet();
   } catch (e) {
@@ -3486,7 +3279,6 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
 
     syncRoundActiveFromLabels();
     renderLabels();
-    removeNestedSpans({ orphans: isFreshLoad });
     // predictions.js is optional — reapplies whatever model file is loaded
     // against THIS video now that state.labels was just rebuilt from
     // scratch above (the filter a few lines up drops everything that
@@ -3543,10 +3335,7 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
       console.error('Foreign fetch error:', fgn.message);
       return;
     }
-    // Keep rows created here that are still saving (a paste, a duplicate):
-    // dropping them now loses one half of a span until the next refresh. The
-    // merges below adopt each one once its saved row comes back.
-    state.labels = state.labels.filter(l => !l.foreign || (l.id == null && !l.fromSheet && !l.isPrediction));
+    state.labels = state.labels.filter(l => !l.foreign);
     mergeForeignRoundMarkers(fgn, driveLink);
     mergeForeignPunchLabels(fgn, driveLink);
     syncRoundActiveFromLabels();
@@ -3554,7 +3343,6 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     // again (they carry `foreign: true` too, same as any real foreign row).
     if (typeof applyPredictionsToLabels === 'function') applyPredictionsToLabels();
     else renderLabels();
-    if (state.isAdmin) removeNestedSpans({ orphans: isFreshLoad });   // everyone else's own spans were checked in phase 1
     updateForeignFilterButton();
     // Down BEFORE the "already labeled" popup — otherwise the two stack,
     // and the one that matters ends up behind the one that doesn't.
@@ -3785,19 +3573,15 @@ function mergeForeignMarker(raw, driveLink) {
   // (foreignOwnerLabelerParam()) instead of hitting "Admin has no sheet".
   // Admin only: everyone else's un-foreign rows are their OWN, and a
   // teammate's row can share an id with one of them (ids are per tab).
-  const existing = state.labels.find(l => l.isRoundMarker && l.id == null && l.foreign && !l.fromSheet &&
-      l.sheetName === fm.sheet && l.punch === fm.punch && Math.abs(l.start - t) < 0.01)
-    || (state.isAdmin && state.labels.find(l => l.isRoundMarker && !l.foreign &&
-      (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5)));
+  const existing = state.isAdmin && state.labels.find(l => l.isRoundMarker && !l.foreign &&
+    (l.id != null && fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.5));
   if (existing) {
     Object.assign(existing, { foreign: true, sheetName: fm.sheet, fromSheet: true, videoName: driveLink });
     if (fm.id != null) existing.id = fm.id;
     return;
   }
-  // The same row twice — not a teammate's marker near one of mine, which
-  // used to be dropped here and left that teammate's span without its start.
-  const dupe = state.labels.some(l => l.isRoundMarker && l.foreign && l.sheetName === fm.sheet &&
-    (fm.id != null ? l.id === fm.id : l.punch === fm.punch && Math.abs(l.start - t) < 0.01));
+  const dupe = state.labels.some(l =>
+    l.isRoundMarker && l.punch === fm.punch && Math.abs(l.start - t) < 0.5);
   if (dupe) return;
   state.labels.push({
     // `id` (and a real videoName, not null) only matter once an admin can
@@ -3832,13 +3616,10 @@ function mergeForeignPunchLabels(result, driveLink) {
     // instead of pushing a duplicate — same reasoning as
     // mergeForeignRoundMarkers() above.
     // Admin only — see the same guard in mergeForeignMarker().
-    const existing = state.labels.find(l => !l.isRoundMarker && l.id == null && l.foreign && !l.fromSheet &&
-        l.sheetName === fp.sheet && l.punch === mapPunchType(fp.punch) &&
-        Math.abs(l.start - start) < 0.01 && Math.abs(l.end - end) < 0.01)
-      || (state.isAdmin && state.labels.find(l => !l.isRoundMarker && !l.foreign &&
-        (l.id != null && fp.id != null
-          ? l.id === fp.id
-          : l.punch === mapPunchType(fp.punch) && Math.abs(l.start - start) < 0.01 && Math.abs(l.end - end) < 0.01)));
+    const existing = state.isAdmin && state.labels.find(l => !l.isRoundMarker && !l.foreign &&
+      (l.id != null && fp.id != null
+        ? l.id === fp.id
+        : l.punch === mapPunchType(fp.punch) && Math.abs(l.start - start) < 0.01 && Math.abs(l.end - end) < 0.01));
     if (existing) {
       Object.assign(existing, { foreign: true, sheetName: fp.sheet, fromSheet: true, videoName: driveLink });
       if (fp.id != null) existing.id = fp.id;
@@ -3906,20 +3687,6 @@ function parseSheetTime(timeStr) {
 // ============================================================
 // Labels Rendering & Storage
 // ============================================================
-// Chronological order for anything in state.labels. At one instant: span
-// starts, then moves, then span ends — a move at a span's edge counts as
-// inside it (see isOutsideRound()), so it always lists between that span's
-// start and end. One fixed rank, not pairwise rules: those formed a cycle
-// (end < start < move < end), which is not an order and scrambles a sort.
-// A row whose time didn't parse sorts before everything.
-function compareLabelsByTime(a, b) {
-  const t = (v) => (Number.isFinite(v) ? v : -Infinity);
-  const sa = t(a.start), sb = t(b.start);
-  if (sa !== sb) return sa < sb ? -1 : 1;
-  const rank = (l) => (!markerKind(l.punch) ? 1 : l.punch.endsWith('_start') ? 0 : 2);
-  return (rank(a) - rank(b)) || (t(a.end) - t(b.end)) || 0;
-}
-
 function renderLabels() {
   refreshAgreedLabelCache();
   const log = document.getElementById('label-log');
@@ -3961,7 +3728,7 @@ function renderLabels() {
 
   log.innerHTML = '';
   const sorted = state.labels.map((label, idx) => ({ label, idx }));
-  sorted.sort((a, b) => compareLabelsByTime(b.label, a.label));   // latest first
+  sorted.sort((a, b) => b.label.start - a.label.start);
   sorted.forEach(({ label, idx }) => {
     if (shouldHideByTab(label)) return;
     const entry = document.createElement('div');
@@ -4074,10 +3841,7 @@ function renderLabels() {
       };
     }
 
-    if (label === state.highlightedLabel ||
-        (state.selectedSpan && (label === state.selectedSpan.startLabel || label === state.selectedSpan.endLabel))) {
-      entry.classList.add('label-selected');
-    }
+    if (label === state.highlightedLabel) entry.classList.add('label-selected');
     // "Outside every round" used to also flag the row right here (a class
     // plus a tooltip) — removed because it duplicated the Problems card
     // with a DIFFERENT scope (every visible row, foreign included, vs.
@@ -4346,7 +4110,6 @@ function saveEditRoundMarker(idx) {
   showToast(`${markerText(label.punch)} updated, syncing...`, 'success');
   updateLabelInSheet(label).then(() => {
     showToast(`Synced #${label.id} to sheet`, 'info');
-    removeNestedSpans();
   });
 }
 
@@ -4422,8 +4185,8 @@ function deleteLabel(idx) {
 // flash it, so "which one did I just right-click" has an answer.
 function highlightLabelInPanel(idx) {
   const label = state.labels[idx];
-  if (!label) return;
-  if (!label.isRoundMarker && state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
+  if (!label || label.isRoundMarker) return;
+  if (state.labelTab !== 'combined' && punchBucket(label.punch) !== state.labelTab) {
     setLabelTab(punchBucket(label.punch));
   }
   const entry = document.querySelector(`#label-log [data-label-idx="${idx}"]`);
@@ -4476,9 +4239,6 @@ function performUndo() {
 // success handler sends one update once the id exists — see
 // applyEditsAfterSave(). False when there's no queued add to wait for.
 function deferEditUntilSaved(label) {
-  // Its add hasn't even started (the second row of a pasted span waits for
-  // the first): that add reads the label as it is then, edit included.
-  if (label._saveNotStarted) return true;
   const key = outboxKey();
   const entries = outboxRead(key);
   const entry = entries.find(e => e.punchUuid && e.punchUuid === label.punch_uuid);
@@ -4494,7 +4254,7 @@ function deferEditUntilSaved(label) {
   return true;
 }
 
-// Called by every add's success path, right after the id is adopted.
+// Called by a move's add success path, right after the id is adopted.
 function applyEditsAfterSave(label) {
   if (label._pendingCancel) { deleteLabelFromSheet(label); return true; }
   if (label._pendingUpdate) { label._pendingUpdate = false; updateLabelInSheet(label); }
@@ -4554,7 +4314,6 @@ async function deleteLabelFromSheet(label) {
     // an add already on its way delete the row the moment its id comes back.
     const key = outboxKey();
     const entries = outboxRead(key);
-    if (label._saveNotStarted) { label._pendingCancel = true; return; }   // its add will now not be sent
     if (label.punch_uuid && entries.some(e => e.punchUuid === label.punch_uuid)) {
       outboxWrite(entries.filter(e => e.punchUuid !== label.punch_uuid), key);
       updateOutboxChip();
@@ -4766,11 +4525,6 @@ function setupKeyboardShortcuts() {
       // selection elsewhere on the page is left alone.
       case 'KeyC':
         if (e.ctrlKey || e.metaKey) {
-          if (!state.highlightedLabel && state.selectedSpan) {
-            e.preventDefault();
-            copySelectedSpan();
-            break;
-          }
           if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
           e.preventDefault();
           copyHighlightedLabel();
@@ -4849,28 +4603,18 @@ function roundSpansWithIdx() {
   return markerSpansWithIdx('round');
 }
 
-// Spans of either kind, paired within each labeler (see pairMarkers()), all
-// labelers together, by start. `n` numbers a span among its own labeler's.
+// Same pairing for either kind of boundary — see MARKER_KINDS.
 function markerSpansWithIdx(kind) {
   const m = MARKER_KINDS[kind];
-  const idxOf = new Map();
-  const groups = new Map();
-  state.labels.forEach((l, idx) => {
-    if ((l.punch !== m.start && l.punch !== m.end) || !Number.isFinite(l.start) || isLabelerHidden(l)) return;
-    idxOf.set(l, idx);
-    const key = markerOwnerKey(l);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(l);
+  const marks = (punch) => state.labels
+    .map((l, idx) => ({ l, idx }))
+    .filter(({ l }) => l.punch === punch && !isLabelerHidden(l))
+    .sort((a, b) => a.l.start - b.l.start);
+  const starts = marks(m.start), ends = marks(m.end);
+  return starts.map(s => {
+    const e = ends.find(x => x.l.start > s.l.start);
+    return { start: s.l.start, end: e ? e.l.start : Infinity, startIdx: s.idx, endIdx: e ? e.idx : null };
   });
-  const out = [];
-  for (const marks of groups.values()) {
-    pairMarkers(marks).sort((a, b) => a.s.start - b.s.start).forEach((sp, i) => out.push({
-      start: sp.s.start, end: sp.e ? sp.e.start : Infinity,
-      startIdx: idxOf.get(sp.s), endIdx: sp.e ? idxOf.get(sp.e) : null,
-      owner: sp.s.foreign ? foreignOwnerName(sp.s) : '', n: i + 1,
-    }));
-  }
-  return out.sort((a, b) => a.start - b.start);
 }
 
 function roundSpans() {
@@ -5000,8 +4744,7 @@ function buildSegLanes(container, markersLayer, overlay) {
   if (markersLayer) container.appendChild(markersLayer);
 
   const lanes = new Map();
-  const pasteTarget = state.isAdmin && state.clipboardLabel && !state.clipboardLabel.span
-    ? writableLaneOwner(state.activeLaneOwner) : null;
+  const pasteTarget = state.isAdmin && state.clipboardLabel ? writableLaneOwner(state.activeLaneOwner) : null;
   const addPair = (owner) => {
     for (const bucket of buckets) {
       const lane = document.createElement('div');
@@ -5073,11 +4816,8 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
     video.currentTime = t;
   };
 
-  // Each span is numbered among its own labeler's; the name only earns its
-  // place when more than one labeler's rounds share the ribbon.
-  const multiOwner = new Set(rounds.map(r => r.owner)).size > 1;
   if (markersLayer) {
-    rounds.forEach((r) => {
+    rounds.forEach((r, i) => {
       const l = timeToViewportPct(r.start, duration);
       const rt = timeToViewportPct(r.end, duration);
       if (rt < 0 || l > 100) return;
@@ -5085,9 +4825,8 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       span.className = 'round-span';
       span.style.left = Math.max(0, l) + '%';
       span.style.width = Math.max(Math.min(100, rt) - Math.max(0, l), 0.4) + '%';
-      const who = r.owner ? ` · ${r.owner}` : '';
-      span.title = `Round ${r.n}${who} — ${formatTime(r.start)} → ${formatTime(r.end)}`;
-      span.innerHTML = `<span class="round-span-label">Round ${r.n}${multiOwner ? who : ''}</span>`;
+      span.title = `Round ${i + 1} — ${formatTime(r.start)} → ${formatTime(r.end)}`;
+      span.innerHTML = `<span class="round-span-label">Round ${i + 1}</span>`;
       // Read by setupRoundSpanDragging() in ui.js — a round span is really
       // two separate round_start/round_end rows, not one, so dragging an
       // edge needs to know which state.labels index that edge actually is.
@@ -5096,11 +4835,7 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       // previous render.
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      if (state.selectedSpan && state.selectedSpan.startLabel === state.labels[r.startIdx]) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => {
-        seek(r.start)(e);
-        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null, { reveal: true });
-      });
+      span.addEventListener('click', seek(r.start));
       markersLayer.appendChild(span);
     });
   }
@@ -5109,12 +4844,12 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
   // stay as boundary ticks there. Short bottom-anchored stubs, not
   // full-height rules, so they can't be mistaken for the playhead either.
   if (markersScrub) {
-    rounds.forEach((r) => {
+    rounds.forEach((r, i) => {
       [['start', r.start], ['end', r.end]].forEach(([kind, t]) => {
         const tick = document.createElement('div');
         tick.className = 'round-tick rt-' + kind;
         tick.style.left = timeToScrubPct(t, duration) + '%';
-        tick.title = `Round ${r.n}${r.owner ? ' · ' + r.owner : ''} ${kind} — ${formatTime(t)}`;
+        tick.title = `Round ${i + 1} ${kind} — ${formatTime(t)}`;
         tick.addEventListener('click', seek(t));
         markersScrub.appendChild(tick);
       });
@@ -5141,12 +4876,7 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.innerHTML = '<span class="round-span-label">Unusable</span>';
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
-      if (state.selectedSpan && state.selectedSpan.startLabel === state.labels[r.startIdx]) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => {
-        e.stopPropagation();
-        video.currentTime = r.start;
-        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null, { reveal: true });
-      });
+      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; });
       layer.appendChild(span);
     }
     if (scrubOverlay) {
@@ -5210,8 +4940,6 @@ function renderTimelineOverlay() {
     end: Number.isFinite(r.end) ? r.end : duration,
     startIdx: r.startIdx,
     endIdx: r.endIdx,
-    owner: r.owner,
-    n: r.n,
   }));
 
   // Shade areas outside rounds — on the SCRUB track, which no longer zooms,
@@ -5227,7 +4955,7 @@ function renderTimelineOverlay() {
         seg.style.width = (timeToScrubPct(r.start, duration) - timeToScrubPct(pos, duration)) + '%';
         overlay.appendChild(seg);
       }
-      pos = Math.max(pos, r.end);   // two labelers' rounds can overlap
+      pos = r.end;
     }
     if (pos < duration) {
       const seg = document.createElement('div');
@@ -5379,12 +5107,33 @@ function updateVideoOverlay() {
   if (typeof drawSkeletonFrame === 'function') drawSkeletonFrame(t);
   if (typeof updateProbReadout === 'function') updateProbReadout(t);
 
-  // Same per-labeler pairing as the ribbon, so the tag and the ribbon agree.
-  const roundStarts = state.labels.filter(l => l.punch === 'round_start');
+  const roundStarts = state.labels
+    .filter(l => l.punch === 'round_start')
+    .map(l => l.start)
+    .sort((a, b) => a - b);
+  const roundEnds = state.labels
+    .filter(l => l.punch === 'round_end')
+    .map(l => l.start)
+    .sort((a, b) => a - b);
   const insideUnusable = markerSpansWithIdx('unusable').some(u => t >= u.start && t <= u.end);
-  const here = roundSpansWithIdx().find(r => t >= r.start && t <= r.end);
-  const insideRound = !!here;
-  const currentRound = here ? here.n : null;
+
+  const rounds = [];
+  for (let i = 0; i < roundStarts.length; i++) {
+    const rStart = roundStarts[i];
+    const rEnd = roundEnds.find(e => e > rStart);
+    rounds.push({ start: rStart, end: rEnd });
+  }
+
+  let currentRound = null;
+  let insideRound = false;
+  for (let i = 0; i < rounds.length; i++) {
+    const r = rounds[i];
+    if (t >= r.start && (r.end === undefined || t <= r.end)) {
+      currentRound = i + 1;
+      insideRound = true;
+      break;
+    }
+  }
 
   const activeLabels = state.labels.filter(l =>
     !l.isRoundMarker && (!l.foreign || (state.showForeign && !isLabelerHidden(l))) &&
