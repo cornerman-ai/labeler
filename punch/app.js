@@ -2449,7 +2449,11 @@ function sheetNameForOwner(ownerDisplayName) {
 // add-to-new, done in that order (add first) so a network failure leaves a
 // harmless duplicate rather than losing the row outright.
 async function reassignLabelOwner(label, newOwnerDisplayName) {
-  if (label.id == null) { showToast('Still saving — try the move again in a moment', 'error'); return; }
+  if (label.id == null) {
+    updateLabelInSheet(label);   // keep the drag's new time — see deferEditUntilSaved()
+    showToast('Still saving — move it to another timeline again in a moment', 'error');
+    return;
+  }
   const newSheetName = sheetNameForOwner(newOwnerDisplayName);
   if (!newSheetName) { showToast('Cannot resolve sheet for ' + newOwnerDisplayName, 'error'); return; }
   const oldSheetName = label.sheetName;
@@ -2716,6 +2720,11 @@ async function drainOutbox({ quiet = true } = {}) {
           if (live) {
             if (result.id != null) live.id = result.id;
             if (result.punch_uuid) live.punch_uuid = result.punch_uuid;
+            // The queued params already carried any edit made while waiting
+            // (deferEditUntilSaved rewrote them), so nothing more to send —
+            // unless it was deleted meanwhile.
+            live._pendingUpdate = false;
+            applyEditsAfterSave(live);
           }
           outboxWrite(outboxRead(key).filter(e => e.punchUuid !== entry.punchUuid), key);
         } catch (e) {
@@ -2772,10 +2781,9 @@ async function pushLabelToSheet(label) {
     // missing (older builds). Adopt whatever the server persisted.
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
-    // Ctrl+Z landed on this label while the add was still in flight — there
-    // was no id yet for its undo entry to delete, so it just flagged this
-    // instead. Now there is one.
-    if (label._pendingCancel) deleteLabelFromSheet(label);
+    // Deleted (Ctrl+Z, Delete) or edited (a drag) while the add was still in
+    // flight — there was no id to act on then. Now there is one.
+    applyEditsAfterSave(label);
   } catch (e) {
     console.error('Sheet push failed:', e);
     showToast('Sheet is unreachable — label saved locally, will retry.', 'error');
@@ -2851,10 +2859,13 @@ function addRoundMarker(markerType) {
 }
 
 // ── spans (a round or unusable stretch) as one thing to select, copy, paste ──
-function selectSpan(startLabel, endLabel) {
+// { reveal: true } — a click on the ribbon: bring the span's start row into
+// view in the Labels panel, the way clicking a move strip does.
+function selectSpan(startLabel, endLabel, { reveal = false } = {}) {
   state.selectedSpan = { kind: markerKind(startLabel.punch), startLabel, endLabel: endLabel || null };
   state.highlightedLabel = null;
   renderLabels();
+  if (reveal) highlightLabelInPanel(state.labels.indexOf(startLabel));
 }
 
 function copySelectedSpan() {
@@ -2885,6 +2896,7 @@ function addMarkerPair(kind, start, end, sheetName) {
   }, state.isAdmin ? { foreign: true, sheetName } : {});
   const a = mk(m.start, start), b = mk(m.end, end);
   a._pairEnd = b;
+  b._saveNotStarted = true;
   state.labels.push(a, b);
   pushUndo({
     label: a,
@@ -3049,6 +3061,8 @@ function pasteSpanAtPlayhead(clip) {
 // re-find as a punch, and the old version dropped it on any failure.
 async function pushRoundMarkerToSheet(label) {
   if (!state.scriptUrl) return;
+  label._saveNotStarted = false;
+  if (label._pendingCancel && label.id == null) return;   // deleted before its turn to save
   const time = formatTimeSheet(label.start);
   const params = {
     action: 'add',
@@ -3076,7 +3090,7 @@ async function pushRoundMarkerToSheet(label) {
     if (result.id != null) label.id = result.id;
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
-    if (label._pendingCancel) { deleteLabelFromSheet(label); return; }
+    if (applyEditsAfterSave(label)) return;
     showToast(`${label.punch} saved at ${formatTime(label.start)}` + (label.foreign ? ` (${foreignOwnerName(label)})` : ''), 'success');
     fetchLabelsFromSheet();
   } catch (e) {
@@ -4060,7 +4074,10 @@ function renderLabels() {
       };
     }
 
-    if (label === state.highlightedLabel) entry.classList.add('label-selected');
+    if (label === state.highlightedLabel ||
+        (state.selectedSpan && (label === state.selectedSpan.startLabel || label === state.selectedSpan.endLabel))) {
+      entry.classList.add('label-selected');
+    }
     // "Outside every round" used to also flag the row right here (a class
     // plus a tooltip) — removed because it duplicated the Problems card
     // with a DIFFERENT scope (every visible row, foreign included, vs.
@@ -4452,8 +4469,41 @@ function performUndo() {
   showToast('Nothing to undo', 'info');
 }
 
+// A row created on this page (a paste, a duplicate, a fresh label) has no id
+// until its add comes back. Edits made in that window used to fail with "no
+// ID" and be lost — the row landed at its pasted time. Now the queued add is
+// rewritten to the current values (a retry saves them), and the add's own
+// success handler sends one update once the id exists — see
+// applyEditsAfterSave(). False when there's no queued add to wait for.
+function deferEditUntilSaved(label) {
+  // Its add hasn't even started (the second row of a pasted span waits for
+  // the first): that add reads the label as it is then, edit included.
+  if (label._saveNotStarted) return true;
+  const key = outboxKey();
+  const entries = outboxRead(key);
+  const entry = entries.find(e => e.punchUuid && e.punchUuid === label.punch_uuid);
+  if (!entry) return false;
+  entry.params = Object.assign({}, entry.params, {
+    punchId: label.punch,
+    angle: label.angle || '',
+    startTime: formatTimeSheet(label.start),
+    endTime: formatTimeSheet(label.isRoundMarker ? label.start : label.end),
+  });
+  outboxWrite(entries, key);
+  label._pendingUpdate = true;
+  return true;
+}
+
+// Called by every add's success path, right after the id is adopted.
+function applyEditsAfterSave(label) {
+  if (label._pendingCancel) { deleteLabelFromSheet(label); return true; }
+  if (label._pendingUpdate) { label._pendingUpdate = false; updateLabelInSheet(label); }
+  return false;
+}
+
 async function updateLabelInSheet(label) {
   if (!state.scriptUrl) { showToast('No script URL configured', 'error'); return; }
+  if (!label.id && deferEditUntilSaved(label)) return;
   if (!label.id) { showToast('Label has no ID, cannot update sheet', 'error'); return; }
   const params = {
     action: 'update',
@@ -4499,7 +4549,21 @@ let _pendingDeletes = 0;
 
 async function deleteLabelFromSheet(label) {
   if (!state.scriptUrl) { showToast('No script URL configured', 'error'); return; }
-  if (!label.id) { showToast('Label has no ID, cannot delete from sheet', 'error'); return; }
+  if (!label.id) {
+    // Still saving: drop the queued add so a retry can't create it, and have
+    // an add already on its way delete the row the moment its id comes back.
+    const key = outboxKey();
+    const entries = outboxRead(key);
+    if (label._saveNotStarted) { label._pendingCancel = true; return; }   // its add will now not be sent
+    if (label.punch_uuid && entries.some(e => e.punchUuid === label.punch_uuid)) {
+      outboxWrite(entries.filter(e => e.punchUuid !== label.punch_uuid), key);
+      updateOutboxChip();
+      label._pendingCancel = true;
+      return;
+    }
+    showToast('Label has no ID, cannot delete from sheet', 'error');
+    return;
+  }
   const params = { action: 'delete', id: label.id, video: label.videoName };
   // Same owner-redirect as updateLabelInSheet — see the comment there.
   if (label.foreign) {
@@ -5035,7 +5099,7 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       if (state.selectedSpan && state.selectedSpan.startLabel === state.labels[r.startIdx]) span.classList.add('span-selected');
       span.addEventListener('click', (e) => {
         seek(r.start)(e);
-        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null);
+        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null, { reveal: true });
       });
       markersLayer.appendChild(span);
     });
@@ -5081,7 +5145,7 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.addEventListener('click', (e) => {
         e.stopPropagation();
         video.currentTime = r.start;
-        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null);
+        selectSpan(state.labels[r.startIdx], r.endIdx != null ? state.labels[r.endIdx] : null, { reveal: true });
       });
       layer.appendChild(span);
     }
