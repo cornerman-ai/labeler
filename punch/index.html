@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260916q">
+  <link rel="stylesheet" href="punch.css?v=20260917c">
 </head>
 <body>
   <div id="app">
@@ -694,16 +694,17 @@
       <div class="sc-row"><span>Unsure</span><span class="sc-keys"><kbd>U</kbd></span></div>
       <div class="sc-row"><span>Cancel the move being built</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Undo your last action (add, delete, edit, or drag — punches and rounds alike)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Z</kbd></span></div>
-      <div class="sc-row"><span>Copy / cut the highlighted punch</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>X</kbd></span></div>
-      <div class="sc-row"><span>Paste it at the playhead (Admin: onto the lane you clicked last)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
+      <div class="sc-row"><span>Shift-click punches to select several at once</span><span class="sc-keys"><kbd>&#8679;</kbd>+<kbd>Click</kbd></span></div>
+      <div class="sc-row"><span>Copy the highlighted punch, or the whole selection</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span></div>
+      <div class="sc-row"><span>Paste it (or the copied selection) at the playhead (Admin: onto the lane you clicked last)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
       <div class="sc-row"><span>Paste at a spot on a lane</span><span class="sc-keys"><kbd>Right-click the lane</kbd></span></div>
-      <div class="sc-row"><span>Delete the highlighted punch (Admin: anyone&rsquo;s)</span><span class="sc-keys"><kbd>Delete</kbd> or <kbd>&#9003;</kbd></span></div>
+      <div class="sc-row"><span>Delete the highlighted punch, or the whole selection (Admin: anyone&rsquo;s)</span><span class="sc-keys"><kbd>Delete</kbd> or <kbd>&#9003;</kbd></span></div>
 
       <p class="sc-sec">Fixing a label</p>
       <div class="sc-row"><span>Slide a punch along the timeline</span><span class="sc-keys"><kbd>Drag its strip</kbd></span></div>
       <div class="sc-row"><span>Stretch its start or end</span><span class="sc-keys"><kbd>Drag the strip&rsquo;s edge</kbd></span></div>
       <div class="sc-row"><span>Admin: move it to another labeler&rsquo;s timeline</span><span class="sc-keys"><kbd>Drag onto their lane</kbd> or <kbd>Right-click</kbd></span></div>
-      <div class="sc-row"><span>Admin: duplicate it (same or another timeline)</span><span class="sc-keys"><kbd>Alt</kbd>+<kbd>Drag</kbd></span></div>
+      <div class="sc-row"><span>Admin: duplicate it, or the whole selection (same or another timeline)</span><span class="sc-keys"><kbd>Alt</kbd>+<kbd>Drag</kbd></span></div>
       <div class="sc-row"><span>Abandon a drag</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Edit the type and times by hand</span><span class="sc-keys"><kbd>Click the row</kbd></span></div>
 
@@ -877,32 +878,32 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260916q"></script>
-  <script src="../shared/player.js?v=20260916q"></script>
-  <script src="skeleton.js?v=20260916q"></script>
+  <script src="../shared/labeler_name.js?v=20260917c"></script>
+  <script src="../shared/player.js?v=20260917c"></script>
+  <script src="skeleton.js?v=20260917c"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260916q"></script>
+  <script src="video-folder.js?v=20260917c"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260916q"></script>
-  <script src="predictions.js?v=20260916q"></script>
-  <script src="app.js?v=20260916q"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260917c"></script>
+  <script src="predictions.js?v=20260917c"></script>
+  <script src="app.js?v=20260917c"></script>
   <!-- After app.js: reads state.highlightedLabel, foreignOwnerName(), punchLabel(). -->
-  <script src="export-clip.js?v=20260916q"></script>
+  <script src="export-clip.js?v=20260917c"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260916q"></script>
+  <script src="problems.js?v=20260917c"></script>
   <!-- After app.js: reads _videoCatalog/fetchVideoCatalog()/visibleBuckets()/
        getTimelineDuration() from it. -->
-  <script src="prob-curve.js?v=20260916q"></script>
+  <script src="prob-curve.js?v=20260917c"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260916q"></script>
+  <script src="ui.js?v=20260917c"></script>
 </body>
 </html>

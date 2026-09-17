@@ -574,19 +574,29 @@
       drag = { idx, zone, grab: timeAt(e.clientX),
                start0: label.start, end0: label.end,
                startClientX: e.clientX, startClientY: e.clientY };
-      // Admin Alt+drag: leave the original where it is and drag a copy of it —
+      // Admin Alt+drag: leave the original(s) where they are and drag a copy —
       // same lane or any labeler's lane. The copy is saved on drop, never
-      // before, so letting go without moving leaves nothing behind.
+      // before, so letting go without moving leaves nothing behind. Grabbing
+      // a label that's part of an active multi-selection duplicates the
+      // WHOLE selection, moving together and landing together — see
+      // isLabelSelected()/selectedLabels() in app.js.
       if (state.isAdmin && e.altKey && zone === 'move' && !label.isRoundMarker) {
-        const copy = {
-          id: null, punch_uuid: crypto.randomUUID(), punch: label.punch, angle: label.angle || '',
-          start: label.start, end: label.end, videoName: label.videoName,
-          foreign: label.foreign, sheetName: label.sheetName, isRoundMarker: false,
+        const group = (isLabelSelected(label) && state.multiSelected.size > 1)
+          ? selectedLabels() : [label];
+        const copies = group.map(l => ({
+          id: null, punch_uuid: crypto.randomUUID(), punch: l.punch, angle: l.angle || '',
+          start: l.start, end: l.end, videoName: l.videoName,
+          foreign: l.foreign, sheetName: l.sheetName, isRoundMarker: false,
           timestamp: new Date().toISOString(),
-        };
-        state.labels.push(copy);
-        drag.idx = state.labels.length - 1;
+        }));
+        copies.forEach(c => state.labels.push(c));
+        drag.idx = state.labels.indexOf(copies[group.indexOf(label)]);
         drag.duplicate = true;
+        // The rest of the group, as an offset + duration from the grabbed
+        // one — mousemove keeps them all moving together by that delta.
+        drag.group = copies
+          .map((c, i) => ({ idx: state.labels.indexOf(c), offset: group[i].start - label.start, duration: group[i].end - group[i].start }))
+          .filter(g => g.idx !== drag.idx);
         lanes.classList.add('drag-copy');
         renderTimelineOverlay();
       }
@@ -617,8 +627,8 @@
         !!owner && l.dataset.owner === owner && l.dataset.bucket === bucket));
     };
     const removeCopy = () => {
-      const i = state.labels.findIndex((l, k) => k === drag.idx && l.id == null);
-      if (i !== -1) state.labels.splice(i, 1);
+      const idxs = new Set([drag.idx, ...(drag.group || []).map(g => g.idx)]);
+      state.labels = state.labels.filter((l, k) => !(idxs.has(k) && l.id == null));
     };
 
     window.addEventListener('mousemove', (e) => {
@@ -641,6 +651,16 @@
       } else {
         label.end = Math.max(snap(drag.end0 + dt), label.start + MIN_DUR);
       }
+      // The rest of an alt-drag-duplicated group rides along with the
+      // grabbed one, keeping the offsets recorded at mousedown.
+      if (drag.group) {
+        drag.group.forEach(g => {
+          const other = state.labels[g.idx];
+          if (!other) return;
+          other.start = label.start + g.offset;
+          other.end = other.start + g.duration;
+        });
+      }
       // Show the frame being chosen.
       video.currentTime = drag.zone === 'end' ? label.end : label.start;
       renderTimelineOverlay();
@@ -652,6 +672,19 @@
       // chosen in one motion; the row itself changes owner only on drop.
       const targetLane = target && lanes.querySelector(`.seg-lane[data-owner="${CSS.escape(target)}"][data-bucket="${bucket}"]`);
       if (el && targetLane) targetLane.appendChild(el);
+      // The rest of an alt-drag-duplicated group previews into the same
+      // target owner too — each into its own bucket's lane — so the whole
+      // selection visibly moves together instead of just the strip actually
+      // under the pointer, which used to read as "the others got left behind".
+      if (drag.group && target) {
+        drag.group.forEach(g => {
+          const other = state.labels[g.idx];
+          const otherEl = lanes.querySelector('.seek-segment[data-label-idx="' + g.idx + '"]');
+          if (!other || !otherEl) return;
+          const otherLane = lanes.querySelector(`.seg-lane[data-owner="${CSS.escape(target)}"][data-bucket="${punchBucket(other.punch)}"]`);
+          if (otherLane) otherLane.appendChild(otherEl);
+        });
+      }
     });
 
     window.addEventListener('mouseup', (e) => {
@@ -670,6 +703,7 @@
       // this is the only signal a cross-lane drop has.
       const targetOwner = moved ? dropOwnerAt(e.clientX, e.clientY, label) : null;
       const duplicate = !!drag.duplicate;
+      const group = drag.group;
 
       if (duplicate && !moved) removeCopy();
       drag = null;
@@ -680,22 +714,36 @@
 
       if (duplicate) {
         if (!moved) { renderTimelineOverlay(); return; }
-        if (targetOwner) label.sheetName = sheetNameForOwner(targetOwner);
+        // Everything duplicated together lands together: same target owner
+        // for the whole group, regardless of each one's own bucket — a
+        // sheet assignment isn't bucket-specific, only which lane a row
+        // renders in is (see punchBucket()).
+        const dupes = [label, ...(group || []).map(g => state.labels[g.idx]).filter(Boolean)];
+        if (targetOwner) {
+          const sheetName = sheetNameForOwner(targetOwner);
+          dupes.forEach(l => { l.sheetName = sheetName; l.foreign = true; });
+        }
+        const many = dupes.length > 1;
         pushUndo({
-          label,
-          desc: 'Undid duplicate: ' + punchLabel(label.punch),
+          label: dupes[0],
+          desc: many ? `Undid duplicate: ${dupes.length} moves` : 'Undid duplicate: ' + punchLabel(label.punch),
           undo: () => {
-            const i = state.labels.indexOf(label);
-            if (i === -1) return;
-            state.labels.splice(i, 1);
+            dupes.forEach(l => {
+              const i = state.labels.indexOf(l);
+              if (i === -1) return;
+              state.labels.splice(i, 1);
+              if (l.id != null) deleteLabelFromSheet(l);
+              else l._pendingCancel = true;
+            });
             renderLabels();
-            if (label.id != null) deleteLabelFromSheet(label);
-            else label._pendingCancel = true;
           },
         });
         renderLabels();
-        pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
-        showToast(`Duplicated ${punchLabel(label.punch)} onto ${foreignOwnerName(label)}’s timeline at ${formatTime(label.start)}`, 'success');
+        Promise.all(dupes.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
+        const onto = targetOwner ? ` onto ${foreignOwnerName(label)}’s timeline` : '';
+        showToast(many
+          ? `Duplicated ${dupes.length} moves${onto} at ${formatTime(label.start)}`
+          : `Duplicated ${punchLabel(label.punch)}${onto} at ${formatTime(label.start)}`, 'success');
         return;
       }
 

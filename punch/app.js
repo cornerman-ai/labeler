@@ -243,6 +243,12 @@ Object.assign(state, {
   // pasting makes a genuinely new label (own id, own punch_uuid), not a
   // second reference to the one that was copied. See copyHighlightedLabel().
   clipboardLabel: null,
+  // Set instead of clipboardLabel when Ctrl+C ran on a multi-selection (more
+  // than one label) — same per-item shape plus `offset` (from the earliest
+  // one's start), so Ctrl+V can recreate the whole combo. clipboardLabel is
+  // still kept in sync (its first entry) so the admin lane-target ring and
+  // the plain single-copy paths don't need to know this exists.
+  clipboardLabels: null,
   // Admin only: the labeler whose lane was clicked last — where Ctrl+V lands.
   // A display name (foreignOwnerName), null = the copied row's own owner.
   activeLaneOwner: null,
@@ -2294,13 +2300,16 @@ function highlightLabel(label) {
 }
 
 // ============================================================
-// Copy / cut / paste — Ctrl+C / Ctrl+X / Ctrl+V on the highlighted label.
-// Round markers are excluded: a boundary isn't a "move" to duplicate, and
-// two round_start rows at different times has no sensible meaning the way
-// two jabs does. Scoped the same way undo is — see the comment above
-// pushUndo() — to what's actually a labeling action.
+// Copy / paste — Ctrl+C / Ctrl+V on the highlighted label. Round markers are
+// excluded: a boundary isn't a "move" to duplicate, and two round_start rows
+// at different times has no sensible meaning the way two jabs does. Scoped
+// the same way undo is — see the comment above pushUndo() — to what's
+// actually a labeling action.
 // ============================================================
+// More than one label selected copies the whole selection instead of just
+// the highlighted one — see copySelection().
 function copyHighlightedLabel() {
+  if (state.multiSelected.size > 1) { copySelection(); return; }
   copyLabel(state.highlightedLabel);
 }
 
@@ -2311,12 +2320,31 @@ function copyLabel(label) {
   // a normal labeler's own label (own paste never needs it), and also for a
   // prediction (label.sheetName is unset), which correctly falls through to
   // pasteLabelAtPlayhead()'s "copy an existing move first" refusal for admin.
+  state.clipboardLabels = null;
   state.clipboardLabel = {
     punch: label.punch, angle: label.angle, duration: label.end - label.start,
     sheetName: label.foreign ? label.sheetName : null,
   };
   refreshLaneTarget();
   showToast(`Copied: ${punchLabel(label.punch)}`, 'info');
+}
+
+// The multi-select equivalent of copyLabel(): every selected move, each
+// keeping its offset from the earliest one's start so Ctrl+V reproduces the
+// combo's shape, not just a pile of copies at the same instant.
+// clipboardLabel is set to the first entry too, so refreshLaneTarget() and
+// the Ctrl+V/lane-target-ring code don't need their own multi-copy branch.
+function copySelection() {
+  const labels = selectedLabels();
+  if (labels.length < 2) return;
+  const t0 = labels[0].start;
+  state.clipboardLabels = labels.map(l => ({
+    punch: l.punch, angle: l.angle, duration: l.end - l.start, offset: l.start - t0,
+    sheetName: l.foreign ? l.sheetName : null,
+  }));
+  state.clipboardLabel = state.clipboardLabels[0];
+  refreshLaneTarget();
+  showToast(`Copied ${labels.length} moves`, 'info');
 }
 
 // A lane whose rows live on a real labeler sheet — the only kind admin can
@@ -2341,10 +2369,14 @@ function refreshLaneTarget() {
 }
 
 // ── multi-select ─────────────────────────────────────────────────────────
-// Shift+click on a timeline strip, a round/unusable span or a
-// Labels-panel row adds it to (or takes it out of) the selection; Delete
-// then removes all of them in one go, with one undo. A plain click goes back
-// to a single selection (highlightLabel() clears the set).
+// Shift+click on a timeline strip or a Labels-panel row adds a punch/
+// defensive move to (or takes it out of) the selection; Delete then removes
+// all of them in one go, with one undo, and Ctrl+C/Ctrl+V copy and paste the
+// whole set. A plain click goes back to a single selection (highlightLabel()
+// clears the set). Round and unusable markers are excluded on purpose — a
+// boundary isn't a "move" to batch with others, same reasoning as the
+// copy/cut exclusion above — so nothing ever adds one to multiSelected (see
+// toggleMultiSelect()) and their ribbon spans/panel rows don't offer it.
 function isLabelSelected(label) {
   return label === state.highlightedLabel || state.multiSelected.has(label);
 }
@@ -2355,7 +2387,7 @@ function isMultiSelectEvent(e) {
 
 function toggleMultiSelect(label) {
   const sel = state.multiSelected;
-  if (state.highlightedLabel) sel.add(state.highlightedLabel);
+  if (state.highlightedLabel && !state.highlightedLabel.isRoundMarker) sel.add(state.highlightedLabel);
   if (sel.has(label)) sel.delete(label); else sel.add(label);
   state.highlightedLabel = sel.has(label) ? label : ([...sel].pop() || null);
   renderLabels();
@@ -2372,10 +2404,10 @@ function multiSelectClick(e, label) {
 // Clicking a round/unusable span on the ribbon selects it: its opening row
 // (or closing row, for a span with no start) becomes the highlighted label,
 // so the Labels panel scrolls to where the span begins and Delete removes it.
-function selectMarkerSpan(r, e) {
+// Never multi-select — see the comment above isLabelSelected().
+function selectMarkerSpan(r) {
   const row = state.labels[r.startIdx != null ? r.startIdx : r.endIdx];
   if (!row) return;
-  if (isMultiSelectEvent(e)) { toggleMultiSelect(row); return; }
   if (state.highlightedLabel === row) state.highlightedLabel = null;   // re-click keeps it selected
   highlightLabel(row);
 }
@@ -2385,14 +2417,17 @@ function spanIsSelected(r) {
     .some(l => l && isLabelSelected(l));
 }
 
-// Everything selected, rounds/unusable expanded to both boundary rows.
+// Highlighted + multi-selected, deduped and time-ordered. Only ever moves —
+// see the comment above isLabelSelected().
+function selectedLabels() {
+  return [...new Set([...state.multiSelected, state.highlightedLabel])]
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start);
+}
+
+// Everything selected.
 function deleteSelectedLabels() {
-  const rows = [];
-  const add = (l) => { if (l && state.labels.includes(l) && !rows.includes(l)) rows.push(l); };
-  for (const l of new Set([...state.multiSelected, state.highlightedLabel])) {
-    if (!l) continue;
-    if (l.isRoundMarker && markerKind(l.punch)) markerSpanRows(l).forEach(add); else add(l);
-  }
+  const rows = selectedLabels().filter(l => state.labels.includes(l));
   const allowed = rows.filter(l => !isForeignLabel(l));
   if (!allowed.length) { if (rows.length) refuseForeign(rows[0]); return; }
   const skipped = rows.length - allowed.length;
@@ -2406,9 +2441,7 @@ function deleteSelectedLabels() {
         state.labels.splice(Math.min(i, state.labels.length), 0, l);
       });
       renderLabels();
-      allowed.filter(l => l.isRoundMarker).forEach(l => pushRoundMarkerToSheet(l));
-      Promise.all(allowed.filter(l => !l.isRoundMarker).map(l => pushLabelToSheet(l)))
-        .then(() => fetchLabelsFromSheet());
+      Promise.all(allowed.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
     },
   });
   state.multiSelected.clear();
@@ -2466,17 +2499,6 @@ function deleteHighlightedLabel() {
   return true;
 }
 
-function cutHighlightedLabel() {
-  const label = state.highlightedLabel;
-  if (!label || label.isRoundMarker) return;
-  if (refuseForeign(label)) return;
-  copyHighlightedLabel();
-  const idx = state.labels.indexOf(label);
-  if (idx === -1) return;
-  state.highlightedLabel = null;   // the row it referred to is about to be gone
-  deleteLabel(idx);                // handles its own undo entry + sheet delete
-}
-
 // Pastes at the CURRENT playhead — not at the copied label's original time,
 // since "paste" here means "make another one of these, now", the same way
 // captureTimestamp() makes a fresh one from wherever the video is paused.
@@ -2488,6 +2510,7 @@ function pasteLabelAtPlayhead(opts = {}) {
     showToast('View only — Analyst mode cannot add labels', 'error');
     return;
   }
+  if (state.clipboardLabels && state.clipboardLabels.length > 1) { pasteSelectionAtPlayhead(opts); return; }
   const clip = state.clipboardLabel;
   if (!clip) return;
   // Admin never authors a move of its own (see captureTimestamp()); a paste
@@ -2542,6 +2565,54 @@ function pasteLabelAtPlayhead(opts = {}) {
   pushLabelToSheet(label).then(() => fetchLabelsFromSheet());
   const onto = targetSheet ? ` onto ${foreignOwnerName(label)}’s timeline` : '';
   showToast(`Pasted: ${punchLabel(label.punch)}${onto} at ${formatTime(label.start)}`, 'success');
+}
+
+// copySelection()'s clipboard, pasted as a unit: every entry keeps its
+// offset from the earliest one, anchored to the playhead (or opts.time) the
+// same way a single paste anchors to it — so a repeated combo keeps its
+// shape. One combined undo removes the whole batch.
+function pasteSelectionAtPlayhead(opts = {}) {
+  const clips = state.clipboardLabels;
+  let targetSheet = null;
+  if (state.isAdmin) {
+    const owner = writableLaneOwner(opts.owner !== undefined ? opts.owner : state.activeLaneOwner);
+    targetSheet = owner ? sheetNameForOwner(owner) : clips[0].sheetName;
+    if (!targetSheet) {
+      showToast('Click a labeler’s timeline first, then paste — Admin has no timeline of its own.', 'error');
+      return;
+    }
+  }
+  const video = document.getElementById('video-player');
+  const base = Number.isFinite(opts.time) ? opts.time : video.currentTime;
+  const videoName = normalizeDriveUrl(document.getElementById('drive-link').value.trim()) || state.videoName;
+  const pasted = clips.map(clip => {
+    const start = base + clip.offset;
+    const label = {
+      id: null, punch_uuid: crypto.randomUUID(), punch: clip.punch, angle: clip.angle || '',
+      start, end: start + clip.duration, videoName, timestamp: new Date().toISOString(),
+    };
+    if (targetSheet) { label.foreign = true; label.sheetName = targetSheet; }
+    return label;
+  });
+  pasted.forEach(l => state.labels.push(l));
+  pushUndo({
+    label: pasted[0],
+    desc: `Undid paste: ${pasted.length} moves`,
+    undo: () => {
+      pasted.forEach(label => {
+        const i = state.labels.indexOf(label);
+        if (i === -1) return;
+        state.labels.splice(i, 1);
+        if (label.id != null) deleteLabelFromSheet(label);
+        else label._pendingCancel = true;
+      });
+      renderLabels();
+    },
+  });
+  renderLabels();
+  Promise.all(pasted.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
+  const onto = targetSheet ? ` onto ${foreignOwnerName(pasted[0])}’s timeline` : '';
+  showToast(`Pasted ${pasted.length} moves${onto} at ${formatTime(base)}`, 'success');
 }
 
 // The real sheet name behind a lane's display owner — e.g. "John" ->
@@ -3891,8 +3962,7 @@ function renderLabels() {
           <button class="label-delete" onclick="event.stopPropagation(); deleteLabel(${idx})" title="Delete">&times;</button>
         `;
         entry.querySelector('.label-text').style.cursor = 'pointer';
-        entry.querySelector('.label-text').onclick = (e) => {
-          if (multiSelectClick(e, label)) return;
+        entry.querySelector('.label-text').onclick = () => {
           highlightLabel(label);
           document.getElementById('video-player').currentTime = label.start;
         };
@@ -4654,11 +4724,7 @@ function setupKeyboardShortcuts() {
         }
         break;
       case 'KeyX':
-        if (e.ctrlKey || e.metaKey) {
-          if (!state.highlightedLabel || state.highlightedLabel.isRoundMarker) break;
-          e.preventDefault();
-          cutHighlightedLabel();
-        } else if (!e.altKey && !e.shiftKey) {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
           e.preventDefault();
           toggleUnusableMarker();
         }
@@ -4957,7 +5023,7 @@ function renderRoundStrip(markersLayer, markersScrub, rounds, duration, video) {
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
       if (spanIsSelected(r)) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => { if (isMultiSelectEvent(e)) e.stopPropagation(); else seek(r.start)(e); selectMarkerSpan(r, e); });
+      span.addEventListener('click', (e) => { seek(r.start)(e); selectMarkerSpan(r); });
       markersLayer.appendChild(span);
     });
   }
@@ -4999,7 +5065,7 @@ function renderUnusableStrip(layer, scrubOverlay, spans, duration, video) {
       span.dataset.startIdx = r.startIdx != null ? r.startIdx : '';
       span.dataset.endIdx = r.endIdx != null ? r.endIdx : '';
       if (spanIsSelected(r)) span.classList.add('span-selected');
-      span.addEventListener('click', (e) => { e.stopPropagation(); if (!isMultiSelectEvent(e)) video.currentTime = r.start; selectMarkerSpan(r, e); });
+      span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = r.start; selectMarkerSpan(r); });
       layer.appendChild(span);
     }
     if (scrubOverlay) {
