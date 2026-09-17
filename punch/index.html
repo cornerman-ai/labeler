@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260917c">
+  <link rel="stylesheet" href="punch.css?v=20260917f">
 </head>
 <body>
   <div id="app">
@@ -695,6 +695,7 @@
       <div class="sc-row"><span>Cancel the move being built</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Undo your last action (add, delete, edit, or drag — punches and rounds alike)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Z</kbd></span></div>
       <div class="sc-row"><span>Shift-click punches to select several at once</span><span class="sc-keys"><kbd>&#8679;</kbd>+<kbd>Click</kbd></span></div>
+      <div class="sc-row"><span>Drag over empty space to select every punch it crosses (Shift: add to selection)</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
       <div class="sc-row"><span>Copy the highlighted punch, or the whole selection</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span></div>
       <div class="sc-row"><span>Paste it (or the copied selection) at the playhead (Admin: onto the lane you clicked last)</span><span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
       <div class="sc-row"><span>Paste at a spot on a lane</span><span class="sc-keys"><kbd>Right-click the lane</kbd></span></div>
@@ -878,32 +879,32 @@
   </dialog>
 
   <!-- ?v= on each: see the note on the stylesheet link in <head>. -->
-  <script src="../shared/labeler_name.js?v=20260917c"></script>
-  <script src="../shared/player.js?v=20260917c"></script>
-  <script src="skeleton.js?v=20260917c"></script>
+  <script src="../shared/labeler_name.js?v=20260917f"></script>
+  <script src="../shared/player.js?v=20260917f"></script>
+  <script src="skeleton.js?v=20260917f"></script>
   <!-- Before app.js: its video picker calls autoLoadVideoFromFolder() on
        every selection. Reads loadVideoFileIntoPlayer() and showToast() from
        player.js above it. -->
-  <script src="video-folder.js?v=20260917c"></script>
+  <script src="video-folder.js?v=20260917f"></script>
   <!-- Vendored, not CDN-loaded: this has to keep working on GitHub Pages
        with no network dependency at runtime. predictions.js is the only
        consumer. -->
-  <script src="../shared/xlsx.full.min.js?v=20260917c"></script>
-  <script src="predictions.js?v=20260917c"></script>
-  <script src="app.js?v=20260917c"></script>
+  <script src="../shared/xlsx.full.min.js?v=20260917f"></script>
+  <script src="predictions.js?v=20260917f"></script>
+  <script src="app.js?v=20260917f"></script>
   <!-- After app.js: reads state.highlightedLabel, foreignOwnerName(), punchLabel(). -->
-  <script src="export-clip.js?v=20260917c"></script>
+  <script src="export-clip.js?v=20260917f"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
        foreignOwnerLabelerParam()/fetchJson()/sheetUrl(), all defined there
        or in player.js. Nothing in problems.js runs before DOMContentLoaded
        anyway, so this ordering isn't strictly load-bearing — just tidy. -->
-  <script src="problems.js?v=20260917c"></script>
+  <script src="problems.js?v=20260917f"></script>
   <!-- After app.js: reads _videoCatalog/fetchVideoCatalog()/visibleBuckets()/
        getTimelineDuration() from it. -->
-  <script src="prob-curve.js?v=20260917c"></script>
+  <script src="prob-curve.js?v=20260917f"></script>
   <!-- After app.js on purpose: its DOMContentLoaded handler restores the saved
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
-  <script src="ui.js?v=20260917c"></script>
+  <script src="ui.js?v=20260917f"></script>
 </body>
 </html>

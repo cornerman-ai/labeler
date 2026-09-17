@@ -1182,12 +1182,26 @@ button:focus-visible, input:focus-visible, select:focus-visible {
                                    cursor: grabbing; box-shadow: 0 0 0 1.5px var(--ink); }
 /* The strip whose row is selected in the Labels panel. Full height and a
    dark ring rather than a colour change — the fill still has to say which
-   MOVE it is, so the selection can only be carried by the outline. */
-.seg-lane .seek-segment.seg-selected {
+   MOVE it is, so the selection can only be carried by the outline.
+   .marquee-hit gets the identical ring while a marquee is still being
+   dragged over it — purely a live preview, not yet committed to
+   state.multiSelected (see setupSegmentEditing()'s marquee-select block). */
+.seg-lane .seek-segment.seg-selected,
+.seg-lane .seek-segment.marquee-hit {
   opacity: 1; top: 0; height: 14px; z-index: 4;
   box-shadow: 0 0 0 1.5px var(--card), 0 0 0 3px var(--accent);
 }
 @media (prefers-reduced-motion: reduce) { .seg-lane .seek-segment { transition: none; } }
+
+/* The click-drag selection box — see setupSegmentEditing()'s marquee-select
+   block in ui.js. position:fixed and appended to <body>, not #seg-lanes: a
+   lane clips its own strips (overflow:hidden), and the box has to be able to
+   span vertically across several of them. */
+.marquee-select {
+  position: fixed; z-index: 90; pointer-events: none;
+  border: 1px solid var(--accent-solid);
+  background: var(--accent-wash);
+}
 
 /* The roll detector's p(roll), under the lanes — prob-curve.js. One lane tall
    when folded (a sparkline), user-sized when open. `color` is the curve's

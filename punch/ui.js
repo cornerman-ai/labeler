@@ -817,6 +817,77 @@
       hideTip(); renderLabels();
       e.stopPropagation();   // and do not also cancel a half-built label
     }, true);
+
+    // ── marquee (click-drag) select ───────────────────────────────────────
+    // Left-drag starting on empty space — not on a strip, a round/unusable
+    // span, or the roll-probability lane — draws a selection box; every move
+    // whose strip intersects it joins the multi-selection on release, the
+    // same set shift-click builds (see app.js's toggleMultiSelect()). Round/
+    // unusable markers can never be caught by it — renderTimelineOverlay()
+    // never draws one as a `.seek-segment` strip in the first place. Shift
+    // held at mousedown adds to whatever was already selected; a plain drag
+    // replaces it (see app.js's setMultiSelection()). Reuses `moved`, the
+    // same flag a strip drag sets, so the click this drag's mouseup would
+    // otherwise fire (and re-seek the video) gets suppressed the same way.
+    let marquee = null;
+    const marqueeBox = document.createElement('div');
+    marqueeBox.className = 'marquee-select';
+    marqueeBox.hidden = true;
+    document.body.appendChild(marqueeBox);
+    const MARQUEE_EXCLUDE = '.seek-segment, .round-span, .prob-no-seek';
+
+    lanes.addEventListener('mousedown', (e) => {
+      if (drag || marquee || e.button !== 0 || e.target.closest(MARQUEE_EXCLUDE)) return;
+      marquee = { startX: e.clientX, startY: e.clientY, moved: false, additive: e.shiftKey };
+    });
+
+    // Strips currently under a box (viewport coords, same shape as `marquee`
+    // after a move) — shared by the live preview and the final commit so
+    // they can never disagree about what's "in" the box.
+    const stripsInBox = (box) => [...lanes.querySelectorAll('.seek-segment[data-label-idx]')]
+      .filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.left < box.x1 && r.right > box.x0 && r.top < box.y1 && r.bottom > box.y0;
+      });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!marquee) return;
+      if (!marquee.moved && Math.hypot(e.clientX - marquee.startX, e.clientY - marquee.startY) < 4) return;
+      marquee.moved = true;
+      moved = true;
+      marquee.x0 = Math.min(marquee.startX, e.clientX); marquee.x1 = Math.max(marquee.startX, e.clientX);
+      marquee.y0 = Math.min(marquee.startY, e.clientY); marquee.y1 = Math.max(marquee.startY, e.clientY);
+      marqueeBox.hidden = false;
+      marqueeBox.style.left = marquee.x0 + 'px'; marqueeBox.style.top = marquee.y0 + 'px';
+      marqueeBox.style.width = (marquee.x1 - marquee.x0) + 'px'; marqueeBox.style.height = (marquee.y1 - marquee.y0) + 'px';
+      // Live preview: mark every strip the box currently covers with its own
+      // class (not .seg-selected — that one's driven by state and must stay
+      // that way) so an additive drag keeps showing the prior selection too,
+      // untouched, alongside whatever the box is over right now. The next
+      // renderLabels() (on mouseup) throws these elements away regardless,
+      // so nothing here needs cleaning up beyond "no longer under the box".
+      const hits = new Set(stripsInBox(marquee));
+      lanes.querySelectorAll('.seek-segment.marquee-hit').forEach(el => { if (!hits.has(el)) el.classList.remove('marquee-hit'); });
+      hits.forEach(el => el.classList.add('marquee-hit'));
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!marquee) return;
+      const box = marquee;
+      marquee = null;
+      marqueeBox.hidden = true;
+      if (!box.moved) {
+        // A plain click on empty space — not a drag — clears whatever was
+        // selected, the same way clicking a strip already does via
+        // highlightLabel(). Shift+click on empty space is left alone: it
+        // isn't a drag and it isn't a strip, so there's nothing to add.
+        const hadSelection = state.multiSelected.size || state.highlightedLabel;
+        if (!box.additive && hadSelection && typeof setMultiSelection === 'function') setMultiSelection([], false);
+        return;
+      }
+      const caught = stripsInBox(box).map(el => state.labels[+el.dataset.labelIdx]).filter(Boolean);
+      if (typeof setMultiSelection === 'function') setMultiSelection(caught, box.additive);
+    });
   }
 
   // ── dragging round boundaries on the ribbon ─────────────────────────────

@@ -2425,6 +2425,22 @@ function selectedLabels() {
     .sort((a, b) => a.start - b.start);
 }
 
+// The marquee's result (ui.js's click-and-drag box over the lanes): every
+// move it caught replaces the current selection, same as a plain click
+// resets a single one — unless the drag started with Shift held, which
+// unions it into whatever was already selected, the same additive
+// convention shift-click already uses (see toggleMultiSelect()). `labels`
+// is never round/unusable markers — the marquee only ever looks at
+// `.seek-segment` strips, which renderTimelineOverlay() never draws for one.
+function setMultiSelection(labels, additive) {
+  const sel = new Set(additive ? state.multiSelected : []);
+  if (additive && state.highlightedLabel && !state.highlightedLabel.isRoundMarker) sel.add(state.highlightedLabel);
+  labels.forEach(l => sel.add(l));
+  state.multiSelected = sel;
+  state.highlightedLabel = sel.size ? [...sel].sort((a, b) => a.start - b.start).pop() : null;
+  renderLabels();
+}
+
 // Everything selected.
 function deleteSelectedLabels() {
   const rows = selectedLabels().filter(l => state.labels.includes(l));
