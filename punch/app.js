@@ -2923,6 +2923,7 @@ async function drainOutbox({ quiet = true } = {}) {
           const live = state.labels.find(l => l.punch_uuid === entry.punchUuid);
           if (live) {
             if (result.id != null) live.id = result.id;
+            live._savedAt = Date.now();   // see isProtectedLabel()
             if (result.punch_uuid) live.punch_uuid = result.punch_uuid;
             // The queued params already carried any edit made while waiting
             // (deferEditUntilSaved rewrote them), so nothing more to send —
@@ -2981,6 +2982,7 @@ async function pushLabelToSheet(label) {
   try {
     const result = await sendQueued({ params });
     if (result.id != null) label.id = result.id;
+    label._savedAt = Date.now();   // see isProtectedLabel()
     // Server may have stamped its own UUID if our client-generated one was
     // missing (older builds). Adopt whatever the server persisted.
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
@@ -3091,6 +3093,7 @@ async function pushRoundMarkerToSheet(label) {
   try {
     const result = await sendQueued({ params });
     if (result.id != null) label.id = result.id;
+    label._savedAt = Date.now();   // see isProtectedLabel()
     if (result.punch_uuid) label.punch_uuid = result.punch_uuid;
     outboxRemove(params.punchUuid);
     if (label._pendingCancel) { deleteLabelFromSheet(label); return; }
@@ -3393,6 +3396,31 @@ async function fetchJson(url, ms) {
 // spinner up after one finished out of order.
 let _loadToken = 0;
 
+// ── keeping this page's saves through a re-fetch ────────────────────────
+// A `list` / `listForeign` reply describes the sheet as the server read it,
+// which can be BEFORE a save this page made after the request went out
+// (`listForeign` walks every labeler tab, ~17-40s uncached, no lock).
+// Applied wholesale, such a reply snapped a just-dragged duration back to
+// its old value seconds later and dropped a just-pasted row until the next
+// re-fetch (2026-09-17, admin — every row it sees is foreign, so phase 2's
+// replace below touched all of them). So a reply only replaces rows it can
+// be trusted about: one still saving (no id yet, or an update in flight),
+// or whose last save was confirmed AFTER the request started, keeps its
+// local values and the reply's copy of it is skipped. Rows are matched by
+// (sheet, id) — ids restart per labeler tab, so the tab is part of the key;
+// '' stands for this labeler's own tab.
+function rowKey(sheet, id) {
+  return id == null ? null : String(sheet || '') + '\n' + id;
+}
+function localRowKey(l) {
+  return rowKey(l.foreign ? l.sheetName : '', l.id);
+}
+function isProtectedLabel(l, requestedAt) {
+  if (l.isPrediction) return false;
+  if (l.id == null) return !l.fromSheet;    // created here, its add not back yet
+  return (l._saving || 0) > 0 || (l._savedAt || 0) > requestedAt;
+}
+
 // Loading a video's labels, in two phases against two endpoints:
 //   1. `list`        — this labeler's OWN rows. One sheet, quick. The page
 //                      renders and UNLOCKS on this.
@@ -3444,6 +3472,9 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // come down instead, or it would sit there claiming to load something
   // that is no longer being loaded.
   let phase1ok = false;
+  // When the request went out — a save confirmed after this may not be in
+  // the reply. See isProtectedLabel().
+  const requestedAt = Date.now();
   try {
     const result = await fetchJson(sheetUrl({ action: 'list', video: driveLink }), 30000);
     if (!current()) return;                    // superseded — drop it
@@ -3456,8 +3487,10 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
     }
 
     // Own rows only; the foreign ones are replaced separately in phase 2 so
-    // a failure there can't wipe what phase 1 just rendered.
-    state.labels = state.labels.filter(l => !(l.fromSheet && !l.foreign));
+    // a failure there can't wipe what phase 1 just rendered. A row saved
+    // since the request went out keeps its local copy (the id dedupe below
+    // then skips the reply's) — see isProtectedLabel().
+    state.labels = state.labels.filter(l => !(l.fromSheet && !l.foreign) || isProtectedLabel(l, requestedAt));
 
     const sheetLabels = (result.labels || []).map(l => {
       const punch = mapPunchType(l.punch);
@@ -3539,15 +3572,28 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   if (!isFreshLoad && !state.isAdmin) return;
 
   try {
+    const foreignRequestedAt = Date.now();
     const fgn = await fetchJson(sheetUrl({ action: 'listForeign', video: driveLink }), 60000);
     if (!current()) return;
     if (fgn.status === 'error') {
       console.error('Foreign fetch error:', fgn.message);
       return;
     }
-    state.labels = state.labels.filter(l => !l.foreign);
-    mergeForeignRoundMarkers(fgn, driveLink);
-    mergeForeignPunchLabels(fgn, driveLink);
+    // Replace the foreign rows with the reply's — except the ones this page
+    // saved while the request was out (admin: that can be any row here),
+    // which keep their local values; the reply's copies of those are
+    // skipped by (sheet, id). See isProtectedLabel().
+    const kept = new Set();
+    state.labels = state.labels.filter(l => {
+      if (!l.foreign) return true;
+      if (!isProtectedLabel(l, foreignRequestedAt)) return false;
+      const key = localRowKey(l);
+      if (key) kept.add(key);
+      return true;
+    });
+    const skip = (sheet, id) => kept.has(rowKey(sheet, id));
+    mergeForeignRoundMarkers(fgn, driveLink, skip);
+    mergeForeignPunchLabels(fgn, driveLink, skip);
     syncRoundActiveFromLabels();
     // Same reapply as phase 1 — the filter just above dropped predictions
     // again (they carry `foreign: true` too, same as any real foreign row).
@@ -3800,13 +3846,15 @@ function maybeShowForeignVideoPopup() {
 // `foreign_round_markers`). Read-only: they show the video's round
 // structure so a second labeler doesn't re-mark rounds, but can't be
 // edited or deleted from here. Own markers of the same type nearby win.
-function mergeForeignRoundMarkers(result, driveLink) {
+function mergeForeignRoundMarkers(result, driveLink, skip) {
   if (!Array.isArray(result.foreign_round_markers)) return;
-  for (const fm of result.foreign_round_markers) mergeForeignMarker(fm, driveLink);
+  for (const fm of result.foreign_round_markers) mergeForeignMarker(fm, driveLink, skip);
 }
 
-// One boundary row from another labeler's sheet, round or unusable.
-function mergeForeignMarker(raw, driveLink) {
+// One boundary row from another labeler's sheet, round or unusable. `skip`
+// (optional) names the (sheet, id) rows the caller kept its own copy of.
+function mergeForeignMarker(raw, driveLink, skip) {
+  if (skip && skip(raw.sheet, raw.id)) return;
   const fm = Object.assign({}, raw, { punch: mapPunchType(raw.punch) });
   const t = typeof fm.startTime === 'number' ? fm.startTime : parseSheetTime(fm.startTime);
   if (!Number.isFinite(t)) return;
@@ -3847,11 +3895,12 @@ function mergeForeignMarker(raw, driveLink) {
 // isForeignLabel() === false instead, so these become editable — the `id`
 // and `videoName` set below are what let the save round-trip find the row
 // again in the OWNER's sheet.
-function mergeForeignPunchLabels(result, driveLink) {
+function mergeForeignPunchLabels(result, driveLink, skip) {
   if (!Array.isArray(result.foreign_punch_labels)) return;
   for (const fp of result.foreign_punch_labels) {
+    if (skip && skip(fp.sheet, fp.id)) continue;   // this page's newer copy stays
     // A deployment older than the unusable markers sends them here, as moves.
-    if (markerKind(mapPunchType(fp.punch))) { mergeForeignMarker(fp, driveLink); continue; }
+    if (markerKind(mapPunchType(fp.punch))) { mergeForeignMarker(fp, driveLink, skip); continue; }
     const start = typeof fp.startTime === 'number' ? fp.startTime : parseSheetTime(fp.startTime);
     const end = typeof fp.endTime === 'number' ? fp.endTime : parseSheetTime(fp.endTime);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
@@ -4537,6 +4586,10 @@ async function updateLabelInSheet(label) {
     // the Admin Actions tab — see logAdminAction() in apps_script/Code.js.
     params.actor = labelerId();
   }
+  // In flight, then confirmed — what keeps a re-fetch the server answered
+  // from before this landed from putting the old values back. See
+  // isProtectedLabel().
+  label._saving = (label._saving || 0) + 1;
   try {
     const url = sheetUrl(params);
     const resp = await fetch(url);
@@ -4546,10 +4599,13 @@ async function updateLabelInSheet(label) {
       showToast('Update failed: ' + result.message, 'error');
       return;
     }
+    label._savedAt = Date.now();
     showToast(`Updated #${label.id} → sheet="${result.sheet}" row=${result.row} fields=[${result.updated}]`, 'info');
   } catch (e) {
     console.error('Sheet update failed:', e);
     showToast('Sheet update failed: ' + e.message, 'error');
+  } finally {
+    label._saving--;
   }
 }
 

@@ -1909,9 +1909,28 @@ function videoRowCacheKey(video) {
   return 'pv1:' + hex;
 }
 
+// A write's generation stamp for the video, beside the entry itself. A scan
+// reads it before walking the sheets and only caches its rows if it is
+// still the same afterwards — otherwise a write landed mid-scan and the
+// rows may predate it. Before this, such a scan re-cached the pre-write
+// rows for the full 5 minutes right after the write had invalidated them,
+// so an admin's edit "reverted" on the next listForeign and on every reload
+// until the entry expired (2026-09-17).
+function videoRowCacheGenKey(video) {
+  return videoRowCacheKey(video) + ':gen';
+}
+
 function invalidateVideoRowCache(video) {
   if (!video) return;
-  try { CacheService.getScriptCache().remove(videoRowCacheKey(video)); } catch (e) {}
+  // Flush FIRST: the caller's cell writes are still buffered until then,
+  // and a scan that reads the new stamp must be guaranteed to read the
+  // sheet with those writes in it.
+  try { SpreadsheetApp.flush(); } catch (e) {}
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove(videoRowCacheKey(video));
+    cache.put(videoRowCacheGenKey(video), Utilities.getUuid(), 21600);
+  } catch (e) {}
 }
 
 // Cache read-through around scanAllRowsForVideo(). Everything here is
@@ -1921,10 +1940,12 @@ function cachedAllRowsForVideo(pss, video) {
   var key = videoRowCacheKey(video);
   var cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) {}
+  var genBefore = null;
   if (cache) {
     try {
       var hit = cache.get(key);
       if (hit) return JSON.parse(hit);
+      genBefore = cache.get(videoRowCacheGenKey(video));
     } catch (e) {}
   }
   var rows = scanAllRowsForVideo(pss, video);
@@ -1933,10 +1954,26 @@ function cachedAllRowsForVideo(pss, video) {
       var payload = JSON.stringify(rows);
       // CacheService caps a value at 100KB. A video with an unusually large
       // number of rows just goes uncached rather than throwing.
-      if (payload.length < 90000) cache.put(key, payload, 300);
+      if (payload.length < 90000) putVideoRowCacheUnlessWritten(cache, video, genBefore, payload);
     } catch (e) {}
   }
   return rows;
+}
+
+// Stores a scan's rows only if no write to this video landed since the scan
+// began (the stamp is unchanged). Under the script lock — the one every
+// add/update/delete holds while it stamps — so a write cannot slip in
+// between the check and the put. A busy lock means a write is in progress
+// right now: skip, and the next listForeign simply scans again.
+function putVideoRowCacheUnlessWritten(cache, video, genBefore, payload) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(2000)) return;
+  try {
+    if (cache.get(videoRowCacheGenKey(video)) !== genBefore) return;
+    cache.put(videoRowCacheKey(video), payload, 300);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 // The actual walk: every "Labeled Data …" sheet — real labelers only, not
