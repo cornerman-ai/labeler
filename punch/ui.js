@@ -739,7 +739,9 @@
           },
         });
         renderLabels();
-        Promise.all(dupes.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
+        const adds = dupes.map(l => pushLabelToSheet(l));
+        if (many && typeof withBulkSave === 'function') withBulkSave(`Duplicating ${dupes.length} moves…`, adds);
+        Promise.all(adds).then(() => fetchLabelsFromSheet());
         const onto = targetOwner ? ` onto ${foreignOwnerName(label)}’s timeline` : '';
         showToast(many
           ? `Duplicated ${dupes.length} moves${onto} at ${formatTime(label.start)}`

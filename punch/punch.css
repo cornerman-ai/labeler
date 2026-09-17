@@ -2312,13 +2312,13 @@ kbd {
 /* Modal on purpose: phase one is the labeler's OWN rows, and marking a punch
    against a half-loaded own-list is how duplicates get made. Phase two only
    adds other people's read-only rows, so that stage reveals a way out. */
-#ldg-dialog {
+#ldg-dialog, #bulk-save-dialog {
   width: min(380px, calc(100vw - 32px));
   padding: 0; border: none; border-radius: 16px;
   background: var(--card); color: var(--ink);
   box-shadow: 0 24px 64px rgba(0,0,0,.28);
 }
-#ldg-dialog::backdrop {
+#ldg-dialog::backdrop, #bulk-save-dialog::backdrop {
   background: rgba(0,0,0,.28);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }

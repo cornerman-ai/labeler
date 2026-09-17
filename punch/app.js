@@ -2457,14 +2457,17 @@ function deleteSelectedLabels() {
         state.labels.splice(Math.min(i, state.labels.length), 0, l);
       });
       renderLabels();
-      Promise.all(allowed.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
+      const adds = allowed.map(l => pushLabelToSheet(l));
+      if (allowed.length > 1) withBulkSave(`Restoring ${allowed.length} rows…`, adds);
+      Promise.all(adds).then(() => fetchLabelsFromSheet());
     },
   });
   state.multiSelected.clear();
   state.highlightedLabel = null;
   allowed.forEach(l => state.labels.splice(state.labels.indexOf(l), 1));
   renderLabels();
-  allowed.forEach(l => deleteLabelFromSheet(l));
+  const deletes = allowed.map(l => deleteLabelFromSheet(l));
+  if (allowed.length > 1) withBulkSave(`Deleting ${allowed.length} rows…`, deletes);
   showToast(`Deleted ${allowed.length} rows${skipped ? ` (${skipped} read-only kept)` : ''} — Z to undo`, 'info');
 }
 
@@ -2626,7 +2629,9 @@ function pasteSelectionAtPlayhead(opts = {}) {
     },
   });
   renderLabels();
-  Promise.all(pasted.map(l => pushLabelToSheet(l))).then(() => fetchLabelsFromSheet());
+  const adds = pasted.map(l => pushLabelToSheet(l));
+  if (pasted.length > 1) withBulkSave(`Pasting ${pasted.length} moves…`, adds);
+  Promise.all(adds).then(() => fetchLabelsFromSheet());
   const onto = targetSheet ? ` onto ${foreignOwnerName(pasted[0])}’s timeline` : '';
   showToast(`Pasted ${pasted.length} moves${onto} at ${formatTime(base)}`, 'success');
 }
@@ -3644,6 +3649,42 @@ function setupLoadingDialog() {
   // closes itself the moment the foreign fetch lands (see
   // fetchLabelsFromSheet). Escape still works — the dialog's own default —
   // and isn't worth fighting.
+}
+
+// ============================================================
+// Bulk-save blocking dialog — a multi-row write (batch delete, paste, or
+// duplicate) holds the whole page up until every row in it has actually
+// reached the sheet, same showModal() approach as #ldg-dialog above. Without
+// it the page stayed interactive mid-batch — one Apps Script round-trip per
+// row, not one call — and starting something else (another drag, Undo, a
+// fresh label) while that was still going was how a row landed on nothing
+// tracking it and quietly never made it to the sheet. Only for a genuine
+// BATCH: a single add/delete/edit stays optimistic and instant, see the
+// call sites (deleteSelectedLabels()/pasteSelectionAtPlayhead() here, the
+// alt-drag-duplicate-group finalize in ui.js).
+// ============================================================
+function showBulkSaveDialog(text) {
+  const dlg = document.getElementById('bulk-save-dialog');
+  const title = document.getElementById('bulk-save-title');
+  if (!dlg) return;
+  if (title) title.textContent = text;
+  if (!dlg.open) dlg.showModal();
+}
+
+function hideBulkSaveDialog() {
+  const dlg = document.getElementById('bulk-save-dialog');
+  if (dlg && dlg.open) dlg.close();
+}
+
+// allSettled, not all: a single failed write must not leave the dialog (and
+// the page) stuck open forever on the rest of a batch that already landed.
+async function withBulkSave(text, promises) {
+  showBulkSaveDialog(text);
+  try {
+    await Promise.allSettled(promises);
+  } finally {
+    hideBulkSaveDialog();
+  }
 }
 
 // Blocks starting a new label (the punch-type buttons and "Set Start Time")
