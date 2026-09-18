@@ -189,6 +189,18 @@ function rowIndexByUuid(data, cols, uuid) {
   return -1;
 }
 
+// The request describes the row it names: same punch type (case-insensitive)
+// and the same start to the millisecond (canonical MM:SS.mmm, whatever form
+// the cell holds). What separates "my own save landing late" from "some
+// other label carrying this uuid".
+function sameLabelAsRow(rowVals, cols, p) {
+  var cell = function (c) { return c >= 0 && rowVals[c] != null ? String(rowVals[c]).trim() : ''; };
+  if (cell(cols.punch).toLowerCase() !== String(p.punchId || '').trim().toLowerCase()) return false;
+  var rowStart = cell(cols.start) ? secondsToSheetTime(toSeconds(rowVals[cols.start])) : '';
+  var reqStart = p.startTime ? secondsToSheetTime(toSeconds(p.startTime)) : '';
+  return rowStart === reqStart;
+}
+
 // Find the next available ID (max existing + 1)
 function nextId(data, cols) {
   var maxId = 0;
@@ -632,8 +644,16 @@ function doGet(e) {
     // both pass. Measured 2026-09-07 before this guard: 29 uuids in John's
     // tab and 32 in Arianne's saved two or three times over, identical to
     // the millisecond, minutes apart.
+    // Only when the row reads as the same label — same punch type, same
+    // start — or the page says it edited the label while the add was still
+    // out (`edited`, set by deferEditUntilSaved() in punch/app.js, which
+    // rewrites the queued add to the current values and sends an update
+    // once the id arrives). A known uuid carrying a DIFFERENT label with no
+    // such flag is not a retry but a bug upstream: it inserts as before, so
+    // the checker's duplicate-uuid report shows it, rather than this
+    // swallowing the second label and pointing it at the first row's id.
     var existing = rowIndexByUuid(data, cols, p.punchUuid);
-    if (existing > 0) {
+    if (existing > 0 && (String(p.edited || '') === '1' || sameLabelAsRow(data[existing], cols, p))) {
       return ContentService
         .createTextOutput(JSON.stringify({
           status: 'ok', action: 'exists',

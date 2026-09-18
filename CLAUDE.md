@@ -17,7 +17,12 @@ Web-based video labeling tool for boxing punch annotation.
 - Users load videos and mark punch segments with type, start/end times, angle, stance
 - Labels are saved to Google Sheets via GET requests to the Apps Script web app
 - Sheet naming: "Labeled Data Software {N}" per labeler, "Combined Data" for merged view
-- All CRUD operations (list/add/update/delete) go through `doGet` with URL params
+- All CRUD operations (list/add/update/delete) go through `doGet` with URL params.
+  `add` is idempotent on `punch_uuid`: a uuid the tab already holds answers with
+  that row (`action: 'exists'`) when the request reads as the same label (type +
+  start) or carries `edited=1` (the page edited the label while its add was still
+  out — `deferEditUntilSaved()`); any other reuse of a known uuid inserts as
+  before, so it stays visible as a duplicate instead of being swallowed
 - **Boundary markers** (punch labeler): `round_start`/`round_end` (S/E) and
   `unusable_start`/`unusable_end` (X — a stretch that can't be used, e.g. the
   skeleton tracked someone else) are instant rows (start = end) in the same

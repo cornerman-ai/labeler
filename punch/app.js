@@ -4596,6 +4596,11 @@ function deferEditUntilSaved(label) {
     angle: label.angle || '',
     startTime: formatTimeSheet(label.start),
     endTime: formatTimeSheet(label.isRoundMarker ? label.start : label.end),
+    // Tells the server's add that a row it already holds for this uuid is
+    // this label's own first save landing late, even though the type or
+    // time no longer match it — answer with that row (the update below
+    // carries the new values). Without it a known uuid must match the row.
+    edited: '1',
   });
   outboxWrite(entries, key);
   label._pendingUpdate = true;
