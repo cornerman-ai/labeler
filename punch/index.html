@@ -87,6 +87,12 @@
           <span id="admin-presence" hidden
                 title="Other people are in admin mode. Saves are serialised, so nothing lands on the wrong label — but if you edit the same punch, the later save wins."></span>
 
+          <!-- Who is really reviewing in admin mode — the name the Admin
+               Actions tab records on every correction made here. Click to
+               change. See setupAdminReviewer() in app.js. -->
+          <button type="button" id="admin-reviewer" hidden
+                  title="The name written to the Admin Actions tab on every correction made in admin mode. Click to change."></button>
+
           <button class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)"
                   aria-haspopup="dialog">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>

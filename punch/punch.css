@@ -425,6 +425,20 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   #admin-presence { color: #f0b355; background: color-mix(in srgb, #f0b355 20%, transparent); }
 }
 
+/* Who is reviewing in admin mode — the `actor` on every logged correction,
+   see setupAdminReviewer() in app.js. Same footprint as #admin-presence
+   beside it; .tone-unnamed = nobody named yet, so corrections would log as
+   plain "Admin" — the red wash is the nudge to click it. */
+#admin-reviewer {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; min-width: 135px; padding: 0 11px;
+  border: 0; border-radius: 8px; white-space: nowrap; cursor: pointer;
+  background: var(--yes-wash); color: var(--yes-on-wash);
+  font: inherit; font-size: 12.5px; font-weight: 590;
+}
+#admin-reviewer[hidden] { display: none; }
+#admin-reviewer.tone-unnamed { background: var(--no-wash); color: var(--no-on-wash); }
+
 /* Admin-only, shown by setupAgreement(). Same min-width as #name-field/
    #lang-field/#btn-problems/#admin-presence in .nav-group — five different
    kinds of control that used to each size to their own content and read as

@@ -661,8 +661,9 @@ function doGet(e) {
     // arrives already redirected to the real owner (punch/app.js's
     // pasteLabelAtPlayhead()), so from here it's indistinguishable from that
     // person adding their own row — `actor` is what leaves a trail.
-    logAdminAction(p, 'add', sheetName, newId, '(none)',
-      (p.punchId || '') + ' ' + (p.startTime || '') + '→' + (p.endTime || ''));
+    var added = adminLogRowText(row, cols);
+    logAdminActions(p, 'add', sheetName, newId, cols.uuid >= 0 ? row[cols.uuid] : '', added,
+      [{ field: 'row', before: '(none)', after: added }]);
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'ok', action: 'added', id: newId,
@@ -684,10 +685,35 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     // Captured BEFORE the writes so the action log can record what the row
-    // used to say — see logAdminAction().
+    // used to say — see logAdminActions(). Same gates as the writes below: a
+    // field the request does not carry is not written, so it is not a
+    // change either. Text compares trimmed, a time by its canonical
+    // MM:SS.mmm, so a stored serial date and the same moment as text are one
+    // value and a retried request that changes nothing logs nothing.
     var beforeRow = data[row - 1];
-    var was = function (c) { return c >= 0 ? String(beforeRow[c]) : ''; };
-    var prev = { punch: was(cols.punch), start: was(cols.start), end: was(cols.end) };
+    var rowText = adminLogRowText(beforeRow, cols);
+    var uuid = cols.uuid >= 0 ? String(beforeRow[cols.uuid] || '') : '';
+    var changes = [];
+    var textChange = function (field, c, val) {
+      if (!val || c < 0) return;
+      var was = String(beforeRow[c] == null ? '' : beforeRow[c]).trim();
+      var now = String(val).trim();
+      if (was !== now) changes.push({ field: field, before: was, after: now });
+    };
+    var timeChange = function (field, c, val) {
+      if (!val || c < 0) return;
+      var blank = beforeRow[c] === '' || beforeRow[c] == null;
+      var was = blank ? '' : secondsToSheetTime(toSeconds(beforeRow[c]));
+      var now = secondsToSheetTime(toSeconds(val));
+      if (was !== now) changes.push({ field: field, before: was, after: now });
+    };
+    textChange('punch_type', cols.punch, p.punchId);
+    textChange('angle', cols.angle, p.angle);
+    textChange('training_type', cols.trainingType, p.trainingType);
+    textChange('stance', cols.stance, p.stance);
+    textChange('fighter', cols.fighter, p.fighter);
+    timeChange('start_sec', cols.start, p.startTime);
+    timeChange('end_sec', cols.end, p.endTime);
 
     var updated = [];
     if (p.punchId && cols.punch >= 0) { sheet.getRange(row, cols.punch + 1).setValue(p.punchId); updated.push('punch'); }
@@ -698,9 +724,7 @@ function doGet(e) {
     if (p.startTime && cols.start >= 0) { var sc = sheet.getRange(row, cols.start + 1); sc.setNumberFormat('@'); sc.setValue(secondsToSheetTime(toSeconds(p.startTime))); updated.push('start'); }
     if (p.endTime && cols.end >= 0) { var ec = sheet.getRange(row, cols.end + 1); ec.setNumberFormat('@'); ec.setValue(secondsToSheetTime(toSeconds(p.endTime))); updated.push('end'); }
     invalidateVideoRowCache(p.video);
-    logAdminAction(p, 'update', sheetName, p.id,
-      prev.punch + ' ' + prev.start + '→' + prev.end,
-      (p.punchId || prev.punch) + ' ' + (p.startTime || prev.start) + '→' + (p.endTime || prev.end));
+    logAdminActions(p, 'update', sheetName, p.id, uuid, rowText, changes);
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'updated', sheet: sheetName, row: row, cols: cols, updated: updated }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -720,12 +744,12 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     var goneRow = data[row - 1];
-    var gone = (cols.punch >= 0 ? String(goneRow[cols.punch]) : '') + ' ' +
-               (cols.start >= 0 ? String(goneRow[cols.start]) : '') + '→' +
-               (cols.end >= 0 ? String(goneRow[cols.end]) : '');
+    var gone = adminLogRowText(goneRow, cols);
+    var goneUuid = cols.uuid >= 0 ? String(goneRow[cols.uuid] || '') : '';
     sheet.deleteRow(row);
     invalidateVideoRowCache(p.video);
-    logAdminAction(p, 'delete', sheetName, p.id, gone, '(removed)');
+    logAdminActions(p, 'delete', sheetName, p.id, goneUuid, gone,
+      [{ field: 'row', before: gone, after: '(removed)' }]);
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', action: 'deleted', sheet: sheetName, row: row }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -2173,29 +2197,62 @@ function allVideosPunchLabels(pss) {
 // foreignOwnerLabelerParam in punch/app.js), so from the sheet's point of
 // view it is indistinguishable from that person editing their own work.
 //
-// The client sends `actor` on any admin-driven write. When it is present,
-// the change is appended here: the correction stays where it belongs, and
-// there is a provenance trail for it. Best-effort — a logging failure must
-// never fail the edit that was actually asked for.
+// The client sends `actor` on any admin-driven write: the reviewer's name
+// as typed in admin mode (adminActor() in punch/app.js), not the login name
+// "Admin", so a peer review by John+Arianne and a fix by Mathe read apart.
+// When it is present, the change is appended here — the correction stays
+// where it belongs, and there is a provenance trail for it. One line per
+// CHANGED FIELD on an update (`field` = the sheet column, `before`/`after`
+// its old and new value), one line per whole row on add/delete (`field` =
+// 'row'); an update that changes nothing (a retried request) writes
+// nothing. `row` is the row as it read before the change ("type
+// start→end"), `punch_uuid` the stable key that joins Combined Data and the
+// caches (`row_id` is only unique within one tab). The first eight columns
+// are the 2026-09-07 layout — the lines written under it stay aligned and
+// just leave the three newer columns blank. cornerman-backend's
+// ml/label_review/admin_changes.py reads the tab back, both layouts.
+// Best-effort — a logging failure must never fail the edit that was
+// actually asked for.
 var ADMIN_LOG_NAME = 'Admin Actions';
-var ADMIN_LOG_HEADERS = ['ts', 'admin', 'action', 'target_sheet', 'row_id', 'video', 'before', 'after'];
+var ADMIN_LOG_HEADERS = ['ts', 'actor', 'action', 'target_sheet', 'row_id', 'video',
+                         'before', 'after', 'punch_uuid', 'field', 'row'];
 
-function logAdminAction(p, action, targetSheet, rowId, before, after) {
+// "type start→end" for a row as the sheet holds it — the `row` column, and
+// the before/after of a whole-row line. Times canonical (MM:SS.mmm) whatever
+// the cell's own form, so a serial date and its text read as one value.
+function adminLogRowText(rowVals, cols) {
+  var cell = function (c) {
+    return c >= 0 && rowVals[c] !== '' && rowVals[c] != null ? String(rowVals[c]) : '';
+  };
+  var time = function (c) { return cell(c) ? secondsToSheetTime(toSeconds(rowVals[c])) : ''; };
+  return cell(cols.punch) + ' ' + time(cols.start) + '→' + time(cols.end);
+}
+
+function logAdminActions(p, action, targetSheet, rowId, uuid, rowText, changes) {
   var actor = String(p.actor || '').trim();
-  if (!actor) return;                       // a normal labeler editing their own row
+  if (!actor || !changes.length) return;    // a labeler editing their own row, or nothing changed
   try {
     var ss = punchSpreadsheet();
     var sheet = ss.getSheetByName(ADMIN_LOG_NAME);
     if (!sheet) {
       sheet = ss.insertSheet(ADMIN_LOG_NAME);
-      sheet.appendRow(ADMIN_LOG_HEADERS);
       sheet.setFrozenRows(1);
     }
-    sheet.appendRow([
-      new Date().toISOString(), actor, action, targetSheet,
-      String(rowId || ''), normalizeDriveUrl(p.video || p.videoName || ''),
-      String(before || ''), String(after || ''),
-    ]);
+    // Header rewritten in place whenever it differs (the eight-column tab
+    // grows the three new columns; positions never move).
+    var width = ADMIN_LOG_HEADERS.length;
+    if (sheet.getMaxColumns() < width) sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
+    var have = sheet.getRange(1, 1, 1, width).getValues()[0];
+    if (String(have) !== String(ADMIN_LOG_HEADERS)) sheet.getRange(1, 1, 1, width).setValues([ADMIN_LOG_HEADERS]);
+    var ts = new Date().toISOString();
+    var video = normalizeDriveUrl(p.video || p.videoName || '');
+    for (var i = 0; i < changes.length; i++) {
+      sheet.appendRow([
+        ts, actor, action, targetSheet, String(rowId || ''), video,
+        String(changes[i].before), String(changes[i].after),
+        String(uuid || ''), changes[i].field, String(rowText || ''),
+      ]);
+    }
   } catch (e) {
     // Deliberately swallowed: the row edit already succeeded, and failing
     // the response over the audit line would be worse than missing it.

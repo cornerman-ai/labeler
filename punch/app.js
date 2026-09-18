@@ -434,6 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLoadingDialog();
   setupAgreement();
   setupAdminPresence();
+  setupAdminReviewer();
 
   // Anything left queued from a previous session goes out now, and again
   // whenever the browser regains a connection. `online` alone isn't enough
@@ -1482,6 +1483,53 @@ function setupAdminPresence() {
   updateAdminPresenceChip(0);
   adminPing();
   setInterval(adminPing, ADMIN_PING_MS);
+}
+
+// ── Who is really reviewing ──────────────────────────────────────────────
+// Admin mode is one login name for everyone who reviews, so the login name
+// says nothing about WHO made a correction — and the Admin Actions tab
+// (logAdminActions() in apps_script/Code.js) needs that to tell a peer
+// review by John+Arianne from a fix by Mathe. Asked once on entering admin
+// mode, remembered in localStorage, shown as a chip in the nav bar (click
+// to change), and sent as `actor` on every admin-driven write. Nobody named
+// (prompt dismissed) falls back to the login name, "Admin" — what every
+// line before 2026-09-18 says.
+const ADMIN_REVIEWER_KEY = 'adminReviewer';
+
+function storedAdminReviewer() {
+  try { return (localStorage.getItem(ADMIN_REVIEWER_KEY) || '').trim(); } catch (e) { return ''; }
+}
+
+function adminActor() {
+  return storedAdminReviewer() || labelerId() || 'Admin';
+}
+
+function askAdminReviewer() {
+  const typed = window.prompt('Who is reviewing in admin mode? (e.g. John+Arianne, or Mathe)', storedAdminReviewer());
+  if (typed === null) { renderAdminReviewerChip(); return; }   // cancelled: keep what was there
+  const who = typed.trim().slice(0, 60);
+  try {
+    if (who) localStorage.setItem(ADMIN_REVIEWER_KEY, who);
+    else localStorage.removeItem(ADMIN_REVIEWER_KEY);
+  } catch (e) {}
+  renderAdminReviewerChip();
+}
+
+function renderAdminReviewerChip() {
+  const chip = document.getElementById('admin-reviewer');
+  if (!chip) return;
+  const who = storedAdminReviewer();
+  chip.hidden = false;
+  chip.textContent = who ? 'Reviewing as ' + who : 'Who is reviewing?';
+  chip.classList.toggle('tone-unnamed', !who);
+}
+
+function setupAdminReviewer() {
+  if (!state.isAdmin) return;
+  const chip = document.getElementById('admin-reviewer');
+  if (chip) chip.addEventListener('click', askAdminReviewer);
+  renderAdminReviewerChip();
+  if (!storedAdminReviewer()) askAdminReviewer();
 }
 
 function setupAgreement() {
@@ -2974,7 +3022,7 @@ async function pushLabelToSheet(label) {
     const owner = foreignOwnerLabelerParam(label);
     if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
     params.labeler = owner;
-    params.actor = labelerId();
+    params.actor = adminActor();
   }
   // Queued FIRST. If the tab dies between here and the response, the label
   // is still on disk and the next load will send it.
@@ -3087,7 +3135,7 @@ async function pushRoundMarkerToSheet(label) {
     const owner = foreignOwnerLabelerParam(label);
     if (!owner) { showToast('Cannot resolve owner sheet for this row', 'error'); return; }
     params.labeler = owner;
-    params.actor = labelerId();
+    params.actor = adminActor();
   }
   outboxAdd({ punchUuid: label.punch_uuid, params });
   try {
@@ -4583,8 +4631,8 @@ async function updateLabelInSheet(label) {
     // Who is REALLY making this change. Without it the write is
     // indistinguishable from the owner editing their own row, since
     // `labeler` has just been rewritten to them. The server appends it to
-    // the Admin Actions tab — see logAdminAction() in apps_script/Code.js.
-    params.actor = labelerId();
+    // the Admin Actions tab — see logAdminActions() in apps_script/Code.js.
+    params.actor = adminActor();
   }
   // In flight, then confirmed — what keeps a re-fetch the server answered
   // from before this landed from putting the old values back. See
@@ -4636,8 +4684,8 @@ async function deleteLabelFromSheet(label) {
     // Who is REALLY making this change. Without it the write is
     // indistinguishable from the owner editing their own row, since
     // `labeler` has just been rewritten to them. The server appends it to
-    // the Admin Actions tab — see logAdminAction() in apps_script/Code.js.
-    params.actor = labelerId();
+    // the Admin Actions tab — see logAdminActions() in apps_script/Code.js.
+    params.actor = adminActor();
   }
   _pendingDeletes++;
   try {

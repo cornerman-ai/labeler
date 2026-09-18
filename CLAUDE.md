@@ -28,7 +28,17 @@ Web-based video labeling tool for boxing punch annotation.
   (`list` answers empty, `add` is refused) — everything it sees arrives via
   `listForeign`, every labeler's rows in their own timeline lanes, editable
   in place (writes redirect to the owner's tab). Admin-only chrome: the
-  Agreement report and the other-admins presence chip. The **Types** menu in
+  Agreement report, the other-admins presence chip and the **Reviewing as**
+  chip — admin asks once who is actually reviewing (localStorage
+  `adminReviewer`, click the chip to change) and sends that name as `actor`
+  on every write it makes; the Apps Script appends each such change to the
+  punch workbook's **Admin Actions** tab (`logAdminActions()`): one line per
+  changed field on an update (`field` = the sheet column, `before`/`after`
+  its values), one per row on add/delete (`field` = `row`), each with the
+  `punch_uuid`, the owner tab and the row as it read before — and nothing
+  when a retried update changes nothing. cornerman-backend's
+  `ml/label_review/admin_changes.py` reads the tab back as before → after
+  per reviewer, day and video. The **Types** menu in
   the Labels card (beside Others) is for everyone — pick punch types and the
   list, lanes, minimap, video tags and Shift+Arrow nav narrow to those; picked
   types compose with the Offense/Defense tabs (AND, not a replacement) — a tab
