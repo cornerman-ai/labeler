@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unusable footage — Cornerman labeler</title>
+  <!-- punch.css carries the video source rows, the player, the timeline lanes
+       and the transport row this page shares with the punch labeler (same ids,
+       same classes — shared/player.js, ../punch/skeleton.js and
+       ../punch/video-folder.js all look those ids up); unusable.css adds the
+       side panel and the reason colours. -->
+  <link rel="stylesheet" href="../shared/style.css">
+  <link rel="stylesheet" href="../punch/punch.css?v=20260918">
+  <link rel="stylesheet" href="unusable.css?v=20260918">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── navigation bar ───────────────────────────────────────────────── -->
+    <header id="top-bar">
+      <div class="nav-lead">
+        <h1 class="nav-title">Unusable footage</h1>
+        <span class="nav-sub">where the skeleton can't be used</span>
+      </div>
+      <div class="nav-actions">
+        <div class="nav-group">
+          <span id="sync-chip" class="sync-chip" hidden></span>
+        </div>
+        <span class="nav-div"></span>
+        <div class="nav-group">
+          <button type="button" id="help-btn" title="Keys and how this works" aria-label="Help">?</button>
+          <a class="nav-link" href="../index.html">All labelers</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── video source: the sheet-key link, the local file, the two connected
+         folders and the skeleton files — the same rows as the punch labeler,
+         so a folder connected there is connected here too. ────────────────── -->
+    <div id="video-source-bar">
+      <button type="button" id="video-source-toggle" aria-expanded="true" aria-controls="video-source-rows">
+        <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Video source
+      </button>
+      <div id="video-source-rows">
+        <div class="src-field-wrap">
+          <label class="src-field" for="drive-link">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input type="text" id="drive-link" placeholder="Pick a video from the list, or paste its Drive link">
+            <button type="button" id="btn-pick-video" title="Pick a video from the tracking sheet">
+              <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Videos
+            </button>
+            <button type="button" id="btn-next-video" title="Go to the next video in the list (N)">Next video ▸</button>
+            <span id="link-status" class="field-status" hidden></span>
+          </label>
+          <div id="video-picker-panel" hidden>
+            <div class="vp-head">
+              <input type="search" id="video-picker-search" placeholder="Search videos…" autocomplete="off" spellcheck="false">
+              <label class="vp-filter" title="Hide videos somebody already marked as reviewed">
+                <input type="checkbox" id="only-unreviewed" checked> unreviewed only
+              </label>
+              <span id="vp-count" class="muted"></span>
+            </div>
+            <div id="video-picker-list"></div>
+          </div>
+        </div>
+
+        <div id="video-loader" class="src-field">
+          <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
+            Open Video
+          </button>
+          <input type="file" id="video-file" accept="video/*" hidden>
+          <span id="video-name">No video loaded</span>
+          <span id="video-status" class="field-status" hidden></span>
+        </div>
+
+        <div id="video-folder-loader" class="src-field folder-connect-row" hidden>
+          <button type="button" id="btn-connect-video-folder" class="btn-connect-folder">Connect Video Folder</button>
+          <span id="video-folder-name" class="folder-connect-name">No video folder connected</span>
+          <button type="button" id="btn-forget-video-folder" class="btn-forget-folder" title="Disconnect this folder" hidden>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <span id="video-folder-status" class="field-status folder-connect-status" hidden></span>
+        </div>
+
+        <div id="skeleton-loader" class="src-field">
+          <button id="btn-pick-skeleton" onclick="document.getElementById('skeleton-files').click()">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="3" r="1.4" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4V8m0 0-2.6 3.6M7 8l2.6 3.6M4 6.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            Open Skeletons
+          </button>
+          <input type="file" id="skeleton-files" accept=".npy,.json" multiple hidden>
+          <span id="skeleton-name">No skeletons loaded</span>
+          <button type="button" id="btn-add-more-skeletons" title="Load more round files without losing the ones already loaded" hidden
+                  onclick="document.getElementById('skeleton-files').click()">+ Add more</button>
+          <button type="button" id="btn-toggle-skeleton" title="Show/hide the skeleton overlay (K)" hidden>Show</button>
+          <button type="button" id="btn-toggle-dip" title="Show/hide the nose dip readout" hidden>Nose dip</button>
+          <span id="skeleton-status" class="field-status" hidden></span>
+        </div>
+
+        <div id="skeleton-folder-loader" class="src-field folder-connect-row" hidden>
+          <button type="button" id="btn-connect-skeleton-folder" class="btn-connect-folder">Connect Skeleton Folder</button>
+          <span id="skeleton-folder-name" class="folder-connect-name">No skeleton folder connected</span>
+          <button type="button" id="btn-forget-skeleton-folder" class="btn-forget-folder" title="Disconnect this folder" hidden>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <span id="skeleton-folder-status" class="field-status folder-connect-status" hidden></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-layout">
+      <!-- Left: the span being made, the spans on this video, the review verdict -->
+      <aside id="unusable-panel">
+        <section class="card" id="draft-card">
+          <div class="card-eyebrow">Mark an unusable stretch</div>
+          <div class="draft-row">
+            <button type="button" id="btn-draft-start" class="draft-btn" title="Set the start at the playhead (S)">Start <kbd>S</kbd></button>
+            <span id="draft-start" class="draft-time">—</span>
+            <button type="button" id="btn-draft-end" class="draft-btn" title="Set the end at the playhead (E)">End <kbd>E</kbd></button>
+            <span id="draft-end" class="draft-time">—</span>
+          </div>
+          <div id="reason-buttons"></div>
+          <p class="hint">Set the start and the end at the playhead, then press the reason — the span
+            saves itself. <kbd>Esc</kbd> clears a half-made one. A span is the boxer's skeleton being
+            wrong for a stretch; if the whole video is hopeless, use the button below instead.</p>
+        </section>
+
+        <section class="card" id="spans-card">
+          <div class="card-eyebrow">Unusable spans on this video <span id="span-count" class="count"></span></div>
+          <div id="span-list"><div class="muted">No video loaded.</div></div>
+        </section>
+
+        <section class="card" id="review-card">
+          <div class="card-eyebrow">Review</div>
+          <div id="review-status" class="muted">—</div>
+          <button type="button" id="btn-reviewed" class="primary" title="This video has been looked at; every unusable stretch is marked (R)">✓ Video reviewed <kbd>R</kbd></button>
+          <label class="auto-next"><input type="checkbox" id="auto-next" checked> then go to the next video</label>
+          <hr>
+          <button type="button" id="btn-retire" class="danger" title="The whole video is unusable: move every label of it out of the labeling tabs into Skeleton Problems">Whole video unusable…</button>
+          <p class="hint">Moves all of this video's rows from Combined Data Archive and every labeler's
+            tab to the <b>Skeleton Problems</b> tab, and marks the video reviewed. Asks first, with the
+            counts. Combined Data follows at the next rebuild.</p>
+        </section>
+      </aside>
+
+      <!-- Centre: the video with the skeleton overlay, and the timeline -->
+      <main id="video-container">
+        <div id="video-viewport">
+          <video id="video-player" preload="auto"></video>
+          <canvas id="skeleton-canvas"></canvas>
+          <div id="video-overlay"></div>
+        </div>
+
+        <div id="video-controls">
+          <div id="timeline-minimap" style="display:none">
+            <div id="minimap-segments"></div>
+            <div id="minimap-viewport"></div>
+            <div id="minimap-playhead"></div>
+          </div>
+
+          <div id="seek-bar-wrapper">
+            <div id="timeline-ticks"></div>
+            <!-- Lanes are built by app.js's renderTimelineOverlay(): a skeleton
+                 lane (where a skeleton exists at all), then one lane per labeler
+                 who has spans on this video, yours first. -->
+            <div id="seg-lanes">
+              <div id="playhead" hidden><span class="playhead-grip"></span></div>
+            </div>
+            <div id="scrub">
+              <div id="seek-bar-overlay"></div>
+              <input type="range" id="seek-bar" min="0" max="1000" value="0" aria-label="Seek">
+            </div>
+          </div>
+
+          <div id="controls-row">
+            <div class="tgroup">
+              <button id="btn-play" class="tbtn" onclick="togglePlay()" title="Play / pause (Space)" aria-label="Play">Play</button>
+              <div class="seg-static" role="group" aria-label="Step frames">
+                <button onclick="stepFrames(-10)" title="Back 10 frames (Shift+←)">−10</button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame (←)">−1</button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame (→)">+1</button>
+                <button onclick="stepFrames(10)" title="Forward 10 frames (Shift+→)">+10</button>
+              </div>
+              <button id="btn-mute" class="tbtn" onclick="toggleMute()" title="Mute" aria-label="Mute">🔊</button>
+            </div>
+            <span class="tdiv"></span>
+            <span id="time-wrap"><span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span></span>
+            <span id="frame-display" role="status" aria-label="Current frame"></span>
+            <span class="tdiv"></span>
+            <label class="speed-label">Speed
+              <select id="speed-select" aria-label="Playback speed">
+                <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+                <option value="1.5">1.5×</option><option value="2">2×</option>
+              </select>
+            </label>
+            <span class="tdiv"></span>
+            <div class="seg-static" role="group" aria-label="Timeline zoom">
+              <button onclick="zoomOut()" title="Zoom out the timeline">−</button>
+              <button onclick="zoomFit()" title="Whole video"><span id="zoom-level-display">1×</span></button>
+              <button onclick="zoomIn()" title="Zoom in the timeline (Alt+wheel on the bar)">+</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="help-panel" hidden>
+    <div class="help-box">
+      <h2>Unusable footage — how it works</h2>
+      <p>Pick a video, watch it with the skeleton on, and mark every stretch where the skeleton is not
+        the boxer's or is not there: set <kbd>S</kbd>tart and <kbd>E</kbd>nd at the playhead, then the
+        reason (<kbd>1</kbd>–<kbd>5</kbd>). When the whole video is done, press <kbd>R</kbd> for
+        <b>reviewed</b>, and the list moves on to the next unreviewed video.</p>
+      <table>
+        <tr><td><kbd>Space</kbd></td><td>play / pause</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>one frame; with <kbd>Shift</kbd> ten</td></tr>
+        <tr><td><kbd>S</kbd> / <kbd>E</kbd></td><td>start / end of the stretch at the playhead</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>the reason, which saves the span</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>clear the half-made span</td></tr>
+        <tr><td><kbd>K</kbd></td><td>skeleton overlay on / off</td></tr>
+        <tr><td><kbd>R</kbd></td><td>video reviewed</td></tr>
+        <tr><td><kbd>N</kbd></td><td>next video</td></tr>
+        <tr><td><kbd>Alt</kbd> + wheel</td><td>zoom the timeline; wheel pans when zoomed</td></tr>
+      </table>
+      <p class="muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
+        both in the labels workbook. "Whole video unusable" moves the video's labeling rows to
+        <b>Skeleton Problems</b>.</p>
+      <button type="button" id="help-close">Close</button>
+    </div>
+  </div>
+
+  <script src="../shared/labeler_name.js?v=20260918"></script>
+  <script src="../shared/player.js?v=20260918"></script>
+  <script src="../punch/skeleton.js?v=20260918"></script>
+  <script src="../punch/video-folder.js?v=20260918"></script>
+  <script src="app.js?v=20260918"></script>
+</body>
+</html>

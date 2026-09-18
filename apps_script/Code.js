@@ -299,6 +299,14 @@ function doGet(e) {
     return doGetTrackingVideos();
   }
 
+  // Unusable-footage labeler (unusable/index.html): stretches of a video whose
+  // skeleton cannot be used (with a reason), the per-video "reviewed" mark, and
+  // the whole-video retirement that moves the video's labeling rows to Skeleton
+  // Problems — see doGetUnusable at the bottom of this file.
+  if (UNUSABLE_ACTIONS.indexOf(action) !== -1) {
+    return doGetUnusable(p, labeler, action);
+  }
+
   // Bodyshot review actions: cross-video sweep over Combined Data.
   if (action === 'listBodyshots' || action === 'reclassify') {
     return doGetBodyshots(p, action);
@@ -6714,3 +6722,263 @@ function doGetBugReport(p, labeler) {
   }
   return jsonOut({ status: 'ok', id: id });
 }
+
+
+// ============================================================
+// Unusable-footage labeler (unusable/index.html) — stretches of a video whose
+// skeleton cannot be used, each with a reason; a per-video "reviewed" mark; and
+// the whole-video retirement, which moves every row of the video out of the
+// labeling tabs into Skeleton Problems. Two tabs in the punch workbook
+// (punchSpreadsheet()), beside the labeling tabs they are about:
+//   Unusable Spans     id | video_file | labeler | reason | start_sec | end_sec | span_uuid | ts
+//   Unusable Reviewed  video_file | video_name | labeler | verdict | ts
+// Times are the sheet's MM:SS.mmm text (secondsToSheetTime, columns formatted
+// as text so Sheets never turns them into durations), source-video seconds
+// like every punch label. Every write takes the punch write lock — the
+// retirement edits the labeler tabs themselves.
+// ============================================================
+var UNUSABLE_ACTIONS = ['listUnusable', 'addUnusable', 'updateUnusable', 'deleteUnusable',
+                        'listUnusableReviewed', 'markUnusableReviewed', 'retireVideo'];
+var UNUSABLE_SPANS_NAME = 'Unusable Spans';
+var UNUSABLE_SPANS_HEADERS = ['id', 'video_file', 'labeler', 'reason', 'start_sec', 'end_sec', 'span_uuid', 'ts'];
+var UNUSABLE_REVIEWED_NAME = 'Unusable Reviewed';
+var UNUSABLE_REVIEWED_HEADERS = ['video_file', 'video_name', 'labeler', 'verdict', 'ts'];
+var UNUSABLE_REASONS = ['out_of_frame', 'other_person', 'frozen', 'camera', 'other'];
+var UNUSABLE_VERDICTS = ['reviewed', 'whole_video_unusable'];
+var SKELETON_PROBLEMS_NAME = 'Skeleton Problems';
+// Rows moved to Skeleton Problems keep their source tab's own columns (the tab
+// has no header; the team pastes rows there as they are) and get the source
+// tab, who moved them and when in three fixed columns past the widest labeling
+// tab, so a move can be undone row by row and the shapes never collide.
+var SKELETON_PROBLEMS_META_COL = 28;   // 1-based: source_sheet, moved_by, moved_at in columns 28–30
+
+function getOrCreateSheetWithHeaders(ss, name, headers) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.appendRow(headers);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(headers);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function unusableHeaderIndex(headerRow) {
+  var idx = {};
+  for (var c = 0; c < headerRow.length; c++) idx[String(headerRow[c]).trim()] = c;
+  return idx;
+}
+
+// Every data row of a headed tab as {header: text}; a time cell Sheets parsed
+// into a Date comes back as MM:SS.mmm text.
+function unusableRows(sh) {
+  var data = sh.getDataRange().getValues();
+  if (data.length < 2) return [];
+  var idx = unusableHeaderIndex(data[0]);
+  var out = [];
+  for (var r = 1; r < data.length; r++) {
+    var row = {};
+    for (var key in idx) {
+      var v = data[r][idx[key]];
+      row[key] = v instanceof Date ? secondsToSheetTime(toSeconds(v)) : (v == null ? '' : String(v));
+    }
+    if (!row.video_file) continue;
+    out.push(row);
+  }
+  return out;
+}
+
+function fillRow(row, n) {
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(row[i] == null ? '' : row[i]);
+  return out;
+}
+
+function doGetUnusable(p, labeler, action) {
+  var pss = punchSpreadsheet();
+  var who = String(labeler || '').trim();
+  if (action === 'listUnusableReviewed') {
+    var rsh = getOrCreateSheetWithHeaders(pss, UNUSABLE_REVIEWED_NAME, UNUSABLE_REVIEWED_HEADERS);
+    return jsonOut({ status: 'ok', reviewed: unusableRows(rsh) });
+  }
+  var video = normalizeDriveUrl(p.video || '');
+  if (!video) return jsonOut({ status: 'error', message: 'missing field: video' });
+  if (action === 'listUnusable') {
+    var ssh = getOrCreateSheetWithHeaders(pss, UNUSABLE_SPANS_NAME, UNUSABLE_SPANS_HEADERS);
+    var rsh2 = getOrCreateSheetWithHeaders(pss, UNUSABLE_REVIEWED_NAME, UNUSABLE_REVIEWED_HEADERS);
+    var spans = [];
+    var all = unusableRows(ssh);
+    for (var i = 0; i < all.length; i++) {
+      if (normalizeDriveUrl(all[i].video_file) !== video) continue;
+      spans.push({ id: all[i].id, labeler: all[i].labeler, reason: all[i].reason,
+                   start_sec: toSeconds(all[i].start_sec), end_sec: toSeconds(all[i].end_sec),
+                   span_uuid: all[i].span_uuid, ts: all[i].ts });
+    }
+    var reviewed = unusableRows(rsh2).filter(function (r) { return normalizeDriveUrl(r.video_file) === video; });
+    return jsonOut({ status: 'ok', spans: spans, reviewed: reviewed });
+  }
+  var lc = who.toLowerCase();
+  if (!who || who === '1' || lc === 'admin' || lc === 'analyst') {
+    return jsonOut({ status: 'error', message: 'Fill in your name first — these rows are filed under it.' });
+  }
+  if (action === 'addUnusable' || action === 'updateUnusable' || action === 'deleteUnusable') {
+    return withPunchWriteLock(function () { return unusableSpanWrite(pss, p, who, video, action); });
+  }
+  if (action === 'markUnusableReviewed') {
+    var verdict = String(p.verdict || 'reviewed');
+    if (UNUSABLE_VERDICTS.indexOf(verdict) === -1) return jsonOut({ status: 'error', message: 'invalid verdict: ' + verdict });
+    return withPunchWriteLock(function () {
+      markUnusableReviewed(pss, video, String(p.videoName || ''), who, verdict);
+      return jsonOut({ status: 'ok' });
+    });
+  }
+  if (action === 'retireVideo') {
+    if (String(p.dry || '') === '1') return jsonOut({ status: 'ok', dry: true, moved: retireVideoRows(pss, video, who, true) });
+    return withPunchWriteLock(function () {
+      var moved = retireVideoRows(pss, video, who, false);
+      markUnusableReviewed(pss, video, String(p.videoName || ''), who, 'whole_video_unusable');
+      return jsonOut({ status: 'ok', moved: moved });
+    });
+  }
+  return jsonOut({ status: 'error', message: 'unknown unusable action: ' + action });
+}
+
+function unusableSpanWrite(pss, p, who, video, action) {
+  var sh = getOrCreateSheetWithHeaders(pss, UNUSABLE_SPANS_NAME, UNUSABLE_SPANS_HEADERS);
+  var data = sh.getDataRange().getValues();
+  var idx = unusableHeaderIndex(data[0]);
+  var uuid = String(p.span_uuid || '').trim();
+  if (!uuid) return jsonOut({ status: 'error', message: 'missing field: span_uuid' });
+  var found = -1;
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idx.span_uuid]) === uuid) { found = r; break; }
+  }
+  if (action === 'deleteUnusable') {
+    if (found < 0) return jsonOut({ status: 'ok', row: 'not_found' });
+    sh.deleteRow(found + 1);
+    return jsonOut({ status: 'ok', row: 'deleted' });
+  }
+  var reason = String(p.reason || '');
+  if (UNUSABLE_REASONS.indexOf(reason) === -1) return jsonOut({ status: 'error', message: 'invalid reason: ' + reason });
+  var start = toSeconds(p.start_sec), end = toSeconds(p.end_sec);
+  if (!(end > start)) return jsonOut({ status: 'error', message: 'the end must come after the start' });
+  var ts = new Date().toISOString();
+  if (action === 'addUnusable') {
+    // A retried save (the page did not hear the first answer) must not add a
+    // second row: the uuid says it is the same span.
+    if (found >= 0) return jsonOut({ status: 'ok', row: 'exists', id: data[found][idx.id] });
+    var id = 1;
+    for (var i = 1; i < data.length; i++) {
+      var n = parseInt(data[i][idx.id]);
+      if (n >= id) id = n + 1;
+    }
+    var row = [];
+    row[idx.id] = id; row[idx.video_file] = video; row[idx.labeler] = who; row[idx.reason] = reason;
+    row[idx.start_sec] = secondsToSheetTime(start); row[idx.end_sec] = secondsToSheetTime(end);
+    row[idx.span_uuid] = uuid; row[idx.ts] = ts;
+    var at = sh.getLastRow() + 1;
+    sh.getRange(at, 1, 1, UNUSABLE_SPANS_HEADERS.length).setNumberFormat('@').setValues([fillRow(row, UNUSABLE_SPANS_HEADERS.length)]);
+    return jsonOut({ status: 'ok', row: 'created', id: id });
+  }
+  if (found < 0) return jsonOut({ status: 'error', message: 'no span with that uuid — reload the video' });
+  var rr = found + 1;
+  sh.getRange(rr, idx.reason + 1).setValue(reason);
+  sh.getRange(rr, idx.start_sec + 1).setNumberFormat('@').setValue(secondsToSheetTime(start));
+  sh.getRange(rr, idx.end_sec + 1).setNumberFormat('@').setValue(secondsToSheetTime(end));
+  sh.getRange(rr, idx.ts + 1).setValue(ts);
+  return jsonOut({ status: 'ok', row: 'updated' });
+}
+
+// One row per (video, labeler): a second mark by the same person updates the
+// verdict and the time rather than adding a row.
+function markUnusableReviewed(pss, video, videoName, who, verdict) {
+  var sh = getOrCreateSheetWithHeaders(pss, UNUSABLE_REVIEWED_NAME, UNUSABLE_REVIEWED_HEADERS);
+  var data = sh.getDataRange().getValues();
+  var idx = unusableHeaderIndex(data[0]);
+  var ts = new Date().toISOString();
+  for (var r = 1; r < data.length; r++) {
+    if (normalizeDriveUrl(data[r][idx.video_file]) !== video) continue;
+    if (String(data[r][idx.labeler]) !== who) continue;
+    sh.getRange(r + 1, idx.verdict + 1).setValue(verdict);
+    sh.getRange(r + 1, idx.ts + 1).setValue(ts);
+    if (videoName) sh.getRange(r + 1, idx.video_name + 1).setValue(videoName);
+    return;
+  }
+  var row = [];
+  row[idx.video_file] = video; row[idx.video_name] = videoName; row[idx.labeler] = who;
+  row[idx.verdict] = verdict; row[idx.ts] = ts;
+  sh.appendRow(fillRow(row, UNUSABLE_REVIEWED_HEADERS.length));
+}
+
+// The whole-video retirement: every row of the video in Combined Data Archive
+// and in every person's Labeled Data tab (never Combined Data itself — a
+// regenerated view — nor the non-person tabs) is copied to Skeleton Problems
+// as it is, plus the source tab / actor / time in the fixed meta columns, and
+// only then deleted from its source, bottom-up in contiguous runs. `dry`
+// counts without touching anything (the page shows the counts before
+// asking). Each source tab's move is logged to Admin Actions, and the video's
+// row cache is dropped so the punch labeler sees the tabs as they now are.
+function retireVideoRows(pss, video, actor, dry) {
+  var sheets = pss.getSheets();
+  var sources = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name === COMBINED_ARCHIVE_NAME) { sources.push(sheets[s]); continue; }
+    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME || isNonPersonLabelerSheet(name)) continue;
+    sources.push(sheets[s]);
+  }
+  var moved = {}, batch = [], deletions = [];
+  var ts = new Date().toISOString();
+  for (var i = 0; i < sources.length; i++) {
+    var sheet = sources[i], sname = sheet.getName();
+    moved[sname] = 0;
+    if (sheet.getLastRow() < 2) continue;
+    var data = sheet.getDataRange().getValues();
+    var cols = findColumns(data[0]);
+    if (cols.video < 0) continue;
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      if (normalizeDriveUrl(data[r][cols.video]) === video) rows.push(r);
+    }
+    moved[sname] = rows.length;
+    if (dry || !rows.length) continue;
+    for (var k = 0; k < rows.length; k++) {
+      var vals = data[rows[k]].slice(0, SKELETON_PROBLEMS_META_COL - 1).map(function (v) {
+        return v instanceof Date ? secondsToSheetTime(toSeconds(v)) : v;
+      });
+      while (vals.length < SKELETON_PROBLEMS_META_COL - 1) vals.push('');
+      batch.push(vals.concat([sname, actor, ts]));
+    }
+    deletions.push({ sheet: sheet, rows: rows });
+  }
+  if (dry) return moved;
+  if (batch.length) {
+    var problems = pss.getSheetByName(SKELETON_PROBLEMS_NAME) || pss.insertSheet(SKELETON_PROBLEMS_NAME);
+    var width = SKELETON_PROBLEMS_META_COL + 2;
+    if (problems.getMaxColumns() < width) problems.insertColumnsAfter(problems.getMaxColumns(), width - problems.getMaxColumns());
+    var at = problems.getLastRow() + 1;
+    if (problems.getMaxRows() < at + batch.length - 1) problems.insertRowsAfter(problems.getMaxRows(), at + batch.length - 1 - problems.getMaxRows());
+    problems.getRange(at, 1, batch.length, width).setNumberFormat('@').setValues(batch);
+    SpreadsheetApp.flush();
+    for (var d = 0; d < deletions.length; d++) {
+      var desc = deletions[d].rows.slice().sort(function (a, b) { return b - a; });
+      var j = 0;
+      while (j < desc.length) {
+        var end = desc[j], start = end, n = 1;
+        while (j + n < desc.length && desc[j + n] === start - 1) { start--; n++; }
+        deletions[d].sheet.deleteRows(start + 1, n);
+        j += n;
+      }
+      logAdminActions({ actor: actor, video: video }, 'retireVideo', deletions[d].sheet.getName(), '', '', video,
+                      [{ field: 'rows', before: deletions[d].rows.length, after: 0 }]);
+    }
+  }
+  invalidateVideoRowCache(video);
+  return moved;
+}
+

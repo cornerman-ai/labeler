@@ -12,6 +12,7 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 | Folder | What it labels | Why it exists |
 |---|---|---|
 | `punch/` | Punches in a round: start/end time + type per hand | **The main tool.** Its labels are the training corpus for the punch classifier |
+| `unusable/` | Stretches of a video where the BlazePose skeleton can't be used (with a reason), a reviewed mark per video, and the whole-video retirement into `Skeleton Problems` | The unusable-footage pass, made AFTER extraction (the skeleton doesn't exist while rounds and punches are labeled); feeds the roll detector's exclusion mask and the skeleton-usability model |
 | `impact/` | The exact impact frame of each labeled punch | Trained the impact-frame spotter |
 | `punch_directions/` | 16-way (22.5°) direction of straight punches | Trained the axiality (punch-direction) model that three rules gate on |
 | `bodyshot/` | Head vs body, one short clip per punch | Refines punch-type labels where head/body was ambiguous |
