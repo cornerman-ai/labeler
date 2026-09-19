@@ -172,7 +172,12 @@ function setupVideoPicker() {
     const q = search.value.trim().toLowerCase();
     const rows = catalogFiltered().filter(v => !q || v.name.toLowerCase().includes(q));
     count.textContent = `${rows.length} of ${state.catalog.length}`;
-    if (!rows.length) { list.innerHTML = '<div class="vp-empty">No videos to show</div>'; return; }
+    if (!rows.length) {
+      list.innerHTML = '<div class="vp-empty">' + (state.onlyUnreviewed && state.reviewing && !state.reviewing.size && !q
+        ? 'Nothing is Reviewing in the sheet right now — run the label review check first (it marks the new rows), or untick the filter to see every video'
+        : 'No videos to show') + '</div>';
+      return;
+    }
     list.innerHTML = rows.map(v =>
       `<button type="button" class="vp-row${v.key === state.videoLink ? ' current' : ''}" data-key="${escapeHtml(v.key)}">` +
       `<span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span>${tag(v)}</button>`).join('');
