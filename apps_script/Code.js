@@ -6743,7 +6743,7 @@ var UNUSABLE_SPANS_NAME = 'Unusable Spans';
 var UNUSABLE_SPANS_HEADERS = ['id', 'video_file', 'labeler', 'reason', 'start_sec', 'end_sec', 'span_uuid', 'ts'];
 var UNUSABLE_REVIEWED_NAME = 'Unusable Reviewed';
 var UNUSABLE_REVIEWED_HEADERS = ['video_file', 'video_name', 'labeler', 'verdict', 'ts'];
-var UNUSABLE_REASONS = ['out_of_frame', 'other_person', 'frozen', 'camera', 'other'];
+var UNUSABLE_REASONS = ['out_of_frame', 'other_person', 'other_thing', 'frozen', 'camera', 'other'];
 var UNUSABLE_VERDICTS = ['reviewed', 'whole_video_unusable'];
 var SKELETON_PROBLEMS_NAME = 'Skeleton Problems';
 // Rows moved to Skeleton Problems keep their source tab's own columns (the tab

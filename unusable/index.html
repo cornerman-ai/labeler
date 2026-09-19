@@ -28,7 +28,16 @@
         </div>
         <span class="nav-div"></span>
         <div class="nav-group">
-          <button type="button" id="help-btn" title="Keys and how this works" aria-label="Help">?</button>
+          <!-- The identity every span is filed under — the punch page's field;
+               shared/ui.js commits it to labeler_name.js's store (punch.css
+               hides that script's own chip). -->
+          <div id="name-field">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input id="labeler-input" placeholder="Your name" title="Your name" autocomplete="off" spellcheck="false" maxlength="40">
+          </div>
+          <button class="icon-btn" id="help-btn" title="Keys and how this works (?)" aria-haspopup="dialog">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+          </button>
           <a class="nav-link" href="../index.html">All labelers</a>
         </div>
       </div>
@@ -121,9 +130,9 @@
             <span id="draft-end" class="draft-time">—</span>
           </div>
           <div id="reason-buttons"></div>
-          <p class="hint">Set the start and the end at the playhead, then press the reason — the span
-            saves itself. <kbd>Esc</kbd> clears a half-made one. A span is the boxer's skeleton being
-            wrong for a stretch; if the whole video is hopeless, use the button below instead.</p>
+          <p class="hint"><kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end (or <kbd>S</kbd> / <kbd>E</kbd>), then the reason — the span
+        saves itself. <kbd>Esc</kbd> clears a half-made one. When the reason changes mid-stretch, make two spans
+        back to back. If the whole video is hopeless, use the button below instead.</p>
         </section>
 
         <section class="card" id="spans-card">
@@ -153,6 +162,9 @@
           <video id="video-player" preload="auto"></video>
           <canvas id="skeleton-canvas"></canvas>
           <div id="video-overlay"></div>
+          <!-- Only while the picture is magnified; click to go back to 1x —
+               shared/ui.js's setupVideoZoom(). -->
+          <button id="video-zoom-badge" type="button" hidden title="Reset zoom (or double-click the video)">1.0&times;</button>
         </div>
 
         <div id="video-controls">
@@ -178,31 +190,47 @@
           </div>
 
           <div id="controls-row">
+            <!-- The punch page's transport row, as is: shared/ui.js paints
+                 #btn-play / #btn-mute, fills the speed menu and swaps the time
+                 for an input on click. -->
             <div class="tgroup">
-              <button id="btn-play" class="tbtn" onclick="togglePlay()" title="Play / pause (Space)" aria-label="Play">Play</button>
+              <button id="btn-play" class="tbtn" onclick="togglePlay()"
+                      title="Play / pause (Space)" aria-label="Play"></button>
               <div class="seg-static" role="group" aria-label="Step frames">
-                <button onclick="stepFrames(-10)" title="Back 10 frames (Shift+←)">−10</button>
-                <button onclick="stepFrames(-1)" title="Back 1 frame (←)">−1</button>
-                <button onclick="stepFrames(1)" title="Forward 1 frame (→)">+1</button>
-                <button onclick="stepFrames(10)" title="Forward 10 frames (Shift+→)">+10</button>
+                <button onclick="stepFrames(-2)" title="Back 2 frames" aria-label="Back 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 3 7 7l4 4M7 3 3 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame (←)" aria-label="Back 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 3 5 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame (→)" aria-label="Forward 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(2)" title="Forward 2 frames" aria-label="Forward 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l4 4-4 4M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               </div>
-              <button id="btn-mute" class="tbtn" onclick="toggleMute()" title="Mute" aria-label="Mute">🔊</button>
+              <div id="volume">
+                <button id="btn-mute" class="tbtn" onclick="toggleMute()"
+                        title="Mute" aria-label="Mute"></button>
+                <div id="vol-pop">
+                  <input type="range" id="vol-range" min="0" max="100" step="1"
+                         value="100" aria-label="Volume">
+                  <span id="vol-val">100</span>
+                </div>
+              </div>
             </div>
+
             <span class="tdiv"></span>
-            <span id="time-wrap"><span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span></span>
+
+            <span id="time-wrap" title="Click to jump to a time">
+              <span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span>
+              <input id="time-edit" type="text" inputmode="decimal" spellcheck="false"
+                     autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
+            </span>
             <span id="frame-display" role="status" aria-label="Current frame"></span>
+
             <span class="tdiv"></span>
-            <label class="speed-label">Speed
-              <select id="speed-select" aria-label="Playback speed">
-                <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
-                <option value="1.5">1.5×</option><option value="2">2×</option>
-              </select>
-            </label>
-            <span class="tdiv"></span>
-            <div class="seg-static" role="group" aria-label="Timeline zoom">
-              <button onclick="zoomOut()" title="Zoom out the timeline">−</button>
-              <button onclick="zoomFit()" title="Whole video"><span id="zoom-level-display">1×</span></button>
-              <button onclick="zoomIn()" title="Zoom in the timeline (Alt+wheel on the bar)">+</button>
+
+            <div id="speed-controls">
+              <button id="speed-btn" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="speed-menu" title="Playback speed">
+                <span id="speed-val">1&times;</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="speed-menu" role="menu" hidden></div>
             </div>
           </div>
         </div>
@@ -210,39 +238,56 @@
     </div>
   </div>
 
-  <div id="help-panel" hidden>
-    <div class="help-box">
+  <!-- The shortcuts sheet — punch.css's #sc-dialog, opened by shared/ui.js
+       (the ? key, #help-btn). -->
+  <dialog id="sc-dialog">
+    <div class="sc-head">
       <h2>Unusable footage — how it works</h2>
-      <p>Pick a video, watch it with the skeleton on, and mark every stretch where the skeleton is not
-        the boxer's or is not there: set <kbd>S</kbd>tart and <kbd>E</kbd>nd at the playhead, then the
-        reason (<kbd>1</kbd>–<kbd>5</kbd>). When the whole video is done, press <kbd>R</kbd> for
-        <b>reviewed</b>, and the list moves on to the next unreviewed video.</p>
-      <table>
-        <tr><td><kbd>Space</kbd></td><td>play / pause</td></tr>
-        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>one frame; with <kbd>Shift</kbd> ten</td></tr>
-        <tr><td><kbd>S</kbd> / <kbd>E</kbd></td><td>start / end of the stretch at the playhead</td></tr>
-        <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>the reason, which saves the span</td></tr>
-        <tr><td><kbd>Esc</kbd></td><td>clear the half-made span</td></tr>
-        <tr><td><kbd>K</kbd></td><td>skeleton overlay on / off</td></tr>
-        <tr><td><kbd>R</kbd></td><td>video reviewed</td></tr>
-        <tr><td><kbd>N</kbd></td><td>next video</td></tr>
-        <tr><td><kbd>Alt</kbd> + wheel</td><td>zoom the timeline; wheel pans when zoomed</td></tr>
-      </table>
-      <p>The <b>detected</b> lane under the skeleton lane is what the skeleton files say by themselves:
+      <button class="icon-btn" id="sc-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body">
+      <p class="sc-note">Watch the video with the skeleton on and mark every stretch where the skeleton is
+        not the boxer's or is not there: <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then the
+        reason — the span saves itself. When the reason changes mid-stretch (the boxer walks out, then the
+        tracker lands on someone else), make two spans back to back, one per reason: the end of the first is
+        the start of the second. When the whole video is done, press <kbd>R</kbd> for <b>reviewed</b> and the
+        list moves on to the next unreviewed video.</p>
+      <p class="sc-sec">Marking</p>
+      <div class="sc-row"><span>Start, then end, of the stretch at the playhead</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>… or either end on its own</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
+      <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>6</kbd></span></div>
+      <div class="sc-row"><span>Clear the half-made span</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <div class="sc-row"><span>Video reviewed</span><span class="sc-keys"><kbd>R</kbd></span></div>
+      <div class="sc-row"><span>Next video</span><span class="sc-keys"><kbd>N</kbd></span></div>
+      <p class="sc-sec">Playback</p>
+      <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>One frame back / forward; ten with <kbd>Shift</kbd></span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>Skeleton overlay on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
+      <div class="sc-row"><span>Volume</span><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span></div>
+      <div class="sc-row"><span>Jump to a time</span><span class="sc-keys"><kbd>Click the time</kbd></span></div>
+      <p class="sc-sec">The timeline and the picture</p>
+      <div class="sc-row"><span>Zoom the timeline at the pointer</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <div class="sc-row"><span>Pan the timeline once zoomed in</span><span class="sc-keys"><kbd>&#8679;Scroll</kbd></span></div>
+      <div class="sc-row"><span>Zoom the timeline in / out, fit the whole video</span><span class="sc-keys"><kbd>&#8984;+</kbd><kbd>&#8984;&minus;</kbd><kbd>&#8984;0</kbd></span></div>
+      <div class="sc-row"><span>Zoom the picture at the pointer; drag to pan; double-click to reset</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <p class="sc-sec">The detected lane</p>
+      <p class="sc-note">Under the skeleton lane, what the skeleton files say by themselves:
         <span class="hint-key missing"></span> no skeleton for 3 frames or more,
         <span class="hint-key jump"></span> the skeleton jumps — more than a torso within a quarter second,
-        usually onto someone else. Hints to check on the footage, not labels; click one to go there.</p>
-      <p class="muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
+        usually onto someone or something else. Hints to check on the footage, not labels; click one to go there.</p>
+      <p class="sc-note muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
         both in the labels workbook. "Whole video unusable" moves the video's labeling rows to
         <b>Skeleton Problems</b>.</p>
-      <button type="button" id="help-close">Close</button>
     </div>
-  </div>
+  </dialog>
 
   <script src="../shared/labeler_name.js?v=20260918"></script>
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
   <script src="app.js?v=20260919b"></script>
+  <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

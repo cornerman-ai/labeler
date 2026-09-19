@@ -19,10 +19,14 @@ mark the video reviewed. Open it from the landing page, or directly at
    torso within a quarter second (onto someone else, usually). Hints to check
    on the footage, not labels: click one to go there, then judge.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
-   the boxer's, or is not there: press `S` at the start, `E` at the end, then
-   the reason — `1` out of frame, `2` other person, `3` frozen, `4` camera,
-   `5` other. The span saves itself; `Esc` clears a half-made one. Your spans
-   are the top lane; other people's show below yours, read-only.
+   the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
+   `S` / `E`), then the reason — `1` out of frame, `2` other person, `3` other
+   thing (a painting, a statue, the bag), `4` frozen, `5` camera, `6` other.
+   The span saves itself; `Esc` clears a half-made one. When the reason
+   changes mid-stretch — the boxer walks out, then the tracker lands on
+   someone else — make two spans back to back, one per reason: the end of
+   the first is the start of the second. Your spans are the top lane; other
+   people's show below yours, read-only.
 3. **Done with the video: `R`.** The video is marked reviewed under your name
    and the list moves on to the next unreviewed one (untick "then go to the
    next video" to stay).
@@ -45,7 +49,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason, start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, other_person, other_thing, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | video and labeler (`reviewed` or `whole_video_unusable`) |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
@@ -55,7 +59,10 @@ were, with the source tab, who moved them and when in columns 28–30.
 ## Under the hood
 
 `app.js` is the page; the player, seek bar, minimap and zoom are
-`shared/player.js`, the identity chip `shared/labeler_name.js`, the overlay
+`shared/player.js`, the transport row, the timeline's scroll-zoom, the name
+field, the status chips and the shortcuts sheet `shared/ui.js` (the punch
+page's chrome, shared since 2026-09-19), the identity store
+`shared/labeler_name.js`, the overlay
 `../punch/skeleton.js` and the connected folders `../punch/video-folder.js` —
 the same ids as the punch page, so a folder connected there is connected here.
 The detected lane is computed in the browser from the loaded skeleton files

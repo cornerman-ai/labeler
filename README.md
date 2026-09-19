@@ -39,6 +39,7 @@ in sync with the same stored name automatically.
 ## Shared pieces
 
 - `shared/player.js` — the video player + Sheet-posting core every video labeler uses
+- `shared/ui.js` — the chrome every video page shares (transport icons, volume, speed menu, timeline scroll-zoom and ⌘ keys, picture zoom, folds, click-to-type time, status chips, name field, shortcuts sheet); `punch/ui.js` keeps only the punch page's own (strip dragging, round spans, context menu)
 - `shared/labeler_name.js` — the ask-once labeler identity (see above)
 - `shared/style.css` — common styling
 - `shared/videos.json` — which videos the video-based labelers list (regenerate with `shared/build_videos_json.py`)

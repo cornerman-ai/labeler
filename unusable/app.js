@@ -9,7 +9,9 @@
 // made BEFORE the skeleton exists, so this is its own pass, after extraction.
 //
 // Shared pieces: the player, seek bar, minimap and zoom (../shared/player.js),
-// the identity chip (../shared/labeler_name.js), the skeleton overlay from the
+// the transport row, the timeline's scroll-zoom, the name field, the status
+// chips and the shortcuts sheet (../shared/ui.js — the punch page's chrome),
+// the identity store (../shared/labeler_name.js), the skeleton overlay from the
 // extraction's .npy/_pts.npy/_meta.json triples (../punch/skeleton.js) and the
 // connected-folder auto-load of the video + its skeleton files
 // (../punch/video-folder.js) — the same ids, so a folder connected in the punch
@@ -28,12 +30,14 @@ const REASONS = [
   { id: 'out_of_frame', label: 'Out of frame', key: '1', color: '#e85a5a',
     desc: 'The boxer is out of the picture or hidden — behind the bag, someone in front' },
   { id: 'other_person', label: 'Other person', key: '2', color: '#b48cff',
-    desc: 'The skeleton sits on someone or something that is not the boxer' },
-  { id: 'frozen',       label: 'Frozen',       key: '3', color: '#8ab4f8',
-    desc: 'The skeleton does not move — stuck on a picture, a paused frame' },
-  { id: 'camera',       label: 'Camera',       key: '4', color: '#f5a23c',
+    desc: 'The skeleton sits on someone who is not the boxer' },
+  { id: 'other_thing',  label: 'Other thing',  key: '3', color: '#4cc9b0',
+    desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
+  { id: 'frozen',       label: 'Frozen',       key: '4', color: '#8ab4f8',
+    desc: 'The skeleton does not move — a paused frame, a stuck tracker' },
+  { id: 'camera',       label: 'Camera',       key: '5', color: '#f5a23c',
     desc: 'The camera moves, cuts or zooms' },
-  { id: 'other',        label: 'Other',        key: '5', color: '#9aa0a6',
+  { id: 'other',        label: 'Other',        key: '6', color: '#9aa0a6',
     desc: 'Anything else that makes this stretch of skeleton wrong' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));
@@ -186,9 +190,14 @@ function nextVideo() {
 // ============================================================
 // the link: the key of every row, and what triggers the load
 // ============================================================
+// The link chip in the source row is shared/ui.js's (setLinkStatus: Checking… /
+// Saved / Not saved + Retry, hidden again while the link is being typed); its
+// Retry button calls fetchLabelsFromSheet by name — here that is loadSpans.
+function linkStatus(kind, detail) { if (typeof window.setLinkStatus === 'function') window.setLinkStatus(kind, detail); }
+function fetchLabelsFromSheet() { loadSpans(); }
+
 function setupDriveLink() {
   const input = document.getElementById('drive-link');
-  const status = document.getElementById('link-status');
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
@@ -200,8 +209,6 @@ function setupDriveLink() {
         const hit = state.catalog && state.catalog.find(v => v.key === key);
         state.pickedName = hit ? hit.name : '';
       }
-      status.hidden = !key;
-      status.textContent = key ? 'linked' : '';
       clearDraft();
       loadSpans();
     }, LINK_DEBOUNCE_MS);
@@ -213,17 +220,17 @@ async function loadSpans() {
   state.spans = []; state.reviewed = [];
   renderSpanList(); renderReview(); renderTimelineOverlay();
   if (!state.videoLink) return;
-  setSync('loading…');
+  setSync('loading…'); linkStatus('syncing');
   try {
     const r = await fetchJson(sheetUrl({ action: 'listUnusable', video: state.videoLink }));
     if (token !== state.loadToken) return;
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
     state.spans = (r.spans || []).map(s => ({ ...s, start_sec: Number(s.start_sec), end_sec: Number(s.end_sec) }));
     state.reviewed = r.reviewed || [];
-    setSync('');
+    setSync(''); linkStatus('ok');
   } catch (e) {
     if (token !== state.loadToken) return;
-    setSync('could not load this video’s spans — ' + (e.message || e), true);
+    setSync('could not load this video’s spans — ' + (e.message || e), true); linkStatus('err', 'Not loaded');
   }
   renderSpanList(); renderReview(); renderTimelineOverlay();
 }
@@ -625,23 +632,25 @@ function updateVideoOverlay() {
 // ============================================================
 // keys, buttons, boot
 // ============================================================
+// ? (the shortcuts sheet) and ⌘+ / ⌘− / ⌘0 (timeline zoom) are shared/ui.js's.
 function setupKeys() {
   document.addEventListener('keydown', e => {
     if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
-    const help = document.getElementById('help-panel');
-    if (e.key === 'Escape' && !help.hidden) { help.hidden = true; return; }
+    if (e.target.closest && e.target.closest('#video-picker-panel')) return;
+    // A focused button would take Enter or Space as a click as well.
+    if (typeof e.target.blur === 'function') e.target.blur();
     const v = videoEl();
     switch (e.key) {
       case ' ': e.preventDefault(); if (v && v.duration) togglePlay(); return;
       case 'ArrowLeft': e.preventDefault(); if (v && v.duration) stepFrames(e.shiftKey ? -10 : -1); return;
       case 'ArrowRight': e.preventDefault(); if (v && v.duration) stepFrames(e.shiftKey ? 10 : 1); return;
+      case 'Enter': e.preventDefault(); if (state.draft.start == null) setDraftStart(); else setDraftEnd(); return;
       case 's': case 'S': case '[': e.preventDefault(); setDraftStart(); return;
       case 'e': case 'E': case ']': e.preventDefault(); setDraftEnd(); return;
       case 'Escape': clearDraft(); return;
       case 'r': case 'R': e.preventDefault(); markReviewed(); return;
       case 'n': case 'N': e.preventDefault(); nextVideo(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
-      case '?': help.hidden = !help.hidden; return;
     }
     const reason = REASONS.find(r => r.key === e.key);
     if (reason) { e.preventDefault(); setDraftReason(reason.id); }
@@ -658,12 +667,6 @@ function setupPanel() {
   document.getElementById('btn-draft-end').addEventListener('click', setDraftEnd);
   document.getElementById('btn-reviewed').addEventListener('click', markReviewed);
   document.getElementById('btn-retire').addEventListener('click', retireVideo);
-  document.getElementById('speed-select').addEventListener('change', e => setSpeed(parseFloat(e.target.value)));
-  document.getElementById('help-btn').addEventListener('click', () => { document.getElementById('help-panel').hidden = false; });
-  document.getElementById('help-close').addEventListener('click', () => { document.getElementById('help-panel').hidden = true; });
-  document.getElementById('help-panel').addEventListener('click', e => { if (e.target.id === 'help-panel') e.target.hidden = true; });
-  const toggle = document.getElementById('video-source-toggle'), rows = document.getElementById('video-source-rows');
-  toggle.addEventListener('click', () => { const open = rows.hidden; rows.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); });
   renderDraft();
 }
 

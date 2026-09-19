@@ -72,7 +72,7 @@ id | punch_uuid | video_file | punch_type | hand | stance | start_sec | end_sec 
 the BlazePose skeleton can't be used, marked with the overlay on, after
 extraction. Two tabs in the punch workbook, written by `doGetUnusable`:
 `Unusable Spans` — id | video_file | labeler | reason | start_sec | end_sec |
-span_uuid | ts (reason ∈ out_of_frame, other_person, frozen, camera, other) —
+span_uuid | ts (reason ∈ out_of_frame, other_person, other_thing, frozen, camera, other) —
 and `Unusable Reviewed` — video_file | video_name | labeler | verdict | ts
 (verdict ∈ reviewed, whole_video_unusable). `retireVideo` moves a video's rows
 from Combined Data Archive and every person's Labeled Data tab to the team's

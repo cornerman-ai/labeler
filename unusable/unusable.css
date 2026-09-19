@@ -4,10 +4,6 @@
 
 .nav-sub { font-size: 12px; color: var(--ink-dim); }
 .nav-link { font-size: 12px; color: var(--accent); text-decoration: none; }
-#help-btn {
-  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line);
-  background: var(--fill); color: var(--ink); font-weight: 700; cursor: pointer;
-}
 .sync-chip { font-size: 12px; color: var(--ink-dim); }
 .sync-chip.err { color: var(--no-on-wash); }
 .sync-chip[hidden] { display: none; }
@@ -21,14 +17,14 @@
 .count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-dim); }
 .hint { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin: 8px 0 0; }
 .muted { color: var(--ink-dim); }
-kbd {
+#unusable-panel kbd {
   display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px;
   border: 1px solid var(--line); background: var(--fill); font: 11px ui-monospace, Menlo, monospace;
   color: var(--ink-dim); vertical-align: middle;
 }
 
 .draft-row { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; }
-.draft-btn, .reason-btn, #btn-reviewed, #btn-retire, #help-close, #btn-next-video {
+.draft-btn, .reason-btn, #btn-reviewed, #btn-retire, #btn-next-video {
   border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink);
   padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
 }
@@ -113,19 +109,10 @@ kbd {
 .seg-lane .span-chip.foreign { opacity: .5; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px); }
 #minimap-segments .span-chip { top: 0; height: 100%; border-radius: 0; opacity: .8; pointer-events: none; }
 
-/* transport extras — player.js writes the words Play / Pause into #btn-play, which punch.css sizes for an icon */
-#btn-play { width: auto; min-width: 54px; padding: 0 12px; }
-.speed-label { font-size: 12px; color: var(--ink-dim); display: flex; align-items: center; gap: 4px; }
-.speed-label select { font: inherit; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 2px 4px; }
-
-/* help */
-#help-panel { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-#help-panel[hidden] { display: none; }
-.help-box { background: var(--card); color: var(--ink); border-radius: 12px; padding: 20px 24px; max-width: 520px; box-shadow: var(--shadow); font-size: 13px; line-height: 1.5; }
-.help-box h2 { margin: 0 0 8px; font-size: 16px; }
-.help-box table { border-collapse: collapse; margin: 8px 0; }
-.help-box td { padding: 2px 10px 2px 0; vertical-align: top; }
-.help-box #help-close { margin-top: 8px; }
-.help-box .hint-key { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 2px 0 4px; }
-.help-box .hint-key.missing { background: var(--hint-missing); }
-.help-box .hint-key.jump { width: 3px; background: var(--hint-jump); }
+/* the shortcuts sheet is punch.css's #sc-dialog; only its prose and the
+   detected-lane legend swatches are this page's */
+.sc-body .sc-note { font-size: 13px; line-height: 1.5; margin: 8px 0 0; }
+.sc-body .sc-note.muted { color: var(--ink-dim); }
+.sc-body .hint-key { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 2px 0 4px; }
+.sc-body .hint-key.missing { background: var(--hint-missing); }
+.sc-body .hint-key.jump { width: 3px; background: var(--hint-jump); }

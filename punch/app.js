@@ -4851,14 +4851,7 @@ function setupKeyboardShortcuts() {
         }
         break;
 
-      case 'Equal':
-      case 'NumpadAdd':
-        if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomIn(); }
-        break;
-      case 'Minus':
-      case 'NumpadSubtract':
-        if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomOut(); }
-        break;
+      // ⌘+ / ⌘− / ⌘0 (timeline zoom) are shared/ui.js's setupTimelineZoomKeys().
       // Number row: plain = head punch, Shift = body punch
       case 'Digit1': selectPunch(e.shiftKey ? 'jab_body' : 'jab_head'); break;
       case 'Digit2': selectPunch(e.shiftKey ? 'cross_body' : 'cross_head'); break;
@@ -4866,9 +4859,6 @@ function setupKeyboardShortcuts() {
       case 'Digit4': selectPunch(e.shiftKey ? 'rear_hook_body' : 'rear_hook_head'); break;
       case 'Digit5': selectPunch(e.shiftKey ? 'lead_uppercut_body' : 'lead_uppercut_head'); break;
       case 'Digit6': selectPunch(e.shiftKey ? 'rear_uppercut_body' : 'rear_uppercut_head'); break;
-      case 'Digit0':
-        if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomFit(); }
-        break;
 
       case 'KeyZ':
         if (!e.altKey) {
