@@ -59,10 +59,11 @@ were, with the source tab, who moved them and when in columns 28–30.
 ## Under the hood
 
 `app.js` is the page; the player, seek bar, minimap and zoom are
-`shared/player.js`, the transport row, the timeline's scroll-zoom, the name
-field, the status chips and the shortcuts sheet `shared/ui.js` (the punch
-page's chrome, shared since 2026-09-19), the identity store
-`shared/labeler_name.js`, the overlay
+`shared/player.js`, the transport row, the timeline's scroll-zoom, the
+status chips and the shortcuts sheet `shared/ui.js` (the punch page's chrome,
+shared since 2026-09-19), the identity store `shared/labeler_name.js` (no name
+field on this page: spans are filed under the name the punch labeler set),
+the overlay
 `../punch/skeleton.js` and the connected folders `../punch/video-folder.js` —
 the same ids as the punch page, so a folder connected there is connected here.
 The detected lane is computed in the browser from the loaded skeleton files

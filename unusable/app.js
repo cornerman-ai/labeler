@@ -275,7 +275,7 @@ function maybeSaveDraft() {
 }
 
 async function saveSpan(span) {
-  if (!me()) { showToast('Fill in your name at the top first.', 'error'); return; }
+  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   state.spans.push(span);
   renderSpanList(); renderTimelineOverlay();
   setSync('saving…');
@@ -379,7 +379,7 @@ function noteReviewed(row) {
 }
 async function markReviewed() {
   if (!state.videoLink) return;
-  if (!me()) { showToast('Fill in your name at the top first.', 'error'); return; }
+  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   setSync('saving…');
   try {
     const r = await fetchJson(sheetUrl({ action: 'markUnusableReviewed', video: state.videoLink, videoName: state.pickedName || state.videoName || '', verdict: 'reviewed' }));
@@ -395,7 +395,7 @@ async function markReviewed() {
 }
 async function retireVideo() {
   if (!state.videoLink) return;
-  if (!me()) { showToast('Fill in your name at the top first.', 'error'); return; }
+  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   setSync('counting rows…');
   let counts;
   try {
