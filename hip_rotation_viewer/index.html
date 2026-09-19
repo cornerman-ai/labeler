@@ -19,7 +19,9 @@
   the hip_rotation folder as the web root (NOT this folder) so ../data/ resolves for ?source=local:
       python -m http.server 8765 --directory ml/research/hip_rotation
   then open http://localhost:8765/viewer/   (?csv=punches_X.csv to pick another freeze;
-  ?seed=N for a different order; ?uuid=<punch_uuid> opens one punch directly; ?coach=1 opens in
+  ?seed=N for a different order; ?uuid=<punch_uuid> opens one punch directly; the
+  "rotation_vs_iqr" filter = start->impact rotation below / inside / above its punch type's IQR
+  (same definition as coach_list.ipynb); ?coach=1 opens in
   "Coach list" mode: only the coaches' punches (coach_list/coach_review_list.csv) in that list's order). The order is a FIXED shuffle (SEED) of the CSV rows, so
   punch #k is the same punch for everyone. Navigation is by buttons only; the filter
   dropdowns narrow the shuffled order to matching punches.
@@ -149,7 +151,7 @@ const params = new URLSearchParams(location.search);
 const CSV = params.get('csv') || 'punches_2026-09-18_short.csv';
 const KINDS = ['start', 'impact', 'end'];
 const FILTERS = ['video_name', 'stance', 'punch', 'hand', 'target',
-                 'overlayed_start', 'overlayed_end', 'facing_angle_bucket'];
+                 'overlayed_start', 'overlayed_end', 'facing_angle_bucket', 'rotation_vs_iqr'];
 let punches = [], order = [], view = [], i = 0;
 const active = {};   // field -> selected value ('' = all)
 let skeletons = null;  // punch_uuid -> {start|impact|end: [[x, y, visibility] x 33]}
@@ -287,6 +289,29 @@ function hipRotation(p) {
   }
   return (rotCache[p.punch_uuid] = out);
 }
+// rotation_vs_iqr: the start->impact rotation (sort key 'si', rounded to 0.1°) against the
+// interquartile range of its punch type (hand x straight/hook/uppercut, head+body pooled, every
+// facing bucket) — EXACTLY coach_list.ipynb's low / mid / high (pandas' linear quantiles).
+const IQR_LABEL = { low: 'below IQR', mid: 'inside IQR', high: 'above IQR' };
+const LEVEL_ORDER = { 'below IQR': 0, 'inside IQR': 1, 'above IQR': 2 };
+function quantile(sorted, q) {
+  const pos = (sorted.length - 1) * q, lo = Math.floor(pos);
+  return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (pos - lo);
+}
+function addRotationLevels() {
+  const family = p => ({ jab: 'straight', cross: 'straight' }[p.punch] || p.punch);
+  const typeOf = p => `${p.hand} ${family(p)}`;
+  const rot = p => { const v = hipRotation(p).si; return v === null ? null : Math.round(v * 10) / 10; };
+  const byType = {};
+  punches.forEach(p => { const v = rot(p); if (v !== null) (byType[typeOf(p)] ||= []).push(v); });
+  const q = Object.fromEntries(Object.entries(byType).map(([t, v]) => {
+    v.sort((a, b) => a - b); return [t, [quantile(v, 0.25), quantile(v, 0.75)]]; }));
+  punches.forEach(p => {
+    const v = rot(p), [q1, q3] = q[typeOf(p)] || [];
+    p.rotation_vs_iqr = v === null ? 'n/a' : IQR_LABEL[v < q1 ? 'low' : v > q3 ? 'high' : 'mid'];
+  });
+}
+
 function applySort() {
   order = baseOrder.slice();
   if (coachOnly && !sortMode) order.sort((a, b) => (+punches[a].coach_n || 1e9) - (+punches[b].coach_n || 1e9));
@@ -321,7 +346,8 @@ function refreshOptions() {
     punches.forEach(p => { if (matches(p, f)) counts[p[f]] = (counts[p[f]] || 0) + 1; });
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     sel.innerHTML = `<option value="">all (${total})</option>` + Object.keys(counts)
-      .sort((a, b) => isNaN(a) || isNaN(b) ? a.localeCompare(b) : a - b)   // buckets numerically
+      .sort((a, b) => a in LEVEL_ORDER && b in LEVEL_ORDER ? LEVEL_ORDER[a] - LEVEL_ORDER[b]
+        : isNaN(a) || isNaN(b) ? a.localeCompare(b) : a - b)   // IQR levels in order, buckets numerically
       .map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('');
     sel.value = active[f] || '';
   });
@@ -732,6 +758,7 @@ document.addEventListener('click', async e => {
     } catch { /* no coach list: the button stays disabled */ }
     const sk = await fetch(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
     skeletons = sk.ok ? await sk.json() : null;
+    addRotationLevels();
     uuidQuery = (params.get('uuid') || '').trim().toLowerCase();   // ?uuid=... opens that punch
     buildFilters();
     shuffle(params.has('seed') ? Number(params.get('seed')) : SEED);
