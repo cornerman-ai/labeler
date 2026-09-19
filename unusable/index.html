@@ -11,7 +11,7 @@
        side panel and the reason colours. -->
   <link rel="stylesheet" href="../shared/style.css">
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="unusable.css?v=20260918">
+  <link rel="stylesheet" href="unusable.css?v=20260919">
 </head>
 <body>
   <div id="app">
@@ -47,12 +47,11 @@
           <label class="src-field" for="drive-link">
             <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
             <input type="text" id="drive-link" placeholder="Pick a video from the list, or paste its Drive link">
-            <button type="button" id="btn-pick-video" title="Pick a video from the tracking sheet">
-              <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-              Videos
-            </button>
-            <button type="button" id="btn-next-video" title="Go to the next video in the list (N)">Next video ▸</button>
             <span id="link-status" class="field-status" hidden></span>
+            <button type="button" id="btn-pick-video" title="Pick a video from the list">
+              <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Pick a video
+            </button>
           </label>
           <div id="video-picker-panel" hidden>
             <div class="vp-head">
@@ -135,8 +134,11 @@
         <section class="card" id="review-card">
           <div class="card-eyebrow">Review</div>
           <div id="review-status" class="muted">—</div>
-          <button type="button" id="btn-reviewed" class="primary" title="This video has been looked at; every unusable stretch is marked (R)">✓ Video reviewed <kbd>R</kbd></button>
-          <label class="auto-next"><input type="checkbox" id="auto-next" checked> then go to the next video</label>
+          <div class="review-actions">
+            <button type="button" id="btn-reviewed" class="primary" title="This video has been looked at; every unusable stretch is marked (R)">✓ Video reviewed <kbd>R</kbd></button>
+            <button type="button" id="btn-next-video" title="Go to the next video in the list without marking this one (N)">Next video ▸ <kbd>N</kbd></button>
+          </div>
+          <label class="auto-next"><input type="checkbox" id="auto-next" checked> reviewed also goes to the next video</label>
           <hr>
           <button type="button" id="btn-retire" class="danger" title="The whole video is unusable: move every label of it out of the labeling tabs into Skeleton Problems">Whole video unusable…</button>
           <p class="hint">Moves all of this video's rows from Combined Data Archive and every labeler's

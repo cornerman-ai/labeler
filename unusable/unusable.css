@@ -33,6 +33,16 @@ kbd {
   padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
 }
 .draft-btn:hover, .reason-btn:hover, #btn-next-video:hover { border-color: var(--ink-dim); }
+
+/* The picker button at the end of the link row: punch.css makes it a 22px
+   icon-only chevron; here it carries a label, so it becomes a small pill. */
+.src-field #btn-pick-video {
+  width: auto; height: 24px; padding: 0 10px; gap: 6px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink);
+  font: inherit; font-size: 12px; opacity: 1; white-space: nowrap; cursor: pointer;
+}
+.src-field #btn-pick-video:hover, .src-field #btn-pick-video.open { background: var(--fill-2); }
+.src-field #btn-pick-video.open svg { transform: none; }
 .draft-btn.set { background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; }
 .draft-time { font: 13px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
 
@@ -58,7 +68,9 @@ kbd {
 .span-row.foreign { opacity: .75; cursor: pointer; }
 
 /* review */
-#review-card #btn-reviewed { width: 100%; margin-top: 8px; background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; font-weight: 600; }
+.review-actions { display: flex; gap: 8px; margin-top: 8px; }
+.review-actions button { flex: 1; white-space: nowrap; }
+#review-card #btn-reviewed { background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; font-weight: 600; }
 #review-card #btn-reviewed:hover { filter: brightness(.97); }
 .auto-next { display: block; margin-top: 8px; font-size: 12px; color: var(--ink-dim); }
 #review-card hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
@@ -89,7 +101,8 @@ kbd {
 .seg-lane .span-chip.foreign { opacity: .5; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px); }
 #minimap-segments .span-chip { top: 0; height: 100%; border-radius: 0; opacity: .8; pointer-events: none; }
 
-/* transport extras */
+/* transport extras — player.js writes the words Play / Pause into #btn-play, which punch.css sizes for an icon */
+#btn-play { width: auto; min-width: 54px; padding: 0 12px; }
 .speed-label { font-size: 12px; color: var(--ink-dim); display: flex; align-items: center; gap: 4px; }
 .speed-label select { font: inherit; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 2px 4px; }
 
