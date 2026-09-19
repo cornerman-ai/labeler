@@ -13,7 +13,8 @@
 // extraction's .npy/_pts.npy/_meta.json triples (../punch/skeleton.js) and the
 // connected-folder auto-load of the video + its skeleton files
 // (../punch/video-folder.js) — the same ids, so a folder connected in the punch
-// labeler is connected here too.
+// labeler is connected here too. The detectors' hints on the timeline (no
+// skeleton, jumps) are computed here from those same files — detectorHints().
 //
 // Sheet (apps_script/Code.js, doGetUnusable): two tabs in the labels workbook —
 //   Unusable Spans     id | video_file | labeler | reason | start_sec | end_sec | span_uuid | ts
@@ -420,9 +421,114 @@ async function retireVideo() {
 }
 
 // ============================================================
+// the detectors' hints — computed here, in the browser, from the skeleton
+// files just loaded, so a newly extracted video shows them with no export
+// step. The rules mirror cornerman-backend's ml/research/skeleton_usability
+// (no_skeleton.py, and the jump rule of jumps.py): the cache's own
+// image-normalized x/y, a torso = the round's median shoulder-mid ↔ hip-mid
+// distance over its detected frames, the same thresholds — change them in
+// both places or in neither.
+//   NO SKELETON  a frame inside the round (the meta's start_sec … end_sec; the
+//                1.5 s pre-roll is footage, not round) where no joint has a
+//                finite x, in a run of at least HINT_MIN_FRAMES frames
+//   JUMP         between consecutive DETECTED frames (the frames without a
+//                skeleton between them skipped) the core — the mean of the two
+//                shoulders and the two hips — moves more than HINT_JUMP_TORSO
+//                torsos within HINT_JUMP_MAX_DT_S seconds, one end in the round
+// The other-person stretches and the frozen skeleton stay in the backend's
+// lens: which of two skeletons is the boxer is the labeler's call here.
+// ============================================================
+const HINT_MIN_FRAMES = 3;
+const HINT_JUMP_TORSO = 1.0;
+const HINT_JUMP_MAX_DT_S = 0.25;
+const HINT_CORE_JOINTS = [11, 12, 23, 24];   // BlazePose-33: left / right shoulder, left / right hip
+
+function detectorHints(r) {
+  if (r._hints) return r._hints;
+  const N = r.nFrames, J = r.nJoints, C = r.nChannels, pts = r.pts;
+  const inRound = Number.isFinite(r.startSec) && Number.isFinite(r.endSec)
+    ? f => pts[f] >= r.startSec && pts[f] <= r.endSec : () => true;
+  const at = (f, j, ch) => r.data[f * J * C + j * C + ch];
+
+  // no skeleton: runs of in-round frames where no joint has a finite x
+  const missing = [];
+  let run = -1;
+  for (let f = 0; f <= N; f++) {
+    let none = f < N && inRound(f);
+    if (none) for (let j = 0; j < J; j++) if (Number.isFinite(at(f, j, r.xIdx))) { none = false; break; }
+    if (none) { if (run < 0) run = f; continue; }
+    if (run >= 0 && f - run >= HINT_MIN_FRAMES) missing.push({ s: pts[run], e: pts[f - 1], n: f - run, f0: run, f1: f - 1 });
+    run = -1;
+  }
+
+  // jumps: the core's step between consecutive detected frames, in torsos
+  const jumps = [];
+  if (J > Math.max(...HINT_CORE_JOINTS)) {
+    const cx = new Float64Array(N), cy = new Float64Array(N), torso = new Float64Array(N), det = new Uint8Array(N);
+    for (let f = 0; f < N; f++) {
+      const p = HINT_CORE_JOINTS.map(j => [at(f, j, r.xIdx), at(f, j, r.yIdx)]);
+      if (p.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) continue;
+      det[f] = 1;
+      cx[f] = (p[0][0] + p[1][0] + p[2][0] + p[3][0]) / 4;
+      cy[f] = (p[0][1] + p[1][1] + p[2][1] + p[3][1]) / 4;
+      torso[f] = Math.hypot((p[0][0] + p[1][0]) / 2 - (p[2][0] + p[3][0]) / 2, (p[0][1] + p[1][1]) / 2 - (p[2][1] + p[3][1]) / 2);
+    }
+    const inr = [], all = [];
+    for (let f = 0; f < N; f++) if (det[f]) { all.push(torso[f]); if (inRound(f)) inr.push(torso[f]); }
+    const ref = (inr.length >= 10 ? inr : all).sort((a, b) => a - b);
+    if (ref.length >= 2) {
+      const h = ref.length >> 1;
+      const tmed = Math.max(ref.length % 2 ? ref[h] : (ref[h - 1] + ref[h]) / 2, 1e-6);
+      let i = -1;
+      for (let f = 0; f < N; f++) {
+        if (!det[f]) continue;
+        if (i >= 0 && (inRound(i) || inRound(f))) {
+          const step = Math.hypot(cx[f] - cx[i], cy[f] - cy[i]) / tmed, dt = pts[f] - pts[i];
+          if (step > HINT_JUMP_TORSO && dt <= HINT_JUMP_MAX_DT_S) jumps.push({ s: pts[i], e: pts[f], f0: i, f1: f, gap: f - i, dt, step });
+        }
+        i = f;
+      }
+    }
+  }
+  r._hints = { missing, jumps };
+  return r._hints;
+}
+
+// skeleton.js calls this after a load and after a reset: the skeleton lane
+// and the hints follow the files, whichever of video and skeleton came last
+function onSkeletonRoundsChanged() { renderTimelineOverlay(); }
+
+// ============================================================
 // the timeline — player.js calls renderTimelineOverlay() on zoom / metadata
 // and updateVideoOverlay() on every time update
 // ============================================================
+function hintChips(lane, rounds, duration, pct) {
+  const mini = lane.id === 'minimap-segments';
+  const seek = t => { const v = videoEl(); if (v && v.duration) v.currentTime = t; };
+  for (const r of rounds) {
+    const h = detectorHints(r);
+    for (const m of h.missing) {
+      const l = pct(m.s, duration), w = Math.max(0.15, pct(m.e, duration) - l);
+      if (l + w < 0 || l > 100) continue;
+      const chip = document.createElement('div');
+      chip.className = 'hint-chip missing';
+      chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
+      chip.title = `no skeleton · ${fmtSec(m.s)} – ${fmtSec(m.e)} · ${m.n} frames`;
+      if (!mini) chip.addEventListener('click', e => { e.stopPropagation(); seek(m.s); });
+      lane.appendChild(chip);
+    }
+    for (const j of h.jumps) {
+      const l = pct(j.e, duration);
+      if (l < 0 || l > 100) continue;
+      const chip = document.createElement('div');
+      chip.className = 'hint-chip jump';
+      chip.style.left = l + '%';
+      chip.title = `jump · ${j.step.toFixed(1)} torso in ${Math.round(j.dt * 1000)} ms · lands ${fmtSec(j.e)}`;
+      if (!mini) chip.addEventListener('click', e => { e.stopPropagation(); seek(j.e); });
+      lane.appendChild(chip);
+    }
+  }
+}
 function laneChips(lane, spans, duration, opts = {}) {
   for (const s of spans) {
     const r = REASON_BY_ID[s.reason] || { label: s.reason, color: '#9aa0a6' };
@@ -458,6 +564,18 @@ function renderTimelineOverlay() {
     skel.appendChild(band);
   }
   lanes.insertBefore(skel, playhead);
+  // what the detectors found in those files: no skeleton, jumps
+  const rounds = (state.skeleton && state.skeleton.rounds) || [];
+  if (rounds.length) {
+    const lane = document.createElement('div');
+    lane.className = 'seg-lane lane-hints'; lane.dataset.laneLabel = 'detected';
+    const nJ = rounds.reduce((a, r) => a + detectorHints(r).jumps.length, 0);
+    const nM = rounds.reduce((a, r) => a + detectorHints(r).missing.length, 0);
+    lane.title = `Found in the skeleton files: ${nJ} jump${nJ === 1 ? '' : 's'} (yellow — the skeleton moves more than a torso within ¼ s) `
+      + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — 3 frames or more). Hints to check on the footage, not labels; click one to go there.`;
+    hintChips(lane, rounds, duration, timeToViewportPct);
+    lanes.insertBefore(lane, playhead);
+  }
   // one lane per labeler, yours first
   const byLabeler = new Map();
   for (const s of state.spans) { const k = s.labeler || '?'; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }
@@ -478,7 +596,7 @@ function renderTimelineOverlay() {
     }
     lanes.insertBefore(lane, playhead);
   }
-  if (mini) laneChips(mini, state.spans.filter(ownSpan), duration);
+  if (mini) { hintChips(mini, rounds, duration, (t, d) => 100 * t / d); laneChips(mini, state.spans.filter(ownSpan), duration); }
   if (typeof renderTimeTicks === 'function') renderTimeTicks();
   updateVideoOverlay();
 }

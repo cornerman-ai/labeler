@@ -77,7 +77,11 @@ and `Unusable Reviewed` — video_file | video_name | labeler | verdict | ts
 (verdict ∈ reviewed, whole_video_unusable). `retireVideo` moves a video's rows
 from Combined Data Archive and every person's Labeled Data tab to the team's
 `Skeleton Problems` tab (rows kept as they are, source tab / actor / time in
-columns 28–30), under the punch write lock, logged to Admin Actions.
+columns 28–30), under the punch write lock, logged to Admin Actions. The
+timeline's *detected* lane (no skeleton ≥ 3 frames, jumps > 1 torso within
+0.25 s) is computed in the browser from the loaded skeleton files
+(`detectorHints()` in `unusable/app.js`), mirroring cornerman-backend's
+`ml/research/skeleton_usability/` rules — change a threshold in both or neither.
 
 **Guard Drops sheet** (`guard_drop_label.html` — one verdict per punch on the
 resting/non-punching hand):

@@ -172,6 +172,10 @@ async function loadSkeletonFiles(fileList) {
         xIdx, yIdx, visIdx: channels.indexOf('visibility'),
         data: mainNpy.data,
         pts: ptsNpy.data,
+        // The round's own window (the extractor's 1.5 s pre-roll before
+        // start_sec is footage, not round) and its rate — what a page's own
+        // per-round checks (the unusable labeler's detector hints) judge inside.
+        startSec: Number(meta.start_sec), endSec: Number(meta.end_sec), fps: Number(meta.fps),
       };
       round.dip = computeNoseDip(round);
       rounds.push(round);
@@ -548,6 +552,7 @@ function setSkeletonToggleLabel() {
 function resetSkeletonState() {
   state.skeleton.rounds = [];
   state.skeleton.visible = false;
+  if (typeof onSkeletonRoundsChanged === 'function') onSkeletonRoundsChanged();
   const nameEl = document.getElementById('skeleton-name');
   if (nameEl) nameEl.textContent = 'No skeletons loaded';
   const toggleBtn = document.getElementById('btn-toggle-skeleton');
@@ -580,6 +585,10 @@ function applySkeletonLoadResult({ rounds, incomplete, invalid, invalidReasons }
     state.skeleton.rounds = [...merged.values()].sort((a, b) => a.round - b.round);
     state.skeleton.visible = true;
   }
+  // A page that draws something per round (the unusable labeler's timeline
+  // lanes) follows the rounds through this hook — here and in
+  // resetSkeletonState() — the way player.js hands out renderTimelineOverlay().
+  if (typeof onSkeletonRoundsChanged === 'function') onSkeletonRoundsChanged();
   const skipped = incomplete + invalid;
   const dipBtn = document.getElementById('btn-toggle-dip');
   if (dipBtn) dipBtn.hidden = !state.skeleton.rounds.some(r => r.dip);

@@ -92,6 +92,18 @@ kbd {
 /* ── timeline lanes ─────────────────────────────────────────────────────── */
 .seg-lane.lane-skeleton { height: 8px; background: var(--fill); }
 .seg-lane.lane-skeleton .skel-band { position: absolute; top: 0; height: 100%; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* the detectors' hints (app.js detectorHints): a thin lane under the skeleton
+   lane — red bands where there is no skeleton, yellow ticks where it jumps —
+   and the same marks, fainter, in the minimap */
+:root { --hint-missing: #e85a5a; --hint-jump: #ffcc4d; }
+.seg-lane.lane-hints { height: 10px; background: var(--fill); }
+.seg-lane.lane-hints .hint-chip { position: absolute; top: 0; height: 100%; pointer-events: auto; cursor: pointer; }
+.seg-lane.lane-hints .hint-chip.missing { background: var(--hint-missing); min-width: 2px; border-radius: 2px; }
+.seg-lane.lane-hints .hint-chip.jump { width: 3px; margin-left: -1.5px; background: var(--hint-jump); border-radius: 1px; box-shadow: 0 0 0 1px var(--card); z-index: 1; }
+.seg-lane.lane-hints .hint-chip:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+#minimap-segments .hint-chip { position: absolute; top: 0; height: 100%; opacity: .75; }
+#minimap-segments .hint-chip.missing { background: var(--hint-missing); min-width: 1px; }
+#minimap-segments .hint-chip.jump { width: 2px; margin-left: -1px; background: var(--hint-jump); }
 .seg-lane .span-chip {
   position: absolute; top: 1px; height: 12px; border-radius: 3px;
   background: var(--reason); opacity: .9; cursor: pointer; pointer-events: auto; min-width: 2px;
@@ -114,3 +126,6 @@ kbd {
 .help-box table { border-collapse: collapse; margin: 8px 0; }
 .help-box td { padding: 2px 10px 2px 0; vertical-align: top; }
 .help-box #help-close { margin-top: 8px; }
+.help-box .hint-key { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 2px 0 4px; }
+.help-box .hint-key.missing { background: var(--hint-missing); }
+.help-box .hint-key.jump { width: 3px; background: var(--hint-jump); }

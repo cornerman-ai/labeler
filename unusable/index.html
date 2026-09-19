@@ -11,7 +11,7 @@
        side panel and the reason colours. -->
   <link rel="stylesheet" href="../shared/style.css">
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="unusable.css?v=20260919">
+  <link rel="stylesheet" href="unusable.css?v=20260919b">
 </head>
 <body>
   <div id="app">
@@ -165,8 +165,9 @@
           <div id="seek-bar-wrapper">
             <div id="timeline-ticks"></div>
             <!-- Lanes are built by app.js's renderTimelineOverlay(): a skeleton
-                 lane (where a skeleton exists at all), then one lane per labeler
-                 who has spans on this video, yours first. -->
+                 lane (where a skeleton exists at all), a detected lane (what the
+                 detectors found in those files — no skeleton, jumps), then one
+                 lane per labeler who has spans on this video, yours first. -->
             <div id="seg-lanes">
               <div id="playhead" hidden><span class="playhead-grip"></span></div>
             </div>
@@ -227,6 +228,10 @@
         <tr><td><kbd>N</kbd></td><td>next video</td></tr>
         <tr><td><kbd>Alt</kbd> + wheel</td><td>zoom the timeline; wheel pans when zoomed</td></tr>
       </table>
+      <p>The <b>detected</b> lane under the skeleton lane is what the skeleton files say by themselves:
+        <span class="hint-key missing"></span> no skeleton for 3 frames or more,
+        <span class="hint-key jump"></span> the skeleton jumps — more than a torso within a quarter second,
+        usually onto someone else. Hints to check on the footage, not labels; click one to go there.</p>
       <p class="muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
         both in the labels workbook. "Whole video unusable" moves the video's labeling rows to
         <b>Skeleton Problems</b>.</p>
@@ -236,8 +241,8 @@
 
   <script src="../shared/labeler_name.js?v=20260918"></script>
   <script src="../shared/player.js?v=20260918"></script>
-  <script src="../punch/skeleton.js?v=20260918"></script>
+  <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20260918"></script>
+  <script src="app.js?v=20260919b"></script>
 </body>
 </html>

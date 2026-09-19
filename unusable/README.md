@@ -13,7 +13,11 @@ mark the video reviewed. Open it from the landing page, or directly at
    only" is on by default, so what you see is what is left). With the video and
    skeleton folders connected, the file and its skeleton files open by
    themselves, exactly as in the punch labeler. The skeleton lane on the
-   timeline shows where a skeleton exists at all.
+   timeline shows where a skeleton exists at all; the **detected** lane under
+   it is what those files say by themselves — red where there is no skeleton
+   for 3 frames or more, a yellow tick where the skeleton jumps more than a
+   torso within a quarter second (onto someone else, usually). Hints to check
+   on the footage, not labels: click one to go there, then judge.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: press `S` at the start, `E` at the end, then
    the reason — `1` out of frame, `2` other person, `3` frozen, `4` camera,
@@ -54,6 +58,12 @@ were, with the source tab, who moved them and when in columns 28–30.
 `shared/player.js`, the identity chip `shared/labeler_name.js`, the overlay
 `../punch/skeleton.js` and the connected folders `../punch/video-folder.js` —
 the same ids as the punch page, so a folder connected there is connected here.
+The detected lane is computed in the browser from the loaded skeleton files
+(`detectorHints()` in `app.js`) with the rules of cornerman-backend's
+`ml/research/skeleton_usability/` (`no_skeleton.py`, and the jump rule of
+`jumps.py` — not its other-person model, not `frozen.py`), so a newly
+extracted video shows its hints with no export step; a threshold changed there
+is changed here too.
 The backend is `doGetUnusable` in `apps_script/Code.js` (actions
 `listUnusable`, `addUnusable`, `updateUnusable`, `deleteUnusable`,
 `listUnusableReviewed`, `markUnusableReviewed`, `retireVideo`; every write
