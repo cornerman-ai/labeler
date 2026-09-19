@@ -586,7 +586,7 @@ function renderTimelineOverlay() {
   }
   // one lane per labeler, yours first
   const byLabeler = new Map();
-  for (const s of state.spans) { const k = s.labeler || '?'; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }
+  for (const s of state.spans) { const k = s.labeler || ''; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }   // '' groups with an unnamed you
   const mine = me();
   if (!byLabeler.has(mine)) byLabeler.set(mine, []);   // your lane exists even without a name
   const order = [...byLabeler.keys()].sort((a, b) => (a === mine ? -1 : b === mine ? 1 : a.localeCompare(b)));
