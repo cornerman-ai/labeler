@@ -673,6 +673,23 @@ const dataUrl = path => SOURCE === 'local'
   : `https://firebasestorage.googleapis.com/v0/b/${FB_BUCKET}/o/`
     + encodeURIComponent(`${FB_PREFIX}/${path}`) + `?alt=media&token=${FB_TOKEN}`;
 const url = p => dataUrl('frames/' + p);
+
+// Firebase sometimes answers a download with a redirect to a signed storage.googleapis.com URL; after
+// that cross-origin redirect the browser sends "Origin: null", the bucket's CORS rule doesn't match
+// and the fetch fails ("Failed to fetch", intermittent — seen 2026-09-19). Retrying, with a
+// cache-busting parameter so the retry isn't served the same redirect, gets the file.
+// (Images are unaffected: <img> loads don't need CORS.)
+async function fetchRetry(u, tries = 4) {
+  for (let k = 0; ; k++) {
+    try {
+      const r = await fetch(k ? `${u}${u.includes('?') ? '&' : '?'}retry=${k}` : u);
+      if (r.ok || r.status === 404 || k === tries - 1) return r;
+    } catch (e) {
+      if (k === tries - 1) throw e;
+    }
+    await new Promise(res => setTimeout(res, 400 * 2 ** k));   // 0.4 s, 0.8 s, 1.6 s
+  }
+}
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function show() {
@@ -741,14 +758,14 @@ document.addEventListener('click', async e => {
 (async () => {
   try {
     const [csv, man] = await Promise.all([dataUrl(CSV), dataUrl('frames/manifest.csv')].map(async u => {
-      const r = await fetch(u); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return parseCSV(await r.text());
+      const r = await fetchRetry(u); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return parseCSV(await r.text());
     }));
     const paths = Object.fromEntries(man.map(m => [m.punch_uuid, m]));
     punches = csv.filter(p => paths[p.punch_uuid]).map(p => ({
       ...p, ...Object.fromEntries(KINDS.map(k => [k + '_path', paths[p.punch_uuid][k + '_path']])) }));
     // coach list: optional; locally from ../coach_list/, online from Firebase (upload_to_firebase.py)
     try {
-      const cr = await fetch(SOURCE === 'local' ? '../coach_list/coach_review_list.csv' : dataUrl('coach_review_list.csv'));
+      const cr = await fetchRetry(SOURCE === 'local' ? '../coach_list/coach_review_list.csv' : dataUrl('coach_review_list.csv'));
       if (cr.ok) {
         const byId = Object.fromEntries(parseCSV(await cr.text()).map(c => [c.punch_uuid, c]));
         punches.forEach(p => { const c = byId[p.punch_uuid]; if (!c) return;
@@ -756,7 +773,7 @@ document.addEventListener('click', async e => {
                              coach_triplet: c.triplet, coach_level: c.level }); coachCount++; });
       }
     } catch { /* no coach list: the button stays disabled */ }
-    const sk = await fetch(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
+    const sk = await fetchRetry(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
     skeletons = sk.ok ? await sk.json() : null;
     addRotationLevels();
     uuidQuery = (params.get('uuid') || '').trim().toLowerCase();   // ?uuid=... opens that punch
