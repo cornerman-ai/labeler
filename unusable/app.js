@@ -74,7 +74,9 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function videoEl() { return document.getElementById('video-player'); }
-function me() { return labelerId(); }
+// No name is needed here (Mathe, 2026-09-19): rows are filed under whatever
+// name the punch labeler stored — Admin included — or under none.
+function me() { return labelerId() || ''; }
 function stemOf(name) { return String(name || '').replace(/\.(mp4|mov|m4v|webm)$/i, '').replace(/_h264$/, ''); }
 function fmtSec(t) { return formatTime(t); }
 function setSync(text, err) {
@@ -139,7 +141,7 @@ function setupVideoPicker() {
   function tag(v) {
     const rv = reviewOf(v.key);
     let t = '';
-    if (rv) t += `<span class="vp-tag ${rv.verdict === 'whole_video_unusable' ? 'retired' : 'done'}" title="${escapeHtml(rv.ts || '')}">${escapeHtml(VERDICT_TEXT[rv.verdict] || rv.verdict)} · ${escapeHtml(rv.labeler)}</span>`;
+    if (rv) t += `<span class="vp-tag ${rv.verdict === 'whole_video_unusable' ? 'retired' : 'done'}" title="${escapeHtml(rv.ts || '')}">${escapeHtml(VERDICT_TEXT[rv.verdict] || rv.verdict)}${rv.labeler ? ' · ' + escapeHtml(rv.labeler) : ''}</span>`;
     if (state.skeletonStems && !state.skeletonStems.has(stemOf(v.name))) t += '<span class="vp-tag noskel" title="No skeleton files on the shelf for this video">no skeleton</span>';
     return t;
   }
@@ -274,7 +276,6 @@ function maybeSaveDraft() {
 }
 
 async function saveSpan(span) {
-  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   state.spans.push(span);
   renderSpanList(); renderTimelineOverlay();
   setSync('saving…');
@@ -342,7 +343,7 @@ function renderSpanList() {
     return `<div class="span-row${own ? '' : ' foreign'}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${r.color}">` +
       `<span class="swatch"></span>` +
       `<span><span class="times">${spanTimes(s)}</span> · ${own ? `<select data-i="${i}">${options}</select>` : escapeHtml(r.label)}` +
-      `<span class="who"> · ${escapeHtml(s.labeler || '')}</span></span>` +
+      (s.labeler ? `<span class="who"> · ${escapeHtml(s.labeler)}</span>` : '') + '</span>' +
       (own ? `<button type="button" class="del" data-i="${i}" title="Delete this span">×</button>` : '<span></span>') +
       `</div>`;
   }).join('');
@@ -367,8 +368,8 @@ function renderReview() {
   btn.disabled = false; retire.disabled = false;
   const rows = state.reviewed || [];
   const retired = rows.find(r => r.verdict === 'whole_video_unusable');
-  if (retired) { el.textContent = `whole video unusable — ${retired.labeler}, ${String(retired.ts || '').slice(0, 10)}`; el.className = 'retired'; retire.disabled = true; return; }
-  if (rows.length) { el.textContent = 'reviewed by ' + rows.map(r => `${r.labeler} (${String(r.ts || '').slice(0, 10)})`).join(', '); el.className = 'done'; return; }
+  if (retired) { el.textContent = `whole video unusable — ${retired.labeler ? retired.labeler + ', ' : ''}${String(retired.ts || '').slice(0, 10)}`; el.className = 'retired'; retire.disabled = true; return; }
+  if (rows.length) { el.textContent = 'reviewed ' + rows.map(r => `${r.labeler ? 'by ' + r.labeler + ' ' : ''}(${String(r.ts || '').slice(0, 10)})`).join(', '); el.className = 'done'; return; }
   el.textContent = 'not reviewed yet';
 }
 function noteReviewed(row) {
@@ -381,7 +382,6 @@ function noteReviewed(row) {
 }
 async function markReviewed() {
   if (!state.videoLink) return;
-  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   setSync('saving…');
   try {
     const r = await fetchJson(sheetUrl({ action: 'markUnusableReviewed', video: state.videoLink, videoName: state.pickedName || state.videoName || '', verdict: 'reviewed' }));
@@ -397,7 +397,6 @@ async function markReviewed() {
 }
 async function retireVideo() {
   if (!state.videoLink) return;
-  if (!me()) { showToast('No labeler name yet — set it in the punch labeler first.', 'error'); return; }
   setSync('counting rows…');
   let counts;
   try {
@@ -589,12 +588,12 @@ function renderTimelineOverlay() {
   const byLabeler = new Map();
   for (const s of state.spans) { const k = s.labeler || '?'; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }
   const mine = me();
-  if (mine && !byLabeler.has(mine)) byLabeler.set(mine, []);
+  if (!byLabeler.has(mine)) byLabeler.set(mine, []);   // your lane exists even without a name
   const order = [...byLabeler.keys()].sort((a, b) => (a === mine ? -1 : b === mine ? 1 : a.localeCompare(b)));
   for (const who of order) {
     const lane = document.createElement('div');
     const own = who === mine;
-    lane.className = 'seg-lane ' + (own ? 'lane-own' : 'lane-foreign'); lane.dataset.laneLabel = who;
+    lane.className = 'seg-lane ' + (own ? 'lane-own' : 'lane-foreign'); lane.dataset.laneLabel = who || 'spans';
     laneChips(lane, byLabeler.get(who), duration, { foreign: !own });
     if (own) {
       const d = state.draft;
