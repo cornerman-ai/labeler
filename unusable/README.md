@@ -28,9 +28,10 @@ mark the video reviewed. Open it from the landing page, or directly at
    someone else — make two spans back to back, one per reason: the end of
    the first is the start of the second. Your spans are the top lane; other
    people's show below yours, read-only.
-3. **Done with the video: `R`.** The video is marked reviewed under your name
-   and the list moves on to the next unreviewed one (untick "then go to the
-   next video" to stay).
+3. **Done with the video: `R`.** The video is marked reviewed and the list
+   moves on to the next unreviewed one (untick "then go to the next video" to
+   stay). No name is needed on this page: spans and marks carry whatever name
+   the punch labeler stored — Admin included — or none.
 4. **A hopeless video: "Whole video unusable".** It shows how many labeling
    rows the video has in Combined Data Archive and in every labeler's tab, and
    on OK moves them all to the `Skeleton Problems` tab and marks the video

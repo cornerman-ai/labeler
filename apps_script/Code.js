@@ -6821,10 +6821,9 @@ function doGetUnusable(p, labeler, action) {
     var reviewed = unusableRows(rsh2).filter(function (r) { return normalizeDriveUrl(r.video_file) === video; });
     return jsonOut({ status: 'ok', spans: spans, reviewed: reviewed });
   }
-  var lc = who.toLowerCase();
-  if (!who || who === '1' || lc === 'admin' || lc === 'analyst') {
-    return jsonOut({ status: 'error', message: 'Fill in your name first — these rows are filed under it.' });
-  }
+  // No name is needed on the unusable page (Mathe, 2026-09-19): rows are filed
+  // under whatever the punch labeler stored — Admin included — or under none.
+  if (who === '1') who = '';   // the URL's default `labeler` value
   if (action === 'addUnusable' || action === 'updateUnusable' || action === 'deleteUnusable') {
     return withPunchWriteLock(function () { return unusableSpanWrite(pss, p, who, video, action); });
   }
