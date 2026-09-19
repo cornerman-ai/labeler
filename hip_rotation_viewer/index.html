@@ -19,7 +19,8 @@
   the hip_rotation folder as the web root (NOT this folder) so ../data/ resolves for ?source=local:
       python -m http.server 8765 --directory ml/research/hip_rotation
   then open http://localhost:8765/viewer/   (?csv=punches_X.csv to pick another freeze;
-  ?seed=N for a different order; ?uuid=<punch_uuid> opens one punch directly). The order is a FIXED shuffle (SEED) of the CSV rows, so
+  ?seed=N for a different order; ?uuid=<punch_uuid> opens one punch directly; ?coach=1 opens in
+  "Coach list" mode: only the coaches' punches (coach_list/coach_review_list.csv) in that list's order). The order is a FIXED shuffle (SEED) of the CSV rows, so
   punch #k is the same punch for everyone. Navigation is by buttons only; the filter
   dropdowns narrow the shuffled order to matching punches.
   Reads data/<csv>, data/frames/manifest.csv and (for the skeleton row)
@@ -114,6 +115,8 @@
   td.copy { width: 1%; white-space: nowrap; text-align: right; }
   .cp { padding: 2px 10px; font-size: 12px; }
   .cp.done { border-color: var(--accent); color: var(--accent); }
+  button.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
   .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .legend { display: flex; gap: 14px; }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
@@ -267,6 +270,10 @@ function shuffle(seed) {
 // ── sort by hip rotation: |change of angle(facing direction, punching hip)| (row 4, line 2) ──
 // start->impact ('si') or impact->end ('ie'); ties and punches without a value keep the shuffle order.
 let sortMode = '';   // '' | 'si-desc' | 'si-asc' | 'ie-desc' | 'ie-asc'
+// "Coach list" mode: only the punches in coach_list/coach_review_list.csv, in that list's order
+// (type -> bucket -> triplet -> high/mid/low) unless a rotation sort is chosen. ?coach=1 opens in it.
+let coachOnly = params.get('coach') === '1';
+let coachCount = 0;
 const rotCache = {};
 function hipRotation(p) {
   if (rotCache[p.punch_uuid]) return rotCache[p.punch_uuid];
@@ -282,6 +289,7 @@ function hipRotation(p) {
 }
 function applySort() {
   order = baseOrder.slice();
+  if (coachOnly && !sortMode) order.sort((a, b) => (+punches[a].coach_n || 1e9) - (+punches[b].coach_n || 1e9));
   if (sortMode) {
     const [key, dir] = sortMode.split('-'), sgn = dir === 'desc' ? -1 : 1;
     order.sort((a, b) => {
@@ -302,7 +310,8 @@ function applyFilters() {
 // uuid filter: case-insensitive prefix, so a pasted full uuid or its first few characters both work.
 let uuidQuery = '';
 const matches = (p, skip) => FILTERS.every(f => f === skip || !active[f] || p[f] === active[f])
-  && (!uuidQuery || p.punch_uuid.toLowerCase().startsWith(uuidQuery));
+  && (!uuidQuery || p.punch_uuid.toLowerCase().startsWith(uuidQuery))
+  && (!coachOnly || !!p.coach_n);
 
 // Faceted dropdowns: each one lists only the values (with counts) left by the OTHER
 // active filters, so filtering by video then stance counts stances inside that video.
@@ -323,6 +332,7 @@ function buildFilters() {
     `<label>${f.replace('_name', '')} <select data-f="${f}"></select></label>`
   ).join('') + `<label>uuid <input id="uuid" type="search" placeholder="paste punch_uuid (or its start)"
       spellcheck="false" autocomplete="off"></label><button id="clear">Clear filters</button>
+    <button id="coachBtn" class="toggle" ${coachCount ? '' : 'disabled title="coach list not found"'}>Coach list (${coachCount})</button>
     <label>sort <select id="sort">
       <option value="">fixed order</option>
       <option value="si-desc">|Δ| start→impact, largest first</option>
@@ -330,6 +340,9 @@ function buildFilters() {
       <option value="ie-desc">|Δ| impact→end, largest first</option>
       <option value="ie-asc">|Δ| impact→end, smallest first</option>
     </select></label>`;
+  const coachBtn = document.getElementById('coachBtn');
+  coachBtn.classList.toggle('on', coachOnly);
+  coachBtn.onclick = () => { coachOnly = !coachOnly; coachBtn.classList.toggle('on', coachOnly); applySort(); };
   const sortSel = document.getElementById('sort');
   sortSel.value = sortMode;
   sortSel.onchange = () => { sortMode = sortSel.value; applySort(); };
@@ -707,6 +720,16 @@ document.addEventListener('click', async e => {
     const paths = Object.fromEntries(man.map(m => [m.punch_uuid, m]));
     punches = csv.filter(p => paths[p.punch_uuid]).map(p => ({
       ...p, ...Object.fromEntries(KINDS.map(k => [k + '_path', paths[p.punch_uuid][k + '_path']])) }));
+    // coach list: optional; locally from ../coach_list/, online from Firebase (upload_to_firebase.py)
+    try {
+      const cr = await fetch(SOURCE === 'local' ? '../coach_list/coach_review_list.csv' : dataUrl('coach_review_list.csv'));
+      if (cr.ok) {
+        const byId = Object.fromEntries(parseCSV(await cr.text()).map(c => [c.punch_uuid, c]));
+        punches.forEach(p => { const c = byId[p.punch_uuid]; if (!c) return;
+          Object.assign(p, { coach_n: c.n, coach_type: c.punch_type, coach_bucket: c.bucket,
+                             coach_triplet: c.triplet, coach_level: c.level }); coachCount++; });
+      }
+    } catch { /* no coach list: the button stays disabled */ }
     const sk = await fetch(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
     skeletons = sk.ok ? await sk.json() : null;
     uuidQuery = (params.get('uuid') || '').trim().toLowerCase();   // ?uuid=... opens that punch
