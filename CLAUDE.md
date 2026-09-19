@@ -78,10 +78,11 @@ and `Unusable Reviewed` — video_file | video_name | labeler | verdict | ts
 from Combined Data Archive and every person's Labeled Data tab to the team's
 `Skeleton Problems` tab (rows kept as they are, source tab / actor / time in
 columns 28–30), under the punch write lock, logged to Admin Actions. The
-timeline's *detected* lane (no skeleton ≥ 3 frames, jumps > 1 torso within
-0.25 s) is computed in the browser from the loaded skeleton files
+timeline's *detected* lane (every frame without a skeleton, jumps > 1 torso
+within 0.25 s) is computed in the browser from the loaded skeleton files
 (`detectorHints()` in `unusable/app.js`), mirroring cornerman-backend's
-`ml/research/skeleton_usability/` rules — change a threshold in both or neither.
+`ml/research/skeleton_usability/` jump rule — change its thresholds in both or
+neither; the missing-frame floor differs on purpose (1 here, 3 in the backend).
 
 **Guard Drops sheet** (`guard_drop_label.html` — one verdict per punch on the
 resting/non-punching hand):

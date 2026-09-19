@@ -440,7 +440,11 @@ async function retireVideo() {
 // both places or in neither.
 //   NO SKELETON  a frame inside the round (the meta's start_sec … end_sec; the
 //                1.5 s pre-roll is footage, not round) where no joint has a
-//                finite x, in a run of at least HINT_MIN_FRAMES frames
+//                finite x, in a run of at least HINT_MIN_FRAMES frames — 1 here
+//                (Mathe, 2026-09-19: every missing frame shows; a jump costs one
+//                94 % of the time), where the backend's survey and model keep
+//                the 3-frame floor of no_skeleton.py. The threshold for actual
+//                use comes later; this lane is the visual check.
 //   JUMP         between consecutive DETECTED frames (the frames without a
 //                skeleton between them skipped) the core — the mean of the two
 //                shoulders and the two hips — moves more than HINT_JUMP_TORSO
@@ -448,7 +452,7 @@ async function retireVideo() {
 // The other-person stretches and the frozen skeleton stay in the backend's
 // lens: which of two skeletons is the boxer is the labeler's call here.
 // ============================================================
-const HINT_MIN_FRAMES = 3;
+const HINT_MIN_FRAMES = 1;
 const HINT_JUMP_TORSO = 1.0;
 const HINT_JUMP_MAX_DT_S = 0.25;
 const HINT_CORE_JOINTS = [11, 12, 23, 24];   // BlazePose-33: left / right shoulder, left / right hip
@@ -518,12 +522,13 @@ function hintChips(lane, rounds, duration, pct) {
   for (const r of rounds) {
     const h = detectorHints(r);
     for (const m of h.missing) {
-      const l = pct(m.s, duration), w = Math.max(0.15, pct(m.e, duration) - l);
+      // the band covers the frames themselves: a stretch ends AT its last frame, which lasts one frame more
+      const l = pct(m.s, duration), w = Math.max(0.15, pct(m.e + (r.fps > 0 ? 1 / r.fps : 0), duration) - l);
       if (l + w < 0 || l > 100) continue;
       const chip = document.createElement('div');
       chip.className = 'hint-chip missing';
       chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
-      chip.title = `no skeleton · ${fmtSec(m.s)} – ${fmtSec(m.e)} · ${m.n} frames`;
+      chip.title = m.n === 1 ? `no skeleton · ${fmtSec(m.s)} · one frame` : `no skeleton · ${fmtSec(m.s)} – ${fmtSec(m.e)} · ${m.n} frames`;
       if (!mini) chip.addEventListener('click', e => { e.stopPropagation(); seek(m.s); });
       lane.appendChild(chip);
     }
@@ -582,7 +587,7 @@ function renderTimelineOverlay() {
     const nJ = rounds.reduce((a, r) => a + detectorHints(r).jumps.length, 0);
     const nM = rounds.reduce((a, r) => a + detectorHints(r).missing.length, 0);
     lane.title = `Found in the skeleton files: ${nJ} jump${nJ === 1 ? '' : 's'} (yellow — the skeleton moves more than a torso within ¼ s) `
-      + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — 3 frames or more). Hints to check on the footage, not labels; click one to go there.`;
+      + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — every frame without one). Hints to check on the footage, not labels; click one to go there.`;
     hintChips(lane, rounds, duration, timeToViewportPct);
     lanes.insertBefore(lane, playhead);
   }

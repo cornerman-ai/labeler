@@ -14,10 +14,11 @@ mark the video reviewed. Open it from the landing page, or directly at
    skeleton folders connected, the file and its skeleton files open by
    themselves, exactly as in the punch labeler. The skeleton lane on the
    timeline shows where a skeleton exists at all; the **detected** lane under
-   it is what those files say by themselves — red where there is no skeleton
-   for 3 frames or more, a yellow tick where the skeleton jumps more than a
-   torso within a quarter second (onto someone else, usually). Hints to check
-   on the footage, not labels: click one to go there, then judge.
+   it is what those files say by themselves — red wherever a frame has no
+   skeleton (every one, however short the run), a yellow tick where the
+   skeleton jumps more than a torso within a quarter second (onto someone
+   else, usually; a jump costs a missing frame 94 % of the time). Hints to
+   check on the footage, not labels: click one to go there, then judge.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
    `S` / `E`; twice on the same frame for a one-frame problem), then the
@@ -74,8 +75,10 @@ The detected lane is computed in the browser from the loaded skeleton files
 (`detectorHints()` in `app.js`) with the rules of cornerman-backend's
 `ml/research/skeleton_usability/` (`no_skeleton.py`, and the jump rule of
 `jumps.py` — not its other-person model, not `frozen.py`), so a newly
-extracted video shows its hints with no export step; a threshold changed there
-is changed here too.
+extracted video shows its hints with no export step. One deliberate
+difference: this lane shows every missing frame, where the backend's survey
+and model start counting at 3 (Mathe, 2026-09-19 — the threshold for actual
+use comes later); the jump rule's thresholds are the same on both sides.
 The backend is `doGetUnusable` in `apps_script/Code.js` (actions
 `listUnusable`, `addUnusable`, `updateUnusable`, `deleteUnusable`,
 `listUnusableReviewed`, `markUnusableReviewed`, `retireVideo`; every write
