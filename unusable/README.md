@@ -20,7 +20,8 @@ mark the video reviewed. Open it from the landing page, or directly at
    on the footage, not labels: click one to go there, then judge.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
-   `S` / `E`), then the reason — `1` out of frame, `2` other person, `3` other
+   `S` / `E`; twice on the same frame for a one-frame problem), then the
+   reason — `1` out of frame, `2` other person, `3` other
    thing (a painting, a statue, the bag), `4` frozen, `5` camera, `6` other.
    The span saves itself; `Esc` clears a half-made one. When the reason
    changes mid-stretch — the boxer walks out, then the tracker lands on

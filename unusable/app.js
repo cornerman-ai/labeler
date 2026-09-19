@@ -266,8 +266,7 @@ function setDraftReason(id) {
 function maybeSaveDraft() {
   const d = state.draft;
   if (d.start == null || d.end == null || !d.reason) return;
-  let a = Math.min(d.start, d.end), b = Math.max(d.start, d.end);
-  if (b - a < 0.05) { showToast('Start and end are the same frame — set the other one.', 'info'); return; }
+  const a = Math.min(d.start, d.end), b = Math.max(d.start, d.end);   // a == b: a one-frame span
   const reason = d.reason;
   state.draft = { start: null, end: null, reason: null };   // cleared first: saveSpan repaints the lanes
   renderDraft();
@@ -306,7 +305,7 @@ async function updateSpanReason(span, reason) {
 }
 async function deleteSpan(span) {
   const r0 = REASON_BY_ID[span.reason];
-  if (!confirm(`Delete the ${r0 ? r0.label.toLowerCase() : span.reason} span ${fmtSec(span.start_sec)} – ${fmtSec(span.end_sec)}?`)) return;
+  if (!confirm(`Delete the ${r0 ? r0.label.toLowerCase() : span.reason} span ${spanTimes(span)}?`)) return;
   state.spans = state.spans.filter(s => s !== span);
   renderSpanList(); renderTimelineOverlay();
   try {
@@ -322,9 +321,12 @@ async function deleteSpan(span) {
 // the list of spans
 // ============================================================
 function ownSpan(s) { return String(s.labeler || '').toLowerCase() === String(me() || '').toLowerCase(); }
-function currentSpan(t) {
-  return state.spans.find(s => t >= s.start_sec && t <= s.end_sec) || null;
-}
+// A span holds a time to within half a frame, so a one-frame span (start ==
+// end, Enter twice on the same frame) is found at its own frame; its times read
+// as one frame rather than a zero-length range.
+function spanHolds(s, t) { const eps = (state.frameDuration || 1 / 30) / 2; return t >= s.start_sec - eps && t <= s.end_sec + eps; }
+function spanTimes(s) { return s.end_sec - s.start_sec < 1e-6 ? `${fmtSec(s.start_sec)} · one frame` : `${fmtSec(s.start_sec)} – ${fmtSec(s.end_sec)}`; }
+function currentSpan(t) { return state.spans.find(s => spanHolds(s, t)) || null; }
 function renderSpanList() {
   const el = document.getElementById('span-list');
   const count = document.getElementById('span-count');
@@ -337,9 +339,9 @@ function renderSpanList() {
     const r = REASON_BY_ID[s.reason] || { label: s.reason, color: '#9aa0a6' };
     const own = ownSpan(s);
     const options = REASONS.map(x => `<option value="${x.id}"${x.id === s.reason ? ' selected' : ''}>${x.label}</option>`).join('');
-    return `<div class="span-row${own ? '' : ' foreign'}${t >= s.start_sec && t <= s.end_sec ? ' current' : ''}" data-i="${i}" style="--reason:${r.color}">` +
+    return `<div class="span-row${own ? '' : ' foreign'}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${r.color}">` +
       `<span class="swatch"></span>` +
-      `<span><span class="times">${fmtSec(s.start_sec)} – ${fmtSec(s.end_sec)}</span> · ${own ? `<select data-i="${i}">${options}</select>` : escapeHtml(r.label)}` +
+      `<span><span class="times">${spanTimes(s)}</span> · ${own ? `<select data-i="${i}">${options}</select>` : escapeHtml(r.label)}` +
       `<span class="who"> · ${escapeHtml(s.labeler || '')}</span></span>` +
       (own ? `<button type="button" class="del" data-i="${i}" title="Delete this span">×</button>` : '<span></span>') +
       `</div>`;
@@ -544,7 +546,7 @@ function laneChips(lane, spans, duration, opts = {}) {
     const chip = document.createElement('div');
     chip.className = 'span-chip' + (opts.foreign ? ' foreign' : '') + (opts.draft ? ' draft' : '');
     chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%;--reason:${r.color}`;
-    chip.title = `${r.label} · ${fmtSec(s.start_sec)} – ${fmtSec(s.end_sec)}${s.labeler ? ' · ' + s.labeler : ''}`;
+    chip.title = `${r.label} · ${spanTimes(s)}${s.labeler ? ' · ' + s.labeler : ''}`;
     if (!opts.draft) chip.addEventListener('click', e => { e.stopPropagation(); const v = videoEl(); if (v && v.duration) v.currentTime = s.start_sec; });
     lane.appendChild(chip);
   }

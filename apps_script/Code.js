@@ -6865,7 +6865,8 @@ function unusableSpanWrite(pss, p, who, video, action) {
   var reason = String(p.reason || '');
   if (UNUSABLE_REASONS.indexOf(reason) === -1) return jsonOut({ status: 'error', message: 'invalid reason: ' + reason });
   var start = toSeconds(p.start_sec), end = toSeconds(p.end_sec);
-  if (!(end > start)) return jsonOut({ status: 'error', message: 'the end must come after the start' });
+  // start == end is a one-frame span (Mathe, 2026-09-19: some issues are one frame).
+  if (!(end >= start)) return jsonOut({ status: 'error', message: 'the end must not come before the start' });
   var ts = new Date().toISOString();
   if (action === 'addUnusable') {
     // A retried save (the page did not hear the first answer) must not add a
