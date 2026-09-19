@@ -68,13 +68,17 @@ id | video_name | video_file | training_type | stance | fighter | angle | label 
 **Form Labels sheets** ("Form Labels {Name}"):
 id | punch_uuid | video_file | punch_type | hand | stance | start_sec | end_sec | rule_hand_extended | rule_hand_low | rule_hand_ushape | rule_hip_rotation | rule_rear_heel_lift | rule_resting_hand | rule_extension | rule_punch_height | labeled_at
 
-**Unusable footage** (`unusable/`, its own README): stretches of a video where
-the BlazePose skeleton can't be used, marked with the overlay on, after
-extraction. Two tabs in the punch workbook, written by `doGetUnusable`:
+**Unusable footage** (`unusable/`, its own README): step 4 of cornerman-backend's
+label review (`ml/label_review/REVIEW_FLOW.md`) — after the check is clean and
+the skeleton extracted, before the rows are flipped to `yes`: the picker lists
+the videos whose rows are still `Reviewing` (`listReviewingVideos` reads the
+`reviewed` column of every person's tab), the team marks with the overlay on the
+stretches where the skeleton can't be used, then the rows go to `yes` by hand.
+Two tabs in the punch workbook, written by `doGetUnusable`:
 `Unusable Spans` — id | video_file | labeler | reason | start_sec | end_sec |
 span_uuid | ts (reason ∈ out_of_frame, other_person, other_thing, jump_back, frozen, camera, other) —
 and `Unusable Reviewed` — video_file | video_name | labeler | verdict | ts
-(verdict ∈ reviewed, whole_video_unusable). `retireVideo` moves a video's rows
+(verdict: whole_video_unusable — retirements only; the review mark is the sheet's `yes`). `retireVideo` moves a video's rows
 from Combined Data Archive and every person's Labeled Data tab to the team's
 `Skeleton Problems` tab (rows kept as they are, source tab / actor / time in
 columns 28–30), under the punch write lock, logged to Admin Actions. The

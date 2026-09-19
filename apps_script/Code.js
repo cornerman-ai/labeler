@@ -6737,7 +6737,7 @@ function doGetBugReport(p, labeler) {
 // like every punch label. Every write takes the punch write lock — the
 // retirement edits the labeler tabs themselves.
 // ============================================================
-var UNUSABLE_ACTIONS = ['listUnusable', 'addUnusable', 'updateUnusable', 'deleteUnusable',
+var UNUSABLE_ACTIONS = ['listUnusable', 'listReviewingVideos', 'addUnusable', 'updateUnusable', 'deleteUnusable',
                         'listUnusableReviewed', 'markUnusableReviewed', 'retireVideo'];
 var UNUSABLE_SPANS_NAME = 'Unusable Spans';
 var UNUSABLE_SPANS_HEADERS = ['id', 'video_file', 'labeler', 'reason', 'start_sec', 'end_sec', 'span_uuid', 'ts'];
@@ -6798,6 +6798,34 @@ function fillRow(row, n) {
   return out;
 }
 
+// The videos still under review: every person's Labeled Data tab, every row
+// whose `reviewed` column says Reviewing (the checker's mark — a person flips
+// it to yes when the video is done, and since 2026-09-19 "done" includes the
+// unusable pass, step 4 of cornerman-backend's ml/label_review/REVIEW_FLOW.md).
+// → [{video_file (canonical link), rows, tabs: {tab: rows}}]
+function reviewingVideos(pss) {
+  var out = {}, sheets = pss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name.indexOf(LABELER_PREFIX) !== 0) continue;
+    if (name === COMBINED_NAME || name === COMBINED_BACKUP_NAME || isNonPersonLabelerSheet(name)) continue;
+    var data = sheets[s].getDataRange().getValues();
+    if (data.length < 2) continue;
+    var cols = findColumns(data[0]), revCol = -1;
+    for (var c = 0; c < data[0].length; c++) if (String(data[0][c]).toLowerCase().trim() === 'reviewed') revCol = c;
+    if (cols.video < 0 || revCol < 0) continue;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][revCol] || '').trim().toLowerCase() !== 'reviewing') continue;
+      var key = normalizeDriveUrl(data[r][cols.video]);
+      if (!key) continue;
+      if (!out[key]) out[key] = { video_file: key, rows: 0, tabs: {} };
+      out[key].rows++;
+      out[key].tabs[name] = (out[key].tabs[name] || 0) + 1;
+    }
+  }
+  return Object.keys(out).map(function (k) { return out[k]; });
+}
+
 function doGetUnusable(p, labeler, action) {
   var pss = punchSpreadsheet();
   var who = String(labeler || '').trim();
@@ -6805,6 +6833,7 @@ function doGetUnusable(p, labeler, action) {
     var rsh = getOrCreateSheetWithHeaders(pss, UNUSABLE_REVIEWED_NAME, UNUSABLE_REVIEWED_HEADERS);
     return jsonOut({ status: 'ok', reviewed: unusableRows(rsh) });
   }
+  if (action === 'listReviewingVideos') return jsonOut({ status: 'ok', videos: reviewingVideos(pss) });
   var video = normalizeDriveUrl(p.video || '');
   if (!video) return jsonOut({ status: 'error', message: 'missing field: video' });
   if (action === 'listUnusable') {

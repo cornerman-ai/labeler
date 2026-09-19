@@ -61,10 +61,11 @@
           <div id="video-picker-panel" hidden>
             <div class="vp-head">
               <input type="search" id="video-picker-search" placeholder="Search videos…" autocomplete="off" spellcheck="false">
-              <label class="vp-filter" title="Hide videos somebody already marked as reviewed">
-                <input type="checkbox" id="only-unreviewed" checked> unreviewed only
+              <label class="vp-filter" title="Only the videos whose rows are still Reviewing in the labeling tabs — the ones waiting for this pass">
+                <input type="checkbox" id="only-unreviewed" checked> still Reviewing only
               </label>
               <span id="vp-count" class="muted"></span>
+              <button type="button" id="vp-refresh" class="vp-refresh" title="Re-read the sheet: which videos are still Reviewing, which were retired">↻</button>
             </div>
             <div id="video-picker-list"></div>
           </div>
@@ -139,15 +140,16 @@
         <section class="card" id="review-card">
           <div class="card-eyebrow">Review</div>
           <div id="review-status" class="muted">—</div>
+          <p class="hint">Step 4 of the label review: the list holds the videos whose rows are still
+            <b>Reviewing</b> in the labeling tabs. When every unusable stretch of a video is marked, its
+            rows are flipped to <b>yes</b> in the sheet and it leaves the list.</p>
           <div class="review-actions">
-            <button type="button" id="btn-reviewed" class="primary" title="This video has been looked at; every unusable stretch is marked (R)">✓ Video reviewed <kbd>R</kbd></button>
-            <button type="button" id="btn-next-video" title="Go to the next video in the list without marking this one (N)">Next video ▸ <kbd>N</kbd></button>
+            <button type="button" id="btn-next-video" title="Go to the next video in the list (N)">Next video ▸ <kbd>N</kbd></button>
           </div>
-          <label class="auto-next"><input type="checkbox" id="auto-next" checked> reviewed also goes to the next video</label>
           <hr>
           <button type="button" id="btn-retire" class="danger" title="The whole video is unusable: move every label of it out of the labeling tabs into Skeleton Problems">Whole video unusable…</button>
           <p class="hint">Moves all of this video's rows from Combined Data Archive and every labeler's
-            tab to the <b>Skeleton Problems</b> tab, and marks the video reviewed. Asks first, with the
+            tab to the <b>Skeleton Problems</b> tab, so it leaves the list. Asks first, with the
             counts. Combined Data follows at the next rebuild.</p>
         </section>
       </aside>
@@ -244,18 +246,19 @@
       </button>
     </div>
     <div class="sc-body">
-      <p class="sc-note">Watch the video with the skeleton on and mark every stretch where the skeleton is
-        not the boxer's or is not there: <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then the
-        reason — the span saves itself. When the reason changes mid-stretch (the boxer walks out, then the
-        tracker lands on someone else), make two spans back to back, one per reason: the end of the first is
-        the start of the second. When the whole video is done, press <kbd>R</kbd> for <b>reviewed</b> and the
-        list moves on to the next unreviewed video.</p>
+      <p class="sc-note">This is step 4 of the label review (cornerman-backend, <code>ml/label_review/REVIEW_FLOW.md</code>):
+        the check report is clean and the skeleton is extracted; before a video's rows go from <b>Reviewing</b>
+        to <b>yes</b>, its skeleton is judged here. The list holds the videos still Reviewing. Watch each with the
+        skeleton on and mark every stretch where the skeleton is not the boxer's or is not there:
+        <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then the reason — the span saves itself.
+        When the reason changes mid-stretch (the boxer walks out, then the tracker lands on someone else), make
+        two spans back to back, one per reason: the end of the first is the start of the second. A video done
+        here is flipped to yes in the sheet and leaves the list; <kbd>N</kbd> goes to the next one.</p>
       <p class="sc-sec">Marking</p>
       <div class="sc-row"><span>Start, then end, of the stretch at the playhead — twice on the same frame for a one-frame problem</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>… or either end on its own</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
       <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>7</kbd></span></div>
       <div class="sc-row"><span>Clear the half-made span</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
-      <div class="sc-row"><span>Video reviewed</span><span class="sc-keys"><kbd>R</kbd></span></div>
       <div class="sc-row"><span>Next video</span><span class="sc-keys"><kbd>N</kbd></span></div>
       <p class="sc-sec">Playback</p>
       <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>

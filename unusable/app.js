@@ -1,12 +1,14 @@
 // ============================================================
 // app.js — Unusable footage labeler
 //
-// The team watches a video with its BlazePose skeleton drawn on top and marks
-// every stretch where that skeleton cannot be used — the boxer out of the
-// picture, the tracker on someone else, a frozen skeleton, a camera move — as
-// a span with a reason; then marks the video reviewed and moves on to the
-// next unreviewed one. The labels behind the skeleton (rounds, punches) are
-// made BEFORE the skeleton exists, so this is its own pass, after extraction.
+// Step 4 of the label review (cornerman-backend/ml/label_review/REVIEW_FLOW.md):
+// after the check report is clean and the skeleton is extracted, before the
+// rows are flipped to yes. The team works through the videos whose rows are
+// still Reviewing in the labeling tabs, each with its BlazePose skeleton drawn
+// on top, marking every stretch where that skeleton cannot be used — the boxer
+// out of the picture, the tracker on someone else, a frozen skeleton, a camera
+// move — as a span with a reason. A video done here is flipped to yes in the
+// sheet by hand (step 5) and leaves the list.
 //
 // Shared pieces: the player, seek bar, minimap and zoom (../shared/player.js),
 // the transport row, the timeline's scroll-zoom, the name field, the status
@@ -20,9 +22,11 @@
 //
 // Sheet (apps_script/Code.js, doGetUnusable): two tabs in the labels workbook —
 //   Unusable Spans     id | video_file | labeler | reason | start_sec | end_sec | span_uuid | ts
-//   Unusable Reviewed  video_file | video_name | labeler | verdict | ts     (verdict: reviewed | whole_video_unusable)
-// and "Whole video unusable" (action retireVideo) moves every row of the video
-// from Combined Data Archive and every labeler's tab to Skeleton Problems.
+//   Unusable Reviewed  video_file | video_name | labeler | verdict | ts     (verdict: whole_video_unusable — retirements;
+//                      the review mark itself is the sheet's Reviewing → yes flip)
+// "Whole video unusable" (action retireVideo) moves every row of the video
+// from Combined Data Archive and every labeler's tab to Skeleton Problems;
+// listReviewingVideos reads the `reviewed` column of every person's tab.
 // Times are source-video seconds, the same clock as the punch labels.
 // ============================================================
 
@@ -54,7 +58,8 @@ Object.assign(state, {
   reviewed: [],             // the reviewed rows of this video
   draft: { start: null, end: null, reason: null },
   catalog: null,            // the tracking sheet's videos [{name, link, key, n}]
-  reviewedAll: null,        // Map key -> [{labeler, verdict, ts, video_name}]
+  reviewedAll: null,        // Map key -> [{labeler, verdict, ts, video_name}] — retirements
+  reviewing: null,          // Map key -> {rows, tabs}: the videos whose rows are still Reviewing in the labeling tabs
   skeletonStems: null,      // Set of stems that have skeleton files (shared/videos.json)
   onlyUnreviewed: true,
   loadToken: 0,
@@ -114,19 +119,32 @@ function fetchReviewedAll() {
     })
     .catch(() => { state.reviewedAll = state.reviewedAll || new Map(); return state.reviewedAll; });
 }
+function fetchReviewing() {
+  return fetchJson(sheetUrl({ action: 'listReviewingVideos' }), FETCH_MS)
+    .then(r => {
+      if (!r || r.status !== 'ok' || !Array.isArray(r.videos)) throw new Error('no list');
+      state.reviewing = new Map(r.videos.map(v => [normalizeDriveUrl(v.video_file), v]));
+    })
+    .catch(() => {});   // stays as it was (null = not known: the list then shows every video)
+}
 function fetchSkeletonStems() {
   return fetch('../shared/videos.json').then(r => r.json())
     .then(j => { state.skeletonStems = new Set((j.videos || []).map(v => stemOf(v.stem))); })
     .catch(() => { state.skeletonStems = null; });
 }
+// A retirement (verdict whole_video_unusable) is the only verdict this page
+// writes; the review mark itself is the sheet's Reviewing → yes flip.
 function reviewOf(key) {
   const rows = state.reviewedAll ? (state.reviewedAll.get(key) || []) : [];
-  const retired = rows.find(r => r.verdict === 'whole_video_unusable');
-  return retired || rows[0] || null;
+  return rows.find(r => r.verdict === 'whole_video_unusable') || null;
 }
+// The list this pass works through: the videos whose rows are still Reviewing
+// in the labeling tabs and that were not retired. Until that list has loaded
+// (or when it could not be read), every video.
 function catalogFiltered() {
   const all = state.catalog || [];
-  return state.onlyUnreviewed ? all.filter(v => !reviewOf(v.key)) : all;
+  if (!state.onlyUnreviewed || !state.reviewing) return all;
+  return all.filter(v => state.reviewing.has(v.key) && !reviewOf(v.key));
 }
 
 // ============================================================
@@ -141,9 +159,11 @@ function setupVideoPicker() {
   const count = document.getElementById('vp-count');
 
   function tag(v) {
-    const rv = reviewOf(v.key);
     let t = '';
-    if (rv) t += `<span class="vp-tag ${rv.verdict === 'whole_video_unusable' ? 'retired' : 'done'}" title="${escapeHtml(rv.ts || '')}">${escapeHtml(VERDICT_TEXT[rv.verdict] || rv.verdict)}${rv.labeler ? ' · ' + escapeHtml(rv.labeler) : ''}</span>`;
+    const rw = state.reviewing && state.reviewing.get(v.key);
+    if (rw) t += `<span class="vp-tag reviewing" title="${escapeHtml(Object.entries(rw.tabs || {}).map(([tab, n]) => `${n} in ${tab}`).join(', '))}">Reviewing · ${rw.rows} row${rw.rows === 1 ? '' : 's'}</span>`;
+    const rv = reviewOf(v.key);
+    if (rv) t += `<span class="vp-tag retired" title="${escapeHtml(rv.ts || '')}">${escapeHtml(VERDICT_TEXT[rv.verdict] || rv.verdict)}${rv.labeler ? ' · ' + escapeHtml(rv.labeler) : ''}</span>`;
     if (state.skeletonStems && !state.skeletonStems.has(stemOf(v.name))) t += '<span class="vp-tag noskel" title="No skeleton files on the shelf for this video">no skeleton</span>';
     return t;
   }
@@ -168,6 +188,10 @@ function setupVideoPicker() {
   search.addEventListener('input', renderList);
   search.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
   only.addEventListener('change', () => { state.onlyUnreviewed = only.checked; renderList(); });
+  document.getElementById('vp-refresh').addEventListener('click', e => {
+    e.stopPropagation(); count.textContent = 'reading the sheet…';
+    Promise.all([fetchReviewing(), fetchReviewedAll()]).then(() => { renderList(); renderReview(); });
+  });
   document.addEventListener('click', e => { if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) closePanel(); });
   document.getElementById('btn-next-video').addEventListener('click', nextVideo);
   window._renderPickerList = renderList;
@@ -363,16 +387,15 @@ function renderSpanList() {
 // ============================================================
 function renderReview() {
   const el = document.getElementById('review-status');
-  const btn = document.getElementById('btn-reviewed');
   const retire = document.getElementById('btn-retire');
   el.className = 'muted';
-  if (!state.videoLink) { el.textContent = '—'; btn.disabled = true; retire.disabled = true; return; }
-  btn.disabled = false; retire.disabled = false;
-  const rows = state.reviewed || [];
-  const retired = rows.find(r => r.verdict === 'whole_video_unusable');
+  if (!state.videoLink) { el.textContent = '—'; retire.disabled = true; return; }
+  retire.disabled = false;
+  const retired = reviewOf(state.videoLink) || (state.reviewed || []).find(r => r.verdict === 'whole_video_unusable');
   if (retired) { el.textContent = `whole video unusable — ${retired.labeler ? retired.labeler + ', ' : ''}${String(retired.ts || '').slice(0, 10)}`; el.className = 'retired'; retire.disabled = true; return; }
-  if (rows.length) { el.textContent = 'reviewed ' + rows.map(r => `${r.labeler ? 'by ' + r.labeler + ' ' : ''}(${String(r.ts || '').slice(0, 10)})`).join(', '); el.className = 'done'; return; }
-  el.textContent = 'not reviewed yet';
+  const rw = state.reviewing && state.reviewing.get(state.videoLink);
+  if (rw) { el.textContent = `Reviewing in the sheet — ${rw.rows} row${rw.rows === 1 ? '' : 's'} waiting for this pass`; el.className = 'reviewing'; return; }
+  el.textContent = state.reviewing ? 'not under review — its rows are yes already, or not checked yet' : 'reading the sheet…';
 }
 function noteReviewed(row) {
   state.reviewed = [...state.reviewed.filter(r => r.labeler !== row.labeler), row];
@@ -381,21 +404,6 @@ function noteReviewed(row) {
   list.push(row); state.reviewedAll.set(state.videoLink, list);
   renderReview();
   if (window._renderPickerList) window._renderPickerList();
-}
-async function markReviewed() {
-  if (!state.videoLink) return;
-  setSync('saving…');
-  try {
-    const r = await fetchJson(sheetUrl({ action: 'markUnusableReviewed', video: state.videoLink, videoName: state.pickedName || state.videoName || '', verdict: 'reviewed' }));
-    if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
-    noteReviewed({ video_file: state.videoLink, video_name: state.pickedName, labeler: me(), verdict: 'reviewed', ts: new Date().toISOString() });
-    setSync('saved'); setTimeout(() => setSync(''), 1500);
-    showToast('Marked reviewed.', 'success');
-    if (document.getElementById('auto-next').checked) nextVideo();
-  } catch (e) {
-    setSync('could not mark reviewed — ' + (e.message || e), true);
-    showToast('Could not mark the video reviewed: ' + (e.message || e), 'error');
-  }
 }
 async function retireVideo() {
   if (!state.videoLink) return;
@@ -414,7 +422,7 @@ async function retireVideo() {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const lines = Object.entries(counts).filter(([, n]) => n > 0).map(([sheet, n]) => `  ${n} from ${sheet}`).join('\n');
   const name = state.pickedName || state.videoName || state.videoLink;
-  if (!confirm(`Whole video unusable: ${name}\n\nMove ${total} row${total === 1 ? '' : 's'} to Skeleton Problems?\n${lines || '  (no rows found in the labeling tabs)'}\n\nThe video is then marked reviewed. Combined Data follows at the next rebuild.`)) return;
+  if (!confirm(`Whole video unusable: ${name}\n\nMove ${total} row${total === 1 ? '' : 's'} to Skeleton Problems?\n${lines || '  (no rows found in the labeling tabs)'}\n\nIt then leaves the Reviewing list. Combined Data follows at the next rebuild.`)) return;
   setSync('moving rows…');
   try {
     const r = await fetchJson(sheetUrl({ action: 'retireVideo', video: state.videoLink, videoName: name, actor: me() }), 60000);
@@ -423,7 +431,7 @@ async function retireVideo() {
     noteReviewed({ video_file: state.videoLink, video_name: name, labeler: me(), verdict: 'whole_video_unusable', ts: new Date().toISOString() });
     setSync('done'); setTimeout(() => setSync(''), 1500);
     showToast(`Moved ${moved} row${moved === 1 ? '' : 's'} to Skeleton Problems.`, 'success');
-    if (document.getElementById('auto-next').checked) nextVideo();
+    nextVideo();
   } catch (e) {
     setSync('the move failed — ' + (e.message || e), true);
     showToast('The move failed: ' + (e.message || e), 'error');
@@ -656,7 +664,6 @@ function setupKeys() {
       case 's': case 'S': case '[': e.preventDefault(); setDraftStart(); return;
       case 'e': case 'E': case ']': e.preventDefault(); setDraftEnd(); return;
       case 'Escape': clearDraft(); return;
-      case 'r': case 'R': e.preventDefault(); markReviewed(); return;
       case 'n': case 'N': e.preventDefault(); nextVideo(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
     }
@@ -673,7 +680,6 @@ function setupPanel() {
   wrap.querySelectorAll('.reason-btn').forEach(b => b.addEventListener('click', () => setDraftReason(b.dataset.reason)));
   document.getElementById('btn-draft-start').addEventListener('click', setDraftStart);
   document.getElementById('btn-draft-end').addEventListener('click', setDraftEnd);
-  document.getElementById('btn-reviewed').addEventListener('click', markReviewed);
   document.getElementById('btn-retire').addEventListener('click', retireVideo);
   renderDraft();
 }
@@ -686,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVideoPicker();
   setupKeys();
   renderSpanList(); renderReview();
-  Promise.all([fetchCatalog(), fetchReviewedAll(), fetchSkeletonStems()]).then(() => {
+  Promise.all([fetchCatalog(), fetchReviewedAll(), fetchSkeletonStems(), fetchReviewing()]).then(() => {
     if (window._renderPickerList) window._renderPickerList();
     // a link pasted before the catalogue arrived gets its name now
     if (state.videoLink && !state.pickedName) { const hit = state.catalog.find(v => v.key === state.videoLink); if (hit) state.pickedName = hit.name; }

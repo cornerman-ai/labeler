@@ -1,17 +1,20 @@
 # Unusable footage — the labeler
 
-Where, in a video, can the skeleton not be used? The BlazePose skeleton is
-extracted after the rounds and punches are labeled, so nobody can judge it
-while labeling them. This is the pass that judges it: watch the video with the
-skeleton drawn on top, mark every stretch where that skeleton is wrong, and
-mark the video reviewed. Open it from the landing page, or directly at
-`unusable/index.html`.
+Where, in a video, can the skeleton not be used? This is **step 4 of the
+label review** (`cornerman-backend/ml/label_review/REVIEW_FLOW.md`): the check
+report is clean, the skeleton has been extracted for every round in the
+labeling tabs, and before Mathe flips a video's rows from `Reviewing` to `yes`
+the team judges its skeleton here — watch the video with the skeleton drawn on
+top and mark every stretch where that skeleton is wrong. Open it from the
+landing page, or directly at `unusable/index.html`.
 
 ## The loop
 
-1. **Pick a video** from the list (the tracking sheet's videos; "unreviewed
-   only" is on by default, so what you see is what is left). With the video and
-   skeleton folders connected, the file and its skeleton files open by
+1. **Pick a video** from the list: the tracking sheet's videos, filtered to
+   those whose rows are still `Reviewing` in the labeling tabs ("still
+   Reviewing only", on by default — what you see is what is left; ↻ re-reads
+   the sheet). With the video and skeleton folders connected, the file and its
+   skeleton files open by
    themselves, exactly as in the punch labeler. The skeleton lane on the
    timeline shows where a skeleton exists at all; the **detected** lane under
    it is what those files say by themselves — red wherever a frame has no
@@ -31,14 +34,14 @@ mark the video reviewed. Open it from the landing page, or directly at
    someone else — make two spans back to back, one per reason: the end of
    the first is the start of the second. Your spans are the top lane; other
    people's show below yours, read-only.
-3. **Done with the video: `R`.** The video is marked reviewed and the list
-   moves on to the next unreviewed one (untick "then go to the next video" to
-   stay). No name is needed on this page: spans and marks carry whatever name
-   the punch labeler stored — Admin included — or none.
+3. **Done with the video: say so.** Its rows are flipped from `Reviewing` to
+   `yes` in the sheet (step 5 of the flow, by hand) and it leaves the list;
+   `N` goes to the next one meanwhile. No name is needed on this page: spans
+   carry whatever name the punch labeler stored — Admin included — or none.
 4. **A hopeless video: "Whole video unusable".** It shows how many labeling
    rows the video has in Combined Data Archive and in every labeler's tab, and
-   on OK moves them all to the `Skeleton Problems` tab and marks the video
-   reviewed. Combined Data catches up at the next rebuild.
+   on OK moves them all to the `Skeleton Problems` tab, so it leaves the list
+   too. Combined Data catches up at the next rebuild.
 
 ## What is unusable
 
@@ -55,7 +58,7 @@ shared Apps Script:
 | tab | columns | one row per |
 |---|---|---|
 | `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
-| `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | video and labeler (`reviewed` or `whole_video_unusable`) |
+| `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | retirement (`whole_video_unusable`) — the review mark itself is the sheet's `yes` |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
 the punch labels. A retired video's rows land in `Skeleton Problems` as they
@@ -80,6 +83,8 @@ difference: this lane shows every missing frame, where the backend's survey
 and model start counting at 3 (Mathe, 2026-09-19 — the threshold for actual
 use comes later); the jump rule's thresholds are the same on both sides.
 The backend is `doGetUnusable` in `apps_script/Code.js` (actions
-`listUnusable`, `addUnusable`, `updateUnusable`, `deleteUnusable`,
+`listReviewingVideos` — the `reviewed` column of every person's `Labeled
+Data` tab — `listUnusable`, `addUnusable`, `updateUnusable`, `deleteUnusable`,
 `listUnusableReviewed`, `markUnusableReviewed`, `retireVideo`; every write
-under the punch write lock, `retireVideo` with `dry=1` for the counts).
+under the punch write lock, `retireVideo` with `dry=1` for the counts). The
+spans are read back by cornerman-backend's `ml/research/skeleton_usability/`.
