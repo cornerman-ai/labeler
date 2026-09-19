@@ -33,11 +33,13 @@ const REASONS = [
     desc: 'The skeleton sits on someone who is not the boxer' },
   { id: 'other_thing',  label: 'Other thing',  key: '3', color: '#4cc9b0',
     desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
-  { id: 'frozen',       label: 'Frozen',       key: '4', color: '#8ab4f8',
+  { id: 'jump_back',    label: 'Jump back',    key: '4', color: '#ffcc4d',
+    desc: 'The tracker jumps back to the boxer — the frame in between has no skeleton (the yellow tick)' },
+  { id: 'frozen',       label: 'Frozen',       key: '5', color: '#8ab4f8',
     desc: 'The skeleton does not move — a paused frame, a stuck tracker' },
-  { id: 'camera',       label: 'Camera',       key: '5', color: '#f5a23c',
+  { id: 'camera',       label: 'Camera',       key: '6', color: '#f5a23c',
     desc: 'The camera moves, cuts or zooms' },
-  { id: 'other',        label: 'Other',        key: '6', color: '#9aa0a6',
+  { id: 'other',        label: 'Other',        key: '7', color: '#9aa0a6',
     desc: 'Anything else that makes this stretch of skeleton wrong' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));

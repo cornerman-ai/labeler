@@ -21,8 +21,10 @@ mark the video reviewed. Open it from the landing page, or directly at
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
    `S` / `E`; twice on the same frame for a one-frame problem), then the
-   reason — `1` out of frame, `2` other person, `3` other
-   thing (a painting, a statue, the bag), `4` frozen, `5` camera, `6` other.
+   reason — `1` out of frame, `2` other person, `3` other thing (a painting,
+   a statue, the bag), `4` jump back (the frame where the tracker jumps back
+   to the boxer — nearly always a frame with no skeleton, the yellow tick),
+   `5` frozen, `6` camera, `7` other.
    The span saves itself; `Esc` clears a half-made one. When the reason
    changes mid-stretch — the boxer walks out, then the tracker lands on
    someone else — make two spans back to back, one per reason: the end of
@@ -51,7 +53,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, other_person, other_thing, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | video and labeler (`reviewed` or `whole_video_unusable`) |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
