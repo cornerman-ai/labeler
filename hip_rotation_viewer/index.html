@@ -314,7 +314,7 @@ function addRotationLevels() {
 
 function applySort() {
   order = baseOrder.slice();
-  if (coachOnly && !sortMode) order.sort((a, b) => (+punches[a].coach_n || 1e9) - (+punches[b].coach_n || 1e9));
+  if (coachOnly && !sortMode) order.sort((a, b) => (+punches[a]._coach_n || 1e9) - (+punches[b]._coach_n || 1e9));
   if (sortMode) {
     const [key, dir] = sortMode.split('-'), sgn = dir === 'desc' ? -1 : 1;
     order.sort((a, b) => {
@@ -336,7 +336,7 @@ function applyFilters() {
 let uuidQuery = '';
 const matches = (p, skip) => FILTERS.every(f => f === skip || !active[f] || p[f] === active[f])
   && (!uuidQuery || p.punch_uuid.toLowerCase().startsWith(uuidQuery))
-  && (!coachOnly || !!p.coach_n);
+  && (!coachOnly || !!p._coach_n);
 
 // Faceted dropdowns: each one lists only the values (with counts) left by the OTHER
 // active filters, so filtering by video then stance counts stances inside that video.
@@ -716,7 +716,7 @@ function show() {
   drawOverlays(p);
   drawRenders(p);
   drawTops(p);
-  const rows = Object.entries(p).filter(([k]) => !k.endsWith('_path'));
+  const rows = Object.entries(p).filter(([k]) => !k.endsWith('_path') && !k.startsWith('_'));   // _x = internal
   document.getElementById('fields').innerHTML = rows.map(([k, v]) =>
     `<tr><td>${esc(k)}</td><td>${/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</td>` +
     `<td class="copy"><button class="cp" data-v="${esc(v)}">Copy</button></td></tr>`
@@ -769,8 +769,7 @@ document.addEventListener('click', async e => {
       if (cr.ok) {
         const byId = Object.fromEntries(parseCSV(await cr.text()).map(c => [c.punch_uuid, c]));
         punches.forEach(p => { const c = byId[p.punch_uuid]; if (!c) return;
-          Object.assign(p, { coach_n: c.n, coach_type: c.punch_type, coach_bucket: c.bucket,
-                             coach_triplet: c.triplet, coach_level: c.level }); coachCount++; });
+          p._coach_n = c.n; coachCount++; });   // internal (not shown): only the list position is needed
       }
     } catch { /* no coach list: the button stays disabled */ }
     const sk = await fetchRetry(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
