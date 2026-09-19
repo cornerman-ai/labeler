@@ -1,0 +1,722 @@
+<!doctype html>
+<!--
+  HOSTED COPY. Source of truth: cornerman-backend ml/research/hip_rotation/viewer/index.html —
+  edit there and copy here. Live at https://cornerman-ai.github.io/labeler/hip_rotation_viewer/
+  (data from Firebase Storage labeler_media/hip_rotation/v1/; ?source=local does not work here).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Punch Frames Viewer</title>
+<!--
+  Local viewer for the hip_rotation frame dataset: one punch at a time, random order,
+  its start / impact / end frames plus every CSV column.
+  DATA SOURCE: by default everything (CSV, manifest, frames, skeleton JSON) is read from Firebase
+  Storage, labeler_media/hip_rotation/v1/ (uploaded by upload_to_firebase.py, shared labeler_media
+  download token; the bucket's CORS allows localhost and cornerman-ai.github.io), so the page needs
+  no local data. ?source=local reads the local data/ folder instead. Either way, serve it with
+  the hip_rotation folder as the web root (NOT this folder) so ../data/ resolves for ?source=local:
+      python -m http.server 8765 --directory ml/research/hip_rotation
+  then open http://localhost:8765/viewer/   (?csv=punches_X.csv to pick another freeze;
+  ?seed=N for a different order; ?uuid=<punch_uuid> opens one punch directly). The order is a FIXED shuffle (SEED) of the CSV rows, so
+  punch #k is the same punch for everyone. Navigation is by buttons only; the filter
+  dropdowns narrow the shuffled order to matching punches.
+  Reads data/<csv>, data/frames/manifest.csv and (for the skeleton row)
+  data/skeletons/<csv stem>_viewer.json live — no build step. The overlay is the RAW
+  cache skeleton (image-normalised x, y; no southpaw mirroring), so it sits on the frame.
+  Every image zooms: mouse wheel zooms around the cursor, drag pans, double-click resets.
+  Row 3 renders the same three skeletons in BlazePose WORLD coords (metres, origin = hip
+  midpoint), plotted as (xw, -yw, -zw) so up is up and +z is toward the viewer — the
+  convention of boxer_facing_angle/v1/preview_examples.html, whose canvas renderer this
+  ports. The three share one camera: drag rotates all, wheel zooms all, double-click
+  returns to the camera's own view.
+  Row 4: the hip line (left hip 23 -> right hip 24) seen from directly above, world x
+  across and world depth up/down with the recording camera at the bottom; origin = hip
+  midpoint, fixed metric scale (grid every 10 cm) so the three frames compare directly.
+  Each panel also gives the PELVIS FACING angle: the horizontal normal of the hip line,
+  0° = facing the camera, +90° = facing the camera's right (boxer_facing_angle's
+  convention), drawn as the grey arrow; impact / end add the signed change from the
+  previous moment, wrapped to (-180°, 180°]. The magenta arrow is the boxer_facing_angle
+  model's facing at IMPACT, drawn on all three panels as if it held for the whole punch.
+  Caption line 1, angle(hip perpendicular, front camera): hip-perpendicular facing per frame +
+  change from the previous frame.
+  Caption line 2, angle(facing direction, punching hip): unsigned angle between the
+  model arrow and the vector from mid-hip to the punching hip (rear hip for a cross;
+  stance-aware, since the skeleton is not mirrored). Hover it for the model value and hip.
+-->
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e2de;
+    --accent: #2f6fdb; --impact: #d9480f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #9a9aa2; --line: #333338;
+            --accent: #6d9cff; --impact: #ff8a50; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           position: sticky; top: 0; z-index: 1; }
+  .nav { display: flex; gap: 8px; align-items: center; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #pos { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 110px; text-align: center;
+         display: flex; gap: 6px; align-items: center; justify-content: center; }
+  #jump { width: 72px; font: inherit; text-align: center; padding: 4px 6px; border-radius: 6px;
+          border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-variant-numeric: tabular-nums; }
+  main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+  #title { margin: 0 0 12px; }   /* load errors only */
+  #title:empty { display: none; }
+  .frames { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  /* .viewport clips; .stage is what zooms (image + skeleton SVG move together) */
+  .viewport { position: relative; height: 55vh; overflow: hidden; background: #000;
+              cursor: zoom-in; touch-action: none; user-select: none; }
+  .viewport.zoomed { cursor: grab; }
+  .viewport.dragging { cursor: grabbing; }
+  .stage { position: absolute; inset: 0; transform-origin: 0 0; }
+  .stage img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  .zoom-hint { position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 4px;
+               background: rgba(0,0,0,.6); color: #fff; font-size: 12px; pointer-events: none; }
+  figcaption { display: flex; justify-content: space-between; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+  figcaption b { text-transform: uppercase; letter-spacing: .04em; }
+  figure.impact { border-color: var(--impact); }
+  figure.impact figcaption b { color: var(--impact); }
+  .muted { color: var(--muted); }
+  table { margin-top: 16px; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 8px; overflow: hidden; width: 100%; }
+  td { padding: 5px 12px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-all; }
+  td:first-child { color: var(--muted); white-space: nowrap; width: 1%; word-break: normal; }
+  a { color: var(--accent); }
+  .err { color: var(--impact); white-space: pre-wrap; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px;
+             border-bottom: 1px solid var(--line); background: var(--panel); }
+  .filters label { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+  #uuid { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line);
+          background: var(--bg); color: var(--ink); width: 300px; font-family: ui-monospace, Consolas, monospace; }
+  select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); max-width: 340px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .overlay-row { margin-top: 12px; }
+  .r3d { display: block; width: 100%; height: 55vh; background: #111; cursor: grab; touch-action: none; }
+  .r3d.dragging { cursor: grabbing; }
+  .top { display: block; width: 100%; height: 40vh; background: #111; }
+  figcaption b.delta { text-transform: none; letter-spacing: 0; color: var(--accent); }
+  figcaption.lines { display: block; }
+  /* row 4 captions: plain black & white (no accent / impact / model colours) */
+  #tops figcaption, #tops figcaption * { color: var(--ink) !important; }
+  #tops figure.impact { border-color: var(--line); }
+  figcaption.lines div { margin-top: 2px; }
+  td.copy { width: 1%; white-space: nowrap; text-align: right; }
+  .cp { padding: 2px 10px; font-size: 12px; }
+  .cp.done { border-color: var(--accent); color: var(--accent); }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .legend { display: flex; gap: 14px; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  @media (max-width: 800px) {
+    .frames { grid-template-columns: 1fr; }
+    .viewport, .r3d { height: 60vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <button id="prev">← Prev</button>
+    <span id="pos"><input id="jump" type="number" min="1" value="1" title="Type a number and press Enter to jump">
+      <span>/ <span id="total">0</span></span></span>
+    <button id="next">Next →</button>
+  </div>
+</header>
+<div class="filters" id="filters"></div>
+<main>
+  <div id="title"></div>
+  <div class="frames" id="frames"></div>
+  <div class="frames overlay-row" id="overlays"></div>
+  <div class="frames overlay-row" id="renders"></div>
+  <div class="frames overlay-row" id="tops"></div>
+  <table id="fields"></table>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const CSV = params.get('csv') || 'punches_2026-09-18_short.csv';
+const KINDS = ['start', 'impact', 'end'];
+const FILTERS = ['video_name', 'stance', 'punch', 'hand', 'target',
+                 'overlayed_start', 'overlayed_end', 'facing_angle_bucket'];
+let punches = [], order = [], view = [], i = 0;
+const active = {};   // field -> selected value ('' = all)
+let skeletons = null;  // punch_uuid -> {start|impact|end: [[x, y, visibility] x 33]}
+
+// BlazePose-33 bones. Left side = subject's left (odd indices from 11 on).
+const BONES = [
+  [11, 12], [11, 23], [12, 24], [23, 24],                         // torso
+  [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],     // left arm + hand
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],     // right arm + hand
+  [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],               // left leg + foot
+  [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],               // right leg + foot
+  [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10]  // face
+];
+const MIN_VIS = 0.8;   // the dataset's visibility standard; joints below it are drawn faint
+const FACE_L = new Set([1, 2, 3, 7, 9]), FACE_R = new Set([4, 5, 6, 8, 10]);
+const side = j => j === 0 ? 'c' : j <= 10 ? (FACE_L.has(j) ? 'l' : 'r') : (j % 2 ? 'l' : 'r');
+const COLOR = { l: '#22c1ff', r: '#ff9f1a', c: '#f5f5f5' };
+const MODEL_COLOR = '#ff2d95';   // boxer_facing_angle model arrow (magenta, as in preview_examples)
+const MODEL_WIDTH = 2;           // arrow line width, screen px (rows 2-4)
+const modelAngle = (p, k) => k === 'impact' && p.facing_angle !== '' && p.facing_angle !== undefined
+  ? Number(p.facing_angle) : null;
+
+// SVG over the image: viewBox = the image's pixel size + xMidYMid meet matches the
+// <img>'s object-fit: contain, so normalised x, y land on the right pixel. Both sit in
+// the same .stage, so zoom/pan moves them together.
+function skeletonSVG(J, w, h, arrowDeg = null) {
+  const pt = j => J[j] && J[j][0] !== null ? [J[j][0] * w, J[j][1] * h, J[j][2] ?? 0] : null;
+  const sw = 2.5, r = Math.max(3, w / 220);   // sw in screen px (non-scaling-stroke)
+  const lines = BONES.map(([a, b]) => {
+    const A = pt(a), B = pt(b); if (!A || !B) return '';
+    const faint = Math.min(A[2], B[2]) < MIN_VIS;
+    const c = side(a) === side(b) ? COLOR[side(a)] : COLOR.c;
+    return `<line x1="${A[0]}" y1="${A[1]}" x2="${B[0]}" y2="${B[1]}" stroke="${c}" stroke-width="${sw}"
+              stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="${faint ? 0.3 : 0.95}"/>`;
+  }).join('');
+  const dots = J.map((_, j) => {
+    const P = pt(j); if (!P) return '';
+    return `<circle cx="${P[0]}" cy="${P[1]}" r="${r}" fill="${COLOR[side(j)]}" stroke="#000" stroke-width="${sw / 3}"
+              opacity="${P[2] < MIN_VIS ? 0.3 : 1}"><title>joint ${j} · visibility ${P[2].toFixed(2)}</title></circle>`;
+  }).join('');
+  // Model facing arrow from the hip midpoint, labeler/compass convention: 0° points DOWN
+  // the image (toward the camera), +90° to the image's right. Length = the 2D torso.
+  let arrow = '';
+  const lh = pt(23), rh = pt(24), ls = pt(11), rs = pt(12);
+  if (arrowDeg !== null && lh && rh && ls && rs) {
+    const o = [(lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2];
+    const len = Math.hypot((ls[0] + rs[0]) / 2 - o[0], (ls[1] + rs[1]) / 2 - o[1]);
+    const th = arrowDeg * Math.PI / 180, dx = Math.sin(th), dy = Math.cos(th);
+    const tip = [o[0] + dx * len, o[1] + dy * len], hd = len * 0.12;
+    const wing = a => [tip[0] - hd * (dx * Math.cos(a) - dy * Math.sin(a)), tip[1] - hd * (dy * Math.cos(a) + dx * Math.sin(a))];
+    const [w1, w2] = [wing(0.45), wing(-0.45)];
+    arrow = `<g><title>model facing ${arrowDeg.toFixed(1)}°</title>
+      <line x1="${o[0]}" y1="${o[1]}" x2="${tip[0]}" y2="${tip[1]}" stroke="${MODEL_COLOR}" stroke-width="${MODEL_WIDTH}"
+            stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <polygon points="${tip.join(',')} ${w1.join(',')} ${w2.join(',')}" fill="${MODEL_COLOR}"/></g>`;
+  }
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${lines}${dots}${arrow}</svg>`;
+}
+
+function drawOverlays(p) {
+  const box = document.getElementById('overlays');
+  const S = skeletons && skeletons[p.punch_uuid];
+  if (!S) {
+    box.innerHTML = `<div class="empty">${skeletons ? 'No skeleton for this punch.' :
+      'No skeletons loaded (run extract_skeletons.py).'}</div>`;
+    return;
+  }
+  box.innerHTML = KINDS.map(k => `
+    <figure class="${k}">
+      ${zoomable(url(p[k + '_path']), `${k} frame with skeleton`, 'stage-' + k)}
+      <figcaption><b>${k} · skeleton</b><span class="legend">
+        <span><i class="sw" style="background:${COLOR.l}"></i>left</span>
+        <span><i class="sw" style="background:${COLOR.r}"></i>right</span>
+        ${modelAngle(p, k) !== null ? `<span><i class="sw" style="background:${MODEL_COLOR}"></i>model ${fmtDeg(modelAngle(p, k))}</span>` : ''}
+        <span class="muted">faint = visibility &lt; ${MIN_VIS}</span></span></figcaption>
+    </figure>`).join('');
+  attachAllZoom(box);
+  KINDS.forEach(k => {
+    const stage = document.getElementById('stage-' + k), img = stage.querySelector('img');
+    const draw = () => stage.insertAdjacentHTML('beforeend',
+      skeletonSVG(S[k], img.naturalWidth, img.naturalHeight, modelAngle(p, k)));
+    img.complete && img.naturalWidth ? draw() : img.addEventListener('load', draw, { once: true });
+  });
+}
+
+// RFC 4180 CSV -> array of objects (video names contain commas-free but quoted fields may appear).
+function parseCSV(text) {
+  const rows = [[]]; let f = '', q = false;
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    if (q) {
+      if (c === '"') { if (text[k + 1] === '"') { f += '"'; k++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { rows[rows.length - 1].push(f); f = ''; }
+    else if (c === '\n') { rows[rows.length - 1].push(f.replace(/\r$/, '')); f = ''; rows.push([]); }
+    else f += c;
+  }
+  if (f || rows[rows.length - 1].length) rows[rows.length - 1].push(f.replace(/\r$/, ''));
+  const [head, ...body] = rows.filter(r => r.length > 1);
+  return body.map(r => Object.fromEntries(head.map((h, j) => [h, r[j] ?? ''])));
+}
+
+// Mulberry32: a seeded shuffle, so the order is identical on every machine and reload.
+const SEED = 0;
+function rng(seed) {
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+let baseOrder = [];   // the fixed seeded shuffle; sorting reorders a copy of it
+function shuffle(seed) {
+  const r = rng(seed);
+  baseOrder = punches.map((_, k) => k);
+  for (let k = baseOrder.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); [baseOrder[k], baseOrder[j]] = [baseOrder[j], baseOrder[k]]; }
+  applySort();
+}
+
+// ── sort by hip rotation: |change of angle(facing direction, punching hip)| (row 4, line 2) ──
+// start->impact ('si') or impact->end ('ie'); ties and punches without a value keep the shuffle order.
+let sortMode = '';   // '' | 'si-desc' | 'si-asc' | 'ie-desc' | 'ie-asc'
+const rotCache = {};
+function hipRotation(p) {
+  if (rotCache[p.punch_uuid]) return rotCache[p.punch_uuid];
+  const S = skeletons && skeletons[p.punch_uuid], model = modelAngle(p, 'impact');
+  let out = { si: null, ie: null };
+  if (S && model !== null) {
+    const hip = punchingHip(p);
+    const b = KINDS.map(k => { const h = punchHipDir(S[k], hip); return h === null ? null : Math.abs(wrap(model - h)); });
+    out = { si: b[0] === null || b[1] === null ? null : Math.abs(b[1] - b[0]),
+            ie: b[1] === null || b[2] === null ? null : Math.abs(b[2] - b[1]) };
+  }
+  return (rotCache[p.punch_uuid] = out);
+}
+function applySort() {
+  order = baseOrder.slice();
+  if (sortMode) {
+    const [key, dir] = sortMode.split('-'), sgn = dir === 'desc' ? -1 : 1;
+    order.sort((a, b) => {
+      const va = hipRotation(punches[a])[key], vb = hipRotation(punches[b])[key];
+      if (va === null || vb === null) return (va === null) - (vb === null);   // missing values last
+      return sgn * (va - vb);
+    });
+  }
+  applyFilters();
+}
+
+// view = the shuffled order narrowed to punches matching every active filter.
+function applyFilters() {
+  view = order.filter(k => matches(punches[k]));
+  refreshOptions();
+  i = 0; show();
+}
+// uuid filter: case-insensitive prefix, so a pasted full uuid or its first few characters both work.
+let uuidQuery = '';
+const matches = (p, skip) => FILTERS.every(f => f === skip || !active[f] || p[f] === active[f])
+  && (!uuidQuery || p.punch_uuid.toLowerCase().startsWith(uuidQuery));
+
+// Faceted dropdowns: each one lists only the values (with counts) left by the OTHER
+// active filters, so filtering by video then stance counts stances inside that video.
+function refreshOptions() {
+  document.querySelectorAll('#filters select[data-f]').forEach(sel => {
+    const f = sel.dataset.f, counts = {};
+    punches.forEach(p => { if (matches(p, f)) counts[p[f]] = (counts[p[f]] || 0) + 1; });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    sel.innerHTML = `<option value="">all (${total})</option>` + Object.keys(counts)
+      .sort((a, b) => isNaN(a) || isNaN(b) ? a.localeCompare(b) : a - b)   // buckets numerically
+      .map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('');
+    sel.value = active[f] || '';
+  });
+}
+
+function buildFilters() {
+  document.getElementById('filters').innerHTML = FILTERS.map(f =>
+    `<label>${f.replace('_name', '')} <select data-f="${f}"></select></label>`
+  ).join('') + `<label>uuid <input id="uuid" type="search" placeholder="paste punch_uuid (or its start)"
+      spellcheck="false" autocomplete="off"></label><button id="clear">Clear filters</button>
+    <label>sort <select id="sort">
+      <option value="">fixed order</option>
+      <option value="si-desc">|Δ| start→impact, largest first</option>
+      <option value="si-asc">|Δ| start→impact, smallest first</option>
+      <option value="ie-desc">|Δ| impact→end, largest first</option>
+      <option value="ie-asc">|Δ| impact→end, smallest first</option>
+    </select></label>`;
+  const sortSel = document.getElementById('sort');
+  sortSel.value = sortMode;
+  sortSel.onchange = () => { sortMode = sortSel.value; applySort(); };
+  const box = document.getElementById('uuid');
+  box.value = uuidQuery;
+  box.oninput = () => { uuidQuery = box.value.trim().toLowerCase(); applyFilters(); };
+  document.querySelectorAll('#filters select[data-f]').forEach(sel => {
+    sel.onchange = () => { active[sel.dataset.f] = sel.value; applyFilters(); };
+  });
+  document.getElementById('clear').onclick = () => {
+    FILTERS.forEach(f => { active[f] = ''; }); uuidQuery = ''; box.value = ''; applyFilters();
+  };
+}
+
+// ── zoom: wheel zooms around the cursor, drag pans, double-click resets ──
+const zoomable = (src, alt, id = '') =>
+  `<div class="viewport"><div class="stage"${id ? ` id="${id}"` : ''}><img src="${src}" alt="${esc(alt)}"></div></div>`;
+const MAX_ZOOM = 8;
+
+function attachZoom(vp) {
+  const stage = vp.querySelector('.stage');
+  let s = 1, x = 0, y = 0, drag = null;
+  let hint = null;
+  const apply = () => {
+    // keep the image covering the viewport: no panning past its edges
+    const w = vp.clientWidth, h = vp.clientHeight;
+    x = Math.min(0, Math.max(w - w * s, x)); y = Math.min(0, Math.max(h - h * s, y));
+    stage.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    vp.classList.toggle('zoomed', s > 1);
+    if (s > 1) {
+      hint = hint || vp.appendChild(Object.assign(document.createElement('span'), { className: 'zoom-hint' }));
+      hint.textContent = `${s.toFixed(1)}×`;
+    } else if (hint) { hint.remove(); hint = null; }
+  };
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = vp.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    const s2 = Math.min(MAX_ZOOM, Math.max(1, s * Math.exp(-e.deltaY * 0.0015)));
+    x = px - (px - x) * (s2 / s); y = py - (py - y) * (s2 / s); s = s2;
+    apply();
+  }, { passive: false });
+  vp.addEventListener('pointerdown', e => {
+    if (s === 1) return;
+    drag = { id: e.pointerId, sx: e.clientX - x, sy: e.clientY - y };
+    vp.setPointerCapture(e.pointerId); vp.classList.add('dragging');
+  });
+  vp.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    x = e.clientX - drag.sx; y = e.clientY - drag.sy; apply();
+  });
+  const end = () => { drag = null; vp.classList.remove('dragging'); };
+  vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', end);
+  vp.addEventListener('dblclick', () => { s = 1; x = y = 0; apply(); });
+}
+const attachAllZoom = root => root.querySelectorAll('.viewport').forEach(attachZoom);
+
+// ── row 3: 3D renders from world coords (port of boxer_facing_angle's renderSkeleton3D) ──
+// One camera shared by the three canvases so start / impact / end are always seen from
+// the same angle. yaw = pitch = 0 is the recording camera's own view.
+const cam = { yaw: 0, pitch: 0, dist: 3 };
+let renders = [];   // [{canvas, pts, scale}]
+
+function worldPoints(J) {
+  // (xw, -yw, -zw): up is up, +z toward the viewer (BlazePose's more-negative zw = closer
+  // to the camera; verified in preview_examples on an extended-punch wrist).
+  return J.map(j => j && j[3] !== null && j[3] !== undefined
+    ? { x: j[3], y: -j[4], z: -j[5], vis: j[2] ?? 0 } : null);
+}
+
+function project(p, scale, W, H) {
+  const x = p.x * scale, y = p.y * scale, z = p.z * scale, { yaw, pitch, dist } = cam;
+  const x1 = x * Math.cos(yaw) + z * Math.sin(yaw);
+  const z1 = -x * Math.sin(yaw) + z * Math.cos(yaw);
+  const y1 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
+  const z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
+  const f = dist / (dist - z2), m = Math.min(W, H) * 0.32;
+  return { sx: W / 2 + x1 * f * m, sy: H / 2 - y1 * f * m, depth: z2, near: f };
+}
+
+function drawRender(r) {
+  const c = r.canvas, dpr = devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const P = r.pts.map(p => p && project(p, r.scale, W, H));
+  for (const [a, b] of BONES) {
+    if (!P[a] || !P[b]) continue;
+    const faint = Math.min(r.pts[a].vis, r.pts[b].vis) < MIN_VIS;
+    ctx.globalAlpha = faint ? 0.3 : 0.95; ctx.lineWidth = faint ? 2 : 3;
+    ctx.strokeStyle = side(a) === side(b) ? COLOR[side(a)] : '#aaaaaa';
+    ctx.beginPath(); ctx.moveTo(P[a].sx, P[a].sy); ctx.lineTo(P[b].sx, P[b].sy); ctx.stroke();
+  }
+  const order = P.map((_, j) => j).filter(j => P[j]).sort((i, j) => P[i].depth - P[j].depth);
+  for (const j of order) {   // far joints first so near ones paint over them
+    const faint = r.pts[j].vis < MIN_VIS;
+    ctx.globalAlpha = faint ? 0.35 : 1;
+    ctx.beginPath(); ctx.arc(P[j].sx, P[j].sy, Math.max(2.5, Math.min(12, (faint ? 4 : 6) * P[j].near)), 0, 2 * Math.PI);
+    ctx.fillStyle = COLOR[side(j)]; ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.fill(); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const o = project({ x: 0, y: 0, z: 0 }, r.scale, W, H);
+  ctx.beginPath(); ctx.arc(o.sx, o.sy, 5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.fill(); ctx.stroke();
+  ctx.font = 'bold 12px sans-serif'; ctx.fillText('(0,0,0) hips', o.sx + 8, o.sy - 8);
+  if (r.arrowDeg !== null) {   // model facing, horizontal from the hips: 0° = +z (toward camera), +90° = +x
+    const th = r.arrowDeg * Math.PI / 180, L = 0.9 / r.scale;
+    const tip = project({ x: L * Math.sin(th), y: 0, z: L * Math.cos(th) }, r.scale, W, H);
+    arrow2d(ctx, [o.sx, o.sy], [tip.sx, tip.sy], MODEL_COLOR);
+  }
+}
+
+// Line + filled head in canvas px; the rows 3-4 model arrow.
+function arrow2d(ctx, from, to, color, width = MODEL_WIDTH, head = 11) {
+  const ang = Math.atan2(to[1] - from[1], to[0] - from[0]);
+  ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(...from); ctx.lineTo(...to); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(...to);
+  ctx.lineTo(to[0] - head * Math.cos(ang - 0.4), to[1] - head * Math.sin(ang - 0.4));
+  ctx.lineTo(to[0] - head * Math.cos(ang + 0.4), to[1] - head * Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+const redrawRenders = () => renders.forEach(drawRender);
+
+function drawRenders(p) {
+  const box = document.getElementById('renders');
+  const S = skeletons && skeletons[p.punch_uuid];
+  if (!S || S.start[0].length < 6) {
+    box.innerHTML = `<div class="empty">No world coordinates for this punch (re-run extract_skeletons.py).</div>`;
+    renders = []; return;
+  }
+  box.innerHTML = KINDS.map(k => `
+    <figure class="${k}">
+      <canvas class="r3d" id="r3d-${k}"></canvas>
+      <figcaption><b>${k} · 3D world</b><span class="legend">${modelAngle(p, k) !== null
+        ? `<span><i class="sw" style="background:${MODEL_COLOR}"></i>model ${fmtDeg(modelAngle(p, k))}</span>` : ''}
+        <span class="muted">drag rotate · wheel zoom · double-click camera view</span></span></figcaption>
+    </figure>`).join('');
+  const pts = KINDS.map(k => worldPoints(S[k]));
+  // one scale for all three (the largest joint distance from the hips), so sizes compare
+  const radius = Math.max(...pts.flat().filter(Boolean).map(q => Math.hypot(q.x, q.y, q.z)));
+  renders = KINDS.map((k, n) => ({ canvas: document.getElementById('r3d-' + k), pts: pts[n], scale: 1 / (radius || 1),
+                                   arrowDeg: modelAngle(p, k) }));
+  renders.forEach(r => attachOrbit(r.canvas));
+  redrawRenders();
+}
+
+function attachOrbit(c) {
+  let drag = null;
+  c.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; c.setPointerCapture(e.pointerId); c.classList.add('dragging'); });
+  c.addEventListener('pointermove', e => {
+    if (!drag) return;
+    cam.yaw += (e.clientX - drag.x) * 0.01;
+    cam.pitch = Math.max(-1.4, Math.min(1.4, cam.pitch + (e.clientY - drag.y) * 0.01));
+    drag = { x: e.clientX, y: e.clientY }; redrawRenders();
+  });
+  const end = () => { drag = null; c.classList.remove('dragging'); };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+  c.addEventListener('wheel', e => {
+    e.preventDefault(); cam.dist = Math.max(1.3, Math.min(8, cam.dist + e.deltaY * 0.002)); redrawRenders();
+  }, { passive: false });
+  c.addEventListener('dblclick', () => { cam.yaw = 0; cam.pitch = 0; cam.dist = 3; redrawRenders(); });
+}
+addEventListener('resize', () => { redrawRenders(); redrawTops(); });
+
+// ── row 4: hip line from above ──
+// Plan view: screen-x = world x (camera's right), screen-y = world depth with the camera
+// at the bottom (-zw grows toward the camera, so it points down the screen).
+const HIPS = [23, 24];            // BlazePose left_hip, right_hip
+const TOP_HALF_SPAN_M = 0.3;      // the plot shows ±30 cm around the hip midpoint
+let tops = [];                    // [{canvas, J}]
+
+function drawTop({ canvas: c, J, modelDeg, facing }) {
+  const dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const m = Math.min(W, H) / 2 / TOP_HALF_SPAN_M;           // px per metre
+  const toScreen = (x, depth) => [W / 2 + x * m, H / 2 + depth * m];
+  // grid every 10 cm, axes through the origin
+  ctx.lineWidth = 1;
+  for (let n = -10; n <= 10; n++) {            // ±1 m covers any canvas aspect
+    const gv = n / 10;
+    ctx.strokeStyle = n === 0 ? '#555' : '#262626';
+    const [gx] = toScreen(gv, 0), [, gy] = toScreen(0, gv);
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+  ctx.fillText('camera ↓', W / 2 + 6, H - 8);
+  ctx.fillText('grid 10 cm', 8, 16);
+  const P = HIPS.map(j => {
+    const q = J[j];
+    return q && q[3] !== null ? { s: toScreen(q[3], -q[5]), vis: q[2] ?? 0, j } : null;
+  });
+  if (P[0] && P[1]) {
+    ctx.globalAlpha = Math.min(P[0].vis, P[1].vis) < MIN_VIS ? 0.35 : 1;
+    ctx.strokeStyle = '#f5f5f5'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(...P[0].s); ctx.lineTo(...P[1].s); ctx.stroke();
+  }
+  for (const q of P) {
+    if (!q) continue;
+    ctx.globalAlpha = q.vis < MIN_VIS ? 0.35 : 1;
+    ctx.beginPath(); ctx.arc(...q.s, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = COLOR[side(q.j)]; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const o = toScreen(0, 0);
+  if (facing !== null) {   // hip-perpendicular arrow: 0° = toward the camera (down the screen)
+    const th = facing * Math.PI / 180, len = 0.2 * m;
+    const tip = [o[0] + Math.sin(th) * len, o[1] + Math.cos(th) * len];
+    const ang = Math.atan2(tip[1] - o[1], tip[0] - o[0]);
+    ctx.strokeStyle = ctx.fillStyle = '#9ca3af'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(...o); ctx.lineTo(...tip); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(...tip);
+    ctx.lineTo(tip[0] - 10 * Math.cos(ang - 0.4), tip[1] - 10 * Math.sin(ang - 0.4));
+    ctx.lineTo(tip[0] - 10 * Math.cos(ang + 0.4), tip[1] - 10 * Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
+  if (modelDeg !== null) {   // model facing at impact, drawn on all three (assumed constant)
+    const th = modelDeg * Math.PI / 180, len = 0.25 * m;
+    arrow2d(ctx, o, [o[0] + Math.sin(th) * len, o[1] + Math.cos(th) * len], MODEL_COLOR);
+  }
+  ctx.beginPath(); ctx.arc(...o, 3, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+}
+const redrawTops = () => tops.forEach(drawTop);
+
+// Pelvis facing (degrees) from one frame's joints, or null if a hip is missing.
+// In plan coords (x = camera's right, d = toward the camera, d = -zw) the hip vector
+// v = left hip -> right hip; the body's forward is v turned 90°: f = (v.d, -v.x)
+// (someone facing the camera has v = (-1, 0) -> f = (0, 1) = toward the camera).
+// Angle of f: 0° toward the camera, +90° toward the camera's right. Uses BlazePose's own
+// left/right hip labels, so a frame where BlazePose swaps them reads ~180° off (tried
+// 2026-09-18: forcing the model's side removed swaps but flipped hips near 90° off the
+// model — 57 odd punches vs 44 this way; reverted to this).
+function pelvisFacing(J) {
+  const L = J[HIPS[0]], R = J[HIPS[1]];
+  if (!L || !R || L[3] === null || R[3] === null) return null;
+  const vx = R[3] - L[3], vd = -R[5] + L[5];
+  return Math.atan2(vd, -vx) * 180 / Math.PI;   // atan2(f.x, f.d), f = (vd, -vx)
+}
+const wrap = d => ((d + 540) % 360) - 180 || 0;
+const fmtDeg = d => (d > 0 ? '+' : '') + d.toFixed(0) + '°';
+
+// Punching hip in the RAW (unmirrored) skeleton: orthodox lead = left, southpaw lead = right.
+function punchingHip(p) {
+  const leadIsLeft = p.stance !== 'Southpaw';
+  return (p.hand === 'lead') === leadIsLeft ? HIPS[0] : HIPS[1];
+}
+
+// Direction (same 0° = toward camera, +90° = camera's right convention) of the hip vector
+// from mid-hip to the punching hip (same direction as other hip -> punching hip), plan coords (x, d = -zw).
+function punchHipDir(J, hip) {
+  const other = hip === HIPS[0] ? HIPS[1] : HIPS[0], A = J[other], B = J[hip];
+  if (!A || !B || A[3] === null || B[3] === null) return null;
+  return Math.atan2(B[3] - A[3], -B[5] + A[5]) * 180 / Math.PI;
+}
+
+function drawTops(p) {
+  const box = document.getElementById('tops');
+  const S = skeletons && skeletons[p.punch_uuid];
+  if (!S || S.start[0].length < 6) { box.innerHTML = ''; tops = []; return; }
+  const deg = KINDS.map(k => pelvisFacing(S[k]));
+  const model = modelAngle(p, 'impact');   // the model runs on impact only; reused for start/end
+  const hip = punchingHip(p), hipName = `${p.hand} hip (${hip === HIPS[0] ? 'left' : 'right'})`;
+  const delta = n => n > 0 && deg[n] !== null && deg[n - 1] !== null
+    ? ` · Δ from ${KINDS[n - 1]} <b class="delta">${fmtDeg(wrap(deg[n] - deg[n - 1]))}</b>` : '';
+  // line 2: unsigned angle (0-180°) between the model's facing vector and the hip vector
+  // pointing at the punching hip
+  const betweenDeg = KINDS.map(k => {
+    const h = punchHipDir(S[k], hip);
+    return model === null || h === null ? null : Math.abs(wrap(model - h));
+  });
+  const between = n => betweenDeg[n] === null ? '—' : `${betweenDeg[n].toFixed(0)}°`;
+  // line 2's change between frames. Its |Δ| equals line 1's (the punching-hip vector is the
+  // hip perpendicular turned ±90°, the model vector is fixed) except where the unsigned value
+  // folds past 0°/180° — checked 2026-09-18: 5,137 of 5,170 steps equal, the 33 others folds.
+  const delta2 = n => n === 0 || betweenDeg[n] === null || betweenDeg[n - 1] === null ? ''
+    : ` · Δ from ${KINDS[n - 1]} <b class="delta">${fmtDeg(betweenDeg[n] - betweenDeg[n - 1])}</b>`;
+  box.innerHTML = KINDS.map((k, n) => `
+    <figure class="${k}">
+      <canvas class="top" id="top-${k}"></canvas>
+      <figcaption class="lines"><b>${k} · hips from above</b>
+        <div>angle(hip perpendicular, front camera): ${deg[n] === null ? '—' : fmtDeg(deg[n])}${delta(n)}</div>
+        <div title="facing direction = model ${model === null ? '—' : fmtDeg(model)}; punching hip = ${hipName}">angle(<span style="color:${MODEL_COLOR}">facing direction</span>, punching hip): <b class="delta">${between(n)}</b>${delta2(n)}</div></figcaption>
+    </figure>`).join('');
+  tops = KINDS.map((k, n) => ({ canvas: document.getElementById('top-' + k), J: S[k], modelDeg: model, facing: deg[n] }));
+  redrawTops();
+}
+
+// Folder names carry '#', '?', '｜' etc. — encode each path segment.
+// ── where the data comes from: Firebase Storage by default (the uploaded dataset,
+// upload_to_firebase.py), or the local data/ folder with ?source=local ──
+const SOURCE = params.get('source') === 'local' ? 'local' : 'firebase';
+const FB_BUCKET = 'mycorner-bee6a.firebasestorage.app';
+const FB_PREFIX = 'labeler_media/hip_rotation/v1';
+const FB_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';   // shared labeler_media download token
+const dataUrl = path => SOURCE === 'local'
+  ? '../data/' + path.split('/').map(encodeURIComponent).join('/')
+  : `https://firebasestorage.googleapis.com/v0/b/${FB_BUCKET}/o/`
+    + encodeURIComponent(`${FB_PREFIX}/${path}`) + `?alt=media&token=${FB_TOKEN}`;
+const url = p => dataUrl('frames/' + p);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function show() {
+  const nav = view.length > 0;
+  document.getElementById('prev').disabled = document.getElementById('next').disabled = !nav;
+  const jump = document.getElementById('jump');
+  jump.value = nav ? i + 1 : 0; jump.max = view.length; jump.disabled = !nav;
+  document.getElementById('total').textContent = view.length;
+  if (!nav) {
+    document.getElementById('frames').innerHTML = '<div class="empty">No punches match these filters.</div>';
+    document.getElementById('overlays').innerHTML = '';
+    document.getElementById('renders').innerHTML = '';
+    document.getElementById('tops').innerHTML = '';
+    document.getElementById('fields').innerHTML = '';
+    return;
+  }
+  const p = punches[view[i]];
+  document.getElementById('frames').innerHTML = KINDS.map(k => `
+    <figure class="${k}">
+      ${zoomable(url(p[k + '_path']), `${k} frame`)}
+      <figcaption><b>${k}</b><span>frame ${esc(p[k + '_frame'])} · ${esc(p[k + '_sec'])} s</span></figcaption>
+    </figure>`).join('');
+  attachAllZoom(document.getElementById('frames'));
+  drawOverlays(p);
+  drawRenders(p);
+  drawTops(p);
+  const rows = Object.entries(p).filter(([k]) => !k.endsWith('_path'));
+  document.getElementById('fields').innerHTML = rows.map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td>${/^https?:/.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</td>` +
+    `<td class="copy"><button class="cp" data-v="${esc(v)}">Copy</button></td></tr>`
+  ).join('');
+  // Preload the next punch so Next doesn't flash.
+  const n = punches[view[(i + 1) % view.length]];
+  KINDS.forEach(k => { new Image().src = url(n[k + '_path']); });
+}
+
+const step = d => { if (view.length) { i = (i + d + view.length) % view.length; show(); } };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+// Type any position (1..N of the current filtered list) and press Enter / leave the box.
+document.getElementById('jump').addEventListener('change', e => {
+  const n = Math.round(Number(e.target.value));
+  if (view.length && n >= 1 && n <= view.length) { i = n - 1; show(); }
+  else e.target.value = view.length ? i + 1 : 0;   // out of range: snap back
+});
+
+// Clipboard API first; the hidden-textarea + execCommand fallback covers browsers or
+// contexts where the API is refused.
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+  const ta = Object.assign(document.createElement('textarea'), { value: text });
+  ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+  document.body.appendChild(ta); ta.select();
+  const ok = document.execCommand('copy'); ta.remove(); return ok;
+}
+
+// One copy button per field.
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.cp'); if (!b) return;
+  const label = b.textContent;
+  b.textContent = (await copyText(b.dataset.v)) ? 'Copied' : 'Copy failed';
+  b.classList.add('done');
+  setTimeout(() => { b.textContent = label; b.classList.remove('done'); }, 1200);
+});
+
+(async () => {
+  try {
+    const [csv, man] = await Promise.all([dataUrl(CSV), dataUrl('frames/manifest.csv')].map(async u => {
+      const r = await fetch(u); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return parseCSV(await r.text());
+    }));
+    const paths = Object.fromEntries(man.map(m => [m.punch_uuid, m]));
+    punches = csv.filter(p => paths[p.punch_uuid]).map(p => ({
+      ...p, ...Object.fromEntries(KINDS.map(k => [k + '_path', paths[p.punch_uuid][k + '_path']])) }));
+    const sk = await fetch(dataUrl(`skeletons/${CSV.replace(/\.csv$/, '')}_viewer.json`));
+    skeletons = sk.ok ? await sk.json() : null;
+    uuidQuery = (params.get('uuid') || '').trim().toLowerCase();   // ?uuid=... opens that punch
+    buildFilters();
+    shuffle(params.has('seed') ? Number(params.get('seed')) : SEED);
+  } catch (e) {
+    document.getElementById('title').innerHTML = `<div class="err">Could not load data: ${esc(e.message)}\n` +
+      `Serve the hip_rotation folder: python -m http.server 8765 --directory ml/research/hip_rotation</div>`;
+  }
+})();
+</script>
+</body>
+</html>
