@@ -1,0 +1,310 @@
+<!doctype html>
+<!--
+  HOSTED COPY. Source of truth: cornerman-backend ml/research/hip_rotation/viewer/coach_feedback.html —
+  edit there and copy here. Live at https://cornerman-ai.github.io/labeler/hip_rotation_viewer/coach_feedback.html
+  (data from Firebase Storage labeler_media/hip_rotation/v1/; ?source=local does not work here).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coach Feedback</title>
+<!--
+  The coach's hip-rotation verdicts, one punch at a time: the punch's clip (the one the coach
+  watched), the coach's note, and the punch's metadata (type, start->impact rotation vs its type's
+  IQR, facing angle, video). Prev / Next (or ← →) step through; every filter narrows the list,
+  and each dropdown counts what the other filters leave. ?uuid=<punch_uuid> opens one punch.
+  DATA (Firebase Storage labeler_media/hip_rotation/v1/, uploaded by upload_to_firebase.py):
+    coach_feedback.csv     coach_list/coach_feedback.py: punch_uuid, sheet_row, coach_punch,
+                           verdict (OUR grouping of the note's first sentence), feedback (the note)
+    coach_review_list.csv  the 162-punch list: rotation, q1, q3, level, bucket, facing_angle, video...
+    clip_windows.csv       each clip's source-video window (clip_start) -> where start / impact /
+                           end fall inside the clip (the clip's first frame = source frame at clip_start)
+    clips/<uuid>.mp4       coach_list/clips/, the same files as Drive coach_media/hip_rotation/clips/
+  Serve locally with the hip_rotation folder as the web root, as for index.html:
+      python -m http.server 8765 --directory ml/research/hip_rotation   -> /viewer/coach_feedback.html
+-->
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e2de;
+    --accent: #2f6fdb; --impact: #d9480f; --span: rgba(47, 111, 219, .22);
+    --v-vpoor: #c92a2a; --v-poor: #e8590c; --v-okay: #b08900; --v-good: #2b8a3e; --v-vgood: #1864ab; --v-none: #868e96;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #9a9aa2; --line: #333338;
+            --accent: #6d9cff; --impact: #ff8a50; --span: rgba(109, 156, 255, .25);
+            --v-vpoor: #ff6b6b; --v-poor: #ffa94d; --v-okay: #ffd43b; --v-good: #69db7c; --v-vgood: #74c0fc; --v-none: #adb5bd; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           position: sticky; top: 0; z-index: 1; }
+  header .home { position: absolute; left: 16px; }
+  .nav { display: flex; gap: 8px; align-items: center; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #pos { color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 6px; align-items: center; }
+  #jump { width: 64px; font: inherit; text-align: center; padding: 4px 6px; border-radius: 6px;
+          border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px;
+             border-bottom: 1px solid var(--line); background: var(--panel); }
+  .filters label { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+  select, input[type=number] { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); max-width: 320px; }
+  input[type=number] { width: 64px; }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; display: grid;
+         grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 16px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  video { display: block; width: 100%; max-height: 68vh; background: #000; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; }
+  .controls .sp { margin-left: auto; display: flex; gap: 4px; }
+  .controls button { padding: 3px 10px; }
+  .timeline { position: relative; height: 26px; margin: 0 10px 10px; border-radius: 4px; background: var(--bg);
+              border: 1px solid var(--line); cursor: pointer; }
+  .timeline .span { position: absolute; top: 0; bottom: 0; background: var(--span); }
+  .timeline .impact { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1px; background: var(--impact); }
+  .timeline .head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
+  .legend { display: flex; gap: 14px; padding: 0 10px 10px; color: var(--muted); font-size: 12px; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .fb { padding: 14px 16px; }
+  .verdict { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; color: #fff;
+             text-transform: capitalize; }
+  .fb h2 { margin: 0 0 8px; font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fb .coach-punch { color: var(--muted); font-weight: 400; }
+  .fb blockquote { margin: 8px 0 0; font-size: 16px; line-height: 1.5; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 5px 12px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+  td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+  .num { font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .empty, .err { padding: 40px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
+  .err { color: var(--impact); white-space: pre-wrap; }
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    header .home { position: static; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="./">← Hip rotation viewer</a>
+  <div class="nav">
+    <button id="prev" title="Previous (←)">← Prev</button>
+    <span id="pos"><input id="jump" type="number" min="1" value="1" title="Type a number and press Enter">
+      <span>/ <span id="total">0</span></span></span>
+    <button id="next" title="Next (→)">Next →</button>
+  </div>
+</header>
+<div class="filters" id="filters"></div>
+<main id="main"><div class="empty">Loading…</div></main>
+<script>
+const params = new URLSearchParams(location.search);
+const SOURCE = params.get('source') === 'local' ? 'local' : 'firebase';
+const FB_BUCKET = 'mycorner-bee6a.firebasestorage.app';
+const FB_PREFIX = 'labeler_media/hip_rotation/v1';
+const FB_TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';   // shared labeler_media download token
+// ?source=local: the files where they live in the backend repo (hip_rotation folder as web root)
+const LOCAL = { 'coach_feedback.csv': '../coach_list/coach_feedback.csv',
+                'coach_review_list.csv': '../coach_list/coach_review_list.csv',
+                'clip_windows.csv': '../coach_list/clip_windows.csv' };
+const dataUrl = path => SOURCE === 'local' ? (LOCAL[path] || '../coach_list/' + path)
+  : `https://firebasestorage.googleapis.com/v0/b/${FB_BUCKET}/o/`
+    + encodeURIComponent(`${FB_PREFIX}/${path}`) + `?alt=media&token=${FB_TOKEN}`;
+
+// verdict = coach_feedback.py's grouping of the coach's first sentence; this is its display order
+const VERDICTS = ['very poor', 'poor', 'okay', 'good', 'very good', 'not judged', "can't judge"];
+const VCOLOR = { 'very poor': '--v-vpoor', poor: '--v-poor', okay: '--v-okay', good: '--v-good',
+                 'very good': '--v-vgood', 'not judged': '--v-none', "can't judge": '--v-none' };
+const LEVEL = { low: 'below IQR', mid: 'inside IQR', high: 'above IQR' };
+// [field, label]; each is a faceted dropdown
+const FILTERS = [['verdict', 'coach verdict'], ['punch_type', 'punch'], ['rotation_level', 'rotation'],
+                 ['bucket', 'facing'], ['stance', 'stance'], ['video_name', 'video']];
+const ORDER = { verdict: VERDICTS, rotation_level: Object.values(LEVEL), bucket: ['0', '±45', '±90'] };
+
+let punches = [], view = [], i = 0;
+const active = {};
+let rotMin = null, rotMax = null, speed = 0.5;
+
+// Firebase occasionally answers with a redirect that fails CORS (same as index.html): retry.
+async function fetchText(u, tries = 4) {
+  for (let k = 0; ; k++) {
+    try {
+      const r = await fetch(k ? `${u}${u.includes('?') ? '&' : '?'}retry=${k}` : u);
+      if (r.ok) return r.text();
+      if (k === tries - 1) throw new Error(`${u}: HTTP ${r.status}`);
+    } catch (e) { if (k === tries - 1) throw e; }
+    await new Promise(res => setTimeout(res, 400 * 2 ** k));
+  }
+}
+function parseCSV(text) {
+  const rows = [[]]; let f = '', q = false;
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    if (q) { if (c === '"') { if (text[k + 1] === '"') { f += '"'; k++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { rows[rows.length - 1].push(f); f = ''; }
+    else if (c === '\n') { rows[rows.length - 1].push(f.replace(/\r$/, '')); f = ''; rows.push([]); }
+    else f += c;
+  }
+  if (f || rows[rows.length - 1].length) rows[rows.length - 1].push(f.replace(/\r$/, ''));
+  const [head, ...body] = rows.filter(r => r.length > 1);
+  return body.map(r => Object.fromEntries(head.map((h, j) => [h, r[j] ?? ''])));
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const sortVals = (f, vals) => ORDER[f] ? vals.sort((a, b) => ORDER[f].indexOf(a) - ORDER[f].indexOf(b))
+                                       : vals.sort((a, b) => a.localeCompare(b));
+
+const matches = (p, skip) => FILTERS.every(([f]) => f === skip || !active[f] || p[f] === active[f])
+  && (rotMin === null || p.rot >= rotMin) && (rotMax === null || p.rot <= rotMax);
+
+function buildFilters() {
+  document.getElementById('filters').innerHTML = FILTERS.map(([f, label]) =>
+    `<label>${label} <select data-f="${f}"></select></label>`).join('') +
+    `<label>rotation ° <input id="rmin" type="number" placeholder="min"> – <input id="rmax" type="number" placeholder="max"></label>
+     <button id="clear">Clear filters</button>`;
+  document.querySelectorAll('#filters select').forEach(sel =>
+    sel.onchange = () => { active[sel.dataset.f] = sel.value; applyFilters(); });
+  const num = v => v === '' ? null : Number(v);
+  document.getElementById('rmin').oninput = e => { rotMin = num(e.target.value); applyFilters(); };
+  document.getElementById('rmax').oninput = e => { rotMax = num(e.target.value); applyFilters(); };
+  document.getElementById('clear').onclick = () => {
+    FILTERS.forEach(([f]) => active[f] = ''); rotMin = rotMax = null;
+    document.getElementById('rmin').value = document.getElementById('rmax').value = '';
+    applyFilters();
+  };
+}
+function refreshOptions() {
+  document.querySelectorAll('#filters select').forEach(sel => {
+    const f = sel.dataset.f, counts = {};
+    punches.forEach(p => { if (matches(p, f)) counts[p[f]] = (counts[p[f]] || 0) + 1; });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    sel.innerHTML = `<option value="">all (${total})</option>` + sortVals(f, Object.keys(counts))
+      .map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('');
+    sel.value = active[f] || '';
+  });
+}
+function applyFilters(keepUuid) {
+  const cur = keepUuid || (view.length ? punches[view[i]].punch_uuid : null);
+  view = punches.map((_, k) => k).filter(k => matches(punches[k]));
+  const at = view.findIndex(k => punches[k].punch_uuid === cur);
+  i = at >= 0 ? at : 0;   // stay on the same punch when it survives the filter
+  refreshOptions(); show();
+}
+
+function show() {
+  const main = document.getElementById('main'), n = view.length;
+  document.getElementById('prev').disabled = document.getElementById('next').disabled = !n;
+  const jump = document.getElementById('jump');
+  jump.value = n ? i + 1 : 0; jump.max = n; jump.disabled = !n;
+  document.getElementById('total').textContent = n;
+  if (!n) { main.innerHTML = '<div class="empty">No punches match these filters.</div>'; return; }
+  const p = punches[view[i]];
+  history.replaceState(null, '', `?${SOURCE === 'local' ? 'source=local&' : ''}uuid=${p.punch_uuid}`);
+  const dur = p.clip_end - p.clip_start, pct = t => `${Math.max(0, Math.min(100, (t - p.clip_start) / dur * 100))}%`;
+  const rows = [
+    ['punch', `${esc(p.punch_type)} <span class="muted">(${esc(p.stance)})</span>`],
+    ['rotation', `<span class="num">${(+p.rotation).toFixed(1)}°</span> start → impact · <b>${esc(p.rotation_level)}</b>
+       <span class="num" style="color:var(--muted)">(${esc(p.type_family)} IQR ${(+p.q1).toFixed(1)}–${(+p.q3).toFixed(1)}°)</span>`],
+    ['facing angle', `<span class="num">${(+p.facing_angle).toFixed(1)}°</span> · bucket ${esc(p.bucket)}`],
+    ['video', `${esc(p.video_name)} · round ${esc(p.round)}`],
+    ['punch span', `<span class="num">${(+p.start_sec).toFixed(2)} → ${(+p.impact_sec).toFixed(2)} → ${(+p.end_sec).toFixed(2)} s</span>
+       <span style="color:var(--muted)">(start → impact → end, source video)</span>`],
+    ['sheet row', `${esc(p.sheet_row)} <span style="color:var(--muted)">(the coach's "Video ${esc(p.sheet_row)}")</span>`],
+    ['punch_uuid', `<code>${esc(p.punch_uuid)}</code> · <a href="./?uuid=${esc(p.punch_uuid)}" target="_blank" rel="noopener">frames &amp; hips in the viewer ↗</a>`],
+  ];
+  main.innerHTML = `
+    <div class="card">
+      <video id="clip" src="${dataUrl('clips/' + p.punch_uuid + '.mp4')}" muted playsinline loop autoplay></video>
+      <div class="controls">
+        <button id="play">Play</button><button id="toImpact">Impact frame</button>
+        <span class="sp">${[1, 0.5, 0.25].map(s => `<button data-s="${s}" class="${s === speed ? 'on' : ''}">${s}×</button>`).join('')}</span>
+      </div>
+      <div class="timeline" id="tl" title="click to seek">
+        <div class="span" style="left:${pct(p.start_sec)};right:calc(100% - ${pct(p.end_sec)})"></div>
+        <div class="impact" style="left:${pct(p.impact_sec)}"></div><div class="head" id="head"></div>
+      </div>
+      <div class="legend"><span><i class="sw" style="background:var(--span)"></i>punch (start → end)</span>
+        <span><i class="sw" style="background:var(--impact)"></i>impact</span>
+        <span>clip ${dur.toFixed(2)} s</span></div>
+    </div>
+    <div class="side">
+      <div class="card fb">
+        <h2><span class="verdict" style="background:var(${VCOLOR[p.verdict]})">${esc(p.verdict)}</span>
+          <span class="coach-punch">coach saw: ${esc(p.coach_punch)}</span></h2>
+        <blockquote>${esc(p.feedback)}</blockquote>
+      </div>
+      <div class="card"><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table></div>
+    </div>`;
+  wireVideo(p);
+  const nx = punches[view[(i + 1) % n]];   // warm the next clip
+  if (nx !== p) fetch(dataUrl('clips/' + nx.punch_uuid + '.mp4')).catch(() => {});
+}
+
+function wireVideo(p) {
+  const v = document.getElementById('clip'), head = document.getElementById('head'), tl = document.getElementById('tl');
+  const play = document.getElementById('play');
+  v.playbackRate = speed;
+  v.addEventListener('loadedmetadata', () => { v.playbackRate = speed; });
+  const tick = () => {
+    if (!document.body.contains(v)) return;
+    head.style.left = `${v.duration ? v.currentTime / v.duration * 100 : 0}%`;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  v.onplay = () => play.textContent = 'Pause';
+  v.onpause = () => play.textContent = 'Play';
+  play.onclick = () => v.paused ? v.play() : v.pause();
+  document.getElementById('toImpact').onclick = () => { v.pause(); v.currentTime = p.impact_sec - p.clip_start; };
+  tl.onclick = e => {
+    const r = tl.getBoundingClientRect();
+    if (v.duration) v.currentTime = (e.clientX - r.left) / r.width * v.duration;
+  };
+  document.querySelectorAll('.sp button').forEach(b => b.onclick = () => {
+    speed = +b.dataset.s; v.playbackRate = speed;
+    document.querySelectorAll('.sp button').forEach(x => x.classList.toggle('on', x === b));
+  });
+}
+
+const step = d => { if (view.length) { i = (i + d + view.length) % view.length; show(); } };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('jump').addEventListener('change', e => {
+  const n = Math.round(Number(e.target.value));
+  if (view.length && n >= 1 && n <= view.length) { i = n - 1; show(); } else e.target.value = view.length ? i + 1 : 0;
+});
+addEventListener('keydown', e => {
+  if (e.target.matches('input, select')) return;
+  if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === ' ') { const v = document.getElementById('clip'); if (v) { e.preventDefault(); v.paused ? v.play() : v.pause(); } }
+});
+
+(async () => {
+  try {
+    const [fb, list, win] = await Promise.all(['coach_feedback.csv', 'coach_review_list.csv', 'clip_windows.csv']
+      .map(async f => parseCSV(await fetchText(dataUrl(f)))));
+    const L = Object.fromEntries(list.map(r => [r.punch_uuid, r]));
+    const W = Object.fromEntries(win.map(r => [r.punch_uuid, r]));
+    // in the coach's order (sheet rows = the fixed shuffle they reviewed in)
+    punches = fb.filter(f => L[f.punch_uuid] && W[f.punch_uuid]).map(f => {
+      const l = L[f.punch_uuid], w = W[f.punch_uuid];
+      return { ...l, ...f, punch_type: `${l.hand} ${l.punch} ${l.target}`, type_family: l.punch_type,
+               rotation_level: LEVEL[l.level] || l.level, rot: +l.rotation,
+               clip_start: +w.clip_start, clip_end: +w.clip_end };
+    }).sort((a, b) => a.sheet_row - b.sheet_row);
+    buildFilters();
+    applyFilters((params.get('uuid') || '').trim().toLowerCase() || null);
+  } catch (e) {
+    document.getElementById('main').innerHTML = `<div class="err">Could not load data: ${esc(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>
