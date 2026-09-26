@@ -18,6 +18,9 @@
     coach_feedback.csv     coach_list/coach_feedback.py: punch_uuid, sheet_row, coach_punch,
                            verdict (OUR grouping of the note's first sentence), feedback (the note)
     coach_review_list.csv  the 162-punch list: rotation, q1, q3, level, bucket, facing_angle, video...
+    coach_ranges.csv       coach_list/fit_ranges.py: the "good" start->impact rotation range per punch type
+                           fitted to the coach's verdicts (lo, hi '' = open, leave-one-out accuracy);
+                           per punch the page checks model degrees vs that range against the verdict
     clip_windows.csv       each clip's source-video window (clip_start) -> where start / impact /
                            end fall inside the clip (the clip's first frame = source frame at clip_start)
     clips/<uuid>.mp4       coach_list/clips/, the same files as Drive coach_media/hip_rotation/clips/
@@ -87,6 +90,12 @@
   .muted { color: var(--muted); }
   .empty, .err { padding: 40px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
   .err { color: var(--impact); white-space: pre-wrap; }
+  .model { padding: 12px 16px; }
+  .model .deg { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .model .range { color: var(--muted); }
+  .model svg { display: block; width: 100%; height: auto; margin: 8px 0 4px; overflow: visible; }
+  .model .check { font-weight: 600; }
+  .model .foot { color: var(--muted); font-size: 12px; margin-top: 4px; }
   .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
   .side .card { flex-shrink: 0; }
   /* phones: stack and let the page scroll */
@@ -130,9 +139,15 @@ const VCOLOR = { 'very poor': '--v-vpoor', poor: '--v-poor', okay: '--v-okay', g
                  'very good': '--v-vgood', 'not judged': '--v-none', "can't judge": '--v-none' };
 const LEVEL = { low: 'below IQR', mid: 'inside IQR', high: 'above IQR' };
 // [field, label]; each is a faceted dropdown
-const FILTERS = [['verdict', 'coach verdict'], ['punch_type', 'punch'], ['rotation_level', 'rotation'],
+const FILTERS = [['verdict', 'coach verdict'], ['range_status', 'model range'], ['agreement', 'model vs coach'],
+                 ['punch_type', 'punch'], ['rotation_level', 'rotation'],
                  ['bucket', 'facing'], ['stance', 'stance'], ['video_name', 'video']];
-const ORDER = { verdict: VERDICTS, rotation_level: Object.values(LEVEL), bucket: ['0', '±45', '±90'] };
+const ORDER = { verdict: VERDICTS, rotation_level: Object.values(LEVEL), bucket: ['0', '±45', '±90'],
+                range_status: ['below range', 'in range', 'above range', 'no range'],
+                agreement: ['agrees', 'disagrees', 'coach: okay', 'n/a'] };
+// the fit's two sides (fit_ranges.py): GOOD should fall inside the range, BAD outside
+const GOOD = new Set(['good', 'very good']), BAD = new Set(['poor', 'very poor']);
+let ranges = {};   // type_family -> {lo, hi (Infinity = open), n_good, n_bad, loo_acc}
 
 let punches = [], view = [], i = 0;
 const active = {};
@@ -204,6 +219,49 @@ function applyFilters(keepUuid) {
   refreshOptions(); show();
 }
 
+const fmtRange = r => r.hi === Infinity ? `≥ ${r.lo.toFixed(1)}°` : `${r.lo.toFixed(1)}–${r.hi.toFixed(1)}°`;
+function rangeStatus(p) {
+  const r = ranges[p.type_family];
+  if (!r) return 'no range';
+  return p.rot < r.lo ? 'below range' : p.rot > r.hi ? 'above range' : 'in range';
+}
+function agreement(p) {
+  if (p.range_status === 'no range') return 'n/a';
+  if (p.verdict === 'okay') return 'coach: okay';
+  const inside = p.range_status === 'in range';
+  return GOOD.has(p.verdict) ? (inside ? 'agrees' : 'disagrees') : BAD.has(p.verdict) ? (inside ? 'disagrees' : 'agrees') : 'n/a';
+}
+
+// Model degrees vs the type's fitted "good" range, with every coach-judged punch of the type as a dot
+// (lanes: good / okay / poor), so you see how well the range splits them and where this punch sits.
+function modelCard(p) {
+  const r = ranges[p.type_family], deg = `<span class="deg">${p.rot.toFixed(1)}°</span> start → impact (model)`;
+  if (!r) return `<div class="card model">${deg}<div class="foot">No range for ${esc(p.type_family)}:
+    the coach doesn't judge rotation on this punch type.</div></div>`;
+  const same = punches.filter(q => q.type_family === p.type_family);
+  const W = 400, pad = 8, max = Math.max(60, Math.ceil(Math.max(...same.map(q => q.rot)) / 10) * 10);
+  const X = d => pad + Math.min(d, max) / max * (W - 2 * pad);
+  const LANES = [['good', GOOD, '--v-good', 14], ['okay', new Set(['okay']), '--v-okay', 32], ['poor', BAD, '--v-vpoor', 50]];
+  const dots = LANES.map(([, set, c, y]) => same.filter(q => set.has(q.verdict) && q !== p).map(q =>
+    `<circle cx="${X(q.rot)}" cy="${y}" r="3.5" fill="var(${c})" opacity=".75"><title>${q.rot.toFixed(1)}° · ${esc(q.verdict)}</title></circle>`).join('')).join('');
+  const lanes = LANES.map(([name, , , y]) => `<text x="${W + 6}" y="${y + 4}" font-size="11" fill="var(--muted)">${name}</text>`).join('');
+  const ticks = Array.from({ length: max / 10 + 1 }, (_, k) => k * 10).filter(t => t % 20 === 0).map(t =>
+    `<text x="${X(t)}" y="76" font-size="10" text-anchor="middle" fill="var(--muted)">${t}°</text>`).join('');
+  const band = `<rect x="${X(r.lo)}" y="2" width="${X(Math.min(r.hi, max)) - X(r.lo)}" height="60" fill="var(--v-good)" opacity=".13"/>`;
+  const me = `<line x1="${X(p.rot)}" x2="${X(p.rot)}" y1="0" y2="64" stroke="var(--ink)" stroke-width="2"/>
+    <polygon points="${X(p.rot) - 5},0 ${X(p.rot) + 5},0 ${X(p.rot)},6" fill="var(--ink)"/>`;
+  const ok = p.agreement === 'agrees', bad = p.agreement === 'disagrees';
+  const say = p.range_status === 'in range' ? 'model: good' : p.range_status === 'below range' ? 'model: too little' : 'model: too much';
+  return `<div class="card model">
+    <div>${deg} · <span class="range">good range for ${esc(p.type_family)}: <b>${fmtRange(r)}</b></span></div>
+    <svg viewBox="0 0 ${W + 40} 80">${band}${dots}${me}${lanes}${ticks}</svg>
+    <div class="check" style="color:${ok ? 'var(--v-good)' : bad ? 'var(--v-vpoor)' : 'var(--muted)'}">
+      ${p.range_status} → ${say} · coach: ${esc(p.verdict)} · ${ok ? '✓ agrees' : bad ? '✗ disagrees' : esc(p.agreement)}</div>
+    <div class="foot">Range fitted to this type's coach verdicts (${r.n_good} good vs ${r.n_bad} poor, okay left out);
+      a range fitted without each punch gets ${Math.round(r.loo_acc * 100)} % of them right. Dots = the other judged ${esc(p.type_family)}s.</div>
+  </div>`;
+}
+
 function show() {
   const main = document.getElementById('main'), n = view.length;
   document.getElementById('prev').disabled = document.getElementById('next').disabled = !n;
@@ -216,7 +274,7 @@ function show() {
   const dur = p.clip_end - p.clip_start, pct = t => `${Math.max(0, Math.min(100, (t - p.clip_start) / dur * 100))}%`;
   const rows = [
     ['punch', `${esc(p.punch_type)} <span class="muted">(${esc(p.stance)})</span>`],
-    ['rotation', `<span class="num">${(+p.rotation).toFixed(1)}°</span> start → impact · <b>${esc(p.rotation_level)}</b>
+    ['vs IQR', `<b>${esc(p.rotation_level)}</b>
        <span class="num" style="color:var(--muted)">(${esc(p.type_family)} IQR ${(+p.q1).toFixed(1)}–${(+p.q3).toFixed(1)}°)</span>`],
     ['facing angle', `<span class="num">${(+p.facing_angle).toFixed(1)}°</span> · bucket ${esc(p.bucket)}`],
     ['video', `${esc(p.video_name)} · round ${esc(p.round)}`],
@@ -246,6 +304,7 @@ function show() {
           <span class="coach-punch">coach saw: ${esc(p.coach_punch)}</span></h2>
         <blockquote>${esc(p.feedback)}</blockquote>
       </div>
+      ${modelCard(p)}
       <div class="card"><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table></div>
     </div>`;
   wireVideo(p);
@@ -294,8 +353,10 @@ addEventListener('keydown', e => {
 
 (async () => {
   try {
-    const [fb, list, win] = await Promise.all(['coach_feedback.csv', 'coach_review_list.csv', 'clip_windows.csv']
+    const [fb, list, win, rng] = await Promise.all(['coach_feedback.csv', 'coach_review_list.csv', 'clip_windows.csv', 'coach_ranges.csv']
       .map(async f => parseCSV(await fetchText(dataUrl(f)))));
+    ranges = Object.fromEntries(rng.filter(r => r.lo !== '').map(r => [r.punch_type,
+      { lo: +r.lo, hi: r.hi === '' ? Infinity : +r.hi, n_good: +r.n_good, n_bad: +r.n_bad, loo_acc: +r.loo_acc }]));
     const L = Object.fromEntries(list.map(r => [r.punch_uuid, r]));
     const W = Object.fromEntries(win.map(r => [r.punch_uuid, r]));
     // in the coach's order (sheet rows = the fixed shuffle they reviewed in)
@@ -305,6 +366,7 @@ addEventListener('keydown', e => {
                rotation_level: LEVEL[l.level] || l.level, rot: +l.rotation,
                clip_start: +w.clip_start, clip_end: +w.clip_end };
     }).sort((a, b) => a.sheet_row - b.sheet_row);
+    punches.forEach(p => { p.range_status = rangeStatus(p); p.agreement = agreement(p); });
     buildFilters();
     applyFilters((params.get('uuid') || '').trim().toLowerCase() || null);
   } catch (e) {
