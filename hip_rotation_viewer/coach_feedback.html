@@ -36,11 +36,12 @@
             --v-vpoor: #ff6b6b; --v-poor: #ffa94d; --v-okay: #ffd43b; --v-good: #69db7c; --v-vgood: #74c0fc; --v-none: #adb5bd; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
+  /* one screen, no page scroll: header + filters on top, video and info side by side filling the rest */
+  body { margin: 0; background: var(--bg); color: var(--ink); height: 100vh; height: 100dvh;
+         display: flex; flex-direction: column; overflow: hidden;
          font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;
-           padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
-           position: sticky; top: 0; z-index: 1; }
+  header { position: relative; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;
+           padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header .home { position: absolute; left: 16px; }
   .nav { display: flex; gap: 8px; align-items: center; }
   button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
@@ -51,16 +52,17 @@
   #pos { color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 6px; align-items: center; }
   #jump { width: 64px; font: inherit; text-align: center; padding: 4px 6px; border-radius: 6px;
           border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-  .filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px;
+  .filters { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 6px 16px;
              border-bottom: 1px solid var(--line); background: var(--panel); }
   .filters label { display: flex; gap: 6px; align-items: center; color: var(--muted); }
   select, input[type=number] { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line);
            background: var(--bg); color: var(--ink); max-width: 320px; }
   input[type=number] { width: 64px; }
-  main { padding: 16px; max-width: 1400px; margin: 0 auto; display: grid;
-         grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 16px; align-items: start; }
+  main { flex: 1; min-height: 0; width: 100%; padding: 12px 16px; display: grid;
+         grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 16px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  video { display: block; width: 100%; max-height: 68vh; background: #000; }
+  .player { display: flex; flex-direction: column; min-height: 0; }
+  video { display: block; width: 100%; flex: 1; min-height: 0; object-fit: contain; background: #000; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; }
   .controls .sp { margin-left: auto; display: flex; gap: 4px; }
   .controls button { padding: 3px 10px; }
@@ -76,18 +78,22 @@
              text-transform: capitalize; }
   .fb h2 { margin: 0 0 8px; font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .fb .coach-punch { color: var(--muted); font-weight: 400; }
-  .fb blockquote { margin: 8px 0 0; font-size: 16px; line-height: 1.5; }
+  .fb blockquote { margin: 8px 0 0; font-size: 15px; line-height: 1.45; }
   table { border-collapse: collapse; width: 100%; }
-  td { padding: 5px 12px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+  td { padding: 4px 10px; font-size: 13px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
   td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
   .num { font-variant-numeric: tabular-nums; }
   a { color: var(--accent); }
   .muted { color: var(--muted); }
   .empty, .err { padding: 40px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
   .err { color: var(--impact); white-space: pre-wrap; }
-  .side { display: flex; flex-direction: column; gap: 16px; }
-  @media (max-width: 900px) {
+  .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+  .side .card { flex-shrink: 0; }
+  /* phones: stack and let the page scroll */
+  @media (max-width: 700px) {
+    body { height: auto; overflow: visible; }
     main { grid-template-columns: 1fr; }
+    video { flex: none; max-height: 60vh; }
     header .home { position: static; }
   }
 </style>
@@ -220,7 +226,7 @@ function show() {
     ['punch_uuid', `<code>${esc(p.punch_uuid)}</code> · <a href="./?uuid=${esc(p.punch_uuid)}" target="_blank" rel="noopener">frames &amp; hips in the viewer ↗</a>`],
   ];
   main.innerHTML = `
-    <div class="card">
+    <div class="card player">
       <video id="clip" src="${dataUrl('clips/' + p.punch_uuid + '.mp4')}" muted playsinline loop autoplay></video>
       <div class="controls">
         <button id="play">Play</button><button id="toImpact">Impact frame</button>
