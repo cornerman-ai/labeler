@@ -28,8 +28,9 @@ from the landing page, or directly at `unusable/index.html`.
    a statue, the bag) — up to the jump back, which is a jump again. The span
    saves itself; `Esc` clears a half-made one.
 
-   **Labeling mode** (the default) shows only the moments to check and your own
-   spans. **Review mode** (the To check card) shows everything: the skeleton
+   **Labeling mode** (the default) shows only the skeleton lane (where a
+   skeleton exists — the rounds, the footage to check), the moments to check
+   and your own spans. **Review mode** (the To check card) shows everything: the skeleton
    lane (where a skeleton exists at all), the **detected** lane (red for every
    frame without a skeleton, a yellow tick per jump), the **framing** lane
    (where the picture cuts the boxer: red out of frame, pink partly out, tan

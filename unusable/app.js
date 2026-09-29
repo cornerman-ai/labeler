@@ -848,20 +848,20 @@ function renderTimelineOverlay() {
   if (mini) mini.innerHTML = '';
   if (!duration) return;
   const rounds = (state.skeleton && state.skeleton.rounds) || [];
-  if (state.review) {             // review mode: the skeleton, detected and framing lanes
-    // where a skeleton exists at all — the extraction's rounds
-    const skel = document.createElement('div');
-    skel.className = 'seg-lane lane-skeleton'; skel.dataset.laneLabel = 'skeleton';
-    for (const r of (state.skeleton && state.skeleton.rounds) || []) {
-      if (!r.pts || !r.pts.length) continue;
-      const l = timeToViewportPct(r.pts[0], duration), w = timeToViewportPct(r.pts[r.pts.length - 1], duration) - l;
-      if (l + w < 0 || l > 100) continue;
-      const band = document.createElement('div');
-      band.className = 'skel-band'; band.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
-      band.title = `skeleton round ${r.round}`;
-      skel.appendChild(band);
-    }
-    lanes.insertBefore(skel, playhead);
+  // where a skeleton exists at all — the extraction's rounds, the footage to check (both modes)
+  const skel = document.createElement('div');
+  skel.className = 'seg-lane lane-skeleton'; skel.dataset.laneLabel = 'skeleton';
+  for (const r of (state.skeleton && state.skeleton.rounds) || []) {
+    if (!r.pts || !r.pts.length) continue;
+    const l = timeToViewportPct(r.pts[0], duration), w = timeToViewportPct(r.pts[r.pts.length - 1], duration) - l;
+    if (l + w < 0 || l > 100) continue;
+    const band = document.createElement('div');
+    band.className = 'skel-band'; band.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
+    band.title = `skeleton round ${r.round}`;
+    skel.appendChild(band);
+  }
+  lanes.insertBefore(skel, playhead);
+  if (state.review) {             // review mode: the detected and framing lanes
     // what the detectors found in those files: no skeleton, jumps
     if (rounds.length) {
       const lane = document.createElement('div');
