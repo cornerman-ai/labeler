@@ -22,13 +22,18 @@ landing page, or directly at `unusable/index.html`.
    skeleton jumps more than a torso within a quarter second (onto someone
    else, usually; a jump costs a missing frame 94 % of the time). Hints to
    check on the footage, not labels: click one to go there, then judge.
+   Under it the **framing** lane: where the picture cuts the boxer, read off
+   the skeleton's joint positions — red out of frame, pink partly out (past
+   the left, right or top edge), tan legs cut off (below the bottom edge), the
+   colours of the reasons with the same names. `F` hides it (remembered in
+   this browser) — hide it to label framing without seeing the rule's call.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
    `S` / `E`; twice on the same frame for a one-frame problem), then the
-   reason — `1` out of frame, `2` other person, `3` other thing (a painting,
-   a statue, the bag), `4` jump back (the frame where the tracker jumps back
-   to the boxer — nearly always a frame with no skeleton, the yellow tick),
-   `5` frozen, `6` camera, `7` other.
+   reason — `1` out of frame, `2` partly out, `3` legs cut off, `4` other
+   person, `5` other thing (a painting, a statue, the bag), `6` jump back (the
+   frame where the tracker jumps back to the boxer — nearly always a frame with
+   no skeleton, the yellow tick), `7` frozen, `8` camera, `9` other.
    The span saves itself; `Esc` clears a half-made one. When the reason
    changes mid-stretch — the boxer walks out, then the tracker lands on
    someone else — make two spans back to back, one per reason: the end of
@@ -50,6 +55,15 @@ round: the boxer out of the picture or hidden behind the bag, the skeleton
 sitting on someone or something else, a skeleton that does not move, the camera
 cutting or moving. A skeleton that is the boxer's but jittery is usable.
 
+`Partly out` and `Legs cut off` (2026-09-29) are framing, not a wrong skeleton:
+they are there for the framing test — on its 10 videos the team marks every
+stretch of all three framing reasons with the framing lane hidden (`F`), and
+cornerman-backend compares them per frame with the rule. The rule's
+definitions, to label against: out of frame = the boxer's upper body is gone
+from the picture; partly out = part of him is past the left, right or top edge;
+legs cut off = the bottom edge cuts him — feet, legs or hips; when two apply,
+the first of the three.
+
 ## Where it goes
 
 Two tabs of the labels workbook (the punch workbook), written through the
@@ -57,7 +71,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, partly_out, legs_cut, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | retirement (`whole_video_unusable`) — the review mark itself is the sheet's `yes` |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
@@ -78,7 +92,11 @@ The detected lane is computed in the browser from the loaded skeleton files
 (`detectorHints()` in `app.js`) with the rules of cornerman-backend's
 `ml/research/skeleton_usability/` (`no_skeleton.py`, and the jump rule of
 `jumps.py` — not its other-person model, not `frozen.py`), so a newly
-extracted video shows its hints with no export step. One deliberate
+extracted video shows its hints with no export step. The framing lane is
+`framingHints()`, the mirror of that folder's `framing.py` — the same joints,
+kinds and defaults (margin 0, gaps and stretches under 0.5 s); it gave the
+identical stretches on all 571 rounds of the shelf (2026-09-29). Change a rule
+or a default in both places or in neither. One deliberate
 difference: this lane shows every missing frame, where the backend's survey
 and model start counting at 3 (Mathe, 2026-09-19 — the threshold for actual
 use comes later); the jump rule's thresholds are the same on both sides.

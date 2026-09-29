@@ -12,7 +12,7 @@
   <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
        look) paints the transport buttons dark blue through #video-controls button. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="unusable.css?v=20260919b">
+  <link rel="stylesheet" href="unusable.css?v=20260929">
 </head>
 <body>
   <div id="app">
@@ -257,13 +257,14 @@
       <p class="sc-sec">Marking</p>
       <div class="sc-row"><span>Start, then end, of the stretch at the playhead — twice on the same frame for a one-frame problem</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>… or either end on its own</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
-      <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>7</kbd></span></div>
+      <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>9</kbd></span></div>
       <div class="sc-row"><span>Clear the half-made span</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Next video</span><span class="sc-keys"><kbd>N</kbd></span></div>
       <p class="sc-sec">Playback</p>
       <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>
       <div class="sc-row"><span>One frame back / forward; ten with <kbd>Shift</kbd></span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
       <div class="sc-row"><span>Skeleton overlay on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
+      <div class="sc-row"><span>Framing lane on / off — off to label without seeing the rule's call</span><span class="sc-keys"><kbd>F</kbd></span></div>
       <div class="sc-row"><span>Volume</span><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span></div>
       <div class="sc-row"><span>Jump to a time</span><span class="sc-keys"><kbd>Click the time</kbd></span></div>
       <p class="sc-sec">The timeline and the picture</p>
@@ -276,6 +277,13 @@
         <span class="hint-key missing"></span> a frame without a skeleton (every one, however short the run),
         <span class="hint-key jump"></span> the skeleton jumps — more than a torso within a quarter second,
         usually onto someone or something else. Hints to check on the footage, not labels; click one to go there.</p>
+      <p class="sc-sec">The framing lane</p>
+      <p class="sc-note">Under it, where the picture cuts the boxer, read off the skeleton's joint positions:
+        <span class="hint-key framing" style="--reason:#e85a5a"></span> out of frame (gone through an edge),
+        <span class="hint-key framing" style="--reason:#ff8fb1"></span> partly out (past the left, right or top edge),
+        <span class="hint-key framing" style="--reason:#c9a36b"></span> legs cut off (below the bottom edge) — the
+        colours of the reasons with the same names. The rule's call, not a label: while the team's framing
+        spans are being compared with it, press <kbd>F</kbd> to hide it and label without looking.</p>
       <p class="sc-note muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
         both in the labels workbook. "Whole video unusable" moves the video's labeling rows to
         <b>Skeleton Problems</b>.</p>
@@ -286,7 +294,7 @@
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20260919b"></script>
+  <script src="app.js?v=20260929"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

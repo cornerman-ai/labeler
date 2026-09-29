@@ -18,7 +18,8 @@
 // connected-folder auto-load of the video + its skeleton files
 // (../punch/video-folder.js) — the same ids, so a folder connected in the punch
 // labeler is connected here too. The detectors' hints on the timeline (no
-// skeleton, jumps) are computed here from those same files — detectorHints().
+// skeleton, jumps — detectorHints(); where the picture cuts the boxer —
+// framingHints()) are computed here from those same files.
 //
 // Sheet (apps_script/Code.js, doGetUnusable): two tabs in the labels workbook —
 //   Unusable Spans     id | video_file | labeler | reason | start_sec | end_sec | span_uuid | ts
@@ -30,20 +31,27 @@
 // Times are source-video seconds, the same clock as the punch labels.
 // ============================================================
 
+// out_of_frame / partly_out / legs_cut are also the framing lane's three kinds
+// (framingHints), in the same colours, so the team's spans and the rule's can
+// be scored against each other.
 const REASONS = [
   { id: 'out_of_frame', label: 'Out of frame', key: '1', color: '#e85a5a',
     desc: 'The boxer is out of the picture or hidden — behind the bag, someone in front' },
-  { id: 'other_person', label: 'Other person', key: '2', color: '#b48cff',
+  { id: 'partly_out',   label: 'Partly out',   key: '2', color: '#ff8fb1',
+    desc: 'Part of the boxer is past the left, right or top edge of the picture' },
+  { id: 'legs_cut',     label: 'Legs cut off', key: '3', color: '#c9a36b',
+    desc: 'The bottom of the picture cuts the boxer — his feet, legs or hips are below it' },
+  { id: 'other_person', label: 'Other person', key: '4', color: '#b48cff',
     desc: 'The skeleton sits on someone who is not the boxer' },
-  { id: 'other_thing',  label: 'Other thing',  key: '3', color: '#4cc9b0',
+  { id: 'other_thing',  label: 'Other thing',  key: '5', color: '#4cc9b0',
     desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
-  { id: 'jump_back',    label: 'Jump back',    key: '4', color: '#ffcc4d',
+  { id: 'jump_back',    label: 'Jump back',    key: '6', color: '#ffcc4d',
     desc: 'The tracker jumps back to the boxer — the frame in between has no skeleton (the yellow tick)' },
-  { id: 'frozen',       label: 'Frozen',       key: '5', color: '#8ab4f8',
+  { id: 'frozen',       label: 'Frozen',       key: '7', color: '#8ab4f8',
     desc: 'The skeleton does not move — a paused frame, a stuck tracker' },
-  { id: 'camera',       label: 'Camera',       key: '6', color: '#f5a23c',
+  { id: 'camera',       label: 'Camera',       key: '8', color: '#f5a23c',
     desc: 'The camera moves, cuts or zooms' },
-  { id: 'other',        label: 'Other',        key: '7', color: '#9aa0a6',
+  { id: 'other',        label: 'Other',        key: '9', color: '#9aa0a6',
     desc: 'Anything else that makes this stretch of skeleton wrong' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));
@@ -62,6 +70,7 @@ Object.assign(state, {
   reviewing: null,          // Map key -> {rows, tabs}: the videos whose rows are still Reviewing in the labeling tabs
   skeletonStems: null,      // Set of stems that have skeleton files (shared/videos.json)
   onlyUnreviewed: true,
+  showFraming: readShowFraming(),   // the framing lane (F) — per browser, so a blind pass stays blind across videos
   loadToken: 0,
 });
 
@@ -521,6 +530,112 @@ function detectorHints(r) {
   return r._hints;
 }
 
+// ============================================================
+// the framing lane — where the picture cuts the boxer, read off the same
+// files: BlazePose keeps placing a joint whose body part has left the
+// picture, its image-normalized x or y just runs past [0, 1]. The mirror of
+// cornerman-backend's ml/research/skeleton_usability/framing.py — the same
+// 13 joints (nose, shoulders, elbows, wrists, hips, knees, ankles), the same
+// kinds and defaults; change them in both places or in neither.
+//   LEGS CUT      some joint below the bottom edge; one past a side AND below
+//                 (an extrapolated ankle in the corner) counts as below
+//   PARTLY OUT    some joint past the left or right edge (and not below), or
+//                 an upper-body joint (nose, shoulders, elbows, wrists) past
+//                 the top — legs above the top are an upside-down skeleton
+//   OUT OF FRAME  every upper-body joint outside the picture, or a run of
+//                 frames without a skeleton against a partly-out stretch: he
+//                 left (or came back) through the edge
+// Each kind's mask is smoothed on its own — in-round gaps shorter than
+// FRAMING_GAP_S between two stretches closed, then stretches shorter than
+// FRAMING_MIN_S dropped — and a frame takes the most severe kind that holds
+// it. Only frames inside the round are judged.
+// ============================================================
+const FRAMING_KINDS = ['legs_cut', 'partly_out', 'out_of_frame'];   // levels 1, 2, 3
+const FRAMING_JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+const FRAMING_UPPER = 7;                  // the first 7 of FRAMING_JOINTS can leave through the top, and say he is gone
+const FRAMING_MARGIN = 0.0;               // a joint is outside once it is this far past the border
+const FRAMING_MIN_S = 0.5;
+const FRAMING_GAP_S = 0.5;
+
+function readShowFraming() {
+  try { return localStorage.getItem('unusableShowFraming') !== '0'; } catch (e) { return true; }
+}
+function toggleFraming() {
+  state.showFraming = !state.showFraming;
+  try { localStorage.setItem('unusableShowFraming', state.showFraming ? '1' : '0'); } catch (e) { /* the toggle still works for this page */ }
+  showToast(state.showFraming ? 'Framing lane on' : 'Framing lane off — F brings it back');
+  renderTimelineOverlay();
+}
+
+function framingSmooth(mask, inr, minF, gapF) {
+  const N = mask.length, m = Uint8Array.from(mask);
+  for (let f = 0; f < N;) {                // close the in-round gaps shorter than gapF between two stretches
+    if (m[f] || !inr[f]) { f++; continue; }
+    let g = f;
+    while (g < N && !m[g] && inr[g]) g++;
+    if (g - f < gapF && f > 0 && g < N && m[f - 1] && m[g]) m.fill(1, f, g);
+    f = g;
+  }
+  for (let f = 0; f < N;) {                // then drop the stretches shorter than minF
+    if (!m[f]) { f++; continue; }
+    let g = f;
+    while (g < N && m[g]) g++;
+    if (g - f < minF) m.fill(0, f, g);
+    f = g;
+  }
+  return m;
+}
+
+function framingHints(r) {
+  if (r._framing) return r._framing;
+  const N = r.nFrames, J = r.nJoints, C = r.nChannels, pts = r.pts;
+  const stretches = [];
+  r._framing = stretches;
+  if (J <= Math.max(...FRAMING_JOINTS)) return stretches;
+  const at = (f, j, ch) => r.data[f * J * C + j * C + ch];
+  const judged = Number.isFinite(r.startSec) && Number.isFinite(r.endSec);
+  const M = FRAMING_MARGIN;
+  const inr = new Uint8Array(N), legs = new Uint8Array(N), side = new Uint8Array(N), gone = new Uint8Array(N), none = new Uint8Array(N);
+  for (let f = 0; f < N; f++) {
+    inr[f] = !judged || (pts[f] >= r.startSec && pts[f] <= r.endSec) ? 1 : 0;
+    if (!inr[f]) continue;
+    let det = true, below = false, out = false, upperOut = true;
+    for (let i = 0; i < FRAMING_JOINTS.length; i++) {
+      const x = at(f, FRAMING_JOINTS[i], r.xIdx), y = at(f, FRAMING_JOINTS[i], r.yIdx);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { det = false; break; }
+      if (y > 1 + M) below = true;
+      else if (x < -M || x > 1 + M) out = true;
+      if (i < FRAMING_UPPER && y < -M) out = true;
+      if (i < FRAMING_UPPER && !(y > 1 + M || y < -M || x < -M || x > 1 + M)) upperOut = false;
+    }
+    if (!det) { none[f] = 1; continue; }
+    legs[f] = below ? 1 : 0;
+    side[f] = out ? 1 : 0;
+    gone[f] = upperOut ? 1 : 0;
+  }
+  const fps = r.fps > 0 ? r.fps : 30;
+  const minF = Math.max(1, Math.round(FRAMING_MIN_S * fps)), gapF = Math.max(1, Math.round(FRAMING_GAP_S * fps));
+  const legsS = framingSmooth(legs, inr, minF, gapF), sideS = framingSmooth(side, inr, minF, gapF);
+  for (let f = 0; f < N;) {                // a gap against a partly-out stretch: he left through the edge
+    if (!none[f]) { f++; continue; }
+    let g = f;
+    while (g < N && none[g]) g++;
+    if ((f > 0 && sideS[f - 1]) || (g < N && sideS[g])) gone.fill(1, f, g);
+    f = g;
+  }
+  const goneS = framingSmooth(gone, inr, minF, gapF);
+  const level = new Uint8Array(N);
+  for (let f = 0; f < N; f++) if (inr[f]) level[f] = goneS[f] ? 3 : sideS[f] ? 2 : legsS[f] ? 1 : 0;
+  for (let f = 0; f < N;) {
+    if (!level[f]) { f++; continue; }
+    let g = f;
+    while (g < N && level[g] === level[f]) g++;
+    stretches.push({ kind: FRAMING_KINDS[level[f] - 1], s: pts[f], e: pts[g - 1], n: g - f, f0: f, f1: g - 1 });
+    f = g;
+  }
+  return stretches;
+}
+
 // skeleton.js calls this after a load and after a reset: the skeleton lane
 // and the hints follow the files, whichever of video and skeleton came last
 function onSkeletonRoundsChanged() { renderTimelineOverlay(); }
@@ -553,6 +668,22 @@ function hintChips(lane, rounds, duration, pct) {
       chip.style.left = l + '%';
       chip.title = `jump · ${j.step.toFixed(1)} torso in ${Math.round(j.dt * 1000)} ms · lands ${fmtSec(j.e)}`;
       if (!mini) chip.addEventListener('click', e => { e.stopPropagation(); seek(j.e); });
+      lane.appendChild(chip);
+    }
+  }
+}
+function framingChips(lane, rounds, duration) {
+  for (const r of rounds) {
+    const frame = r.fps > 0 ? 1 / r.fps : 0;
+    for (const s of framingHints(r)) {
+      const k = REASON_BY_ID[s.kind];
+      const l = timeToViewportPct(s.s, duration), w = Math.max(0.15, timeToViewportPct(s.e + frame, duration) - l);
+      if (l + w < 0 || l > 100) continue;
+      const chip = document.createElement('div');
+      chip.className = 'framing-chip';
+      chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%;--reason:${k.color}`;
+      chip.title = `${k.label} · ${fmtSec(s.s)} – ${fmtSec(s.e)} · ${(s.n / (r.fps > 0 ? r.fps : 30)).toFixed(1)} s`;
+      chip.addEventListener('click', e => { e.stopPropagation(); const v = videoEl(); if (v && v.duration) v.currentTime = s.s; });
       lane.appendChild(chip);
     }
   }
@@ -602,6 +733,18 @@ function renderTimelineOverlay() {
     lane.title = `Found in the skeleton files: ${nJ} jump${nJ === 1 ? '' : 's'} (yellow — the skeleton moves more than a torso within ¼ s) `
       + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — every frame without one). Hints to check on the footage, not labels; click one to go there.`;
     hintChips(lane, rounds, duration, timeToViewportPct);
+    lanes.insertBefore(lane, playhead);
+  }
+  // where the picture cuts the boxer — F hides it, for labeling blind
+  if (rounds.length && state.showFraming) {
+    const lane = document.createElement('div');
+    lane.className = 'seg-lane lane-framing'; lane.dataset.laneLabel = 'framing';
+    const secs = Object.fromEntries(FRAMING_KINDS.map(k => [k, 0]));
+    for (const r of rounds) for (const s of framingHints(r)) secs[s.kind] += s.n / (r.fps > 0 ? r.fps : 30);
+    lane.title = 'Where the picture cuts the boxer, read off the skeleton files: '
+      + FRAMING_KINDS.slice().reverse().map(k => `${REASON_BY_ID[k].label.toLowerCase()} ${Math.round(secs[k])} s`).join(', ')
+      + '. The rule\'s call, not a label; click one to go there. F hides this lane (label blind).';
+    framingChips(lane, rounds, duration);
     lanes.insertBefore(lane, playhead);
   }
   // one lane per labeler, yours first
@@ -671,6 +814,7 @@ function setupKeys() {
       case 'Escape': clearDraft(); return;
       case 'n': case 'N': e.preventDefault(); nextVideo(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
+      case 'f': case 'F': e.preventDefault(); toggleFraming(); return;
     }
     const reason = REASONS.find(r => r.key === e.key);
     if (reason) { e.preventDefault(); setDraftReason(reason.id); }

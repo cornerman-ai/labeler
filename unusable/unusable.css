@@ -99,6 +99,11 @@
 #minimap-segments .hint-chip { position: absolute; top: 0; height: 100%; opacity: .75; }
 #minimap-segments .hint-chip.missing { background: var(--hint-missing); min-width: 1px; }
 #minimap-segments .hint-chip.jump { width: 2px; margin-left: -1px; background: var(--hint-jump); }
+/* the framing lane (app.js framingHints): where the picture cuts the boxer, in
+   the colours of the matching reasons — out of frame, partly out, legs cut off */
+.seg-lane.lane-framing { height: 10px; background: var(--fill); }
+.seg-lane.lane-framing .framing-chip { position: absolute; top: 0; height: 100%; min-width: 2px; border-radius: 2px; background: var(--reason); pointer-events: auto; cursor: pointer; }
+.seg-lane.lane-framing .framing-chip:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
 .seg-lane .span-chip {
   position: absolute; top: 1px; height: 12px; border-radius: 3px;
   background: var(--reason); opacity: .9; cursor: pointer; pointer-events: auto; min-width: 2px;
@@ -115,3 +120,4 @@
 .sc-body .hint-key { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 2px 0 4px; }
 .sc-body .hint-key.missing { background: var(--hint-missing); }
 .sc-body .hint-key.jump { width: 3px; background: var(--hint-jump); }
+.sc-body .hint-key.framing { background: var(--reason); }
