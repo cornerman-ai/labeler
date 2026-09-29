@@ -15,12 +15,13 @@ from the landing page, or directly at `unusable/index.html`.
    Reviewing only", on by default — what you see is what is left; ↻ re-reads
    the sheet). With the video and skeleton folders connected, the file and its
    skeleton files open by themselves, exactly as in the punch labeler.
-2. **Go through the moments to check** (the To check card; `J` the next,
-   `Shift` `J` the one before), with the skeleton on (`K`). A moment is a jump
-   (the skeleton moves more than a torso within a quarter second) or a stretch
-   without a skeleton, a second either side — computed in the browser from the
-   skeleton files. Playing skips from one moment to the next; a moment is ticked
-   once you move past it (per video, in this browser). Where the skeleton leaps
+2. **Watch the whole video with the skeleton on** (`K`); the **moments to
+   check** show where to look hardest — yellow on the timeline and the minimap,
+   listed in the To check card (`J` the next, `Shift` `J` the one before, or
+   click one). A moment is a jump (the skeleton moves more than a torso within a
+   quarter second) or a stretch without a skeleton, a second either side —
+   computed in the browser from the skeleton files. A moment is ticked once you
+   move past it (per video, in this browser). Where the skeleton leaps
    onto someone or something else: mark the jump (`3`, the frame or frames of
    the leap), and the stretch it stays there — `Enter` at the start, `Enter` at
    the end (or `S` / `E`), then `1` other person or `2` other thing (a painting,

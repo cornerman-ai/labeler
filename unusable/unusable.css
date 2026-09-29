@@ -101,12 +101,12 @@
 #minimap-segments .hint-chip.jump { width: 2px; margin-left: -1px; background: var(--hint-jump); }
 /* the moments to check (app.js checkMoments): the lane (both modes), the
    minimap in labeling mode, and the To check card's list */
-.seg-lane.lane-check { height: 10px; background: var(--fill); }
+.seg-lane.lane-check { height: 14px; background: var(--fill); }
 .seg-lane.lane-check .check-chip { position: absolute; top: 0; height: 100%; min-width: 3px; border-radius: 2px; background: var(--hint-jump); pointer-events: auto; cursor: pointer; }
 .seg-lane.lane-check .check-chip.checked { background: var(--line); }
 .seg-lane.lane-check .check-chip:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
-#minimap-segments .check-chip { position: absolute; top: 0; height: 100%; min-width: 1px; background: var(--hint-jump); opacity: .75; }
-#minimap-segments .check-chip.checked { background: var(--line); }
+#minimap-segments .check-chip { position: absolute; top: 0; height: 100%; min-width: 2px; background: var(--hint-jump); }
+#minimap-segments .check-chip.checked { background: var(--line); opacity: .6; }
 .check-filter { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 2px 0 8px; cursor: pointer; }
 #check-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .check-row { display: grid; grid-template-columns: 16px 72px 1fr; gap: 6px; align-items: center; text-align: left;

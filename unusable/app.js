@@ -61,7 +61,7 @@ Object.assign(state, {
   skeletonStems: null,      // Set of stems that have skeleton files (shared/videos.json)
   onlyUnreviewed: true,
   showFraming: readFlag('unusableShowFraming', true),   // the framing lane (F) — per browser
-  review: readFlag('unusableReview', false),   // review mode: every lane, every labeler's spans, no skipping; labeling mode (default): only what to check
+  review: readFlag('unusableReview', false),   // review mode: every lane, every labeler's spans; labeling mode (default): the moments to check + your spans
   inMoment: null,           // the index of the moment the playhead is in
   loadToken: 0,
 });
@@ -644,10 +644,11 @@ function framingHints(r) {
 // sample (Heavy Bag Session 2, Admin's 19 other-thing spans, 2026-09-29):
 // every span starts and ends inside a moment; jumps alone would miss 5 of the
 // 19 starts. Over the shelf: ~1.7 moments per minute of round, 8.8 % of the
-// footage. In labeling mode the timeline shows only these and your own spans,
-// and playback skips from one moment to the next; review mode shows every
-// lane and every labeler's spans. A moment the playhead leaves forward is
-// checked (per video, in this browser).
+// footage. They are markers to find and go to, not a filter: the whole video
+// plays (Mathe, 2026-09-29 — the team checks all of it). In labeling mode the
+// timeline shows only these and your own spans; review mode shows every lane
+// and every labeler's spans. A moment the playhead leaves forward is checked
+// (per video, in this browser).
 // ============================================================
 const MOMENT_GAP_S = 1.0;
 const MOMENT_PAD_S = 1.0;
@@ -731,8 +732,7 @@ function seekTo(t) {
 }
 
 // every time update: which moment the playhead is in; the one it left forward
-// (into a later moment, or past its end) is checked; and in labeling mode,
-// playing past a moment goes on at the next
+// (into a later moment, or past its end) is checked
 function followMoments(t) {
   const list = checkMoments();
   if (!list.length) return;
@@ -741,12 +741,6 @@ function followMoments(t) {
   if (prev !== (i >= 0 ? i : null)) {
     state.inMoment = i >= 0 ? i : null;
     document.querySelectorAll('#check-list .check-row').forEach(row => row.classList.toggle('current', Number(row.dataset.i) === i));
-  }
-  const v = videoEl();
-  if (!state.review && !v.paused && i < 0) {
-    const next = list.find(m => m.from > t);
-    if (next) seekTo(next.from);
-    else { v.pause(); showToast('No more moments to check on this video — N for the next one', 'info'); }
   }
 }
 
