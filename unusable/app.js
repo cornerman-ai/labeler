@@ -31,27 +31,26 @@
 // Times are source-video seconds, the same clock as the punch labels.
 // ============================================================
 
-// out_of_frame / partly_out / legs_cut are also the framing lane's three kinds
-// (framingHints), in the same colours, so the team's spans and the rule's can
-// be scored against each other.
+// Only what the skeleton cannot say about itself is labeled here. Where the
+// picture cuts the boxer is geometry — the framing lane computes it
+// (framingHints) and nobody labels it (Mathe, 2026-09-29); out_of_frame is the
+// judgment on top of it: he is so far out that the skeleton cannot be trusted.
 const REASONS = [
   { id: 'out_of_frame', label: 'Out of frame', key: '1', color: '#e85a5a',
-    desc: 'The boxer is out of the picture or hidden — behind the bag, someone in front' },
-  { id: 'partly_out',   label: 'Partly out',   key: '2', color: '#ff8fb1',
-    desc: 'Part of the boxer is past the left, right or top edge of the picture' },
-  { id: 'legs_cut',     label: 'Legs cut off', key: '3', color: '#c9a36b',
-    desc: 'The bottom of the picture cuts the boxer — his feet, legs or hips are below it' },
-  { id: 'other_person', label: 'Other person', key: '4', color: '#b48cff',
+    desc: 'The boxer is out of the picture, or so far out that the skeleton cannot be trusted' },
+  { id: 'hidden',       label: 'Hidden',       key: '2', color: '#8d6e63',
+    desc: 'The boxer is in the picture but hidden — behind the bag, someone in front' },
+  { id: 'other_person', label: 'Other person', key: '3', color: '#b48cff',
     desc: 'The skeleton sits on someone who is not the boxer' },
-  { id: 'other_thing',  label: 'Other thing',  key: '5', color: '#4cc9b0',
+  { id: 'other_thing',  label: 'Other thing',  key: '4', color: '#4cc9b0',
     desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
-  { id: 'jump_back',    label: 'Jump back',    key: '6', color: '#ffcc4d',
+  { id: 'jump_back',    label: 'Jump back',    key: '5', color: '#ffcc4d',
     desc: 'The tracker jumps back to the boxer — the frame in between has no skeleton (the yellow tick)' },
-  { id: 'frozen',       label: 'Frozen',       key: '7', color: '#8ab4f8',
+  { id: 'frozen',       label: 'Frozen',       key: '6', color: '#8ab4f8',
     desc: 'The skeleton does not move — a paused frame, a stuck tracker' },
-  { id: 'camera',       label: 'Camera',       key: '8', color: '#f5a23c',
+  { id: 'camera',       label: 'Camera',       key: '7', color: '#f5a23c',
     desc: 'The camera moves, cuts or zooms' },
-  { id: 'other',        label: 'Other',        key: '9', color: '#9aa0a6',
+  { id: 'other',        label: 'Other',        key: '8', color: '#9aa0a6',
     desc: 'Anything else that makes this stretch of skeleton wrong' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));
@@ -551,6 +550,11 @@ function detectorHints(r) {
 // it. Only frames inside the round are judged.
 // ============================================================
 const FRAMING_KINDS = ['legs_cut', 'partly_out', 'out_of_frame'];   // levels 1, 2, 3
+const FRAMING_STYLE = {                   // the lane's own legend; red is the Out of frame reason's
+  out_of_frame: { label: 'Out of frame', color: '#e85a5a' },
+  partly_out:   { label: 'Partly out',   color: '#ff8fb1' },
+  legs_cut:     { label: 'Legs cut off', color: '#c9a36b' },
+};
 const FRAMING_JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
 const FRAMING_UPPER = 7;                  // the first 7 of FRAMING_JOINTS can leave through the top, and say he is gone
 const FRAMING_MARGIN = 0.0;               // a joint is outside once it is this far past the border
@@ -676,7 +680,7 @@ function framingChips(lane, rounds, duration) {
   for (const r of rounds) {
     const frame = r.fps > 0 ? 1 / r.fps : 0;
     for (const s of framingHints(r)) {
-      const k = REASON_BY_ID[s.kind];
+      const k = FRAMING_STYLE[s.kind];
       const l = timeToViewportPct(s.s, duration), w = Math.max(0.15, timeToViewportPct(s.e + frame, duration) - l);
       if (l + w < 0 || l > 100) continue;
       const chip = document.createElement('div');
@@ -742,7 +746,7 @@ function renderTimelineOverlay() {
     const secs = Object.fromEntries(FRAMING_KINDS.map(k => [k, 0]));
     for (const r of rounds) for (const s of framingHints(r)) secs[s.kind] += s.n / (r.fps > 0 ? r.fps : 30);
     lane.title = 'Where the picture cuts the boxer, read off the skeleton files: '
-      + FRAMING_KINDS.slice().reverse().map(k => `${REASON_BY_ID[k].label.toLowerCase()} ${Math.round(secs[k])} s`).join(', ')
+      + FRAMING_KINDS.slice().reverse().map(k => `${FRAMING_STYLE[k].label.toLowerCase()} ${Math.round(secs[k])} s`).join(', ')
       + '. The rule\'s call, not a label; click one to go there. F hides this lane (label blind).';
     framingChips(lane, rounds, duration);
     lanes.insertBefore(lane, playhead);

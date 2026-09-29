@@ -24,16 +24,16 @@ landing page, or directly at `unusable/index.html`.
    check on the footage, not labels: click one to go there, then judge.
    Under it the **framing** lane: where the picture cuts the boxer, read off
    the skeleton's joint positions — red out of frame, pink partly out (past
-   the left, right or top edge), tan legs cut off (below the bottom edge), the
-   colours of the reasons with the same names. `F` hides it (remembered in
-   this browser) — hide it to label framing without seeing the rule's call.
+   the left, right or top edge), tan legs cut off (below the bottom edge).
+   Geometry, computed for every video — nobody labels it. `F` hides it
+   (remembered in this browser), to judge without seeing the rule's call.
 2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
    the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
    `S` / `E`; twice on the same frame for a one-frame problem), then the
-   reason — `1` out of frame, `2` partly out, `3` legs cut off, `4` other
-   person, `5` other thing (a painting, a statue, the bag), `6` jump back (the
-   frame where the tracker jumps back to the boxer — nearly always a frame with
-   no skeleton, the yellow tick), `7` frozen, `8` camera, `9` other.
+   reason — `1` out of frame, `2` hidden, `3` other person, `4` other thing
+   (a painting, a statue, the bag), `5` jump back (the frame where the tracker
+   jumps back to the boxer — nearly always a frame with no skeleton, the yellow
+   tick), `6` frozen, `7` camera, `8` other.
    The span saves itself; `Esc` clears a half-made one. When the reason
    changes mid-stretch — the boxer walks out, then the tracker lands on
    someone else — make two spans back to back, one per reason: the end of
@@ -51,18 +51,19 @@ landing page, or directly at `unusable/index.html`.
 ## What is unusable
 
 A stretch is unusable when the skeleton on screen is not the boxer doing the
-round: the boxer out of the picture or hidden behind the bag, the skeleton
+round: the boxer out of the picture (or so far out that the skeleton is
+guessing), hidden in the picture behind the bag or someone, the skeleton
 sitting on someone or something else, a skeleton that does not move, the camera
 cutting or moving. A skeleton that is the boxer's but jittery is usable.
 
-`Partly out` and `Legs cut off` (2026-09-29) are framing, not a wrong skeleton:
-they are there for the framing test — on its 10 videos the team marks every
-stretch of all three framing reasons with the framing lane hidden (`F`), and
-cornerman-backend compares them per frame with the rule. The rule's
-definitions, to label against: out of frame = the boxer's upper body is gone
-from the picture; partly out = part of him is past the left, right or top edge;
-legs cut off = the bottom edge cuts him — feet, legs or hips; when two apply,
-the first of the three.
+Only what the skeleton cannot say about itself is labeled (Mathe, 2026-09-29).
+Where the picture cuts the boxer — legs cut off, partly out — is geometry: the
+framing lane computes it for every video, and nobody marks it. A cut-off pair
+of legs is not unusable. What the lane cannot know is when partly out becomes
+unusable; that judgment is `Out of frame`. `Hidden` is its own reason because
+the framing rule can never see it (he is inside the picture). On the 10 test
+videos the team marks the unusable stretches with the lane hidden (`F`), and
+cornerman-backend compares them with the rule's kinds.
 
 ## Where it goes
 
@@ -71,7 +72,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, partly_out, legs_cut, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, hidden, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | retirement (`whole_video_unusable`) — the review mark itself is the sheet's `yes` |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
