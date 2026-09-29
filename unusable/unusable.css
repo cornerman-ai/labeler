@@ -99,6 +99,23 @@
 #minimap-segments .hint-chip { position: absolute; top: 0; height: 100%; opacity: .75; }
 #minimap-segments .hint-chip.missing { background: var(--hint-missing); min-width: 1px; }
 #minimap-segments .hint-chip.jump { width: 2px; margin-left: -1px; background: var(--hint-jump); }
+/* the moments to check (app.js checkMoments): the lane (both modes), the
+   minimap in labeling mode, and the To check card's list */
+.seg-lane.lane-check { height: 10px; background: var(--fill); }
+.seg-lane.lane-check .check-chip { position: absolute; top: 0; height: 100%; min-width: 3px; border-radius: 2px; background: var(--hint-jump); pointer-events: auto; cursor: pointer; }
+.seg-lane.lane-check .check-chip.checked { background: var(--line); }
+.seg-lane.lane-check .check-chip:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+#minimap-segments .check-chip { position: absolute; top: 0; height: 100%; min-width: 1px; background: var(--hint-jump); opacity: .75; }
+#minimap-segments .check-chip.checked { background: var(--line); }
+.check-filter { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 2px 0 8px; cursor: pointer; }
+#check-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.check-row { display: grid; grid-template-columns: 16px 72px 1fr; gap: 6px; align-items: center; text-align: left;
+  border: 1px solid transparent; border-radius: 6px; background: none; color: var(--ink); padding: 3px 6px; font: inherit; font-size: 12px; cursor: pointer; }
+.check-row:hover { background: var(--fill); }
+.check-row.current { border-color: var(--accent); }
+.check-row.checked { color: var(--ink-dim); }
+.check-row .check-time { font: 12px ui-monospace, Menlo, monospace; }
+.check-row .check-mark { color: var(--accent); }
 /* the framing lane (app.js framingHints): where the picture cuts the boxer, in
    its own colours (FRAMING_STYLE) — red out of frame, pink partly out, tan legs cut off */
 .seg-lane.lane-framing { height: 10px; background: var(--fill); }

@@ -31,27 +31,18 @@
 // Times are source-video seconds, the same clock as the punch labels.
 // ============================================================
 
-// Only what the skeleton cannot say about itself is labeled here. Where the
-// picture cuts the boxer is geometry — the framing lane computes it
-// (framingHints) and nobody labels it (Mathe, 2026-09-29); out_of_frame is the
-// judgment on top of it: he is so far out that the skeleton cannot be trusted.
+// The team labels one thing (Mathe, 2026-09-29): the tracker on the wrong
+// target — the stretch it sits there, and the jumps onto it and back. Where
+// the picture cuts the boxer is computed (framingHints) and goes to training
+// as a mask; the frozen skeleton has its rule; hidden and camera are not
+// labeled.
 const REASONS = [
-  { id: 'out_of_frame', label: 'Out of frame', key: '1', color: '#e85a5a',
-    desc: 'The boxer is out of the picture, or so far out that the skeleton cannot be trusted' },
-  { id: 'hidden',       label: 'Hidden',       key: '2', color: '#8d6e63',
-    desc: 'The boxer is in the picture but hidden — behind the bag, someone in front' },
-  { id: 'other_person', label: 'Other person', key: '3', color: '#b48cff',
-    desc: 'The skeleton sits on someone who is not the boxer' },
-  { id: 'other_thing',  label: 'Other thing',  key: '4', color: '#4cc9b0',
+  { id: 'other_person', label: 'Other person', key: '1', color: '#b48cff',
+    desc: 'The skeleton sits on someone who is not the boxer — from the jump onto them to the jump back' },
+  { id: 'other_thing',  label: 'Other thing',  key: '2', color: '#4cc9b0',
     desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
-  { id: 'jump_back',    label: 'Jump back',    key: '5', color: '#ffcc4d',
-    desc: 'The tracker jumps back to the boxer — the frame in between has no skeleton (the yellow tick)' },
-  { id: 'frozen',       label: 'Frozen',       key: '6', color: '#8ab4f8',
-    desc: 'The skeleton does not move — a paused frame, a stuck tracker' },
-  { id: 'camera',       label: 'Camera',       key: '7', color: '#f5a23c',
-    desc: 'The camera moves, cuts or zooms' },
-  { id: 'other',        label: 'Other',        key: '8', color: '#9aa0a6',
-    desc: 'Anything else that makes this stretch of skeleton wrong' },
+  { id: 'jump',         label: 'Jump',         key: '3', color: '#ffcc4d',
+    desc: 'The skeleton leaps onto someone or something else, or back to the boxer — mark the frame(s) of the leap (usually a yellow tick)' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));
 const VERDICT_TEXT = { reviewed: 'reviewed', whole_video_unusable: 'whole video unusable' };
@@ -69,7 +60,9 @@ Object.assign(state, {
   reviewing: null,          // Map key -> {rows, tabs}: the videos whose rows are still Reviewing in the labeling tabs
   skeletonStems: null,      // Set of stems that have skeleton files (shared/videos.json)
   onlyUnreviewed: true,
-  showFraming: readShowFraming(),   // the framing lane (F) — per browser, so a blind pass stays blind across videos
+  showFraming: readFlag('unusableShowFraming', true),   // the framing lane (F) — per browser
+  review: readFlag('unusableReview', false),   // review mode: every lane, every labeler's spans, no skipping; labeling mode (default): only what to check
+  inMoment: null,           // the index of the moment the playhead is in
   loadToken: 0,
 });
 
@@ -259,7 +252,7 @@ function setupDriveLink() {
 async function loadSpans() {
   const token = ++state.loadToken;
   state.spans = []; state.reviewed = [];
-  renderSpanList(); renderReview(); renderTimelineOverlay();
+  renderSpanList(); renderReview(); renderCheckList(); renderTimelineOverlay();
   if (!state.videoLink) return;
   setSync('loading…'); linkStatus('syncing');
   try {
@@ -371,9 +364,9 @@ function renderSpanList() {
   const el = document.getElementById('span-list');
   const count = document.getElementById('span-count');
   if (!state.videoLink) { el.innerHTML = '<div class="muted">No video loaded.</div>'; count.textContent = ''; return; }
-  const rows = [...state.spans].sort((a, b) => a.start_sec - b.start_sec);
+  const rows = shownSpans();
   count.textContent = rows.length ? `(${rows.length})` : '';
-  if (!rows.length) { el.innerHTML = '<div class="muted">None yet — this video may be clean.</div>'; return; }
+  if (!rows.length) { el.innerHTML = `<div class="muted">${state.review ? 'None yet — this video may be clean.' : 'None of yours yet.'}</div>`; return; }
   const t = videoEl() ? videoEl().currentTime : -1;
   el.innerHTML = rows.map((s, i) => {
     const r = REASON_BY_ID[s.reason] || { label: s.reason, color: '#9aa0a6' };
@@ -561,12 +554,16 @@ const FRAMING_MARGIN = 0.0;               // a joint is outside once it is this 
 const FRAMING_MIN_S = 0.5;
 const FRAMING_GAP_S = 0.5;
 
-function readShowFraming() {
-  try { return localStorage.getItem('unusableShowFraming') !== '0'; } catch (e) { return true; }
+function readFlag(key, dflt) {
+  try { const v = localStorage.getItem(key); return v == null ? dflt : v === '1'; } catch (e) { return dflt; }
+}
+function writeFlag(key, on) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) { /* the toggle still works for this page */ }
 }
 function toggleFraming() {
+  if (!state.review) { showToast('The framing lane is part of review mode', 'info'); return; }
   state.showFraming = !state.showFraming;
-  try { localStorage.setItem('unusableShowFraming', state.showFraming ? '1' : '0'); } catch (e) { /* the toggle still works for this page */ }
+  writeFlag('unusableShowFraming', state.showFraming);
   showToast(state.showFraming ? 'Framing lane on' : 'Framing lane off — F brings it back');
   renderTimelineOverlay();
 }
@@ -640,9 +637,151 @@ function framingHints(r) {
   return stretches;
 }
 
+// ============================================================
+// what to check — the detected lane's hints grouped into moments: every jump
+// and every run of frames without a skeleton, hints less than MOMENT_GAP_S
+// apart merged, each shown with MOMENT_PAD_S either side. The one labeled
+// sample (Heavy Bag Session 2, Admin's 19 other-thing spans, 2026-09-29):
+// every span starts and ends inside a moment; jumps alone would miss 5 of the
+// 19 starts. Over the shelf: ~1.7 moments per minute of round, 8.8 % of the
+// footage. In labeling mode the timeline shows only these and your own spans,
+// and playback skips from one moment to the next; review mode shows every
+// lane and every labeler's spans. A moment the playhead leaves forward is
+// checked (per video, in this browser).
+// ============================================================
+const MOMENT_GAP_S = 1.0;
+const MOMENT_PAD_S = 1.0;
+const MOMENT_TOL_S = 0.1;                 // a seek lands up to a frame early
+
+function checkMoments() {
+  const rounds = (state.skeleton && state.skeleton.rounds) || [];
+  if (state._moments && state._moments.rounds === rounds) return state._moments.list;
+  const hints = [];
+  for (const r of rounds) {
+    const h = detectorHints(r), frame = r.fps > 0 ? 1 / r.fps : 0;
+    for (const m of h.missing) hints.push({ s: m.s, e: m.e + frame, jump: 0 });
+    for (const j of h.jumps) hints.push({ s: j.s, e: j.e, jump: 1 });
+  }
+  hints.sort((a, b) => a.s - b.s);
+  const list = [];
+  for (const h of hints) {
+    const last = list[list.length - 1];
+    if (last && h.s - last.e <= MOMENT_GAP_S) { last.e = Math.max(last.e, h.e); last.jumps += h.jump; last.misses += 1 - h.jump; }
+    else list.push({ s: h.s, e: h.e, jumps: h.jump, misses: 1 - h.jump });
+  }
+  for (const m of list) { m.from = Math.max(0, m.s - MOMENT_PAD_S); m.to = m.e + MOMENT_PAD_S; m.key = m.s.toFixed(2); }
+  state._moments = { rounds, list };
+  state.inMoment = null;
+  return list;
+}
+// padded windows can overlap: the playhead is in the latest one to start
+function momentAt(list, t) {
+  for (let k = list.length - 1; k >= 0; k--) if (t >= list[k].from - MOMENT_TOL_S && t <= list[k].to) return k;
+  return -1;
+}
+
+function checkedKey() { return 'unusableChecked:' + (state.videoLink || state.videoName || ''); }
+function checkedSet() {
+  const key = checkedKey();
+  if (!state._checked || state._checked.key !== key) {
+    let keys = [];
+    try { keys = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { /* none stored */ }
+    state._checked = { key, set: new Set(keys) };
+  }
+  return state._checked.set;
+}
+function markChecked(m) {
+  const set = checkedSet();
+  if (set.has(m.key)) return;
+  set.add(m.key);
+  try { localStorage.setItem(checkedKey(), JSON.stringify([...set])); } catch (e) { /* kept for this page */ }
+  renderCheckList(); renderTimelineOverlay();
+}
+
+function setReview(on) {
+  state.review = on;
+  writeFlag('unusableReview', on);
+  const box = document.getElementById('review-mode');
+  if (box) box.checked = on;
+  renderSpanList(); renderTimelineOverlay();
+}
+// labeling mode lists and draws only your own spans (nobody copies anybody); review mode every labeler's
+function shownSpans() { return state.spans.filter(s => state.review || ownSpan(s)).sort((a, b) => a.start_sec - b.start_sec); }
+
+// J / Shift+J: the next / the previous moment, from its first padded second
+function gotoMoment(dir) {
+  const list = checkMoments(), v = videoEl();
+  if (!v || !v.duration) return;
+  if (!list.length) { showToast('Nothing to check: no jumps and no missing frames in the loaded skeleton', 'info'); return; }
+  const t = v.currentTime, cur = momentAt(list, t);
+  const target = dir > 0
+    ? list.find(m => m.from > t + MOMENT_TOL_S)
+    : [...list].reverse().find(m => m.from < (cur >= 0 ? list[cur].from : t) - MOMENT_TOL_S);
+  if (!target) { showToast(dir > 0 ? 'That was the last moment — N for the next video' : 'This is the first moment', 'info'); return; }
+  if (dir > 0 && cur >= 0) markChecked(list[cur]);
+  seekTo(target.from);
+}
+function seekTo(t) {
+  const v = videoEl();
+  v.currentTime = t;
+  if (state.zoomLevel > 1) {
+    const vp = getViewport(), norm = t / v.duration;
+    if (norm < vp.start || norm > vp.end) { state.zoomCenter = norm; clampZoomCenter(); onZoomChanged(); }
+  }
+}
+
+// every time update: which moment the playhead is in; the one it left forward
+// (into a later moment, or past its end) is checked; and in labeling mode,
+// playing past a moment goes on at the next
+function followMoments(t) {
+  const list = checkMoments();
+  if (!list.length) return;
+  const i = momentAt(list, t), prev = state.inMoment;
+  if (prev != null && list[prev] && (i > prev || (i < 0 && t > list[prev].to))) markChecked(list[prev]);
+  if (prev !== (i >= 0 ? i : null)) {
+    state.inMoment = i >= 0 ? i : null;
+    document.querySelectorAll('#check-list .check-row').forEach(row => row.classList.toggle('current', Number(row.dataset.i) === i));
+  }
+  const v = videoEl();
+  if (!state.review && !v.paused && i < 0) {
+    const next = list.find(m => m.from > t);
+    if (next) seekTo(next.from);
+    else { v.pause(); showToast('No more moments to check on this video — N for the next one', 'info'); }
+  }
+}
+
+function renderCheckList() {
+  const el = document.getElementById('check-list'), count = document.getElementById('check-count');
+  if (!el) return;
+  const rounds = (state.skeleton && state.skeleton.rounds) || [];
+  if (!rounds.length) { el.innerHTML = '<div class="muted">No skeleton loaded.</div>'; if (count) count.textContent = ''; return; }
+  const list = checkMoments(), set = checkedSet();
+  if (count) count.textContent = `(${list.filter(m => set.has(m.key)).length} of ${list.length} checked)`;
+  if (!list.length) { el.innerHTML = '<div class="muted">Nothing to check: no jumps and no missing frames.</div>'; return; }
+  el.innerHTML = list.map((m, i) => {
+    const what = [m.jumps ? `${m.jumps} jump${m.jumps === 1 ? '' : 's'}` : '', m.misses ? `no skeleton${m.misses > 1 ? ' ×' + m.misses : ''}` : ''].filter(Boolean).join(' · ');
+    return `<button type="button" class="check-row${set.has(m.key) ? ' checked' : ''}${i === state.inMoment ? ' current' : ''}" data-i="${i}">` +
+      `<span class="check-mark">${set.has(m.key) ? '✓' : ''}</span><span class="check-time">${fmtSec(m.s)}</span><span class="check-what">${what}</span></button>`;
+  }).join('');
+  el.querySelectorAll('.check-row').forEach(row => row.addEventListener('click', () => { const m = list[Number(row.dataset.i)]; if (m) seekTo(m.from); }));
+}
+function checkChips(lane, duration, pct = timeToViewportPct) {
+  const set = checkedSet(), mini = lane.id === 'minimap-segments';
+  for (const m of checkMoments()) {
+    const l = pct(m.from, duration), w = Math.max(0.15, pct(m.to, duration) - l);
+    if (l + w < 0 || l > 100) continue;
+    const chip = document.createElement('div');
+    chip.className = 'check-chip' + (set.has(m.key) ? ' checked' : '');
+    chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
+    chip.title = `to check · ${fmtSec(m.s)} · ${m.jumps} jump${m.jumps === 1 ? '' : 's'}, ${m.misses} without a skeleton${set.has(m.key) ? ' · checked' : ''}`;
+    if (!mini) chip.addEventListener('click', e => { e.stopPropagation(); seekTo(m.from); });
+    lane.appendChild(chip);
+  }
+}
+
 // skeleton.js calls this after a load and after a reset: the skeleton lane
 // and the hints follow the files, whichever of video and skeleton came last
-function onSkeletonRoundsChanged() { renderTimelineOverlay(); }
+function onSkeletonRoundsChanged() { renderCheckList(); renderTimelineOverlay(); }
 
 // ============================================================
 // the timeline — player.js calls renderTimelineOverlay() on zoom / metadata
@@ -714,46 +853,56 @@ function renderTimelineOverlay() {
   const mini = document.getElementById('minimap-segments');
   if (mini) mini.innerHTML = '';
   if (!duration) return;
-  // where a skeleton exists at all — the extraction's rounds
-  const skel = document.createElement('div');
-  skel.className = 'seg-lane lane-skeleton'; skel.dataset.laneLabel = 'skeleton';
-  for (const r of (state.skeleton && state.skeleton.rounds) || []) {
-    if (!r.pts || !r.pts.length) continue;
-    const l = timeToViewportPct(r.pts[0], duration), w = timeToViewportPct(r.pts[r.pts.length - 1], duration) - l;
-    if (l + w < 0 || l > 100) continue;
-    const band = document.createElement('div');
-    band.className = 'skel-band'; band.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
-    band.title = `skeleton round ${r.round}`;
-    skel.appendChild(band);
-  }
-  lanes.insertBefore(skel, playhead);
-  // what the detectors found in those files: no skeleton, jumps
   const rounds = (state.skeleton && state.skeleton.rounds) || [];
+  if (state.review) {             // review mode: the skeleton, detected and framing lanes
+    // where a skeleton exists at all — the extraction's rounds
+    const skel = document.createElement('div');
+    skel.className = 'seg-lane lane-skeleton'; skel.dataset.laneLabel = 'skeleton';
+    for (const r of (state.skeleton && state.skeleton.rounds) || []) {
+      if (!r.pts || !r.pts.length) continue;
+      const l = timeToViewportPct(r.pts[0], duration), w = timeToViewportPct(r.pts[r.pts.length - 1], duration) - l;
+      if (l + w < 0 || l > 100) continue;
+      const band = document.createElement('div');
+      band.className = 'skel-band'; band.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%`;
+      band.title = `skeleton round ${r.round}`;
+      skel.appendChild(band);
+    }
+    lanes.insertBefore(skel, playhead);
+    // what the detectors found in those files: no skeleton, jumps
+    if (rounds.length) {
+      const lane = document.createElement('div');
+      lane.className = 'seg-lane lane-hints'; lane.dataset.laneLabel = 'detected';
+      const nJ = rounds.reduce((a, r) => a + detectorHints(r).jumps.length, 0);
+      const nM = rounds.reduce((a, r) => a + detectorHints(r).missing.length, 0);
+      lane.title = `Found in the skeleton files: ${nJ} jump${nJ === 1 ? '' : 's'} (yellow — the skeleton moves more than a torso within ¼ s) `
+        + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — every frame without one). Hints to check on the footage, not labels; click one to go there.`;
+      hintChips(lane, rounds, duration, timeToViewportPct);
+      lanes.insertBefore(lane, playhead);
+    }
+    // where the picture cuts the boxer (F)
+    if (rounds.length && state.showFraming) {
+      const lane = document.createElement('div');
+      lane.className = 'seg-lane lane-framing'; lane.dataset.laneLabel = 'framing';
+      const secs = Object.fromEntries(FRAMING_KINDS.map(k => [k, 0]));
+      for (const r of rounds) for (const s of framingHints(r)) secs[s.kind] += s.n / (r.fps > 0 ? r.fps : 30);
+      lane.title = 'Where the picture cuts the boxer, read off the skeleton files: '
+        + FRAMING_KINDS.slice().reverse().map(k => `${FRAMING_STYLE[k].label.toLowerCase()} ${Math.round(secs[k])} s`).join(', ')
+        + '. Computed, not labeled; click one to go there. F hides this lane.';
+      framingChips(lane, rounds, duration);
+      lanes.insertBefore(lane, playhead);
+    }
+  }
+  // the moments to check — in both modes, the only detector lane in labeling mode
   if (rounds.length) {
     const lane = document.createElement('div');
-    lane.className = 'seg-lane lane-hints'; lane.dataset.laneLabel = 'detected';
-    const nJ = rounds.reduce((a, r) => a + detectorHints(r).jumps.length, 0);
-    const nM = rounds.reduce((a, r) => a + detectorHints(r).missing.length, 0);
-    lane.title = `Found in the skeleton files: ${nJ} jump${nJ === 1 ? '' : 's'} (yellow — the skeleton moves more than a torso within ¼ s) `
-      + `and ${nM} stretch${nM === 1 ? '' : 'es'} without a skeleton (red — every frame without one). Hints to check on the footage, not labels; click one to go there.`;
-    hintChips(lane, rounds, duration, timeToViewportPct);
+    lane.className = 'seg-lane lane-check'; lane.dataset.laneLabel = 'to check';
+    lane.title = 'The moments to check: every jump and every stretch without a skeleton, a second either side. Grey once checked. J goes to the next.';
+    checkChips(lane, duration);
     lanes.insertBefore(lane, playhead);
   }
-  // where the picture cuts the boxer — F hides it, for labeling blind
-  if (rounds.length && state.showFraming) {
-    const lane = document.createElement('div');
-    lane.className = 'seg-lane lane-framing'; lane.dataset.laneLabel = 'framing';
-    const secs = Object.fromEntries(FRAMING_KINDS.map(k => [k, 0]));
-    for (const r of rounds) for (const s of framingHints(r)) secs[s.kind] += s.n / (r.fps > 0 ? r.fps : 30);
-    lane.title = 'Where the picture cuts the boxer, read off the skeleton files: '
-      + FRAMING_KINDS.slice().reverse().map(k => `${FRAMING_STYLE[k].label.toLowerCase()} ${Math.round(secs[k])} s`).join(', ')
-      + '. The rule\'s call, not a label; click one to go there. F hides this lane (label blind).';
-    framingChips(lane, rounds, duration);
-    lanes.insertBefore(lane, playhead);
-  }
-  // one lane per labeler, yours first
+  // one lane per labeler, yours first — in labeling mode only yours
   const byLabeler = new Map();
-  for (const s of state.spans) { const k = s.labeler || ''; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }   // '' groups with an unnamed you
+  for (const s of shownSpans()) { const k = s.labeler || ''; if (!byLabeler.has(k)) byLabeler.set(k, []); byLabeler.get(k).push(s); }   // '' groups with an unnamed you
   const mine = me();
   if (!byLabeler.has(mine)) byLabeler.set(mine, []);   // your lane exists even without a name
   const order = [...byLabeler.keys()].sort((a, b) => (a === mine ? -1 : b === mine ? 1 : a.localeCompare(b)));
@@ -771,7 +920,11 @@ function renderTimelineOverlay() {
     }
     lanes.insertBefore(lane, playhead);
   }
-  if (mini) { hintChips(mini, rounds, duration, (t, d) => 100 * t / d); laneChips(mini, state.spans.filter(ownSpan), duration); }
+  if (mini) {
+    if (state.review) hintChips(mini, rounds, duration, (t, d) => 100 * t / d);
+    else checkChips(mini, duration, (t, d) => 100 * t / d);
+    laneChips(mini, state.spans.filter(ownSpan), duration);
+  }
   if (typeof renderTimeTicks === 'function') renderTimeTicks();
   updateVideoOverlay();
 }
@@ -784,10 +937,10 @@ function updateVideoOverlay() {
     playhead.style.left = pct + '%';
   }
   if (typeof drawSkeletonFrame === 'function') drawSkeletonFrame(v.currentTime);
+  followMoments(v.currentTime);
   const cur = currentSpan(v.currentTime);
   document.querySelectorAll('#span-list .span-row').forEach(row => {
-    const rows = [...state.spans].sort((a, b) => a.start_sec - b.start_sec);
-    row.classList.toggle('current', rows[Number(row.dataset.i)] === cur);
+    row.classList.toggle('current', shownSpans()[Number(row.dataset.i)] === cur);
   });
   if (state.draft.start != null && state.draft.end == null) {
     const lane = document.querySelector('#seg-lanes .lane-own');
@@ -819,6 +972,7 @@ function setupKeys() {
       case 'n': case 'N': e.preventDefault(); nextVideo(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
       case 'f': case 'F': e.preventDefault(); toggleFraming(); return;
+      case 'j': case 'J': e.preventDefault(); gotoMoment(e.shiftKey ? -1 : 1); return;
     }
     const reason = REASONS.find(r => r.key === e.key);
     if (reason) { e.preventDefault(); setDraftReason(reason.id); }
@@ -834,7 +988,10 @@ function setupPanel() {
   document.getElementById('btn-draft-start').addEventListener('click', setDraftStart);
   document.getElementById('btn-draft-end').addEventListener('click', setDraftEnd);
   document.getElementById('btn-retire').addEventListener('click', retireVideo);
-  renderDraft();
+  const review = document.getElementById('review-mode');
+  review.checked = state.review;
+  review.addEventListener('change', () => setReview(review.checked));
+  renderDraft(); renderCheckList();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

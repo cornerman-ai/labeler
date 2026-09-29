@@ -4,9 +4,9 @@ Where, in a video, can the skeleton not be used? This is **step 4 of the
 label review** (`cornerman-backend/ml/label_review/REVIEW_FLOW.md`): the check
 report is clean, the skeleton has been extracted for every round in the
 labeling tabs, and before Mathe flips a video's rows from `Reviewing` to `yes`
-the team judges its skeleton here — watch the video with the skeleton drawn on
-top and mark every stretch where that skeleton is wrong. Open it from the
-landing page, or directly at `unusable/index.html`.
+the team judges its skeleton here — go through the moments where the skeleton
+may have leapt onto someone or something else, and mark where it did. Open it
+from the landing page, or directly at `unusable/index.html`.
 
 ## The loop
 
@@ -14,31 +14,26 @@ landing page, or directly at `unusable/index.html`.
    those whose rows are still `Reviewing` in the labeling tabs ("still
    Reviewing only", on by default — what you see is what is left; ↻ re-reads
    the sheet). With the video and skeleton folders connected, the file and its
-   skeleton files open by
-   themselves, exactly as in the punch labeler. The skeleton lane on the
-   timeline shows where a skeleton exists at all; the **detected** lane under
-   it is what those files say by themselves — red wherever a frame has no
-   skeleton (every one, however short the run), a yellow tick where the
-   skeleton jumps more than a torso within a quarter second (onto someone
-   else, usually; a jump costs a missing frame 94 % of the time). Hints to
-   check on the footage, not labels: click one to go there, then judge.
-   Under it the **framing** lane: where the picture cuts the boxer, read off
-   the skeleton's joint positions — red out of frame, pink partly out (past
-   the left, right or top edge), tan legs cut off (below the bottom edge).
-   Geometry, computed for every video — nobody labels it. `F` hides it
-   (remembered in this browser), to judge without seeing the rule's call.
-2. **Watch with the skeleton on** (`K` toggles it). Where the skeleton is not
-   the boxer's, or is not there: `Enter` at the start, `Enter` at the end (or
-   `S` / `E`; twice on the same frame for a one-frame problem), then the
-   reason — `1` out of frame, `2` hidden, `3` other person, `4` other thing
-   (a painting, a statue, the bag), `5` jump back (the frame where the tracker
-   jumps back to the boxer — nearly always a frame with no skeleton, the yellow
-   tick), `6` frozen, `7` camera, `8` other.
-   The span saves itself; `Esc` clears a half-made one. When the reason
-   changes mid-stretch — the boxer walks out, then the tracker lands on
-   someone else — make two spans back to back, one per reason: the end of
-   the first is the start of the second. Your spans are the top lane; other
-   people's show below yours, read-only.
+   skeleton files open by themselves, exactly as in the punch labeler.
+2. **Go through the moments to check** (the To check card; `J` the next,
+   `Shift` `J` the one before), with the skeleton on (`K`). A moment is a jump
+   (the skeleton moves more than a torso within a quarter second) or a stretch
+   without a skeleton, a second either side — computed in the browser from the
+   skeleton files. Playing skips from one moment to the next; a moment is ticked
+   once you move past it (per video, in this browser). Where the skeleton leaps
+   onto someone or something else: mark the jump (`3`, the frame or frames of
+   the leap), and the stretch it stays there — `Enter` at the start, `Enter` at
+   the end (or `S` / `E`), then `1` other person or `2` other thing (a painting,
+   a statue, the bag) — up to the jump back, which is a jump again. The span
+   saves itself; `Esc` clears a half-made one.
+
+   **Labeling mode** (the default) shows only the moments to check and your own
+   spans. **Review mode** (the To check card) shows everything: the skeleton
+   lane (where a skeleton exists at all), the **detected** lane (red for every
+   frame without a skeleton, a yellow tick per jump), the **framing** lane
+   (where the picture cuts the boxer: red out of frame, pink partly out, tan
+   legs cut off; `F` hides it), the moments, and every labeler's spans; it
+   plays the whole video.
 3. **Done with the video: say so.** Its rows are flipped from `Reviewing` to
    `yes` in the sheet (step 5 of the flow, by hand) and it leaves the list;
    `N` goes to the next one meanwhile. No name is needed on this page: spans
@@ -48,22 +43,26 @@ landing page, or directly at `unusable/index.html`.
    on OK moves them all to the `Skeleton Problems` tab, so it leaves the list
    too. Combined Data catches up at the next rebuild.
 
-## What is unusable
+## What is labeled
 
-A stretch is unusable when the skeleton on screen is not the boxer doing the
-round: the boxer out of the picture (or so far out that the skeleton is
-guessing), hidden in the picture behind the bag or someone, the skeleton
-sitting on someone or something else, a skeleton that does not move, the camera
-cutting or moving. A skeleton that is the boxer's but jittery is usable.
+One thing (Mathe, 2026-09-29): the skeleton on the wrong target — the stretch
+it sits on someone (`other_person`) or something (`other_thing`) else, and the
+jumps onto it and back (`jump`). That is what the skeleton cannot say about
+itself: the other-person rule of cornerman-backend's `jumps.py` flags 383 s to
+find the 46 s marked on Heavy Bag Session 2 (7 % precision).
 
-Only what the skeleton cannot say about itself is labeled (Mathe, 2026-09-29).
-Where the picture cuts the boxer — legs cut off, partly out — is geometry: the
-framing lane computes it for every video, and nobody marks it. A cut-off pair
-of legs is not unusable. What the lane cannot know is when partly out becomes
-unusable; that judgment is `Out of frame`. `Hidden` is its own reason because
-the framing rule can never see it (he is inside the picture). On the 10 test
-videos the team marks the unusable stretches with the lane hidden (`F`), and
-cornerman-backend compares them with the rule's kinds.
+Everything else is not labeled here. Where the picture cuts the boxer (out of
+frame, partly out, legs cut off) is computed by the framing rule and goes into
+training as a mask — trained with and without, to see whether it matters. A
+frozen skeleton has its rule (one case on the whole shelf). Hidden behind the
+bag and camera moves are not labeled for now. A skeleton that is the boxer's
+but jittery is fine.
+
+The moments are enough to find the wrong target on the one labeled sample:
+every one of Admin's 19 other-thing spans on Session 2 starts and ends inside a
+moment (jumps alone would miss 5 of the 19 starts), and the moments cover 8.8 %
+of the footage over the shelf (~1.7 per minute of round, 2026-09-29). Admin
+marked them with the detected lane on, so this may flatter the moments.
 
 ## Where it goes
 
@@ -72,7 +71,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason (out_of_frame, hidden, other_person, other_thing, jump_back, frozen, camera, other), start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (other_person, other_thing, jump — the Apps Script still accepts the retired out_of_frame, hidden, jump_back, frozen, camera, other from a page not yet reloaded), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | retirement (`whole_video_unusable`) — the review mark itself is the sheet's `yes` |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as
@@ -97,7 +96,10 @@ extracted video shows its hints with no export step. The framing lane is
 `framingHints()`, the mirror of that folder's `framing.py` — the same joints,
 kinds and defaults (margin 0, gaps and stretches under 0.5 s); it gave the
 identical stretches on all 571 rounds of the shelf (2026-09-29). Change a rule
-or a default in both places or in neither. One deliberate
+or a default in both places or in neither. The moments to check
+(`checkMoments()`) group the detected lane's hints — hints less than 1 s apart
+merged, 1 s of padding either side; the ticks are `localStorage`
+`unusableChecked:<video link>`, the mode `unusableReview`. One deliberate
 difference: this lane shows every missing frame, where the backend's survey
 and model start counting at 3 (Mathe, 2026-09-19 — the threshold for actual
 use comes later); the jump rule's thresholds are the same on both sides.

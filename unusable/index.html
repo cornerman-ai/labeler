@@ -12,7 +12,7 @@
   <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
        look) paints the transport buttons dark blue through #video-controls button. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="unusable.css?v=20260929b">
+  <link rel="stylesheet" href="unusable.css?v=20260929c">
 </head>
 <body>
   <div id="app">
@@ -118,8 +118,17 @@
     <div id="main-layout">
       <!-- Left: the span being made, the spans on this video, the review verdict -->
       <aside id="unusable-panel">
+        <section class="card" id="check-card">
+          <div class="card-eyebrow">To check <span id="check-count" class="count"></span></div>
+          <label class="check-filter" title="Labeling (off): the timeline shows only the moments to check and your own spans, and playing skips from moment to moment. Review (on): every lane — skeleton, detected, framing — and every labeler's spans, no skipping."><input type="checkbox" id="review-mode"> Review mode — every lane, all labelers</label>
+          <div id="check-list"><div class="muted">No skeleton loaded.</div></div>
+          <p class="hint"><kbd>J</kbd> the next moment, <kbd>Shift</kbd> <kbd>J</kbd> the one before. A moment is a jump or
+            a stretch without a skeleton, a second either side. If the skeleton leaps onto someone or something
+            else there, mark the jump and the stretch it stays there.</p>
+        </section>
+
         <section class="card" id="draft-card">
-          <div class="card-eyebrow">Mark an unusable stretch</div>
+          <div class="card-eyebrow">Mark the wrong target</div>
           <div class="draft-row">
             <button type="button" id="btn-draft-start" class="draft-btn" title="Set the start at the playhead (Enter; or S)">Start <kbd>Enter</kbd></button>
             <span id="draft-start" class="draft-time">—</span>
@@ -248,23 +257,25 @@
     <div class="sc-body">
       <p class="sc-note">This is step 4 of the label review (cornerman-backend, <code>ml/label_review/REVIEW_FLOW.md</code>):
         the check report is clean and the skeleton is extracted; before a video's rows go from <b>Reviewing</b>
-        to <b>yes</b>, its skeleton is judged here. The list holds the videos still Reviewing. Watch each with the
-        skeleton on and mark every stretch where the skeleton is not the boxer's or is not there:
+        to <b>yes</b>, its skeleton is judged here. The list holds the videos still Reviewing. One thing is
+        labeled: the skeleton on the wrong target. Go through the moments to check (<kbd>J</kbd>) with the
+        skeleton on; where it leaps onto someone or something else, mark the jump (<kbd>3</kbd>) and the
+        stretch it stays there (<kbd>1</kbd> other person, <kbd>2</kbd> other thing), up to the jump back:
         <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then the reason — the span saves itself.
-        When the reason changes mid-stretch (the boxer walks out, then the tracker lands on someone else), make
-        two spans back to back, one per reason: the end of the first is the start of the second. A video done
-        here is flipped to yes in the sheet and leaves the list; <kbd>N</kbd> goes to the next one.</p>
+        Everything else is computed (where the picture cuts the boxer) or not labeled. A video done here is
+        flipped to yes in the sheet and leaves the list; <kbd>N</kbd> goes to the next one.</p>
       <p class="sc-sec">Marking</p>
       <div class="sc-row"><span>Start, then end, of the stretch at the playhead — twice on the same frame for a one-frame problem</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>… or either end on its own</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
-      <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>8</kbd></span></div>
+      <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>3</kbd></span></div>
+      <div class="sc-row"><span>The next moment to check / the one before</span><span class="sc-keys"><kbd>J</kbd><kbd>&#8679;J</kbd></span></div>
       <div class="sc-row"><span>Clear the half-made span</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <div class="sc-row"><span>Next video</span><span class="sc-keys"><kbd>N</kbd></span></div>
       <p class="sc-sec">Playback</p>
       <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>
       <div class="sc-row"><span>One frame back / forward; ten with <kbd>Shift</kbd></span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
       <div class="sc-row"><span>Skeleton overlay on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
-      <div class="sc-row"><span>Framing lane on / off — off to label without seeing the rule's call</span><span class="sc-keys"><kbd>F</kbd></span></div>
+      <div class="sc-row"><span>Framing lane on / off (review mode)</span><span class="sc-keys"><kbd>F</kbd></span></div>
       <div class="sc-row"><span>Volume</span><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span></div>
       <div class="sc-row"><span>Jump to a time</span><span class="sc-keys"><kbd>Click the time</kbd></span></div>
       <p class="sc-sec">The timeline and the picture</p>
@@ -272,19 +283,23 @@
       <div class="sc-row"><span>Pan the timeline once zoomed in</span><span class="sc-keys"><kbd>&#8679;Scroll</kbd></span></div>
       <div class="sc-row"><span>Zoom the timeline in / out, fit the whole video</span><span class="sc-keys"><kbd>&#8984;+</kbd><kbd>&#8984;&minus;</kbd><kbd>&#8984;0</kbd></span></div>
       <div class="sc-row"><span>Zoom the picture at the pointer; drag to pan; double-click to reset</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
-      <p class="sc-sec">The detected lane</p>
+      <p class="sc-sec">The detected lane (review mode)</p>
       <p class="sc-note">Under the skeleton lane, what the skeleton files say by themselves:
         <span class="hint-key missing"></span> a frame without a skeleton (every one, however short the run),
         <span class="hint-key jump"></span> the skeleton jumps — more than a torso within a quarter second,
         usually onto someone or something else. Hints to check on the footage, not labels; click one to go there.</p>
-      <p class="sc-sec">The framing lane</p>
+      <p class="sc-sec">Labeling and review</p>
+      <p class="sc-note">Labeling (the default): the timeline shows the moments to check — every jump and every
+        stretch without a skeleton, a second either side, grey once checked — and your own spans, nothing else.
+        Playing skips from one moment to the next; a moment is checked once the playhead leaves it forward
+        (remembered per video in this browser). <b>Review mode</b> (the To check card) shows every lane below
+        and every labeler's spans, and plays the whole video.</p>
+      <p class="sc-sec">The framing lane (review mode)</p>
       <p class="sc-note">Under it, where the picture cuts the boxer, read off the skeleton's joint positions:
         <span class="hint-key framing" style="--reason:#e85a5a"></span> out of frame (gone through an edge),
         <span class="hint-key framing" style="--reason:#ff8fb1"></span> partly out (past the left, right or top edge),
         <span class="hint-key framing" style="--reason:#c9a36b"></span> legs cut off (below the bottom edge).
-        Geometry, computed for every video — nobody labels it. Whether it makes the skeleton unusable is the
-        judgment you add with <b>Out of frame</b>. While the team's spans are being compared with the lane,
-        press <kbd>F</kbd> to hide it and judge without looking.</p>
+        Computed for every video — nobody labels it; it goes to training as a mask.</p>
       <p class="sc-note muted">Spans go to the <b>Unusable Spans</b> tab, review marks to <b>Unusable Reviewed</b>,
         both in the labels workbook. "Whole video unusable" moves the video's labeling rows to
         <b>Skeleton Problems</b>.</p>
@@ -295,7 +310,7 @@
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20260929b"></script>
+  <script src="app.js?v=20260929c"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>
