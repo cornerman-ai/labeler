@@ -32,7 +32,8 @@
 // ============================================================
 
 // The team labels one thing (Mathe, 2026-09-29): the tracker on the wrong
-// target — the stretch it sits there, and the jumps onto it and back. Where
+// target — the stretch it sits there — plus a catch-all for any other issue
+// with the skeleton (it replaced the jump reason the same day). Where
 // the picture cuts the boxer is computed (framingHints) and goes to training
 // as a mask; the frozen skeleton has its rule; hidden and camera are not
 // labeled.
@@ -41,8 +42,8 @@ const REASONS = [
     desc: 'The skeleton sits on someone who is not the boxer — from the jump onto them to the jump back' },
   { id: 'other_thing',  label: 'Other thing',  key: '2', color: '#4cc9b0',
     desc: 'The skeleton sits on something that is not a person — a painting, a statue, the bag' },
-  { id: 'jump',         label: 'Jump',         key: '3', color: '#ffcc4d',
-    desc: 'The skeleton leaps onto someone or something else, or back to the boxer — mark the frame(s) of the leap (usually a yellow tick)' },
+  { id: 'other',        label: 'Other issue',  key: '3', color: '#9aa0a6',
+    desc: 'Anything else wrong with the skeleton here' },
 ];
 const REASON_BY_ID = Object.fromEntries(REASONS.map(r => [r.id, r]));
 const VERDICT_TEXT = { reviewed: 'reviewed', whole_video_unusable: 'whole video unusable' };
@@ -63,6 +64,9 @@ Object.assign(state, {
   showFraming: readFlag('unusableShowFraming', true),   // the framing lane (F) — per browser
   review: readFlag('unusableReview', false),   // review mode: every lane, every labeler's spans; labeling mode (default): the moments to check + your spans
   inMoment: null,           // the index of the moment the playhead is in
+  selectedSpan: null,       // span_uuid of your span selected for editing
+  editingSpan: null,        // span_uuid whose times are open in the list's editor
+  undoStack: [],            // [{label, run}] — Z undoes the last change to your spans (this video)
   loadToken: 0,
 });
 
@@ -252,6 +256,7 @@ function setupDriveLink() {
 async function loadSpans() {
   const token = ++state.loadToken;
   state.spans = []; state.reviewed = [];
+  state.selectedSpan = null; state.editingSpan = null; state.undoStack = [];
   renderSpanList(); renderReview(); renderCheckList(); renderTimelineOverlay();
   if (!state.videoLink) return;
   setSync('loading…'); linkStatus('syncing');
@@ -307,7 +312,33 @@ function maybeSaveDraft() {
   saveSpan({ span_uuid: crypto.randomUUID(), labeler: me(), reason, start_sec: a, end_sec: b, ts: new Date().toISOString() });
 }
 
-async function saveSpan(span) {
+// ============================================================
+// changing your spans, as in the punch labeler: select one (click it on your
+// lane or in the list), drag its edges or its middle on your lane, edit its
+// times with ✎ (typed, or "at the playhead"), change its reason in the list,
+// Delete / Backspace or × deletes it, Z (or ⌘Z) undoes the last change. Every
+// change is one updateUnusable with the span's times + reason; an add is undone
+// by a delete, a delete by adding the span back under its uuid.
+// ============================================================
+const UNDO_MAX = 50;
+function pushUndo(label, run) {
+  state.undoStack.push({ label, run });
+  if (state.undoStack.length > UNDO_MAX) state.undoStack.shift();
+}
+async function performUndo() {
+  const u = state.undoStack.pop();
+  if (!u) { showToast('Nothing to undo', 'info'); return; }
+  showToast('Undo: ' + u.label, 'info');
+  await u.run();
+}
+function selectedSpan() { return state.spans.find(s => s.span_uuid === state.selectedSpan) || null; }
+function selectSpan(span) {
+  state.selectedSpan = span ? span.span_uuid : null;
+  if (!span) state.editingSpan = null;
+  renderSpanList(); renderTimelineOverlay();
+}
+
+async function saveSpan(span, undoable = true) {
   state.spans.push(span);
   renderSpanList(); renderTimelineOverlay();
   setSync('saving…');
@@ -317,6 +348,7 @@ async function saveSpan(span) {
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
     if (r.id != null) span.id = r.id;
     setSync('saved'); setTimeout(() => setSync(''), 1500);
+    if (undoable) pushUndo('the new span', () => deleteSpan(span, false));
   } catch (e) {
     state.spans = state.spans.filter(s => s !== span);
     renderSpanList(); renderTimelineOverlay();
@@ -324,30 +356,103 @@ async function saveSpan(span) {
     showToast('Could not save the span: ' + (e.message || e), 'error');
   }
 }
-async function updateSpanReason(span, reason) {
-  const before = span.reason;
-  span.reason = reason; renderSpanList(); renderTimelineOverlay();
+// patch: any of reason / start_sec / end_sec; `before` defaults to the span as it is now
+async function changeSpan(span, patch, what, undoable = true, before = null) {
+  before = before || { reason: span.reason, start_sec: span.start_sec, end_sec: span.end_sec };
+  Object.assign(span, patch);
+  if (span.end_sec < span.start_sec) [span.start_sec, span.end_sec] = [span.end_sec, span.start_sec];
+  if (span.reason === before.reason && span.start_sec === before.start_sec && span.end_sec === before.end_sec) {
+    renderSpanList(); renderTimelineOverlay(); return;
+  }
+  renderSpanList(); renderTimelineOverlay();
+  setSync('saving…');
   try {
-    const r = await fetchJson(sheetUrl({ action: 'updateUnusable', video: state.videoLink, span_uuid: span.span_uuid, reason,
-                                         start_sec: span.start_sec, end_sec: span.end_sec }));
+    const r = await fetchJson(sheetUrl({ action: 'updateUnusable', video: state.videoLink, span_uuid: span.span_uuid,
+                                         reason: span.reason, start_sec: span.start_sec, end_sec: span.end_sec }));
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
+    setSync('saved'); setTimeout(() => setSync(''), 1500);
+    if (undoable) pushUndo(what, () => changeSpan(span, before, what, false));
   } catch (e) {
-    span.reason = before; renderSpanList(); renderTimelineOverlay();
-    showToast('Could not change the reason: ' + (e.message || e), 'error');
+    Object.assign(span, before); renderSpanList(); renderTimelineOverlay();
+    setSync('save failed — ' + (e.message || e), true);
+    showToast(`Could not change the ${what}: ` + (e.message || e), 'error');
   }
 }
-async function deleteSpan(span) {
-  const r0 = REASON_BY_ID[span.reason];
-  if (!confirm(`Delete the ${r0 ? r0.label.toLowerCase() : span.reason} span ${spanTimes(span)}?`)) return;
+function updateSpanReason(span, reason) { return changeSpan(span, { reason }, 'reason'); }
+async function deleteSpan(span, undoable = true) {
   state.spans = state.spans.filter(s => s !== span);
+  if (state.selectedSpan === span.span_uuid) { state.selectedSpan = null; state.editingSpan = null; }
   renderSpanList(); renderTimelineOverlay();
   try {
     const r = await fetchJson(sheetUrl({ action: 'deleteUnusable', video: state.videoLink, span_uuid: span.span_uuid }));
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
+    if (undoable) {
+      pushUndo('the deleted span', () => saveSpan(span, false));
+      showToast('Span deleted — Z brings it back', 'info');
+    }
   } catch (e) {
     state.spans.push(span); renderSpanList(); renderTimelineOverlay();
     showToast('Could not delete the span: ' + (e.message || e), 'error');
   }
+}
+
+// dragging your spans on your lane: 7 px at either end moves that end, the
+// middle moves the span (a chip under 22 px only moves); times snap to frames
+// and the video follows the edge being moved; Esc cancels the drag
+function setupSpanDragging() {
+  const lanes = document.getElementById('seg-lanes'), seekBar = document.getElementById('seek-bar');
+  const wrapper = document.getElementById('seek-bar-wrapper');
+  if (!lanes || !seekBar) return;
+  const EDGE = 7, MIN_EDGES = 22;
+  let drag = null;
+  const timeAt = x => { const r = seekBar.getBoundingClientRect(); return viewportPctToTime(((x - r.left) / r.width) * 100, videoEl().duration); };
+  const snap = t => { const f = state.frameDuration || 1 / 30; return Math.max(0, Math.min(videoEl().duration || 0, Math.round(t / f) * f)); };
+  const zoneOf = (el, x) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < MIN_EDGES) return 'move';
+    return x - r.left <= EDGE ? 'start' : r.right - x <= EDGE ? 'end' : 'move';
+  };
+  const spanOf = el => state.spans.find(s => s.span_uuid === el.dataset.uuid);
+  lanes.addEventListener('mousemove', e => {
+    if (drag) return;
+    const chip = e.target.closest('.span-chip.own');
+    if (chip) chip.style.cursor = zoneOf(chip, e.clientX) === 'move' ? 'grab' : 'ew-resize';
+  });
+  lanes.addEventListener('mousedown', e => {
+    const chip = e.target.closest('.span-chip.own');
+    if (!chip || e.button !== 0) return;
+    const span = spanOf(chip);
+    if (!span) return;
+    e.preventDefault(); e.stopPropagation();
+    drag = { span, zone: zoneOf(chip, e.clientX), x0: e.clientX, t0: timeAt(e.clientX), moved: false,
+             before: { reason: span.reason, start_sec: span.start_sec, end_sec: span.end_sec } };
+  });
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3) return;
+    drag.moved = true;
+    const d = timeAt(e.clientX) - drag.t0, b = drag.before, s = drag.span;
+    if (drag.zone === 'start') s.start_sec = Math.min(snap(b.start_sec + d), b.end_sec);
+    else if (drag.zone === 'end') s.end_sec = Math.max(snap(b.end_sec + d), b.start_sec);
+    else { const len = b.end_sec - b.start_sec; s.start_sec = snap(b.start_sec + d); s.end_sec = s.start_sec + len; }
+    videoEl().currentTime = drag.zone === 'end' ? s.end_sec : s.start_sec;
+    renderTimelineOverlay();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!drag) return;
+    const dr = drag; drag = null;
+    if (!dr.moved) { selectSpan(dr.span); const v = videoEl(); if (v && v.duration) v.currentTime = dr.span.start_sec; return; }
+    state.selectedSpan = dr.span.span_uuid;
+    const patch = { start_sec: dr.span.start_sec, end_sec: dr.span.end_sec };
+    changeSpan(dr.span, patch, 'times', true, dr.before);
+    // the click that ends a drag must not seek the video (the seek bar's own click handler)
+    if (wrapper) wrapper.addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true });
+  });
+  document.addEventListener('keydown', e => {
+    if (drag && e.key === 'Escape') {
+      Object.assign(drag.span, drag.before); drag = null; renderTimelineOverlay(); e.stopPropagation();
+    }
+  }, true);
 }
 
 // ============================================================
@@ -370,22 +475,54 @@ function renderSpanList() {
   const t = videoEl() ? videoEl().currentTime : -1;
   el.innerHTML = rows.map((s, i) => {
     const r = REASON_BY_ID[s.reason] || { label: s.reason, color: '#9aa0a6' };
-    const own = ownSpan(s);
+    const own = ownSpan(s), sel = own && s.span_uuid === state.selectedSpan;
     const options = REASONS.map(x => `<option value="${x.id}"${x.id === s.reason ? ' selected' : ''}>${x.label}</option>`).join('');
-    return `<div class="span-row${own ? '' : ' foreign'}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${r.color}">` +
+    const head = `<div class="span-row${own ? '' : ' foreign'}${sel ? ' selected' : ''}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${r.color}">` +
       `<span class="swatch"></span>` +
       `<span><span class="times">${spanTimes(s)}</span> · ${own ? `<select data-i="${i}">${options}</select>` : escapeHtml(r.label)}` +
       (s.labeler ? `<span class="who"> · ${escapeHtml(s.labeler)}</span>` : '') + '</span>' +
-      (own ? `<button type="button" class="del" data-i="${i}" title="Delete this span">×</button>` : '<span></span>') +
+      (own ? `<span class="row-btns"><button type="button" class="edit" data-i="${i}" title="Change the times">✎</button>` +
+             `<button type="button" class="del" data-i="${i}" title="Delete this span (Delete; Z undoes)">×</button></span>` : '<span></span>') +
       `</div>`;
+    if (!(own && s.span_uuid === state.editingSpan)) return head;
+    return head + `<div class="span-edit" data-i="${i}">` +
+      `<label>start <input class="t-start" value="${fmtSec(s.start_sec)}"></label><button type="button" class="at-start" title="The start at the playhead">⇤ playhead</button>` +
+      `<label>end <input class="t-end" value="${fmtSec(s.end_sec)}"></label><button type="button" class="at-end" title="The end at the playhead">playhead ⇥</button>` +
+      `<button type="button" class="save-times">Save</button><button type="button" class="cancel-times">Cancel</button></div>`;
   }).join('');
   el.querySelectorAll('.span-row').forEach(row => row.addEventListener('click', e => {
-    if (e.target.closest('select, .del')) return;
+    if (e.target.closest('select, button')) return;
     const s = rows[Number(row.dataset.i)];
+    if (ownSpan(s)) selectSpan(s);
     const v = videoEl(); if (v && v.duration) v.currentTime = s.start_sec;
   }));
   el.querySelectorAll('select').forEach(sel => sel.addEventListener('change', () => updateSpanReason(rows[Number(sel.dataset.i)], sel.value)));
   el.querySelectorAll('.del').forEach(b => b.addEventListener('click', () => deleteSpan(rows[Number(b.dataset.i)])));
+  el.querySelectorAll('.edit').forEach(b => b.addEventListener('click', () => {
+    const s = rows[Number(b.dataset.i)];
+    state.selectedSpan = s.span_uuid;
+    state.editingSpan = state.editingSpan === s.span_uuid ? null : s.span_uuid;
+    renderSpanList(); renderTimelineOverlay();
+    const input = el.querySelector('.span-edit .t-start'); if (input) input.focus();
+  }));
+  el.querySelectorAll('.span-edit').forEach(form => {
+    const s = rows[Number(form.dataset.i)], v = videoEl();
+    const start = form.querySelector('.t-start'), end = form.querySelector('.t-end');
+    const save = () => {
+      const a = parseTime(start.value), b = parseTime(end.value);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) { showToast('Times as M:SS.mmm or seconds', 'error'); return; }
+      state.editingSpan = null;
+      changeSpan(s, { start_sec: a, end_sec: b }, 'times');
+    };
+    form.querySelector('.at-start').addEventListener('click', () => { if (v) start.value = fmtSec(v.currentTime); });
+    form.querySelector('.at-end').addEventListener('click', () => { if (v) end.value = fmtSec(v.currentTime); });
+    form.querySelector('.save-times').addEventListener('click', save);
+    form.querySelector('.cancel-times').addEventListener('click', () => { state.editingSpan = null; renderSpanList(); });
+    form.querySelectorAll('input').forEach(inp => inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { e.preventDefault(); state.editingSpan = null; renderSpanList(); }
+    }));
+  });
 }
 
 // ============================================================
@@ -831,10 +968,14 @@ function laneChips(lane, spans, duration, opts = {}) {
     const l = timeToViewportPct(s.start_sec, duration), w = Math.max(0.2, timeToViewportPct(s.end_sec, duration) - l);
     if (l + w < 0 || l > 100) continue;
     const chip = document.createElement('div');
-    chip.className = 'span-chip' + (opts.foreign ? ' foreign' : '') + (opts.draft ? ' draft' : '');
+    const own = !opts.foreign && !opts.draft && s.span_uuid && lane.id !== 'minimap-segments';   // the minimap only shows
+    chip.className = 'span-chip' + (opts.foreign ? ' foreign' : '') + (opts.draft ? ' draft' : '')
+      + (own ? ' own' : '') + (own && s.span_uuid === state.selectedSpan ? ' selected' : '');
+    if (own) chip.dataset.uuid = s.span_uuid;
     chip.style.cssText = `left:${Math.max(0, l)}%;width:${Math.min(100, l + w) - Math.max(0, l)}%;--reason:${r.color}`;
     chip.title = `${r.label} · ${spanTimes(s)}${s.labeler ? ' · ' + s.labeler : ''}`;
-    if (!opts.draft) chip.addEventListener('click', e => { e.stopPropagation(); const v = videoEl(); if (v && v.duration) v.currentTime = s.start_sec; });
+    if (own) chip.addEventListener('click', e => e.stopPropagation());   // select / drag: setupSpanDragging
+    else if (!opts.draft) chip.addEventListener('click', e => { e.stopPropagation(); const v = videoEl(); if (v && v.duration) v.currentTime = s.start_sec; });
     lane.appendChild(chip);
   }
 }
@@ -950,6 +1091,9 @@ function updateVideoOverlay() {
 // ? (the shortcuts sheet) and ⌘+ / ⌘− / ⌘0 (timeline zoom) are shared/ui.js's.
 function setupKeys() {
   document.addEventListener('keydown', e => {
+    if (!isTyping(e) && (e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+      e.preventDefault(); performUndo(); return;
+    }
     if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.target.closest && e.target.closest('#video-picker-panel')) return;
     // A focused button would take Enter or Space as a click as well.
@@ -962,7 +1106,13 @@ function setupKeys() {
       case 'Enter': e.preventDefault(); if (state.draft.start == null) setDraftStart(); else setDraftEnd(); return;
       case 's': case 'S': case '[': e.preventDefault(); setDraftStart(); return;
       case 'e': case 'E': case ']': e.preventDefault(); setDraftEnd(); return;
-      case 'Escape': clearDraft(); return;
+      case 'Escape': clearDraft(); if (state.selectedSpan) selectSpan(null); return;
+      case 'z': case 'Z': e.preventDefault(); performUndo(); return;
+      case 'Delete': case 'Backspace': {
+        const sel = selectedSpan();
+        if (sel && ownSpan(sel)) { e.preventDefault(); deleteSpan(sel); }
+        return;
+      }
       case 'n': case 'N': e.preventDefault(); nextVideo(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
       case 'f': case 'F': e.preventDefault(); toggleFraming(); return;
@@ -995,6 +1145,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDriveLink();
   setupVideoPicker();
   setupKeys();
+  setupSpanDragging();
   renderSpanList(); renderReview();
   Promise.all([fetchCatalog(), fetchReviewedAll(), fetchSkeletonStems(), fetchReviewing()]).then(() => {
     if (window._renderPickerList) window._renderPickerList();

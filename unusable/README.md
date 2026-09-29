@@ -22,11 +22,15 @@ from the landing page, or directly at `unusable/index.html`.
    quarter second) or a stretch without a skeleton, a second either side —
    computed in the browser from the skeleton files. A moment is ticked once you
    move past it (per video, in this browser). Where the skeleton leaps
-   onto someone or something else: mark the jump (`3`, the frame or frames of
-   the leap), and the stretch it stays there — `Enter` at the start, `Enter` at
-   the end (or `S` / `E`), then `1` other person or `2` other thing (a painting,
-   a statue, the bag) — up to the jump back, which is a jump again. The span
-   saves itself; `Esc` clears a half-made one.
+   onto someone or something else: mark the stretch it stays there, from the
+   leap to the jump back — `Enter` at the start, `Enter` at the end (or `S` /
+   `E`), then `1` other person or `2` other thing (a painting, a statue, the
+   bag). Anything else wrong with the skeleton: `3` other issue, the catch-all.
+   The span saves itself; `Esc` clears a half-made one. **Change your mind** as
+   in the punch labeler: click one of your spans (lane or list) to select it,
+   drag its edges or its middle on your lane (frame-snapped, the video follows
+   the edge), ✎ to type its times or take them from the playhead, the reason
+   dropdown, `Delete` or × to delete, `Z` / `⌘Z` to undo the last change.
 
    **Labeling mode** (the default) shows only the skeleton lane (where a
    skeleton exists — the rounds, the footage to check), the moments to check
@@ -48,8 +52,9 @@ from the landing page, or directly at `unusable/index.html`.
 ## What is labeled
 
 One thing (Mathe, 2026-09-29): the skeleton on the wrong target — the stretch
-it sits on someone (`other_person`) or something (`other_thing`) else, and the
-jumps onto it and back (`jump`). That is what the skeleton cannot say about
+it sits on someone (`other_person`) or something (`other_thing`) else — and a
+catch-all for any other issue (`other`; it replaced a `jump` reason the same
+day, which the Apps Script still accepts from a stale page). That is what the skeleton cannot say about
 itself: the other-person rule of cornerman-backend's `jumps.py` flags 383 s to
 find the 46 s marked on Heavy Bag Session 2 (7 % precision).
 
@@ -73,7 +78,7 @@ shared Apps Script:
 
 | tab | columns | one row per |
 |---|---|---|
-| `Unusable Spans` | id, video_file, labeler, reason (other_person, other_thing, jump — the Apps Script still accepts the retired out_of_frame, hidden, jump_back, frozen, camera, other from a page not yet reloaded), start_sec, end_sec, span_uuid, ts | span |
+| `Unusable Spans` | id, video_file, labeler, reason (other_person, other_thing, other — the Apps Script still accepts the retired jump, out_of_frame, hidden, jump_back, frozen, camera from a page not yet reloaded), start_sec, end_sec, span_uuid, ts | span |
 | `Unusable Reviewed` | video_file, video_name, labeler, verdict, ts | retirement (`whole_video_unusable`) — the review mark itself is the sheet's `yes` |
 
 Times are the sheet's `MM:SS.mmm`, source-video seconds, the same clock as

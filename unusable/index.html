@@ -12,7 +12,7 @@
   <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
        look) paints the transport buttons dark blue through #video-controls button. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="unusable.css?v=20260929e">
+  <link rel="stylesheet" href="unusable.css?v=20260929f">
 </head>
 <body>
   <div id="app">
@@ -124,7 +124,7 @@
           <div id="check-list"><div class="muted">No skeleton loaded.</div></div>
           <p class="hint">Watch the whole video; these are where the skeleton most likely leaps onto someone or
             something else — yellow on the timeline and the minimap. <kbd>J</kbd> the next, <kbd>Shift</kbd> <kbd>J</kbd>
-            the one before. Where it does, mark the jump and the stretch it stays there.</p>
+            the one before. Where it does, mark the stretch it stays there; anything else wrong, <kbd>3</kbd>.</p>
         </section>
 
         <section class="card" id="draft-card">
@@ -258,18 +258,24 @@
       <p class="sc-note">This is step 4 of the label review (cornerman-backend, <code>ml/label_review/REVIEW_FLOW.md</code>):
         the check report is clean and the skeleton is extracted; before a video's rows go from <b>Reviewing</b>
         to <b>yes</b>, its skeleton is judged here. The list holds the videos still Reviewing. One thing is
-        labeled: the skeleton on the wrong target. Go through the moments to check (<kbd>J</kbd>) with the
-        skeleton on; where it leaps onto someone or something else, mark the jump (<kbd>3</kbd>) and the
-        stretch it stays there (<kbd>1</kbd> other person, <kbd>2</kbd> other thing), up to the jump back:
-        <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then the reason — the span saves itself.
-        Everything else is computed (where the picture cuts the boxer) or not labeled. A video done here is
+        labeled: the skeleton on the wrong target. Watch with the skeleton on, the moments to check
+        (<kbd>J</kbd>) first; where it leaps onto someone or something else, mark the stretch it stays there,
+        up to the jump back (<kbd>1</kbd> other person, <kbd>2</kbd> other thing); anything else wrong with the
+        skeleton is <kbd>3</kbd> other issue: <kbd>Enter</kbd> at the start, <kbd>Enter</kbd> at the end, then
+        the reason — the span saves itself. Where the picture cuts the boxer is computed, not labeled. A video done here is
         flipped to yes in the sheet and leaves the list; <kbd>N</kbd> goes to the next one.</p>
       <p class="sc-sec">Marking</p>
       <div class="sc-row"><span>Start, then end, of the stretch at the playhead — twice on the same frame for a one-frame problem</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>… or either end on its own</span><span class="sc-keys"><kbd>S</kbd><kbd>E</kbd></span></div>
       <div class="sc-row"><span>The reason, which saves the span</span><span class="sc-keys"><kbd>1</kbd>–<kbd>3</kbd></span></div>
       <div class="sc-row"><span>The next moment to check / the one before</span><span class="sc-keys"><kbd>J</kbd><kbd>&#8679;J</kbd></span></div>
-      <div class="sc-row"><span>Clear the half-made span</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <div class="sc-row"><span>Clear the half-made span, or the selection</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <p class="sc-sec">Changing your spans</p>
+      <div class="sc-row"><span>Select one — click it on your lane or in the list</span><span class="sc-keys"><kbd>Click</kbd></span></div>
+      <div class="sc-row"><span>Move an end: drag the chip's edge; the whole span: drag its middle (frame-snapped; Esc cancels)</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
+      <div class="sc-row"><span>Type the times, or take them from the playhead</span><span class="sc-keys"><kbd>✎</kbd></span></div>
+      <div class="sc-row"><span>Delete the selected span</span><span class="sc-keys"><kbd>Delete</kbd><kbd>×</kbd></span></div>
+      <div class="sc-row"><span>Undo the last change (add, move, reason, delete)</span><span class="sc-keys"><kbd>Z</kbd><kbd>&#8984;Z</kbd></span></div>
       <div class="sc-row"><span>Next video</span><span class="sc-keys"><kbd>N</kbd></span></div>
       <p class="sc-sec">Playback</p>
       <div class="sc-row"><span>Play / pause</span><span class="sc-keys"><kbd>Space</kbd></span></div>
@@ -311,7 +317,7 @@
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20260929e"></script>
+  <script src="app.js?v=20260929f"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

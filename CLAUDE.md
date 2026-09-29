@@ -76,7 +76,7 @@ the videos whose rows are still `Reviewing` (`listReviewingVideos` reads the
 stretches where the skeleton can't be used, then the rows go to `yes` by hand.
 Two tabs in the punch workbook, written by `doGetUnusable`:
 `Unusable Spans` — id | video_file | labeler | reason | start_sec | end_sec |
-span_uuid | ts (reason ∈ other_person, other_thing, jump — the only things the team labels since 2026-09-29, found through the page's "to check" moments; older reasons are still accepted from a stale page) —
+span_uuid | ts (reason ∈ other_person, other_thing, other (any other issue) — the only things the team labels since 2026-09-29, found through the page's "to check" moments; older reasons are still accepted from a stale page) —
 and `Unusable Reviewed` — video_file | video_name | labeler | verdict | ts
 (verdict: whole_video_unusable — retirements only; the review mark is the sheet's `yes`). `retireVideo` moves a video's rows
 from Combined Data Archive and every person's Labeled Data tab to the team's

@@ -6743,10 +6743,10 @@ var UNUSABLE_SPANS_NAME = 'Unusable Spans';
 var UNUSABLE_SPANS_HEADERS = ['id', 'video_file', 'labeler', 'reason', 'start_sec', 'end_sec', 'span_uuid', 'ts'];
 var UNUSABLE_REVIEWED_NAME = 'Unusable Reviewed';
 var UNUSABLE_REVIEWED_HEADERS = ['video_file', 'video_name', 'labeler', 'verdict', 'ts'];
-// The page offers other_person / other_thing / jump since 2026-09-29; the rest
-// are still accepted from a page opened before that, until it reloads.
-var UNUSABLE_REASONS = ['other_person', 'other_thing', 'jump',
-                        'out_of_frame', 'hidden', 'jump_back', 'frozen', 'camera', 'other'];
+// The page offers other_person / other_thing / other (any other issue) since
+// 2026-09-29; the rest are still accepted from a page opened before that.
+var UNUSABLE_REASONS = ['other_person', 'other_thing', 'other',
+                        'jump', 'out_of_frame', 'hidden', 'jump_back', 'frozen', 'camera'];
 var UNUSABLE_VERDICTS = ['reviewed', 'whole_video_unusable'];
 var SKELETON_PROBLEMS_NAME = 'Skeleton Problems';
 // Rows moved to Skeleton Problems keep their source tab's own columns (the tab

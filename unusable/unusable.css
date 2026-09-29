@@ -62,6 +62,14 @@
 .span-row .del { border: 0; background: transparent; color: var(--ink-dim); cursor: pointer; font-size: 14px; padding: 0 4px; }
 .span-row .del:hover { color: var(--no-on-wash); }
 .span-row.foreign { opacity: .75; cursor: pointer; }
+.span-row.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.span-row .row-btns { display: flex; gap: 2px; }
+.span-row .edit { border: 0; background: transparent; color: var(--ink-dim); cursor: pointer; font-size: 13px; padding: 0 4px; }
+.span-row .edit:hover { color: var(--ink); }
+.span-edit { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 6px 8px 8px 26px; font-size: 12px; }
+.span-edit input { width: 76px; font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; background: var(--card); color: var(--ink); }
+.span-edit button { border: 1px solid var(--line); border-radius: 6px; background: var(--fill); color: var(--ink); font-size: 11px; padding: 2px 6px; cursor: pointer; }
+.seg-lane .span-chip.own.selected { outline: 2px solid var(--ink); outline-offset: 0; opacity: 1; z-index: 2; }
 
 /* review */
 .review-actions { display: flex; gap: 8px; margin-top: 8px; }
