@@ -24,7 +24,10 @@
   color: var(--ink-dim); vertical-align: middle;
 }
 
-.draft-row { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; }
+.draft-row { display: grid; grid-template-columns: 18px auto 1fr; gap: 6px 8px; align-items: center; margin-top: 8px; }
+.draft-step { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; }
+.draft-step .draft-n { margin-top: 18px; }
+.draft-n { width: 18px; height: 18px; border-radius: 50%; background: var(--fill-2); color: var(--ink-dim); font-size: 11px; display: grid; place-items: center; }
 .draft-btn, .foot-btn, #btn-done, #btn-next-video {
   border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink);
   padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;

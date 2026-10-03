@@ -12,7 +12,7 @@
   <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
        look) paints the transport buttons dark blue through #video-controls button. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="steps.css?v=20261003c">
+  <link rel="stylesheet" href="steps.css?v=20261003d">
 </head>
 <body>
   <div id="app">
@@ -68,7 +68,7 @@
             <div class="vp-head">
               <input type="search" id="video-picker-search" placeholder="Search videos…" autocomplete="off" spellcheck="false">
               <label class="vp-filter" title="Hide the windows you have finished — both feet done">
-                <input type="checkbox" id="only-unfinished" checked> not finished only
+                <input type="checkbox" id="only-unfinished"> not finished only
               </label>
               <span id="vp-count" class="muted"></span>
               <button type="button" id="vp-refresh" class="vp-refresh" title="Re-read the sheet: which windows you have finished">↻</button>
@@ -137,15 +137,19 @@
         <section class="card" id="draft-card">
           <div class="card-eyebrow">Mark a step</div>
           <div class="draft-row">
+            <span class="draft-n">1</span>
             <button type="button" id="btn-draft-start" class="draft-btn" title="The frame the foot leaves the floor (Enter)">Lifts <kbd>Enter</kbd></button>
             <span id="draft-start" class="draft-time">—</span>
-            <button type="button" id="btn-draft-end" class="draft-btn" title="The frame the foot lands (Enter again)">Lands <kbd>Enter</kbd></button>
+          </div>
+          <div class="draft-step"><span class="draft-n">2</span><div id="foot-buttons" aria-label="Which foot"></div></div>
+          <div class="draft-step"><span class="draft-n">3</span><div id="direction-pad" aria-label="Direction the foot moved"></div></div>
+          <div class="draft-row">
+            <span class="draft-n">4</span>
+            <button type="button" id="btn-draft-end" class="draft-btn" title="The frame the foot lands — saves the step (Enter again)">Lands <kbd>Enter</kbd></button>
             <span id="draft-end" class="draft-time">—</span>
           </div>
-          <div id="foot-buttons" aria-label="Which foot"></div>
-          <div id="direction-pad" aria-label="Direction the foot moved"></div>
-          <p class="hint"><kbd>Enter</kbd> when the foot leaves the floor, <kbd>Enter</kbd> when it lands, then which
-            foot (<kbd>L</kbd> / <kbd>R</kbd>) and the direction it moved — the step saves itself. Foot and directions are
+          <p class="hint"><kbd>Enter</kbd> when the foot leaves the floor, which foot (<kbd>L</kbd> / <kbd>R</kbd>), the
+            direction it moved, <kbd>Enter</kbd> when it lands — that saves the step. Foot and directions are
             the <b>boxer's own</b>: his left foot, front is where he faces, left is his left. <b>Facing the camera, his
             left is on your right.</b> The centre is a <b>pivot</b>: the foot turns on the ball without moving to a new spot.
             A bounce in place is not a step. When both feet step at once, mark each on its own. <kbd>Esc</kbd> clears a half-made one.</p>
@@ -154,6 +158,10 @@
         <section class="card" id="spans-card">
           <div class="card-eyebrow">Your steps in this window <span id="span-count" class="count"></span></div>
           <div id="span-list"><div class="muted">No video loaded.</div></div>
+          <p class="hint">Change any step, also in a window you marked done: click it (here or on its lane), then drag
+            its ends on the timeline, <b>✎</b> for its times, the menus (or <kbd>L</kbd> / <kbd>R</kbd> and the pad)
+            for its foot and direction, <kbd>×</kbd> or <kbd>Delete</kbd> to remove it, <kbd>⌘Z</kbd> to undo. Every
+            window stays in the list; done ones carry a ✓.</p>
         </section>
 
         <section class="card" id="next-card">
@@ -255,21 +263,22 @@
     </div>
     <div class="sc-body">
       <p class="sc-note">Every video in the list has one 20-second window, the same for everyone. Label every step
-        of both feet in it. A step runs from the frame the foot <b>leaves the floor</b> to the frame it <b>lands</b>;
-        then pick which foot and the way it moved, both the <b>boxer's own</b> — his left foot, his front / back / left /
+        of both feet in it, in this order: <kbd>Enter</kbd> on the frame the foot <b>leaves the floor</b>, which foot,
+        the way it moved, <kbd>Enter</kbd> on the frame it <b>lands</b> — which saves it. Foot and direction are the <b>boxer's own</b> — his left foot, his front / back / left /
         right; facing the camera, his left is on your right. The centre key is a <b>pivot</b>: the foot turns on the
         ball without moving to a new spot. A bounce in place is not a step. When both feet move at once, mark each on
         its own. "Window done" counts even when nobody stepped — that is a window with zero steps, not an unlabeled one.</p>
       <p class="sc-sec">Marking</p>
-      <div class="sc-row"><span>The foot lifts, then lands, at the playhead</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
-      <div class="sc-row"><span>Which foot — the boxer's own left or right</span><span class="sc-keys"><kbd>L</kbd><kbd>R</kbd></span></div>
-      <div class="sc-row"><span>The direction — the keys sit like the pad; the step saves once it has both ends, the foot and the direction</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>1 · The foot lifts, at the playhead</span><span class="sc-keys"><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>2 · Which foot — the boxer's own left or right</span><span class="sc-keys"><kbd>L</kbd><kbd>R</kbd></span></div>
+      <div class="sc-row"><span>3 · The direction — the keys sit like the pad</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>4 · The foot lands, at the playhead — saves the step</span><span class="sc-keys"><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>Front-left · front · front-right</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd></span></div>
       <div class="sc-row"><span>Left · pivot · right</span><span class="sc-keys"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
       <div class="sc-row"><span>Back-left · back · back-right</span><span class="sc-keys"><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
       <div class="sc-row"><span>The window is done</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>Clear the half-made step, or the selection</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
-      <p class="sc-sec">Changing your steps</p>
+      <p class="sc-sec">Changing your steps — any time, also in a window marked done</p>
       <div class="sc-row"><span>Select one — click it on its lane or in the list</span><span class="sc-keys"><kbd>Click</kbd></span></div>
       <div class="sc-row"><span>Move an end: drag the chip's edge; the whole step: drag its middle (frame-snapped; Esc cancels)</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
       <div class="sc-row"><span>Type the times, or take them from the playhead</span><span class="sc-keys"><kbd>✎</kbd></span></div>
@@ -292,7 +301,7 @@
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20261003c"></script>
+  <script src="app.js?v=20261003d"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

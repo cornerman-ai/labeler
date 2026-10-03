@@ -11,21 +11,25 @@ back. Open it from the landing page, or directly at `steps/index.html`.
 
 1. **Type your name** (top right). Steps are compared between labelers, so a
    save without a name is refused.
-2. **Pick a window** from the list. Every video has one window, the same for
-   everyone (`windows.json`). With the video and skeleton folders connected,
+2. **Pick a window** from the list (`N` goes to the next one not done yet).
+   Every video has one window, the same for everyone (`windows.json`). With the video and skeleton folders connected,
    the file and its skeleton open by themselves, as in the punch labeler. The
    timeline zooms onto the window and playback loops inside it.
-3. **Mark every step of both feet.** `Enter` on the frame the foot leaves the
-   floor, `Enter` on the frame it lands, then which foot (`L` / `R`) and the
-   direction on the pad. The step saves once it has all four, in any order.
-   Foot and directions are the **boxer's own**: his left foot, front is where
+3. **Mark every step of both feet, in this order** (Mathe, 2026-10-03):
+   `Enter` on the frame the foot leaves the floor, which foot (`L` / `R`), the
+   direction on the pad, `Enter` on the frame it lands, which saves the step.
+   The landing `Enter` waits until the foot and direction are picked. Foot and directions are the **boxer's own**: his left foot, front is where
    he faces, left is his left. Facing the camera, his left is on your right.
    The centre key is a **pivot**: the foot turns on the ball without moving to
    a new spot. A bounce in place is not a step. When both feet move at once,
    mark each on its own; the two can overlap in time.
 4. **Say the window is done** (`Shift` `Enter`), also when nobody stepped. An
    empty window then counts as zero steps, not as unlabeled. The page moves on
-   to the next window (`N` does it any time).
+   to the next window.
+5. **Edit any time**, also in a window marked done: every window stays in the
+   list, with a ✓ once done. Click a step (in the list or on its lane), then
+   drag its ends, ✎ for its times, the menus (or `L` / `R` and the pad) for its
+   foot and direction, `×` / `Delete` to remove it, `⌘Z` to undo.
 
 Left / right, not lead / rear (Mathe, 2026-10-03): lead / rear follows from the
 stance, which the video carries.
@@ -33,10 +37,11 @@ stance, which the video carries.
 ## Keys
 
 ```
-Enter, Enter        the foot lifts, the foot lands (at the playhead)
-L, R                which foot: the boxer's own left or right
-Q W E / A S D / Z X C   the direction, laid out like the pad: front-left, front,
+Enter               1. the foot lifts (at the playhead)
+L, R                2. which foot: the boxer's own left or right
+Q W E / A S D / Z X C   3. the direction, laid out like the pad: front-left, front,
                     front-right / left, PIVOT, right / back-left, back, back-right
+Enter               4. the foot lands (at the playhead), which saves the step
 Shift+Enter         the window is done (click Done again to reopen)
 Esc                 clear the half-made step, or the selection
 click / drag        select a step; drag its edge or middle (frame-snapped)

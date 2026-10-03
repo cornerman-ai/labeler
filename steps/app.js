@@ -59,7 +59,7 @@ Object.assign(state, {
   doneAll: null,            // Map key -> [Windows Done rows] — every labeler's
   steps: [],                // every labeler's steps on this video
   draft: { start: null, end: null, foot: null, direction: null },
-  onlyUnfinished: true,
+  onlyUnfinished: false,    // the list shows every window (done ones to go back and edit); N skips the done ones
   selectedSpan: null,       // span_uuid of your step selected for editing
   editingSpan: null,        // span_uuid whose times are open in the list's editor
   undoStack: [],            // [{label, run}] — ⌘Z undoes the last change to your steps (this video)
@@ -136,9 +136,9 @@ function finished(key) {
   const rows = (state.doneAll && state.doneAll.get(key)) || [];
   return rows.some(r => String(r.labeler).toLowerCase() === mine && String(r.done) === '1');
 }
-function windowsFiltered() {
+function windowsFiltered(onlyUnfinished = state.onlyUnfinished) {
   const all = (state.windows || []).filter(w => w.key);
-  return state.onlyUnfinished ? all.filter(w => !finished(w.key) || w.key === state.videoLink) : all;
+  return onlyUnfinished ? all.filter(w => !finished(w.key) || w.key === state.videoLink) : all;
 }
 
 // ============================================================
@@ -194,7 +194,7 @@ function pickWindow(w) {
 }
 
 function nextWindow() {
-  const rows = windowsFiltered();
+  const rows = windowsFiltered(true);
   if (!rows.length) { showToast(state.windows ? 'Nothing left in the list.' : 'The windows are still loading.', 'info'); return; }
   const i = rows.findIndex(w => w.key === state.videoLink);
   const next = rows[(i + 1) % rows.length];
@@ -334,13 +334,22 @@ function renderDraft() {
   });
 }
 function clearDraft() { state.draft = { start: null, end: null, foot: null, direction: null }; renderDraft(); renderTimelineOverlay(); }
+// The order (Mathe, 2026-10-03): Enter when the foot lifts, the foot, the
+// direction, Enter when it lands — the landing Enter saves the step, so it
+// waits for the foot and the direction.
 function setDraftStart() {
   const v = videoEl(); if (!v || !v.duration || !state.win) return;
+  if (state.selectedSpan) selectSpan(null);   // a new step: L / R and the pad now go to it, not to the selected one
   state.draft.start = v.currentTime; renderDraft(); renderTimelineOverlay(); maybeSaveDraft();
 }
 function setDraftEnd() {
   const v = videoEl(); if (!v || !v.duration || !state.win) return;
-  state.draft.end = v.currentTime; renderDraft(); renderTimelineOverlay(); maybeSaveDraft();
+  const d = state.draft;
+  if (!d.foot || !d.direction) {
+    showToast(`Pick the ${!d.foot ? 'foot (L / R)' : 'direction'} first — then Enter when the foot lands.`, 'info');
+    return;
+  }
+  d.end = v.currentTime; renderDraft(); renderTimelineOverlay(); maybeSaveDraft();
 }
 function setDraftDirection(id) {
   if (!state.win) { showToast('Pick a window first.', 'info'); return; }
