@@ -74,7 +74,7 @@
 .vp-refresh { border: 0; background: transparent; cursor: pointer; color: var(--ink-dim); font-size: 15px; padding: 0 4px; }
 .vp-refresh:hover { color: var(--ink); }
 .vp-row .vp-tag { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
-.vp-row .vp-tag.done { background: color-mix(in srgb, var(--foot) 18%, transparent); color: var(--ink); margin-left: 4px; }
+.vp-row .vp-tag.done { background: var(--yes-wash); color: var(--yes-on-wash); }
 .vp-row .vp-tag + .vp-tag { margin-left: 4px; }
 .vp-row.current { outline: 2px solid var(--accent); outline-offset: -2px; }
 
@@ -92,10 +92,10 @@
 /* the window card */
 #window-info { font-size: 13px; line-height: 1.45; }
 #window-info.warn { color: var(--no-on-wash); }
-.foot-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+#foot-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
 .foot-btn { display: flex; align-items: center; justify-content: center; gap: 6px; border-left: 4px solid var(--foot); }
-.foot-btn.active { background: color-mix(in srgb, var(--foot) 22%, var(--card)); border-color: var(--foot); font-weight: 600; }
-.foot-btn.finished::after { content: '✓'; color: var(--yes-on-wash); }
+.foot-btn.armed { background: color-mix(in srgb, var(--foot) 22%, var(--card)); outline: 2px solid var(--foot); outline-offset: 1px; font-weight: 600; }
+.foot-btn:disabled { opacity: .45; cursor: default; }
 #done-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 #btn-done { flex: none; }
 #btn-done.is-done { background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; }
@@ -118,8 +118,6 @@
 .dir-btn.armed { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dir-btn:disabled { opacity: .45; cursor: default; }
 
-/* the list: the other foot's steps dimmed */
-.span-row.other-foot { opacity: .6; }
 
 /* timeline lanes: the window, then one per foot */
 .seg-lane.lane-window { height: 8px; background: var(--fill); }
@@ -127,7 +125,6 @@
 #minimap-segments .win-band { position: absolute; top: 0; height: 100%; background: color-mix(in srgb, var(--accent) 45%, transparent); }
 .seg-lane.lane-foot { --lane-tint: var(--foot); }
 .seg-lane.lane-foot::before { color: var(--foot); }
-.seg-lane.lane-foot.active { background: color-mix(in srgb, var(--foot) 10%, transparent); }
 .seg-lane .span-chip { color: #fff; font-size: 10px; line-height: 12px; text-align: center; overflow: hidden; white-space: nowrap; }
 
 /* the shortcuts sheet is punch.css's #sc-dialog; only its prose is this page's */

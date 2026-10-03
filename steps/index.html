@@ -12,7 +12,7 @@
   <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
        look) paints the transport buttons dark blue through #video-controls button. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="steps.css?v=20261003b">
+  <link rel="stylesheet" href="steps.css?v=20261003c">
 </head>
 <body>
   <div id="app">
@@ -21,7 +21,7 @@
     <header id="top-bar">
       <div class="nav-lead">
         <h1 class="nav-title">Footwork steps</h1>
-        <span class="nav-sub">every step in 20 s, one foot at a time</span>
+        <span class="nav-sub">every step in 20 s: when the foot lifts, when it lands, which way</span>
       </div>
       <div class="nav-actions">
         <div class="nav-group">
@@ -121,37 +121,34 @@
     </div>
 
     <div id="main-layout">
-      <!-- Left: the window, the foot being labeled, the step being made, the steps -->
+      <!-- Left: the window, the step being made, the steps -->
       <aside id="steps-panel">
         <section class="card" id="window-card">
           <div class="card-eyebrow">Window <span id="window-count" class="count"></span></div>
           <div id="window-info" class="muted">Pick a window from the list.</div>
-          <div class="foot-switch" role="radiogroup" aria-label="The foot being labeled">
-            <button type="button" class="foot-btn" data-foot="lead" role="radio" title="Label the lead foot — the front foot (F switches)">Lead foot</button>
-            <button type="button" class="foot-btn" data-foot="rear" role="radio" title="Label the rear foot — the back foot (F switches)">Rear foot</button>
-          </div>
           <div id="done-row">
-            <button type="button" id="btn-done" title="Every step of this foot in the window is labeled — also when there were none (Shift+Enter)">This foot is done <kbd>⇧</kbd><kbd>Enter</kbd></button>
+            <button type="button" id="btn-done" title="Every step in the window is labeled — also when there were none (Shift+Enter)">Window done <kbd>⇧</kbd><kbd>Enter</kbd></button>
             <span id="done-status" class="muted"></span>
           </div>
-          <p class="hint">Watch the 20 s once per foot. <b>Lead</b> = the front foot (left for an orthodox boxer),
-            <b>rear</b> = the back foot. Mark every step of that foot, then say it is done — also when it did not step:
-            an empty window counts as zero steps. <kbd>F</kbd> switches the foot.</p>
+          <p class="hint">Mark every step of both feet in the 20 s, then say the window is done — also when nobody
+            stepped: an empty window counts as zero steps.</p>
         </section>
 
         <section class="card" id="draft-card">
-          <div class="card-eyebrow">Mark a step <span id="draft-foot" class="count"></span></div>
+          <div class="card-eyebrow">Mark a step</div>
           <div class="draft-row">
             <button type="button" id="btn-draft-start" class="draft-btn" title="The frame the foot leaves the floor (Enter)">Lifts <kbd>Enter</kbd></button>
             <span id="draft-start" class="draft-time">—</span>
             <button type="button" id="btn-draft-end" class="draft-btn" title="The frame the foot lands (Enter again)">Lands <kbd>Enter</kbd></button>
             <span id="draft-end" class="draft-time">—</span>
           </div>
+          <div id="foot-buttons" aria-label="Which foot"></div>
           <div id="direction-pad" aria-label="Direction the foot moved"></div>
-          <p class="hint"><kbd>Enter</kbd> when the foot leaves the floor, <kbd>Enter</kbd> when it lands, then the
-            direction it moved — the step saves itself. Directions are the <b>boxer's own</b>: front is where he faces,
-            left is his left. <b>Facing the camera, his left is on your right.</b> The centre is a <b>pivot</b>: the foot
-            turns on the ball without moving to a new spot. A bounce in place is not a step. <kbd>Esc</kbd> clears a half-made one.</p>
+          <p class="hint"><kbd>Enter</kbd> when the foot leaves the floor, <kbd>Enter</kbd> when it lands, then which
+            foot (<kbd>L</kbd> / <kbd>R</kbd>) and the direction it moved — the step saves itself. Foot and directions are
+            the <b>boxer's own</b>: his left foot, front is where he faces, left is his left. <b>Facing the camera, his
+            left is on your right.</b> The centre is a <b>pivot</b>: the foot turns on the ball without moving to a new spot.
+            A bounce in place is not a step. When both feet step at once, mark each on its own. <kbd>Esc</kbd> clears a half-made one.</p>
         </section>
 
         <section class="card" id="spans-card">
@@ -187,8 +184,8 @@
           <div id="seek-bar-wrapper">
             <div id="timeline-ticks"></div>
             <!-- Lanes are built by app.js's renderTimelineOverlay(): the window,
-                 then your lead foot and your rear foot — the foot being labeled
-                 highlighted. Only your own steps: nobody copies anybody. -->
+                 then your left foot and your right foot. Only your own steps:
+                 nobody copies anybody. -->
             <div id="seg-lanes">
               <div id="playhead" hidden><span class="playhead-grip"></span></div>
             </div>
@@ -258,27 +255,27 @@
     </div>
     <div class="sc-body">
       <p class="sc-note">Every video in the list has one 20-second window, the same for everyone. Label every step
-        in it, one foot at a time: watch the window for the <b>lead</b> foot (the front one) and mark each of its steps,
-        then say the foot is done; then the same for the <b>rear</b> foot. A step runs from the frame the foot
-        <b>leaves the floor</b> to the frame it <b>lands</b>; its direction is the way the foot moved, in the
-        <b>boxer's own</b> front / back / left / right — facing the camera, his left is on your right. The centre key is a
-        <b>pivot</b>: the foot turns on the ball without moving to a new spot. A bounce in place is not a step. "Done"
-        counts even when the foot never stepped — that is a window with zero steps, not an unlabeled one.</p>
+        of both feet in it. A step runs from the frame the foot <b>leaves the floor</b> to the frame it <b>lands</b>;
+        then pick which foot and the way it moved, both the <b>boxer's own</b> — his left foot, his front / back / left /
+        right; facing the camera, his left is on your right. The centre key is a <b>pivot</b>: the foot turns on the
+        ball without moving to a new spot. A bounce in place is not a step. When both feet move at once, mark each on
+        its own. "Window done" counts even when nobody stepped — that is a window with zero steps, not an unlabeled one.</p>
       <p class="sc-sec">Marking</p>
       <div class="sc-row"><span>The foot lifts, then lands, at the playhead</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
-      <div class="sc-row"><span>The direction, which saves the step — the keys sit like the pad</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>Which foot — the boxer's own left or right</span><span class="sc-keys"><kbd>L</kbd><kbd>R</kbd></span></div>
+      <div class="sc-row"><span>The direction — the keys sit like the pad; the step saves once it has both ends, the foot and the direction</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
       <div class="sc-row"><span>Front-left · front · front-right</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd></span></div>
       <div class="sc-row"><span>Left · pivot · right</span><span class="sc-keys"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
       <div class="sc-row"><span>Back-left · back · back-right</span><span class="sc-keys"><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
-      <div class="sc-row"><span>Switch the foot being labeled</span><span class="sc-keys"><kbd>F</kbd></span></div>
-      <div class="sc-row"><span>This foot is done in this window</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>The window is done</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>Enter</kbd></span></div>
       <div class="sc-row"><span>Clear the half-made step, or the selection</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
       <p class="sc-sec">Changing your steps</p>
       <div class="sc-row"><span>Select one — click it on its lane or in the list</span><span class="sc-keys"><kbd>Click</kbd></span></div>
       <div class="sc-row"><span>Move an end: drag the chip's edge; the whole step: drag its middle (frame-snapped; Esc cancels)</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
       <div class="sc-row"><span>Type the times, or take them from the playhead</span><span class="sc-keys"><kbd>✎</kbd></span></div>
       <div class="sc-row"><span>Delete the selected step</span><span class="sc-keys"><kbd>Delete</kbd><kbd>×</kbd></span></div>
-      <div class="sc-row"><span>Undo the last change (add, move, direction, delete)</span><span class="sc-keys"><kbd>&#8984;Z</kbd></span></div>
+      <div class="sc-row"><span>With a step selected: L / R or a pad key changes its foot or direction</span><span class="sc-keys"><kbd>L</kbd><kbd>R</kbd><kbd>Q</kbd>…</span></div>
+      <div class="sc-row"><span>Undo the last change (add, move, foot, direction, delete)</span><span class="sc-keys"><kbd>&#8984;Z</kbd></span></div>
       <div class="sc-row"><span>Next window</span><span class="sc-keys"><kbd>N</kbd></span></div>
       <p class="sc-sec">Playback</p>
       <div class="sc-row"><span>Play / pause — it loops over the window</span><span class="sc-keys"><kbd>Space</kbd></span></div>
@@ -286,7 +283,7 @@
       <div class="sc-row"><span>Skeleton overlay on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
       <div class="sc-row"><span>Volume</span><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span></div>
       <div class="sc-row"><span>Slower playback helps: the speed menu</span><span class="sc-keys"><kbd>Click the speed</kbd></span></div>
-      <p class="sc-note muted">Steps go to the <b>Steps</b> tab, finished feet to <b>Windows Done</b>, both in the
+      <p class="sc-note muted">Steps go to the <b>Steps</b> tab, finished windows to <b>Windows Done</b>, both in the
         <b>Footwork steps</b> workbook (Drive, Ambo/data/labels/labeling_team).</p>
     </div>
   </dialog>
@@ -295,7 +292,7 @@
   <script src="../shared/player.js?v=20260918"></script>
   <script src="../punch/skeleton.js?v=20260919b"></script>
   <script src="../punch/video-folder.js?v=20260918"></script>
-  <script src="app.js?v=20261003b"></script>
+  <script src="app.js?v=20261003c"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

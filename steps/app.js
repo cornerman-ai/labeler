@@ -3,13 +3,14 @@
 //
 // Every step inside one fixed 20 s window per video (windows.json, written by
 // cornerman-backend's ml/research/footwork/pick_step_windows.py — the same
-// windows for every labeler, so two can be compared), one foot at a time: a
-// pass for the lead foot, a pass for the rear foot, because in a step-and-drag
-// the second foot often lifts before the first has landed. A step is a span
-// from the frame the foot leaves the floor to the frame it lands, with the
-// direction it moved in the boxer's own frame, or `pivot` (it turns on the
-// ball without moving). A pass is "done" when the labeler says so — with or
-// without steps, so an empty window counts as zero steps, not as unlabeled.
+// windows for every labeler, so two can be compared). A step is a span from
+// the frame the foot leaves the floor to the frame it lands, which foot (the
+// boxer's own left or right — Mathe, 2026-10-03: picked per step, after Enter,
+// not as a pass per foot), and the direction it moved in the boxer's own
+// frame, or `pivot` (it turns on the ball without moving). The steps of the
+// two feet may overlap in time: each is made on its own. A window is "done"
+// when the labeler says so — with or without steps, so an empty window counts
+// as zero steps, not as unlabeled.
 // Ground truth for the step detector (cornerman-backend, the footwork line):
 // which foot moves first, when the lead foot lands against the jab's impact,
 // and steps back.
@@ -22,7 +23,7 @@
 //
 // Sheet (apps_script/Code.js, doGetSteps): the "Footwork steps" workbook —
 //   Steps         id | video_file | video_name | labeler | foot | direction | start_sec | end_sec | span_uuid | ts
-//   Windows Done  video_file | video_name | labeler | foot | window_start_sec | window_end_sec | done | ts
+//   Windows Done  video_file | video_name | labeler | window_start_sec | window_end_sec | done | ts
 // Times are source-video seconds, the same clock as the punch labels.
 // ============================================================
 
@@ -40,9 +41,10 @@ const DIRECTIONS = [
   { id: 'back_right',  label: 'Back-right',  key: 'c', arrow: '↘' },
 ];
 const DIR_BY_ID = Object.fromEntries(DIRECTIONS.map(d => [d.id, d]));
+// the boxer's own feet, picked per step (L / R)
 const FEET = {
-  lead: { label: 'Lead foot', color: '#4c8dff' },
-  rear: { label: 'Rear foot', color: '#ff9f43' },
+  left:  { label: 'Left foot',  key: 'l', color: '#4c8dff' },
+  right: { label: 'Right foot', key: 'r', color: '#ff9f43' },
 };
 const FETCH_MS = 25000;
 const LINK_DEBOUNCE_MS = 300;
@@ -56,8 +58,7 @@ Object.assign(state, {
   catalog: null,            // the tracking sheet's videos [{name, link, key}]
   doneAll: null,            // Map key -> [Windows Done rows] — every labeler's
   steps: [],                // every labeler's steps on this video
-  foot: readFoot(),         // the foot being labeled
-  draft: { start: null, end: null, direction: null },
+  draft: { start: null, end: null, foot: null, direction: null },
   onlyUnfinished: true,
   selectedSpan: null,       // span_uuid of your step selected for editing
   editingSpan: null,        // span_uuid whose times are open in the list's editor
@@ -89,7 +90,6 @@ function setSync(text, err) {
   el.hidden = !text; el.textContent = text || ''; el.classList.toggle('err', !!err);
 }
 function isTyping(e) { return e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName); }
-function readFoot() { try { return localStorage.getItem('stepsFoot') === 'rear' ? 'rear' : 'lead'; } catch (e) { return 'lead'; } }
 function needName() {
   if (me()) return false;
   showToast('Type your name first (top right) — steps are compared between labelers.', 'error');
@@ -130,13 +130,12 @@ function joinWindows(wins) {
     return { ...w, n: i + 1, link: v ? v.link : '', key: v ? v.key : '' };
   });
 }
-// your Done rows: which feet you have finished in a window
-function doneFeet(key) {
+// your Done row: have you finished this window
+function finished(key) {
   const mine = String(me()).toLowerCase();
   const rows = (state.doneAll && state.doneAll.get(key)) || [];
-  return new Set(rows.filter(r => String(r.labeler).toLowerCase() === mine && String(r.done) === '1').map(r => r.foot));
+  return rows.some(r => String(r.labeler).toLowerCase() === mine && String(r.done) === '1');
 }
-function finished(key) { const d = doneFeet(key); return d.has('lead') && d.has('rear'); }
 function windowsFiltered() {
   const all = (state.windows || []).filter(w => w.key);
   return state.onlyUnfinished ? all.filter(w => !finished(w.key) || w.key === state.videoLink) : all;
@@ -153,12 +152,7 @@ function setupVideoPicker() {
   const only = document.getElementById('only-unfinished');
   const count = document.getElementById('vp-count');
 
-  function tag(w) {
-    const d = doneFeet(w.key);
-    let t = '';
-    for (const f of ['lead', 'rear']) if (d.has(f)) t += `<span class="vp-tag done" style="--foot:${FEET[f].color}">${f} ✓</span>`;
-    return t;
-  }
+  function tag(w) { return finished(w.key) ? '<span class="vp-tag done">done ✓</span>' : ''; }
   function renderList() {
     if (!state.windows) { list.innerHTML = '<div class="vp-loading">Loading windows…</div>'; return; }
     const q = search.value.trim().toLowerCase();
@@ -284,53 +278,36 @@ function renderWindow() {
   const all = (state.windows || []).filter(w => w.key);
   const fin = all.filter(w => finished(w.key)).length;
   count.textContent = all.length ? `(${fin} of ${all.length} finished)` : '';
-  document.querySelectorAll('.foot-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.foot === state.foot);
-    b.setAttribute('aria-checked', b.dataset.foot === state.foot ? 'true' : 'false');
-    b.style.setProperty('--foot', FEET[b.dataset.foot].color);
-    b.classList.toggle('finished', !!state.win && doneFeet(state.videoLink).has(b.dataset.foot));
-  });
-  document.getElementById('draft-foot').textContent = `— ${FEET[state.foot].label.toLowerCase()}`;
   if (!state.videoLink) { info.textContent = 'Pick a window from the list.'; info.className = 'muted'; doneBtn.disabled = true; status.textContent = ''; return; }
   if (!state.win) { info.textContent = 'This video has no window — pick one from the list.'; info.className = 'warn'; doneBtn.disabled = true; status.textContent = ''; return; }
   const w = state.win;
   info.className = '';
   info.innerHTML = `<b>${w.n}.</b> ${escapeHtml(w.stem)}<br><span class="muted">${fmtSec(w.start_sec)} – ${fmtSec(w.end_sec)}</span>`;
-  const done = doneFeet(state.videoLink).has(state.foot);
+  const done = finished(state.videoLink);
   doneBtn.disabled = false;
   doneBtn.classList.toggle('is-done', done);
-  doneBtn.innerHTML = done ? 'Done ✓ — click to reopen' : 'This foot is done <kbd>⇧</kbd><kbd>Enter</kbd>';
-  const n = state.steps.filter(s => ownSpan(s) && s.foot === state.foot).length;
-  status.textContent = done ? `${n} step${n === 1 ? '' : 's'} of the ${state.foot} foot` : '';
-}
-
-function setFoot(foot) {
-  state.foot = foot;
-  try { localStorage.setItem('stepsFoot', foot); } catch (e) { /* this page only */ }
-  clearDraft();
-  renderWindow(); renderSpanList(); renderTimelineOverlay();
+  doneBtn.innerHTML = done ? 'Done ✓ — click to reopen' : 'Window done <kbd>⇧</kbd><kbd>Enter</kbd>';
+  const n = state.steps.filter(ownSpan).length;
+  status.textContent = done ? `${n} step${n === 1 ? '' : 's'}` : '';
 }
 
 async function toggleDone() {
   if (!state.win || needName()) return;
-  const foot = state.foot, key = state.videoLink;
-  const was = doneFeet(key).has(foot), done = was ? 0 : 1;
-  if (!was && state.draft.start != null) { showToast('Finish or clear (Esc) the half-made step first.', 'info'); return; }
-  const rows = (state.doneAll.get(key) || []).filter(r => !(String(r.labeler).toLowerCase() === me().toLowerCase() && r.foot === foot));
+  const key = state.videoLink;
+  const was = finished(key), done = was ? 0 : 1;
+  const d = state.draft;
+  if (!was && (d.start != null || d.end != null)) { showToast('Finish or clear (Esc) the half-made step first.', 'info'); return; }
+  const rows = (state.doneAll.get(key) || []).filter(r => String(r.labeler).toLowerCase() !== me().toLowerCase());
   const before = state.doneAll.get(key) || [];
-  state.doneAll.set(key, [...rows, { video_file: key, labeler: me(), foot, done: String(done) }]);
+  state.doneAll.set(key, [...rows, { video_file: key, labeler: me(), done: String(done) }]);
   renderWindow(); if (window._renderPickerList) window._renderPickerList();
   setSync('saving…');
   try {
-    const r = await fetchJson(sheetUrl({ action: 'markStepWindowDone', video: key, videoName: state.win.stem, foot, done,
+    const r = await fetchJson(sheetUrl({ action: 'markStepWindowDone', video: key, videoName: state.win.stem, done,
                                          window_start_sec: state.win.start_sec, window_end_sec: state.win.end_sec }));
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'no answer');
     setSync('saved'); setTimeout(() => setSync(''), 1500);
-    if (done) {
-      const other = foot === 'lead' ? 'rear' : 'lead';
-      if (!doneFeet(key).has(other)) { showToast(`${FEET[foot].label} done — now the ${other} foot.`, 'success'); setFoot(other); fitWindow(); }
-      else { showToast('Both feet done — on to the next window.', 'success'); nextWindow(); }
-    }
+    if (done) { showToast('Window done — on to the next one.', 'success'); nextWindow(); }
   } catch (e) {
     state.doneAll.set(key, before); renderWindow(); if (window._renderPickerList) window._renderPickerList();
     setSync('save failed — ' + (e.message || e), true);
@@ -339,7 +316,7 @@ async function toggleDone() {
 }
 
 // ============================================================
-// the draft: lifts + lands + direction → a saved step of the current foot
+// the draft: lifts + lands + foot + direction, in any order → a saved step
 // ============================================================
 function renderDraft() {
   const d = state.draft;
@@ -351,8 +328,12 @@ function renderDraft() {
     b.classList.toggle('armed', b.dataset.dir === d.direction);
     b.disabled = !state.win;
   });
+  document.querySelectorAll('.foot-btn').forEach(b => {
+    b.classList.toggle('armed', b.dataset.foot === d.foot);
+    b.disabled = !state.win;
+  });
 }
-function clearDraft() { state.draft = { start: null, end: null, direction: null }; renderDraft(); renderTimelineOverlay(); }
+function clearDraft() { state.draft = { start: null, end: null, foot: null, direction: null }; renderDraft(); renderTimelineOverlay(); }
 function setDraftStart() {
   const v = videoEl(); if (!v || !v.duration || !state.win) return;
   state.draft.start = v.currentTime; renderDraft(); renderTimelineOverlay(); maybeSaveDraft();
@@ -367,21 +348,27 @@ function setDraftDirection(id) {
   if (sel && state.draft.start == null) { changeSpan(sel, { direction: id }, 'direction'); return; }   // re-aim the selected step
   state.draft.direction = id; renderDraft(); maybeSaveDraft();
 }
+function setDraftFoot(foot) {
+  if (!state.win) { showToast('Pick a window first.', 'info'); return; }
+  const sel = selectedSpan();
+  if (sel && state.draft.start == null) { changeSpan(sel, { foot }, 'foot'); return; }   // move the selected step to the other foot
+  state.draft.foot = foot; renderDraft(); renderTimelineOverlay(); maybeSaveDraft();
+}
 function maybeSaveDraft() {
   const d = state.draft;
-  if (d.start == null || d.end == null || !d.direction) return;
+  if (d.start == null || d.end == null || !d.foot || !d.direction) return;
   if (needName()) return;
   const a = Math.min(d.start, d.end), b = Math.max(d.start, d.end);
-  const direction = d.direction;
-  state.draft = { start: null, end: null, direction: null };
+  const { foot, direction } = d;
+  state.draft = { start: null, end: null, foot: null, direction: null };
   renderDraft();
-  saveSpan({ span_uuid: crypto.randomUUID(), labeler: me(), foot: state.foot, direction, start_sec: a, end_sec: b, ts: new Date().toISOString() });
+  saveSpan({ span_uuid: crypto.randomUUID(), labeler: me(), foot, direction, start_sec: a, end_sec: b, ts: new Date().toISOString() });
 }
 
 // ============================================================
 // changing your steps, as on the unusable page: select one, drag its edges or
-// its middle, ✎ for typed times, the direction in the list (or a pad key with
-// the step selected), Delete deletes it, ⌘Z undoes the last change. An add is
+// its middle, ✎ for typed times, the foot and direction in the list (or L / R
+// and a pad key with the step selected), Delete deletes it, ⌘Z undoes the last change. An add is
 // undone by a delete, a delete by adding the step back under its uuid.
 // ============================================================
 const UNDO_MAX = 50;
@@ -423,12 +410,12 @@ async function saveSpan(span, undoable = true) {
     showToast('Could not save the step: ' + (e.message || e), 'error');
   }
 }
-// patch: any of direction / start_sec / end_sec; `before` defaults to the step as it is now
+// patch: any of foot / direction / start_sec / end_sec; `before` defaults to the step as it is now
 async function changeSpan(span, patch, what, undoable = true, before = null) {
-  before = before || { direction: span.direction, start_sec: span.start_sec, end_sec: span.end_sec };
+  before = before || { foot: span.foot, direction: span.direction, start_sec: span.start_sec, end_sec: span.end_sec };
   Object.assign(span, patch);
   if (span.end_sec < span.start_sec) [span.start_sec, span.end_sec] = [span.end_sec, span.start_sec];
-  if (span.direction === before.direction && span.start_sec === before.start_sec && span.end_sec === before.end_sec) {
+  if (span.foot === before.foot && span.direction === before.direction && span.start_sec === before.start_sec && span.end_sec === before.end_sec) {
     renderSpanList(); renderTimelineOverlay(); return;
   }
   renderSpanList(); renderTimelineOverlay();
@@ -490,7 +477,7 @@ function setupSpanDragging() {
     if (!span) return;
     e.preventDefault(); e.stopPropagation();
     drag = { span, zone: zoneOf(chip, e.clientX), x0: e.clientX, t0: timeAt(e.clientX), moved: false,
-             before: { direction: span.direction, start_sec: span.start_sec, end_sec: span.end_sec } };
+             before: { foot: span.foot, direction: span.direction, start_sec: span.start_sec, end_sec: span.end_sec } };
   });
   document.addEventListener('mousemove', e => {
     if (!drag) return;
@@ -520,30 +507,29 @@ function setupSpanDragging() {
 }
 
 // ============================================================
-// the list of your steps in this window, both feet, the current one first
+// the list of your steps in this window, in time order
 // ============================================================
 function ownSpan(s) { return !!me() && String(s.labeler || '').toLowerCase() === String(me()).toLowerCase(); }
 function spanHolds(s, t) { const eps = (state.frameDuration || 1 / 30) / 2; return t >= s.start_sec - eps && t <= s.end_sec + eps; }
 function spanTimes(s) { return s.end_sec - s.start_sec < 1e-6 ? `${fmtSec(s.start_sec)} · one frame` : `${fmtSec(s.start_sec)} – ${fmtSec(s.end_sec)}`; }
-function shownSpans() {
-  return state.steps.filter(ownSpan).sort((a, b) => (a.foot === state.foot ? 0 : 1) - (b.foot === state.foot ? 0 : 1) || a.start_sec - b.start_sec);
-}
+function shownSpans() { return state.steps.filter(ownSpan).sort((a, b) => a.start_sec - b.start_sec); }
 function renderSpanList() {
   const el = document.getElementById('span-list');
   const count = document.getElementById('span-count');
   if (!state.videoLink) { el.innerHTML = '<div class="muted">No video loaded.</div>'; count.textContent = ''; return; }
   const rows = shownSpans();
-  const nl = rows.filter(s => s.foot === 'lead').length, nr = rows.length - nl;
-  count.textContent = rows.length ? `(lead ${nl} · rear ${nr})` : '';
+  const nl = rows.filter(s => s.foot === 'left').length, nr = rows.length - nl;
+  count.textContent = rows.length ? `(left ${nl} · right ${nr})` : '';
   if (!rows.length) { el.innerHTML = '<div class="muted">None yet.</div>'; return; }
   const t = videoEl() ? videoEl().currentTime : -1;
   el.innerHTML = rows.map((s, i) => {
     const dir = DIR_BY_ID[s.direction] || { label: s.direction, arrow: '?' };
     const sel = s.span_uuid === state.selectedSpan;
     const options = DIRECTIONS.map(x => `<option value="${x.id}"${x.id === s.direction ? ' selected' : ''}>${x.arrow} ${x.label}</option>`).join('');
-    const head = `<div class="span-row${s.foot === state.foot ? '' : ' other-foot'}${sel ? ' selected' : ''}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${FEET[s.foot] ? FEET[s.foot].color : '#9aa0a6'}">` +
+    const feet = Object.entries(FEET).map(([id, f]) => `<option value="${id}"${id === s.foot ? ' selected' : ''}>${f.label}</option>`).join('');
+    const head = `<div class="span-row${sel ? ' selected' : ''}${spanHolds(s, t) ? ' current' : ''}" data-i="${i}" style="--reason:${FEET[s.foot] ? FEET[s.foot].color : '#9aa0a6'}">` +
       `<span class="swatch" title="${escapeHtml(FEET[s.foot] ? FEET[s.foot].label : s.foot)}"></span>` +
-      `<span><span class="times">${spanTimes(s)}</span> · ${s.foot} · <select data-i="${i}" title="${escapeHtml(dir.label)}">${options}</select></span>` +
+      `<span><span class="times">${spanTimes(s)}</span> · <select class="sel-foot" data-i="${i}">${feet}</select> <select class="sel-dir" data-i="${i}" title="${escapeHtml(dir.label)}">${options}</select></span>` +
       `<span class="row-btns"><button type="button" class="edit" data-i="${i}" title="Change the times">✎</button>` +
       `<button type="button" class="del" data-i="${i}" title="Delete this step (Delete; ⌘Z undoes)">×</button></span></div>`;
     if (s.span_uuid !== state.editingSpan) return head;
@@ -558,7 +544,8 @@ function renderSpanList() {
     selectSpan(s);
     const v = videoEl(); if (v && v.duration) v.currentTime = s.start_sec;
   }));
-  el.querySelectorAll('select').forEach(sel => sel.addEventListener('change', () => changeSpan(rows[Number(sel.dataset.i)], { direction: sel.value }, 'direction')));
+  el.querySelectorAll('select.sel-dir').forEach(sel => sel.addEventListener('change', () => changeSpan(rows[Number(sel.dataset.i)], { direction: sel.value }, 'direction')));
+  el.querySelectorAll('select.sel-foot').forEach(sel => sel.addEventListener('change', () => changeSpan(rows[Number(sel.dataset.i)], { foot: sel.value }, 'foot')));
   el.querySelectorAll('.del').forEach(b => b.addEventListener('click', () => deleteSpan(rows[Number(b.dataset.i)])));
   el.querySelectorAll('.edit').forEach(b => b.addEventListener('click', () => {
     const s = rows[Number(b.dataset.i)];
@@ -632,20 +619,18 @@ function renderTimelineOverlay() {
     if (mini) { const m = band.cloneNode(); m.style.cssText = `left:${100 * state.win.start_sec / duration}%;width:${100 * (state.win.end_sec - state.win.start_sec) / duration}%`; mini.appendChild(m); }
   }
   lanes.insertBefore(wl, playhead);
-  // your two feet, the one being labeled highlighted
+  // your two feet; the half-made step on its foot's lane, on both until the foot is picked
   const mine = state.steps.filter(ownSpan);
-  for (const foot of ['lead', 'rear']) {
+  for (const foot of Object.keys(FEET)) {
     const lane = document.createElement('div');
-    lane.className = 'seg-lane lane-foot' + (foot === state.foot ? ' lane-own active' : '');
+    lane.className = 'seg-lane lane-foot lane-' + foot;
     lane.dataset.laneLabel = foot;
     lane.style.setProperty('--foot', FEET[foot].color);
     laneChips(lane, mine.filter(s => s.foot === foot), duration);
-    if (foot === state.foot) {
-      const d = state.draft;
-      if (d.start != null || d.end != null) {
-        const a = d.start != null ? d.start : v.currentTime, b = d.end != null ? d.end : v.currentTime;
-        laneChips(lane, [{ foot, direction: d.direction, start_sec: Math.min(a, b), end_sec: Math.max(a, b) }], duration, { draft: true });
-      }
+    const d = state.draft;
+    if ((d.start != null || d.end != null) && (!d.foot || d.foot === foot)) {
+      const a = d.start != null ? d.start : v.currentTime, b = d.end != null ? d.end : v.currentTime;
+      laneChips(lane, [{ foot, direction: d.direction, start_sec: Math.min(a, b), end_sec: Math.max(a, b) }], duration, { draft: true });
     }
     lanes.insertBefore(lane, playhead);
   }
@@ -668,12 +653,15 @@ function updateVideoOverlay() {
     const s = rows[Number(row.dataset.i)];
     row.classList.toggle('current', !!s && spanHolds(s, v.currentTime));
   });
-  if (state.draft.start != null && state.draft.end == null) {
-    const lane = document.querySelector('#seg-lanes .lane-own');
-    if (lane) {
+  const d = state.draft;
+  if (d.start != null && d.end == null) {
+    for (const foot of Object.keys(FEET)) {
+      if (d.foot && d.foot !== foot) continue;
+      const lane = document.querySelector('#seg-lanes .lane-' + foot);
+      if (!lane) continue;
       lane.querySelectorAll('.span-chip.draft').forEach(n => n.remove());
-      const a = Math.min(state.draft.start, v.currentTime), b = Math.max(state.draft.start, v.currentTime);
-      laneChips(lane, [{ foot: state.foot, direction: state.draft.direction, start_sec: a, end_sec: b }], v.duration, { draft: true });
+      const a = Math.min(d.start, v.currentTime), b = Math.max(d.start, v.currentTime);
+      laneChips(lane, [{ foot, direction: d.direction, start_sec: a, end_sec: b }], v.duration, { draft: true });
     }
   }
 }
@@ -709,8 +697,9 @@ function setupKeys() {
       }
       case 'n': case 'N': e.preventDefault(); nextWindow(); return;
       case 'k': case 'K': e.preventDefault(); document.getElementById('btn-toggle-skeleton')?.click(); return;
-      case 'f': case 'F': e.preventDefault(); setFoot(state.foot === 'lead' ? 'rear' : 'lead'); return;
     }
+    const foot = Object.keys(FEET).find(f => FEET[f].key === e.key.toLowerCase());
+    if (foot) { e.preventDefault(); setDraftFoot(foot); return; }
     const dir = DIRECTIONS.find(d => d.key === e.key.toLowerCase());
     if (dir) { e.preventDefault(); setDraftDirection(dir.id); }
   });
@@ -722,7 +711,10 @@ function setupPanel() {
     `<button type="button" class="dir-btn${d.id === 'pivot' ? ' pivot' : ''}" data-dir="${d.id}" title="${d.label} (${d.key.toUpperCase()})">` +
     `<span class="arrow">${d.arrow}</span><span class="dir-label">${d.label}</span><kbd>${d.key.toUpperCase()}</kbd></button>`).join('');
   pad.querySelectorAll('.dir-btn').forEach(b => b.addEventListener('click', () => setDraftDirection(b.dataset.dir)));
-  document.querySelectorAll('.foot-btn').forEach(b => b.addEventListener('click', () => setFoot(b.dataset.foot)));
+  const feet = document.getElementById('foot-buttons');
+  feet.innerHTML = Object.entries(FEET).map(([id, f]) =>
+    `<button type="button" class="foot-btn" data-foot="${id}" style="--foot:${f.color}" title="${f.label} — the boxer's own (${f.key.toUpperCase()})">${f.label} <kbd>${f.key.toUpperCase()}</kbd></button>`).join('');
+  feet.querySelectorAll('.foot-btn').forEach(b => b.addEventListener('click', () => setDraftFoot(b.dataset.foot)));
   document.getElementById('btn-draft-start').addEventListener('click', setDraftStart);
   document.getElementById('btn-draft-end').addEventListener('click', setDraftEnd);
   document.getElementById('btn-done').addEventListener('click', toggleDone);
