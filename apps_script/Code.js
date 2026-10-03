@@ -307,6 +307,13 @@ function doGet(e) {
     return doGetUnusable(p, labeler, action);
   }
 
+  // Footwork step labeler (steps/index.html): one span per foot per step, with
+  // its direction, inside a fixed 20 s window per video; its own workbook —
+  // see doGetSteps at the bottom of this file.
+  if (STEP_ACTIONS.indexOf(action) !== -1) {
+    return doGetSteps(p, labeler, action);
+  }
+
   // Bodyshot review actions: cross-video sweep over Combined Data.
   if (action === 'listBodyshots' || action === 'reclassify') {
     return doGetBodyshots(p, action);
@@ -7014,3 +7021,139 @@ function retireVideoRows(pss, video, actor, dry) {
   return moved;
 }
 
+
+
+// ============================================================
+// Footwork step labeler (steps/index.html) — every step inside a fixed 20 s
+// window per video (steps/windows.json, written by cornerman-backend's
+// ml/research/footwork/pick_step_windows.py), one span per foot: from the
+// frame the foot leaves the floor to the frame it lands, with the direction it
+// moved in the boxer's own frame, or `pivot` (the foot turns on the ball
+// without moving). The page labels one foot per pass, so the two feet can
+// overlap in time. Its own workbook, "Footwork steps" in Drive
+// Ambo/data/labels/labeling_team/ (Mathe, 2026-10-03: a separate sheet — not
+// the punch workbook, whose tabs the label review checks and merges):
+//   Steps         id | video_file | video_name | labeler | foot | direction | start_sec | end_sec | span_uuid | ts
+//   Windows Done  video_file | video_name | labeler | foot | window_start_sec | window_end_sec | done | ts
+// A window's pass is done when its labeler says so — with or without steps,
+// so an empty window counts as zero steps, not as unlabeled. One Done row per
+// (video, labeler, foot). Times are the sheet's MM:SS.mmm text, source-video
+// seconds like every punch label. Every row needs a labeler name: the steps
+// are compared between labelers.
+// ============================================================
+var STEPS_SPREADSHEET_ID = '1_Drj4HbdSJnzeC83Vcr7ULhD1lPnbYVACidC5Pcjzqo';
+var STEP_ACTIONS = ['listSteps', 'listStepWindowsDone', 'addStep', 'updateStep', 'deleteStep', 'markStepWindowDone'];
+var STEPS_NAME = 'Steps';
+var STEPS_HEADERS = ['id', 'video_file', 'video_name', 'labeler', 'foot', 'direction', 'start_sec', 'end_sec', 'span_uuid', 'ts'];
+var STEP_DONE_NAME = 'Windows Done';
+var STEP_DONE_HEADERS = ['video_file', 'video_name', 'labeler', 'foot', 'window_start_sec', 'window_end_sec', 'done', 'ts'];
+var STEP_FEET = ['lead', 'rear'];
+var STEP_DIRECTIONS = ['front', 'front_right', 'right', 'back_right', 'back', 'back_left', 'left', 'front_left', 'pivot'];
+
+function stepsSpreadsheet() {
+  return SpreadsheetApp.openById(STEPS_SPREADSHEET_ID);
+}
+
+function doGetSteps(p, labeler, action) {
+  var ss = stepsSpreadsheet();
+  if (action === 'listStepWindowsDone') {
+    var dsh = getOrCreateSheetWithHeaders(ss, STEP_DONE_NAME, STEP_DONE_HEADERS);
+    return jsonOut({ status: 'ok', done: unusableRows(dsh) });
+  }
+  var video = normalizeDriveUrl(p.video || '');
+  if (!video) return jsonOut({ status: 'error', message: 'missing field: video' });
+  if (action === 'listSteps') {
+    var sh = getOrCreateSheetWithHeaders(ss, STEPS_NAME, STEPS_HEADERS);
+    var dsh2 = getOrCreateSheetWithHeaders(ss, STEP_DONE_NAME, STEP_DONE_HEADERS);
+    var steps = unusableRows(sh).filter(function (r) { return normalizeDriveUrl(r.video_file) === video; })
+      .map(function (r) {
+        return { id: r.id, labeler: r.labeler, foot: r.foot, direction: r.direction,
+                 start_sec: toSeconds(r.start_sec), end_sec: toSeconds(r.end_sec), span_uuid: r.span_uuid, ts: r.ts };
+      });
+    var done = unusableRows(dsh2).filter(function (r) { return normalizeDriveUrl(r.video_file) === video; });
+    return jsonOut({ status: 'ok', steps: steps, done: done });
+  }
+  var who = String(labeler || '').trim();
+  if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first (top right) — steps are compared between labelers' });
+  if (action === 'markStepWindowDone') {
+    var foot = String(p.foot || '');
+    if (STEP_FEET.indexOf(foot) === -1) return jsonOut({ status: 'error', message: 'invalid foot: ' + foot });
+    return withPunchWriteLock(function () { return markStepWindowDone(ss, p, who, video, foot); });
+  }
+  return withPunchWriteLock(function () { return stepWrite(ss, p, who, video, action); });
+}
+
+function stepWrite(ss, p, who, video, action) {
+  var sh = getOrCreateSheetWithHeaders(ss, STEPS_NAME, STEPS_HEADERS);
+  var data = sh.getDataRange().getValues();
+  var idx = unusableHeaderIndex(data[0]);
+  var uuid = String(p.span_uuid || '').trim();
+  if (!uuid) return jsonOut({ status: 'error', message: 'missing field: span_uuid' });
+  var found = -1;
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idx.span_uuid]) === uuid) { found = r; break; }
+  }
+  if (found >= 0 && action !== 'addStep' && String(data[found][idx.labeler]) !== who) {
+    return jsonOut({ status: 'error', message: 'that step is ' + data[found][idx.labeler] + '’s' });
+  }
+  if (action === 'deleteStep') {
+    if (found < 0) return jsonOut({ status: 'ok', row: 'not_found' });
+    sh.deleteRow(found + 1);
+    return jsonOut({ status: 'ok', row: 'deleted' });
+  }
+  var foot = String(p.foot || ''), direction = String(p.direction || '');
+  if (STEP_FEET.indexOf(foot) === -1) return jsonOut({ status: 'error', message: 'invalid foot: ' + foot });
+  if (STEP_DIRECTIONS.indexOf(direction) === -1) return jsonOut({ status: 'error', message: 'invalid direction: ' + direction });
+  var start = toSeconds(p.start_sec), end = toSeconds(p.end_sec);
+  if (!(end >= start)) return jsonOut({ status: 'error', message: 'the end must not come before the start' });
+  var ts = new Date().toISOString();
+  if (action === 'addStep') {
+    // A retried save (the page did not hear the first answer) must not add a
+    // second row: the uuid says it is the same step.
+    if (found >= 0) return jsonOut({ status: 'ok', row: 'exists', id: data[found][idx.id] });
+    var id = 1;
+    for (var i = 1; i < data.length; i++) {
+      var n = parseInt(data[i][idx.id]);
+      if (n >= id) id = n + 1;
+    }
+    var row = [];
+    row[idx.id] = id; row[idx.video_file] = video; row[idx.video_name] = String(p.videoName || '');
+    row[idx.labeler] = who; row[idx.foot] = foot; row[idx.direction] = direction;
+    row[idx.start_sec] = secondsToSheetTime(start); row[idx.end_sec] = secondsToSheetTime(end);
+    row[idx.span_uuid] = uuid; row[idx.ts] = ts;
+    sh.getRange(sh.getLastRow() + 1, 1, 1, STEPS_HEADERS.length).setNumberFormat('@').setValues([fillRow(row, STEPS_HEADERS.length)]);
+    return jsonOut({ status: 'ok', row: 'created', id: id });
+  }
+  if (found < 0) return jsonOut({ status: 'error', message: 'no step with that uuid — reload the video' });
+  var rr = found + 1;
+  sh.getRange(rr, idx.foot + 1).setValue(foot);
+  sh.getRange(rr, idx.direction + 1).setValue(direction);
+  sh.getRange(rr, idx.start_sec + 1).setNumberFormat('@').setValue(secondsToSheetTime(start));
+  sh.getRange(rr, idx.end_sec + 1).setNumberFormat('@').setValue(secondsToSheetTime(end));
+  sh.getRange(rr, idx.ts + 1).setValue(ts);
+  return jsonOut({ status: 'ok', row: 'updated' });
+}
+
+// One row per (video, labeler, foot): done=1 marks the pass finished, done=0
+// reopens it (the row stays, so when it was reopened is kept too).
+function markStepWindowDone(ss, p, who, video, foot) {
+  var sh = getOrCreateSheetWithHeaders(ss, STEP_DONE_NAME, STEP_DONE_HEADERS);
+  var data = sh.getDataRange().getValues();
+  var idx = unusableHeaderIndex(data[0]);
+  var done = String(p.done || '1') === '0' ? 0 : 1;
+  var ts = new Date().toISOString();
+  var ws = toSeconds(p.window_start_sec), we = toSeconds(p.window_end_sec);
+  for (var r = 1; r < data.length; r++) {
+    if (normalizeDriveUrl(data[r][idx.video_file]) !== video) continue;
+    if (String(data[r][idx.labeler]) !== who || String(data[r][idx.foot]) !== foot) continue;
+    sh.getRange(r + 1, idx.done + 1).setValue(done);
+    sh.getRange(r + 1, idx.ts + 1).setValue(ts);
+    return jsonOut({ status: 'ok', row: 'updated', done: done });
+  }
+  var row = [];
+  row[idx.video_file] = video; row[idx.video_name] = String(p.videoName || ''); row[idx.labeler] = who;
+  row[idx.foot] = foot; row[idx.window_start_sec] = secondsToSheetTime(ws); row[idx.window_end_sec] = secondsToSheetTime(we);
+  row[idx.done] = done; row[idx.ts] = ts;
+  sh.getRange(sh.getLastRow() + 1, 1, 1, STEP_DONE_HEADERS.length).setNumberFormat('@').setValues([fillRow(row, STEP_DONE_HEADERS.length)]);
+  return jsonOut({ status: 'ok', row: 'created', done: done });
+}

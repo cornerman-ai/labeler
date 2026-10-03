@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Footwork steps — Cornerman labeler</title>
+  <!-- punch.css carries the video source rows, the player, the timeline lanes
+       and the transport row this page shares with the punch labeler (same ids,
+       same classes — shared/player.js, ../punch/skeleton.js and
+       ../punch/video-folder.js all look those ids up); steps.css adds the
+       side panel, the direction pad and the foot lanes. -->
+  <!-- punch.css only, like the punch page: shared/style.css (the older labelers'
+       look) paints the transport buttons dark blue through #video-controls button. -->
+  <link rel="stylesheet" href="../punch/punch.css?v=20260918">
+  <link rel="stylesheet" href="steps.css?v=20261003">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── navigation bar ───────────────────────────────────────────────── -->
+    <header id="top-bar">
+      <div class="nav-lead">
+        <h1 class="nav-title">Footwork steps</h1>
+        <span class="nav-sub">every step in 20 s, one foot at a time</span>
+      </div>
+      <div class="nav-actions">
+        <div class="nav-group">
+          <span id="sync-chip" class="sync-chip" hidden></span>
+        </div>
+        <span class="nav-div"></span>
+        <div class="nav-group">
+          <!-- The name every step is filed under (labeler_name.js, shared with
+               every labeler): steps are compared between labelers, so a save
+               without a name is refused. -->
+          <div id="name-field">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input id="labeler-input" placeholder="Your name" title="Your name"
+                   autocomplete="off" spellcheck="false" maxlength="40">
+          </div>
+          <button class="icon-btn" id="help-btn" title="Keys and how this works (?)" aria-haspopup="dialog">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+          </button>
+          <a class="nav-link" href="../index.html">All labelers</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── video source: the sheet-key link, the local file, the two connected
+         folders and the skeleton files — the same rows as the punch labeler,
+         so a folder connected there is connected here too. ────────────────── -->
+    <div id="video-source-bar">
+      <button type="button" id="video-source-toggle" aria-expanded="true" aria-controls="video-source-rows">
+        <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Video source
+      </button>
+      <div id="video-source-rows">
+        <div class="src-field-wrap">
+          <label class="src-field" for="drive-link">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.9 8.1a2.5 2.5 0 0 0 3.6.1l2-2a2.5 2.5 0 0 0-3.5-3.6l-.9.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8.1 5.9a2.5 2.5 0 0 0-3.6-.1l-2 2a2.5 2.5 0 0 0 3.5 3.6l.9-.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input type="text" id="drive-link" placeholder="Pick a window from the list">
+            <span id="link-status" class="field-status" hidden></span>
+            <button type="button" id="btn-pick-video" title="Pick a window from the list (N: the next one)">
+              <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Pick a window
+            </button>
+          </label>
+          <div id="video-picker-panel" hidden>
+            <div class="vp-head">
+              <input type="search" id="video-picker-search" placeholder="Search videos…" autocomplete="off" spellcheck="false">
+              <label class="vp-filter" title="Hide the windows you have finished — both feet done">
+                <input type="checkbox" id="only-unfinished" checked> not finished only
+              </label>
+              <span id="vp-count" class="muted"></span>
+              <button type="button" id="vp-refresh" class="vp-refresh" title="Re-read the sheet: which windows you have finished">↻</button>
+            </div>
+            <div id="video-picker-list"></div>
+          </div>
+        </div>
+
+        <div id="video-loader" class="src-field">
+          <button id="btn-pick-file" onclick="document.getElementById('video-file').click()">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="3" width="12" height="8" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 5.9 8.8 7 5.9 8.1V5.9Z" fill="currentColor"/></svg>
+            Open Video
+          </button>
+          <input type="file" id="video-file" accept="video/*" hidden>
+          <span id="video-name">No video loaded</span>
+          <span id="video-status" class="field-status" hidden></span>
+        </div>
+
+        <div id="video-folder-loader" class="src-field folder-connect-row" hidden>
+          <button type="button" id="btn-connect-video-folder" class="btn-connect-folder">Connect Video Folder</button>
+          <span id="video-folder-name" class="folder-connect-name">No video folder connected</span>
+          <button type="button" id="btn-forget-video-folder" class="btn-forget-folder" title="Disconnect this folder" hidden>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <span id="video-folder-status" class="field-status folder-connect-status" hidden></span>
+        </div>
+
+        <div id="skeleton-loader" class="src-field">
+          <button id="btn-pick-skeleton" onclick="document.getElementById('skeleton-files').click()">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="3" r="1.4" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4V8m0 0-2.6 3.6M7 8l2.6 3.6M4 6.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            Open Skeletons
+          </button>
+          <input type="file" id="skeleton-files" accept=".npy,.json" multiple hidden>
+          <span id="skeleton-name">No skeletons loaded</span>
+          <button type="button" id="btn-add-more-skeletons" title="Load more round files without losing the ones already loaded" hidden
+                  onclick="document.getElementById('skeleton-files').click()">+ Add more</button>
+          <button type="button" id="btn-toggle-skeleton" title="Show/hide the skeleton overlay (K)" hidden>Show</button>
+          <span id="skeleton-status" class="field-status" hidden></span>
+        </div>
+
+        <div id="skeleton-folder-loader" class="src-field folder-connect-row" hidden>
+          <button type="button" id="btn-connect-skeleton-folder" class="btn-connect-folder">Connect Skeleton Folder</button>
+          <span id="skeleton-folder-name" class="folder-connect-name">No skeleton folder connected</span>
+          <button type="button" id="btn-forget-skeleton-folder" class="btn-forget-folder" title="Disconnect this folder" hidden>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <span id="skeleton-folder-status" class="field-status folder-connect-status" hidden></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-layout">
+      <!-- Left: the window, the foot being labeled, the step being made, the steps -->
+      <aside id="steps-panel">
+        <section class="card" id="window-card">
+          <div class="card-eyebrow">Window <span id="window-count" class="count"></span></div>
+          <div id="window-info" class="muted">Pick a window from the list.</div>
+          <div class="foot-switch" role="radiogroup" aria-label="The foot being labeled">
+            <button type="button" class="foot-btn" data-foot="lead" role="radio" title="Label the lead foot — the front foot (F switches)">Lead foot</button>
+            <button type="button" class="foot-btn" data-foot="rear" role="radio" title="Label the rear foot — the back foot (F switches)">Rear foot</button>
+          </div>
+          <div id="done-row">
+            <button type="button" id="btn-done" title="Every step of this foot in the window is labeled — also when there were none (Shift+Enter)">This foot is done <kbd>⇧</kbd><kbd>Enter</kbd></button>
+            <span id="done-status" class="muted"></span>
+          </div>
+          <p class="hint">Watch the 20 s once per foot. <b>Lead</b> = the front foot (left for an orthodox boxer),
+            <b>rear</b> = the back foot. Mark every step of that foot, then say it is done — also when it did not step:
+            an empty window counts as zero steps. <kbd>F</kbd> switches the foot.</p>
+        </section>
+
+        <section class="card" id="draft-card">
+          <div class="card-eyebrow">Mark a step <span id="draft-foot" class="count"></span></div>
+          <div class="draft-row">
+            <button type="button" id="btn-draft-start" class="draft-btn" title="The frame the foot leaves the floor (Enter)">Lifts <kbd>Enter</kbd></button>
+            <span id="draft-start" class="draft-time">—</span>
+            <button type="button" id="btn-draft-end" class="draft-btn" title="The frame the foot lands (Enter again)">Lands <kbd>Enter</kbd></button>
+            <span id="draft-end" class="draft-time">—</span>
+          </div>
+          <div id="direction-pad" aria-label="Direction the foot moved"></div>
+          <p class="hint"><kbd>Enter</kbd> when the foot leaves the floor, <kbd>Enter</kbd> when it lands, then the
+            direction it moved — the step saves itself. Directions are the <b>boxer's own</b>: front is where he faces,
+            left is his left. <b>Facing the camera, his left is on your right.</b> The centre is a <b>pivot</b>: the foot
+            turns on the ball without moving to a new spot. A bounce in place is not a step. <kbd>Esc</kbd> clears a half-made one.</p>
+        </section>
+
+        <section class="card" id="spans-card">
+          <div class="card-eyebrow">Your steps in this window <span id="span-count" class="count"></span></div>
+          <div id="span-list"><div class="muted">No video loaded.</div></div>
+        </section>
+
+        <section class="card" id="next-card">
+          <div class="review-actions">
+            <button type="button" id="btn-next-video" title="The next window in the list (N)">Next window ▸ <kbd>N</kbd></button>
+          </div>
+        </section>
+      </aside>
+
+      <!-- Centre: the video with the skeleton overlay, and the timeline -->
+      <main id="video-container">
+        <div id="video-viewport">
+          <video id="video-player" preload="auto"></video>
+          <canvas id="skeleton-canvas"></canvas>
+          <div id="video-overlay"></div>
+          <!-- Only while the picture is magnified; click to go back to 1x —
+               shared/ui.js's setupVideoZoom(). -->
+          <button id="video-zoom-badge" type="button" hidden title="Reset zoom (or double-click the video)">1.0&times;</button>
+        </div>
+
+        <div id="video-controls">
+          <div id="timeline-minimap" style="display:none">
+            <div id="minimap-segments"></div>
+            <div id="minimap-viewport"></div>
+            <div id="minimap-playhead"></div>
+          </div>
+
+          <div id="seek-bar-wrapper">
+            <div id="timeline-ticks"></div>
+            <!-- Lanes are built by app.js's renderTimelineOverlay(): the window,
+                 then your lead foot and your rear foot — the foot being labeled
+                 highlighted. Only your own steps: nobody copies anybody. -->
+            <div id="seg-lanes">
+              <div id="playhead" hidden><span class="playhead-grip"></span></div>
+            </div>
+            <div id="scrub">
+              <div id="seek-bar-overlay"></div>
+              <input type="range" id="seek-bar" min="0" max="1000" value="0" aria-label="Seek">
+            </div>
+          </div>
+
+          <div id="controls-row">
+            <!-- The punch page's transport row, as is: shared/ui.js paints
+                 #btn-play / #btn-mute, fills the speed menu and swaps the time
+                 for an input on click. -->
+            <div class="tgroup">
+              <button id="btn-play" class="tbtn" onclick="togglePlay()"
+                      title="Play / pause (Space)" aria-label="Play"></button>
+              <div class="seg-static" role="group" aria-label="Step frames">
+                <button onclick="stepFrames(-2)" title="Back 2 frames" aria-label="Back 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 3 7 7l4 4M7 3 3 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame (←)" aria-label="Back 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 3 5 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame (→)" aria-label="Forward 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(2)" title="Forward 2 frames" aria-label="Forward 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l4 4-4 4M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+              <div id="volume">
+                <button id="btn-mute" class="tbtn" onclick="toggleMute()"
+                        title="Mute" aria-label="Mute"></button>
+                <div id="vol-pop">
+                  <input type="range" id="vol-range" min="0" max="100" step="1"
+                         value="100" aria-label="Volume">
+                  <span id="vol-val">100</span>
+                </div>
+              </div>
+            </div>
+
+            <span class="tdiv"></span>
+
+            <span id="time-wrap" title="Click to jump to a time">
+              <span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span>
+              <input id="time-edit" type="text" inputmode="decimal" spellcheck="false"
+                     autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
+            </span>
+            <span id="frame-display" role="status" aria-label="Current frame"></span>
+
+            <span class="tdiv"></span>
+
+            <div id="speed-controls">
+              <button id="speed-btn" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="speed-menu" title="Playback speed">
+                <span id="speed-val">1&times;</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="speed-menu" role="menu" hidden></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- The shortcuts sheet — punch.css's #sc-dialog, opened by shared/ui.js
+       (the ? key, #help-btn). -->
+  <dialog id="sc-dialog">
+    <div class="sc-head">
+      <h2>Footwork steps — how it works</h2>
+      <button class="icon-btn" id="sc-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body">
+      <p class="sc-note">Every video in the list has one 20-second window, the same for everyone. Label every step
+        in it, one foot at a time: watch the window for the <b>lead</b> foot (the front one) and mark each of its steps,
+        then say the foot is done; then the same for the <b>rear</b> foot. A step runs from the frame the foot
+        <b>leaves the floor</b> to the frame it <b>lands</b>; its direction is the way the foot moved, in the
+        <b>boxer's own</b> front / back / left / right — facing the camera, his left is on your right. The centre key is a
+        <b>pivot</b>: the foot turns on the ball without moving to a new spot. A bounce in place is not a step. "Done"
+        counts even when the foot never stepped — that is a window with zero steps, not an unlabeled one.</p>
+      <p class="sc-sec">Marking</p>
+      <div class="sc-row"><span>The foot lifts, then lands, at the playhead</span><span class="sc-keys"><kbd>Enter</kbd><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>The direction, which saves the step — the keys sit like the pad</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>Front-left · front · front-right</span><span class="sc-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd></span></div>
+      <div class="sc-row"><span>Left · pivot · right</span><span class="sc-keys"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
+      <div class="sc-row"><span>Back-left · back · back-right</span><span class="sc-keys"><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>Switch the foot being labeled</span><span class="sc-keys"><kbd>F</kbd></span></div>
+      <div class="sc-row"><span>This foot is done in this window</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>Enter</kbd></span></div>
+      <div class="sc-row"><span>Clear the half-made step, or the selection</span><span class="sc-keys"><kbd>Esc</kbd></span></div>
+      <p class="sc-sec">Changing your steps</p>
+      <div class="sc-row"><span>Select one — click it on its lane or in the list</span><span class="sc-keys"><kbd>Click</kbd></span></div>
+      <div class="sc-row"><span>Move an end: drag the chip's edge; the whole step: drag its middle (frame-snapped; Esc cancels)</span><span class="sc-keys"><kbd>Drag</kbd></span></div>
+      <div class="sc-row"><span>Type the times, or take them from the playhead</span><span class="sc-keys"><kbd>✎</kbd></span></div>
+      <div class="sc-row"><span>Delete the selected step</span><span class="sc-keys"><kbd>Delete</kbd><kbd>×</kbd></span></div>
+      <div class="sc-row"><span>Undo the last change (add, move, direction, delete)</span><span class="sc-keys"><kbd>&#8984;Z</kbd></span></div>
+      <div class="sc-row"><span>Next window</span><span class="sc-keys"><kbd>N</kbd></span></div>
+      <p class="sc-sec">Playback</p>
+      <div class="sc-row"><span>Play / pause — it loops over the window</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>One frame back / forward; ten with <kbd>Shift</kbd></span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>Skeleton overlay on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
+      <div class="sc-row"><span>Volume</span><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span></div>
+      <div class="sc-row"><span>Slower playback helps: the speed menu</span><span class="sc-keys"><kbd>Click the speed</kbd></span></div>
+      <p class="sc-note muted">Steps go to the <b>Steps</b> tab, finished feet to <b>Windows Done</b>, both in the
+        <b>Footwork steps</b> workbook (Drive, Ambo/data/labels/labeling_team).</p>
+    </div>
+  </dialog>
+
+  <script src="../shared/labeler_name.js?v=20260918"></script>
+  <script src="../shared/player.js?v=20260918"></script>
+  <script src="../punch/skeleton.js?v=20260919b"></script>
+  <script src="../punch/video-folder.js?v=20260918"></script>
+  <script src="app.js?v=20261003"></script>
+  <script src="../shared/ui.js?v=20260919b"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+{
+ "_about": "The step labeler's windows: one 20 s stretch per video, the same for every labeler. Written by cornerman-backend ml/research/footwork/pick_step_windows.py — regenerate, never edit.",
+ "generated": "2026-10-03",
+ "seed": 1,
+ "window_sec": 20.0,
+ "windows": [
+  {
+   "stem": "10 mins Shadow Boxing Workout ⧸ No Equipment (follow along)",
+   "angle": "frontal",
+   "round": 4,
+   "start_sec": 558.5,
+   "end_sec": 578.5
+  },
+  {
+   "stem": "Shadowboxing critique [0T75blmMW50]",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 60.5,
+   "end_sec": 80.5
+  },
+  {
+   "stem": "Shadow Boxing Drill for Home ｜ Tom Yankello's Drill #1",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 8.0,
+   "end_sec": 28.0
+  },
+  {
+   "stem": "30 Days of Basic Boxing at Home for Beginners #DAY10 #HIENSUNDAY  #BoxingAtHome #HomeWorkout [UJyeAXZjwVk]",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 35.0,
+   "end_sec": 55.0
+  },
+  {
+   "stem": "BEGINNER SHADOW BOXING DRILLS",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 35.5,
+   "end_sec": 55.5
+  },
+  {
+   "stem": "Full Body in 10 Minutes ｜ Shadow Boxing Workout",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 273.0,
+   "end_sec": 293.0
+  },
+  {
+   "stem": "Do This 5 Minute Shadow Boxing Workout For A Strong Left Hook",
+   "angle": "frontal",
+   "round": 0,
+   "start_sec": 48.0,
+   "end_sec": 68.0
+  },
+  {
+   "stem": "30 MIN SHADOWBOXING FOR FAT LOSS ⧸ Equipment Optional ｜ Jeremy Sry",
+   "angle": "side",
+   "round": 0,
+   "start_sec": 756.5,
+   "end_sec": 776.5
+  },
+  {
+   "stem": "30 Minute Heavy Bag Boxing Workout at Home ｜ 10 Round Follow Along",
+   "angle": "side",
+   "round": 0,
+   "start_sec": 98.0,
+   "end_sec": 118.0
+  },
+  {
+   "stem": "20 Minute Boxing Footwork Heavy bag Workout - Follow along",
+   "angle": "side",
+   "round": 1,
+   "start_sec": 119.5,
+   "end_sec": 139.5
+  },
+  {
+   "stem": "20 Minute Punching Bag Workout For A Total Body Workout!",
+   "angle": "side",
+   "round": 0,
+   "start_sec": 344.0,
+   "end_sec": 364.0
+  },
+  {
+   "stem": "15 Minute Shadowboxing Workout for Beginners with Justin Blackwell ｜ Get Fit ｜ Livestrong.com",
+   "angle": "side",
+   "round": 1,
+   "start_sec": 495.0,
+   "end_sec": 515.0
+  },
+  {
+   "stem": "15 Mins Beginner Boxing Fitness HIIT Bag Workout (Follow Along)",
+   "angle": "side",
+   "round": 0,
+   "start_sec": 264.0,
+   "end_sec": 284.0
+  },
+  {
+   "stem": "10 Minute Shadow Boxing Workout At Home",
+   "angle": "side",
+   "round": 1,
+   "start_sec": 182.0,
+   "end_sec": 202.0
+  },
+  {
+   "stem": "Shadow boxing session indoor",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 29.0,
+   "end_sec": 49.0
+  },
+  {
+   "stem": "30 Days of Basic Boxing at Home for Beginners #day25    #HIENSUNDAY  #BoxingAtHome #HomeWorkout [Ln83hGcv0x4]",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 124.0,
+   "end_sec": 144.0
+  },
+  {
+   "stem": "How to Target the Body (Boxing 101)",
+   "angle": "other",
+   "round": 1,
+   "start_sec": 36.5,
+   "end_sec": 56.5
+  },
+  {
+   "stem": "2 rounds bagwork, working on balance [r1puy8]",
+   "angle": "other",
+   "round": 1,
+   "start_sec": 84.0,
+   "end_sec": 104.0
+  },
+  {
+   "stem": "November 15, 2020",
+   "angle": "other",
+   "round": 1,
+   "start_sec": 442.5,
+   "end_sec": 462.5
+  },
+  {
+   "stem": "Simple boxing combos on the bag [vEgwC_TIb-0]",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 9.0,
+   "end_sec": 29.0
+  },
+  {
+   "stem": "30 Days of Basic Boxing at Home for Beginners #day27     #HIENSUNDAY  #BoxingAtHome #HomeWorkout [iRA1LJb0Jz4]",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 32.0,
+   "end_sec": 52.0
+  },
+  {
+   "stem": "30 Days of Basic Boxing at Home for Beginners #day26    #HIENSUNDAY  #BoxingAtHome #HomeWorkout [VBP5WcOgpjA]",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 37.5,
+   "end_sec": 57.5
+  },
+  {
+   "stem": "Boxing app workout",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 23.0,
+   "end_sec": 43.0
+  },
+  {
+   "stem": "Review my shadow boxing, been boxing about 6months, no fights, sparri... [rgo38Gc7XaE]",
+   "angle": "other",
+   "round": 0,
+   "start_sec": 60.0,
+   "end_sec": 80.0
+  }
+ ]
+}

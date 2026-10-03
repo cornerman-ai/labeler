@@ -1,0 +1,140 @@
+/* steps.css — the side panel, the direction pad, the foot switch and the foot
+   lanes of the footwork step labeler. Everything about the video, the source
+   rows and the transport row comes from ../punch/punch.css (same ids); the
+   panel, the list and the picker are the unusable page's, copied. */
+
+.nav-sub { font-size: 12px; color: var(--ink-dim); }
+.nav-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+.sync-chip { font-size: 12px; color: var(--ink-dim); }
+.sync-chip.err { color: var(--no-on-wash); }
+.sync-chip[hidden] { display: none; }
+
+/* ── the left panel ─────────────────────────────────────────────────────── */
+#steps-panel {
+  flex: none; width: 340px; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+#steps-panel .card { padding: 14px; }
+.count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-dim); }
+.hint { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin: 8px 0 0; }
+.muted { color: var(--ink-dim); }
+#steps-panel kbd {
+  display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--fill); font: 11px ui-monospace, Menlo, monospace;
+  color: var(--ink-dim); vertical-align: middle;
+}
+
+.draft-row { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; }
+.draft-btn, .foot-btn, #btn-done, #btn-next-video {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink);
+  padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.draft-btn:hover, .foot-btn:hover, #btn-done:hover, #btn-next-video:hover { border-color: var(--ink-dim); }
+
+/* The picker button at the end of the link row: punch.css makes it a 22px
+   icon-only chevron; here it carries a label, so it becomes a small pill. */
+.src-field #btn-pick-video {
+  width: auto; height: 24px; padding: 0 10px; gap: 6px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink);
+  font: inherit; font-size: 12px; opacity: 1; white-space: nowrap; cursor: pointer;
+}
+.src-field #btn-pick-video:hover, .src-field #btn-pick-video.open { background: var(--fill-2); }
+.src-field #btn-pick-video.open svg { transform: none; }
+.draft-btn.set { background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; }
+.draft-time { font: 13px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+/* the spans list */
+#span-list { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.span-row {
+  display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center;
+  padding: 5px 8px; border-radius: 8px; background: var(--fill); font-size: 12px; cursor: pointer;
+}
+.span-row:hover, .span-row.current { background: var(--fill-2); }
+.span-row .swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--reason); }
+.span-row .times { font: 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.span-row .who { color: var(--ink-dim); }
+.span-row select { font: inherit; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.span-row .del { border: 0; background: transparent; color: var(--ink-dim); cursor: pointer; font-size: 14px; padding: 0 4px; }
+.span-row .del:hover { color: var(--no-on-wash); }
+.span-row.foreign { opacity: .75; cursor: pointer; }
+.span-row.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.span-row .row-btns { display: flex; gap: 2px; }
+.span-row .edit { border: 0; background: transparent; color: var(--ink-dim); cursor: pointer; font-size: 13px; padding: 0 4px; }
+.span-row .edit:hover { color: var(--ink); }
+.span-edit { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 6px 8px 8px 26px; font-size: 12px; }
+.span-edit input { width: 76px; font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; background: var(--card); color: var(--ink); }
+.span-edit button { border: 1px solid var(--line); border-radius: 6px; background: var(--fill); color: var(--ink); font-size: 11px; padding: 2px 6px; cursor: pointer; }
+.seg-lane .span-chip.own.selected { outline: 2px solid var(--ink); outline-offset: 0; opacity: 1; z-index: 2; }
+
+/* the picker's extra controls */
+.vp-head { display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
+.vp-head input[type=search] { flex: 1; min-width: 0; }
+.vp-filter { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+#vp-count { font-size: 11px; white-space: nowrap; }
+.vp-refresh { border: 0; background: transparent; cursor: pointer; color: var(--ink-dim); font-size: 15px; padding: 0 4px; }
+.vp-refresh:hover { color: var(--ink); }
+.vp-row .vp-tag { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
+.vp-row .vp-tag.done { background: color-mix(in srgb, var(--foot) 18%, transparent); color: var(--ink); margin-left: 4px; }
+.vp-row .vp-tag.angle { background: var(--fill-2); color: var(--ink-dim); }
+.vp-row .vp-tag + .vp-tag { margin-left: 4px; }
+.vp-row.current { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── timeline lanes ─────────────────────────────────────────────────────── */
+.seg-lane .span-chip {
+  position: absolute; top: 1px; height: 12px; border-radius: 3px;
+  background: var(--reason); opacity: .9; cursor: pointer; pointer-events: auto; min-width: 2px;
+}
+.seg-lane .span-chip:hover, .seg-lane .span-chip.current { outline: 2px solid var(--ink); outline-offset: -1px; opacity: 1; }
+.seg-lane .span-chip.draft { background: transparent; border: 2px dashed var(--reason, var(--ink)); opacity: 1; box-sizing: border-box; }
+.seg-lane .span-chip.foreign { opacity: .5; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px); }
+#minimap-segments .span-chip { top: 0; height: 100%; border-radius: 0; opacity: .8; pointer-events: none; }
+
+
+/* the window card */
+#window-info { font-size: 13px; line-height: 1.45; }
+#window-info.warn { color: var(--no-on-wash); }
+.foot-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.foot-btn { display: flex; align-items: center; justify-content: center; gap: 6px; border-left: 4px solid var(--foot); }
+.foot-btn.active { background: color-mix(in srgb, var(--foot) 22%, var(--card)); border-color: var(--foot); font-weight: 600; }
+.foot-btn.finished::after { content: '✓'; color: var(--yes-on-wash); }
+#done-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+#btn-done { flex: none; }
+#btn-done.is-done { background: var(--yes-wash); color: var(--yes-on-wash); border-color: transparent; }
+#btn-done:disabled { opacity: .45; cursor: default; }
+#done-status { font-size: 12px; }
+
+/* the direction pad: the keyboard's Q W E / A S D / Z X C block */
+#direction-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.dir-btn {
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "arrow key" "label label";
+  align-items: center; gap: 2px 4px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink);
+  padding: 5px 7px; font: inherit; font-size: 11px; cursor: pointer; text-align: left;
+}
+.dir-btn .arrow { grid-area: arrow; font-size: 17px; line-height: 1; }
+.dir-btn kbd { grid-area: key; }
+.dir-btn .dir-label { grid-area: label; white-space: nowrap; color: var(--ink-dim); }
+.dir-btn.pivot { background: var(--fill-2); }
+.dir-btn:hover { border-color: var(--ink-dim); }
+.dir-btn.armed { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dir-btn:disabled { opacity: .45; cursor: default; }
+
+/* the list: the other foot's steps dimmed */
+.span-row.other-foot { opacity: .6; }
+
+/* timeline lanes: the window, then one per foot */
+.seg-lane.lane-window { height: 8px; background: var(--fill); }
+.seg-lane.lane-window .win-band { position: absolute; top: 0; height: 100%; background: color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 2px; }
+#minimap-segments .win-band { position: absolute; top: 0; height: 100%; background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.seg-lane.lane-foot { --lane-tint: var(--foot); }
+.seg-lane.lane-foot::before { color: var(--foot); }
+.seg-lane.lane-foot.active { background: color-mix(in srgb, var(--foot) 10%, transparent); }
+.seg-lane .span-chip { color: #fff; font-size: 10px; line-height: 12px; text-align: center; overflow: hidden; white-space: nowrap; }
+
+/* the shortcuts sheet is punch.css's #sc-dialog; only its prose is this page's */
+.sc-body .sc-note { font-size: 13px; line-height: 1.5; margin: 8px 0 0; }
+.sc-body .sc-note.muted { color: var(--ink-dim); }
+
+/* the next-window card */
+.review-actions { display: flex; gap: 8px; }
+.review-actions button { flex: 1; white-space: nowrap; }
