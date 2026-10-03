@@ -51,8 +51,8 @@ const EDGE_EPS_S = 0.05;          // how far past the window a seek may land bef
 Object.assign(state, {
   videoLink: '',            // the normalized Drive link — the key every row is filed under
   pickedName: '',           // the tracking sheet's name for it (folder auto-load matches on it)
-  win: null,                // this video's window {stem, angle, start_sec, end_sec, ...}
-  windows: null,            // windows.json joined with the catalogue: [{stem, angle, start_sec, end_sec, link, key, n}]
+  win: null,                // this video's window {stem, round, start_sec, end_sec, ...}
+  windows: null,            // windows.json joined with the catalogue: [{stem, round, start_sec, end_sec, link, key, n}]
   catalog: null,            // the tracking sheet's videos [{name, link, key}]
   doneAll: null,            // Map key -> [Windows Done rows] — every labeler's
   steps: [],                // every labeler's steps on this video
@@ -155,7 +155,7 @@ function setupVideoPicker() {
 
   function tag(w) {
     const d = doneFeet(w.key);
-    let t = `<span class="vp-tag angle">${escapeHtml(w.angle)}</span>`;
+    let t = '';
     for (const f of ['lead', 'rear']) if (d.has(f)) t += `<span class="vp-tag done" style="--foot:${FEET[f].color}">${f} ✓</span>`;
     return t;
   }
@@ -295,7 +295,7 @@ function renderWindow() {
   if (!state.win) { info.textContent = 'This video has no window — pick one from the list.'; info.className = 'warn'; doneBtn.disabled = true; status.textContent = ''; return; }
   const w = state.win;
   info.className = '';
-  info.innerHTML = `<b>${w.n}.</b> ${escapeHtml(w.stem)}<br><span class="muted">${fmtSec(w.start_sec)} – ${fmtSec(w.end_sec)} · ${escapeHtml(w.angle)} camera</span>`;
+  info.innerHTML = `<b>${w.n}.</b> ${escapeHtml(w.stem)}<br><span class="muted">${fmtSec(w.start_sec)} – ${fmtSec(w.end_sec)}</span>`;
   const done = doneFeet(state.videoLink).has(state.foot);
   doneBtn.disabled = false;
   doneBtn.classList.toggle('is-done', done);

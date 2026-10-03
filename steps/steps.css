@@ -75,7 +75,6 @@
 .vp-refresh:hover { color: var(--ink); }
 .vp-row .vp-tag { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
 .vp-row .vp-tag.done { background: color-mix(in srgb, var(--foot) 18%, transparent); color: var(--ink); margin-left: 4px; }
-.vp-row .vp-tag.angle { background: var(--fill-2); color: var(--ink-dim); }
 .vp-row .vp-tag + .vp-tag { margin-left: 4px; }
 .vp-row.current { outline: 2px solid var(--accent); outline-offset: -2px; }
 
