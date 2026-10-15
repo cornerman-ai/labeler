@@ -291,7 +291,8 @@ document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || 
 
 // reconnect the folders picked last time (the browser asks once per session)
 (async () => { if (!window.showDirectoryPicker) return status('this browser cannot open folders — use Chrome or Edge');
-  for (const k of ['V', 'R', 'S']) await connect(k, true); })();
+  for (const k of ['V', 'R', 'S']) await connect(k, true);
+  if (!(H.V && H.R && H.S)) status('Connect the three folders above: Videos, Raw skeletons, Smoothed skeletons'); })();
 </script>
 </body>
 </html>
