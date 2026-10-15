@@ -13,57 +13,94 @@
   joint's x / y / speed for both over the round. Everything is read in the browser; nothing is uploaded.
 -->
 <style>
-:root{--bg:#14151a;--panel:#1d1f27;--fg:#e8e8ee;--mut:#9a9caa;--line:#2e313c;--raw:#ff8a3d;--sm:#38d39f;--acc:#5b9bff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}
-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-header h1{font-size:17px;margin:0 12px 0 0}a{color:var(--acc)}
-.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)}
-button,select,input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px}
-button{cursor:pointer}button:hover{border-color:var(--acc)}button.ok{border-color:#2f8f62;background:#173126}
-select{max-width:520px}.mut{color:var(--mut)}
-.views{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 16px}
-.view{background:#000;border-radius:10px;position:relative;overflow:hidden}
-.view canvas{width:100%;display:block}
-.tag{position:absolute;top:8px;left:10px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,.6)}
-.chart{padding:0 16px 16px}#chart{width:100%;height:220px;background:var(--panel);border-radius:10px;display:block;cursor:pointer}
-#seek{flex:1;min-width:200px}
-@media (max-width:800px){.views{grid-template-columns:1fr}}
+  :root {
+    --bg: #f5f5f7; --panel: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
+    --accent: #0071e3; --raw: #ff9500; --sm: #34c759; --fill: #ececf0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000000; --panel: #1c1c1e; --ink: #f5f5f7; --muted: #98989d; --line: #2c2c2e;
+            --accent: #0a84ff; --raw: #ff9f0a; --sm: #30d158; --fill: #2c2c2e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+           padding: 12px 20px; background: color-mix(in srgb, var(--panel) 85%, transparent);
+           backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 8px 0 0; letter-spacing: -.01em; }
+  .grow { flex: 1; }
+  a { color: var(--accent); text-decoration: none; }
+  button, select, input[type=search] { font: inherit; font-size: 14px; color: var(--ink); background: var(--fill);
+         border: 0; border-radius: 8px; padding: 6px 12px; }
+  button { cursor: pointer; transition: opacity .15s; } button:hover { opacity: .8; }
+  button.primary { background: var(--accent); color: #fff; }
+  select { max-width: 460px; }
+  .folders { display: flex; gap: 6px; }
+  .folders button { font-size: 13px; padding: 5px 11px; border-radius: 999px; color: var(--muted); }
+  .folders button.ok { color: var(--sm); }
+  .folders button.ok::before { content: "\2713  "; }
+  main { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .transport { display: flex; gap: 6px; align-items: center; margin: 0 0 16px; }
+  .transport button { min-width: 38px; }
+  #seek { flex: 1; accent-color: var(--accent); }
+  #time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 150px; text-align: right; font-size: 13px; }
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  figure { margin: 0; background: var(--panel); border-radius: 14px; overflow: hidden;
+           box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); }
+  figure canvas { display: block; width: 100%; background: #000; }
+  figcaption { padding: 10px 14px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .card { margin-top: 16px; background: var(--panel); border-radius: 14px; padding: 12px 14px 14px;
+          box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); }
+  .card .controls { margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+  #chart { width: 100%; height: 200px; display: block; cursor: pointer; }
+  #status { color: var(--muted); font-size: 13px; }
+  @media (max-width: 860px) { .views { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Smoothing viewer</h1>
-  <span class="mut">raw skeleton <b style="color:var(--raw)">left</b>, smoothed <b style="color:var(--sm)">right</b> — same frame</span>
-  <a href="../" style="margin-left:auto">← all labelers</a>
+  <h1>Smoothing</h1>
+  <div class="folders">
+    <button id="pickV">Videos</button><button id="pickR">Raw skeletons</button><button id="pickS">Smoothed skeletons</button>
+  </div>
+  <span class="grow"></span>
+  <a href="../">All labelers</a>
 </header>
-<div class="bar">
-  <button id="pickV">Videos folder</button>
-  <button id="pickR">Raw skeletons (blazepose)</button>
-  <button id="pickS">Smoothed skeletons</button>
-  <span id="status" class="mut"></span>
-</div>
-<div class="bar">
-  <select id="video"><option value="">— pick a video —</option></select>
-  <select id="round"></select>
-  <input id="filter" placeholder="filter videos…" style="width:200px">
-</div>
-<div class="bar">
-  <button id="play">▶</button><button id="back">◀ 1 frame</button><button id="fwd">1 frame ▶</button>
-  <select id="rate"><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select>
-  <input id="seek" type="range" min="0" max="1000" value="0">
-  <span id="time" class="mut">—</span>
-  <label class="mut">chart <select id="joint">
-    <option value="15">left wrist</option><option value="16" selected>right wrist</option>
-    <option value="13">left elbow</option><option value="14">right elbow</option><option value="0">nose</option>
-  </select></label>
-  <select id="what"><option value="y">y</option><option value="x">x</option><option value="v">speed</option></select>
-  <select id="win"><option value="2">±2 s</option><option value="5" selected>±5 s</option><option value="15">±15 s</option></select>
-</div>
-<div class="views">
-  <div class="view"><canvas id="cRaw"></canvas><span class="tag" style="color:var(--raw)">raw (blazepose)</span></div>
-  <div class="view"><canvas id="cSm"></canvas><span class="tag" style="color:var(--sm)">smoothed (akima + butterworth)</span></div>
-</div>
-<div class="chart"><canvas id="chart"></canvas></div>
+<main>
+  <div class="controls">
+    <input id="filter" type="search" placeholder="Search videos" style="width:220px">
+    <select id="video"><option value="">Choose a video</option></select>
+    <select id="round"></select>
+    <span id="status"></span>
+  </div>
+  <div class="transport">
+    <button id="back" title="Previous frame (left arrow)">&lsaquo;</button>
+    <button id="play" class="primary" title="Play / pause (space)">&#9654;</button>
+    <button id="fwd" title="Next frame (right arrow)">&rsaquo;</button>
+    <select id="rate" title="Speed"><option value="0.1">0.1&times;</option><option value="0.25">0.25&times;</option><option value="0.5" selected>0.5&times;</option><option value="1">1&times;</option></select>
+    <input id="seek" type="range" min="0" max="1000" value="0">
+    <span id="time">&mdash;</span>
+  </div>
+  <div class="views">
+    <figure><canvas id="cRaw"></canvas><figcaption><span class="dot" style="background:var(--raw)"></span><b>Raw</b> BlazePose</figcaption></figure>
+    <figure><canvas id="cSm"></canvas><figcaption><span class="dot" style="background:var(--sm)"></span><b>Smoothed</b> Akima + Butterworth 6 Hz</figcaption></figure>
+  </div>
+  <div class="card">
+    <div class="controls">
+      <select id="joint"><option value="15">Left wrist</option><option value="16" selected>Right wrist</option>
+        <option value="13">Left elbow</option><option value="14">Right elbow</option><option value="0">Nose</option></select>
+      <select id="what"><option value="y">Height (y)</option><option value="x">Side (x)</option><option value="v">Speed</option></select>
+      <select id="win"><option value="2">&plusmn;2 s</option><option value="5" selected>&plusmn;5 s</option><option value="15">&plusmn;15 s</option></select>
+      <span class="grow"></span>
+      <span><span class="dot" style="background:var(--raw)"></span> raw &nbsp; <span class="dot" style="background:var(--sm)"></span> smoothed</span>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+</main>
 <video id="vid" muted playsinline style="display:none"></video>
 <script>
 // ── folders: the File System Access API, handles remembered in IndexedDB ──
@@ -105,12 +142,11 @@ function refreshVideos() {
   const sel = document.getElementById('video'), f = document.getElementById('filter').value.toLowerCase();
   const vids = [...FILES.V.keys()].filter(n => /\.(mp4|mov|m4v|webm)$/i.test(n) && n.toLowerCase().includes(f)).sort();
   const cur = sel.value;
-  sel.innerHTML = '<option value="">— pick a video —</option>' + vids.map(n => {
+  sel.innerHTML = '<option value="">Choose a video</option>' + vids.map(n => {
     const r = roundsOf('R', stemOf(n)).length, s = roundsOf('S', stemOf(n)).length;
-    return `<option value="${n.replace(/"/g, '&quot;')}">${n}  [raw ${r} · smoothed ${s}]</option>`; }).join('');
+    return `<option value="${n.replace(/"/g, '&quot;')}">${n.replace(/\.[^.]+$/, '')}${r ? '' : ' (no skeleton)'}</option>`; }).join('');
   sel.value = cur;
-  status(`${FILES.V.size} files in videos · ${[...FILES.R.keys()].filter(n => n.endsWith('_meta.json')).length} raw rounds · `
-       + `${[...FILES.S.keys()].filter(n => n.endsWith('_meta.json')).length} smoothed rounds`);
+  status(H.V && H.R && H.S ? '' : 'Connect the three folders above');
 }
 document.getElementById('filter').oninput = refreshVideos;
 
@@ -142,7 +178,7 @@ const sel = { video: document.getElementById('video'), round: document.getElemen
 sel.video.onchange = async () => {
   const n = sel.video.value; if (!n) return;
   const stem = stemOf(n), rr = roundsOf('R', stem);
-  sel.round.innerHTML = rr.map(r => `<option value="${r}">round ${r}${roundsOf('S', stem).includes(r) ? '' : ' (no smoothed)'}</option>`).join('');
+  sel.round.innerHTML = rr.map(r => `<option value="${r}">Round ${r + 1}${roundsOf('S', stem).includes(r) ? '' : ' (not smoothed)'}</option>`).join('');
   const file = await FILES.V.get(n).getFile();
   if (vid.src) URL.revokeObjectURL(vid.src);
   vid.src = URL.createObjectURL(file);
@@ -157,8 +193,7 @@ async function pickRound() {
   [RAW, SM] = await Promise.all([loadRound('R', stem, r), loadRound('S', stem, r)]);
   if (!RAW) return status('no raw skeleton for this round');
   vid.currentTime = RAW.pts[0];
-  status(`round ${r}: ${RAW.n} frames at ${RAW.meta.fps} fps, ${RAW.pts[0].toFixed(1)}–${RAW.pts[RAW.n - 1].toFixed(1)} s`
-       + (SM ? '' : ' — NO smoothed copy of this round'));
+  status(SM ? '' : 'This round has no smoothed copy');
 }
 
 // ── drawing ──
@@ -216,8 +251,8 @@ function drawChart(t) {
   sets.forEach(([S, col, w], i) => { if (!S) return; const v = vals[i]; g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); let on = false;
     for (let f = 0; f < S.n; f++) { const s = S.pts[f]; if (s < t0 || s > t1 || !Number.isFinite(v[f])) { on = false; continue; }
       if (!on) { g.moveTo(X(s), Y(v[f])); on = true; } else g.lineTo(X(s), Y(v[f])); } g.stroke(); });
-  g.strokeStyle = '#ffffff88'; g.lineWidth = 1 * dpr; g.beginPath(); g.moveTo(X(t), 0); g.lineTo(X(t), c.height); g.stroke();
-  g.fillStyle = '#9a9caa'; g.font = `${11 * dpr}px system-ui`;
+  g.strokeStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.lineWidth = 1 * dpr; g.beginPath(); g.moveTo(X(t), 0); g.lineTo(X(t), c.height); g.stroke();
+  g.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.font = `${11 * dpr}px system-ui`;
   g.fillText(`${document.getElementById('joint').selectedOptions[0].text} · ${what === 'v' ? 'speed (picture heights / s)' : what + ' (image, ' + (what === 'y' ? 'down' : 'right') + ' = larger)'}`, pad, 12 * dpr);
   chart._map = { t0, t1, pad };
 }
@@ -229,7 +264,8 @@ chart.onclick = e => { const m = chart._map; if (!m) return; const r = chart.get
 function render() {
   if (W) {
     const t = vid.currentTime;
-    for (const [c, S, col] of [[cRaw, RAW, '#ff8a3d'], [cSm, SM, '#38d39f']]) {
+    const cs = getComputedStyle(document.body);
+    for (const [c, S, col] of [[cRaw, RAW, cs.getPropertyValue('--raw')], [cSm, SM, cs.getPropertyValue('--sm')]]) {
       const ctx = c.getContext('2d'); ctx.drawImage(vid, 0, 0, W, Hh); if (S) drawSkel(ctx, S, frameAt(S, t), col);
     }
     drawChart(t);
