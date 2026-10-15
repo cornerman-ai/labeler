@@ -93,7 +93,7 @@
     <div class="controls">
       <select id="joint"><option value="15">Left wrist</option><option value="16" selected>Right wrist</option>
         <option value="13">Left elbow</option><option value="14">Right elbow</option><option value="0">Nose</option></select>
-      <select id="what"><option value="y">Height (y)</option><option value="x">Side (x)</option><option value="v">Speed</option></select>
+      <select id="what"><option value="y">Height (y)</option><option value="x">Side (x)</option><option value="z">Depth (z)</option><option value="v">Speed</option></select>
       <select id="win"><option value="2">&plusmn;2 s</option><option value="5" selected>&plusmn;5 s</option><option value="15">&plusmn;15 s</option></select>
       <span class="grow"></span>
       <span><span class="dot" style="background:var(--raw)"></span> raw &nbsp; <span class="dot" style="background:var(--sm)"></span> smoothed</span>
@@ -230,7 +230,7 @@ function series(S, j, what) {
       const dt = S.pts[f] - S.pts[f - 1] || 1 / 30;
       const dx = (P(S, f, j, 0) - P(S, f - 1, j, 0)) * W, dy = (P(S, f, j, 1) - P(S, f - 1, j, 1)) * Hh;
       out[f] = Math.hypot(dx, dy) / dt / Hh;     // picture heights per second
-    } else out[f] = P(S, f, j, what === 'x' ? 0 : 1);
+    } else out[f] = P(S, f, j, { x: 0, y: 1, z: 2 }[what]);
   }
   return out;
 }
@@ -254,7 +254,7 @@ function drawChart(t) {
       if (!on) { g.moveTo(X(s), Y(v[f])); on = true; } else g.lineTo(X(s), Y(v[f])); } g.stroke(); });
   g.strokeStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.lineWidth = 1 * dpr; g.beginPath(); g.moveTo(X(t), 0); g.lineTo(X(t), c.height); g.stroke();
   g.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.font = `${11 * dpr}px system-ui`;
-  g.fillText(`±${HALF.toFixed(HALF < 1 ? 2 : 1)} s${YZOOM > 1 ? ` · ×${YZOOM.toFixed(1)} height` : ''} · scroll to zoom, shift+scroll height, double-click resets · ${document.getElementById('joint').selectedOptions[0].text} · ${what === 'v' ? 'speed (picture heights / s)' : what + ' (image, ' + (what === 'y' ? 'down' : 'right') + ' = larger)'}`, pad, 12 * dpr);
+  g.fillText(`±${HALF.toFixed(HALF < 1 ? 2 : 1)} s${YZOOM > 1 ? ` · ×${YZOOM.toFixed(1)} height` : ''} · scroll to zoom, shift+scroll height, double-click resets · ${document.getElementById('joint').selectedOptions[0].text} · ${what === 'v' ? 'speed (picture heights / s)' : what + (what === 'z' ? ' (BlazePose depth, toward the camera = smaller)' : ' (image, ' + (what === 'y' ? 'down' : 'right') + ' = larger)')}`, pad, 12 * dpr);
   chart._map = { t0, t1, pad };
 }
 chart.onclick = e => { const m = chart._map; if (!m) return; const r = chart.getBoundingClientRect();
