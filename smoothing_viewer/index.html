@@ -239,13 +239,14 @@ function drawChart(t) {
   const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
   if (!RAW) return;
   const j = +document.getElementById('joint').value, what = document.getElementById('what').value;
-  const half = +document.getElementById('win').value, t0 = t - half, t1 = t + half;
+  const half = HALF, t0 = t - half, t1 = t + half;
   const sets = [[RAW, getComputedStyle(document.body).getPropertyValue('--raw'), 1.2], [SM, getComputedStyle(document.body).getPropertyValue('--sm'), 2.4]];
   let lo = Infinity, hi = -Infinity; const vals = [];
   for (const [S] of sets) { if (!S) { vals.push(null); continue; } const v = series(S, j, what); vals.push(v);
     for (let f = 0; f < S.n; f++) if (S.pts[f] >= t0 && S.pts[f] <= t1 && Number.isFinite(v[f])) { lo = Math.min(lo, v[f]); hi = Math.max(hi, v[f]); } }
   if (!Number.isFinite(lo)) return;
   if (hi - lo < 1e-6) { hi += 0.01; lo -= 0.01; }
+  { const mid = (lo + hi) / 2, h = (hi - lo) / 2 / YZOOM; lo = mid - h; hi = mid + h; }
   const pad = 12 * dpr, X = s => pad + (s - t0) / (t1 - t0) * (c.width - 2 * pad);
   const Y = v => what === 'v' ? c.height - pad - (v - lo) / (hi - lo) * (c.height - 2 * pad) : pad + (v - lo) / (hi - lo) * (c.height - 2 * pad);
   sets.forEach(([S, col, w], i) => { if (!S) return; const v = vals[i]; g.strokeStyle = col; g.lineWidth = w * dpr; g.beginPath(); let on = false;
@@ -253,13 +254,19 @@ function drawChart(t) {
       if (!on) { g.moveTo(X(s), Y(v[f])); on = true; } else g.lineTo(X(s), Y(v[f])); } g.stroke(); });
   g.strokeStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.lineWidth = 1 * dpr; g.beginPath(); g.moveTo(X(t), 0); g.lineTo(X(t), c.height); g.stroke();
   g.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted'); g.font = `${11 * dpr}px system-ui`;
-  g.fillText(`${document.getElementById('joint').selectedOptions[0].text} · ${what === 'v' ? 'speed (picture heights / s)' : what + ' (image, ' + (what === 'y' ? 'down' : 'right') + ' = larger)'}`, pad, 12 * dpr);
+  g.fillText(`±${HALF.toFixed(HALF < 1 ? 2 : 1)} s${YZOOM > 1 ? ` · ×${YZOOM.toFixed(1)} height` : ''} · scroll to zoom, shift+scroll height, double-click resets · ${document.getElementById('joint').selectedOptions[0].text} · ${what === 'v' ? 'speed (picture heights / s)' : what + ' (image, ' + (what === 'y' ? 'down' : 'right') + ' = larger)'}`, pad, 12 * dpr);
   chart._map = { t0, t1, pad };
 }
 chart.onclick = e => { const m = chart._map; if (!m) return; const r = chart.getBoundingClientRect();
   const s = m.t0 + (e.clientX - r.left - m.pad / (devicePixelRatio || 1)) / (r.width - 2 * m.pad / (devicePixelRatio || 1)) * (m.t1 - m.t0);
   vid.pause(); vid.currentTime = s; };
-['joint', 'what', 'win'].forEach(id => document.getElementById(id).onchange = () => drawChart(vid.currentTime));
+let HALF = 5, YZOOM = 1;   // the chart's half-window (s) and vertical zoom: wheel / shift+wheel, double-click resets
+document.getElementById('win').onchange = e => { HALF = +e.target.value; drawChart(vid.currentTime); };
+['joint', 'what'].forEach(id => document.getElementById(id).onchange = () => drawChart(vid.currentTime));
+chart.addEventListener('wheel', e => { e.preventDefault(); const k = e.deltaY > 0 ? 1.25 : 0.8;
+  if (e.shiftKey) YZOOM = Math.min(50, Math.max(1, YZOOM / k)); else HALF = Math.min(120, Math.max(0.25, HALF * k));
+  drawChart(vid.currentTime); }, { passive: false });
+chart.ondblclick = () => { HALF = +document.getElementById('win').value; YZOOM = 1; drawChart(vid.currentTime); };
 
 function render() {
   if (W) {
