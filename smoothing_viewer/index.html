@@ -15,11 +15,11 @@
 <style>
   :root {
     --bg: #f5f5f7; --panel: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
-    --accent: #0071e3; --raw: #ff9500; --sm: #34c759; --fill: #ececf0;
+    --accent: #0071e3; --raw: #ff9500; --sm: #34c759; --live: #af52de; --fill: #ececf0;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #000000; --panel: #1c1c1e; --ink: #f5f5f7; --muted: #98989d; --line: #2c2c2e;
-            --accent: #0a84ff; --raw: #ff9f0a; --sm: #30d158; --fill: #2c2c2e; }
+            --accent: #0a84ff; --raw: #ff9f0a; --sm: #30d158; --live: #bf5af2; --fill: #2c2c2e; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -47,6 +47,8 @@
   #seek { flex: 1; accent-color: var(--accent); }
   #time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 150px; text-align: right; font-size: 13px; }
   .views { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .views.three { grid-template-columns: 1fr 1fr 1fr; }
+  #liveBtn.on { background: var(--live); color: #fff; }
   figure { margin: 0; background: var(--panel); border-radius: 14px; overflow: hidden;
            box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); }
   figure canvas { display: block; width: 100%; background: #000; }
@@ -68,6 +70,7 @@
     <button id="pickV">Videos</button><button id="pickR">Raw skeletons</button><button id="pickS">Smoothed skeletons</button>
   </div>
   <span class="grow"></span>
+  <button id="liveBtn" title="A third panel: smooth the raw skeleton live with your own cutoff">Live tuning</button>
   <a href="../">All labelers</a>
 </header>
 <main>
@@ -87,7 +90,8 @@
   </div>
   <div class="views">
     <figure><canvas id="cRaw"></canvas><figcaption><span class="dot" style="background:var(--raw)"></span><b>Raw</b> BlazePose</figcaption></figure>
-    <figure><canvas id="cSm"></canvas><figcaption><span class="dot" style="background:var(--sm)"></span><b>Smoothed</b><span class="grow"></span><select id="smSrc"><option value="live" selected>Live</option><option value="folder">From folder</option></select><span id="liveCtl" style="display:flex;gap:8px;align-items:center"><input id="fc" type="range" min="1" max="15" step="0.5" value="6" style="width:140px;accent-color:var(--sm)"><span id="fcLbl" style="min-width:48px;font-variant-numeric:tabular-nums">6.0 Hz</span><select id="ord"><option value="2">order 2</option><option value="4" selected>order 4</option><option value="6">order 6</option></select></span></figcaption></figure>
+    <figure><canvas id="cSm"></canvas><figcaption><span class="dot" style="background:var(--sm)"></span><b>Smoothed</b> Akima + Butterworth 6 Hz</figcaption></figure>
+    <figure id="liveFig" hidden><canvas id="cLive"></canvas><figcaption><span class="dot" style="background:var(--live)"></span><b>Live</b><span class="grow"></span><input id="fc" type="range" min="1" max="15" step="0.5" value="6" style="width:130px;accent-color:var(--live)"><span id="fcLbl" style="min-width:48px;font-variant-numeric:tabular-nums">6.0 Hz</span><select id="ord"><option value="2">order 2</option><option value="4" selected>order 4</option><option value="6">order 6</option></select></figcaption></figure>
   </div>
   <div class="card">
     <div class="controls">
@@ -184,14 +188,14 @@ sel.video.onchange = async () => {
   vid.src = URL.createObjectURL(file);
   await new Promise(ok => vid.onloadedmetadata = ok);
   W = vid.videoWidth; Hh = vid.videoHeight;
-  for (const c of [cRaw, cSm]) { c.width = W; c.height = Hh; }
+  for (const c of [cRaw, cSm, document.getElementById('cLive')]) { c.width = W; c.height = Hh; }
   await pickRound();
 };
 sel.round.onchange = pickRound;
 async function pickRound() {
   const stem = stemOf(sel.video.value), r = +sel.round.value;
-  [RAW, SMF] = await Promise.all([loadRound('R', stem, r), loadRound('S', stem, r)]);
-  applySmoothing();
+  [RAW, SM] = await Promise.all([loadRound('R', stem, r), loadRound('S', stem, r)]);
+  LIVE = null; FILLED = null; if (liveOn) applyLive();
   if (!RAW) return status('no raw skeleton for this round');
   vid.currentTime = RAW.pts[0];
   status(SM ? '' : 'This round has no smoothed copy in the folder');
@@ -210,7 +214,7 @@ const P = (S, f, j, c) => S.data[(f * S.J + j) * S.C + c];
 
 // ── live smoothing: the shelf's recipe in the browser (Akima over gaps inside the observed range, edges held;
 //    Butterworth low-pass as cascaded biquads, run forward and backward = zero phase), on the 6 position channels ──
-let SMF = null;                                     // the smoothed shelf's copy of this round (From folder)
+                                     // the smoothed shelf's copy of this round (From folder)
 function akimaFill(v) {                              // v: Float64Array with NaNs, filled in place
   const idx = []; for (let i = 0; i < v.length; i++) if (Number.isFinite(v[i])) idx.push(i);
   if (!idx.length) return;
@@ -267,30 +271,36 @@ function filtfilt(v, secs, order) {                  // odd extension at both en
   let y = runSections(e, secs).reverse(); y = runSections(y, secs).reverse();
   return y.subarray(pad, pad + n);
 }
-function smoothRound(S, fc, order) {
-  const out = { ...S, data: new Float32Array(S.data) };
-  const secs = butterSections(fc, +S.meta.fps || 30, order), v = new Float64Array(S.n);
-  for (let j = 0; j < S.J; j++) for (let c = 0; c < Math.min(6, S.C); c++) {
+let LIVE = null, FILLED = null, liveOn = false, liveTimer = 0;
+const LIVE_JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];   // the drawn ones
+function fillRound(S) {                              // Akima over the gaps: does not depend on the cutoff, done once
+  const out = new Map(), v = new Float64Array(S.n);
+  for (const j of LIVE_JOINTS) for (let c = 0; c < Math.min(3, S.C); c++) {
     for (let f = 0; f < S.n; f++) v[f] = S.data[(f * S.J + j) * S.C + c];
-    akimaFill(v);
-    if (!Number.isFinite(v[0])) continue;            // a joint missing all round stays missing
-    const y = filtfilt(v, secs, order);
-    for (let f = 0; f < S.n; f++) out.data[(f * S.J + j) * S.C + c] = y[f];
+    akimaFill(v); if (Number.isFinite(v[0])) out.set(j * 8 + c, Float64Array.from(v));
   }
   return out;
 }
-let smTimer = 0;
-function applySmoothing() {
-  const live = document.getElementById('smSrc').value === 'live';
-  document.getElementById('liveCtl').style.display = live ? 'flex' : 'none';
+function applyLive() {
   const fc = +document.getElementById('fc').value;
   document.getElementById('fcLbl').textContent = fc.toFixed(1) + ' Hz';
-  if (!RAW) return;
-  clearTimeout(smTimer);
-  smTimer = setTimeout(() => { SM = live ? smoothRound(RAW, fc, +document.getElementById('ord').value) : SMF;
-    if (vid.paused) drawChart(vid.currentTime); }, 60);
+  if (!RAW || !liveOn) return;
+  cancelAnimationFrame(liveTimer);
+  liveTimer = requestAnimationFrame(() => {          // at most once a frame, however fast the slider moves
+    if (!FILLED) FILLED = fillRound(RAW);
+    const order = +document.getElementById('ord').value, secs = butterSections(fc, +RAW.meta.fps || 30, order);
+    const out = { ...RAW, data: new Float32Array(RAW.data) };
+    for (const [key, v] of FILLED) { const j = key >> 3, c = key & 7, y = filtfilt(v, secs, order);
+      for (let f = 0; f < RAW.n; f++) out.data[(f * RAW.J + j) * RAW.C + c] = y[f]; }
+    LIVE = out; if (vid.paused) drawChart(vid.currentTime);
+  });
 }
-['smSrc', 'fc', 'ord'].forEach(id => document.getElementById(id).addEventListener('input', applySmoothing));
+['fc', 'ord'].forEach(id => document.getElementById(id).addEventListener('input', applyLive));
+document.getElementById('liveBtn').onclick = e => {
+  liveOn = !liveOn; e.target.classList.toggle('on', liveOn);
+  document.getElementById('liveFig').hidden = !liveOn; document.querySelector('.views').classList.toggle('three', liveOn);
+  if (liveOn) { const c = document.getElementById('cLive'); c.width = W || 16; c.height = Hh || 9; applyLive(); }
+};
 function drawSkel(ctx, S, f, color) {
   if (!S || f < 0) return;
   const s = Math.max(W, Hh) / 700;
@@ -325,7 +335,9 @@ function drawChart(t) {
   if (!RAW) return;
   const j = +document.getElementById('joint').value, what = document.getElementById('what').value;
   const half = HALF, t0 = t - half, t1 = t + half;
-  const sets = [[RAW, getComputedStyle(document.body).getPropertyValue('--raw'), 1.2], [SM, getComputedStyle(document.body).getPropertyValue('--sm'), 2.4]];
+  const cs = getComputedStyle(document.body);
+  const sets = [[RAW, cs.getPropertyValue('--raw'), 1.2], [SM, cs.getPropertyValue('--sm'), 2.4]];
+  if (liveOn) sets.push([LIVE, cs.getPropertyValue('--live'), 2.0]);
   let lo = Infinity, hi = -Infinity; const vals = [];
   for (const [S] of sets) { if (!S) { vals.push(null); continue; } const v = series(S, j, what); vals.push(v);
     for (let f = 0; f < S.n; f++) if (S.pts[f] >= t0 && S.pts[f] <= t1 && Number.isFinite(v[f])) { lo = Math.min(lo, v[f]); hi = Math.max(hi, v[f]); } }
@@ -357,7 +369,9 @@ function render() {
   if (W) {
     const t = vid.currentTime;
     const cs = getComputedStyle(document.body);
-    for (const [c, S, col] of [[cRaw, RAW, cs.getPropertyValue('--raw')], [cSm, SM, cs.getPropertyValue('--sm')]]) {
+    const panels = [[cRaw, RAW, cs.getPropertyValue('--raw')], [cSm, SM, cs.getPropertyValue('--sm')]];
+    if (liveOn) panels.push([document.getElementById('cLive'), LIVE, cs.getPropertyValue('--live')]);
+    for (const [c, S, col] of panels) {
       const ctx = c.getContext('2d'); ctx.drawImage(vid, 0, 0, W, Hh); if (S) drawSkel(ctx, S, frameAt(S, t), col);
     }
     drawChart(t);
