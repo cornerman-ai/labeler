@@ -87,7 +87,7 @@
   </div>
   <div class="views">
     <figure><canvas id="cRaw"></canvas><figcaption><span class="dot" style="background:var(--raw)"></span><b>Raw</b> BlazePose</figcaption></figure>
-    <figure><canvas id="cSm"></canvas><figcaption><span class="dot" style="background:var(--sm)"></span><b>Smoothed</b> Akima + Butterworth 6 Hz</figcaption></figure>
+    <figure><canvas id="cSm"></canvas><figcaption><span class="dot" style="background:var(--sm)"></span><b>Smoothed</b><span class="grow"></span><select id="smSrc"><option value="live" selected>Live</option><option value="folder">From folder</option></select><span id="liveCtl" style="display:flex;gap:8px;align-items:center"><input id="fc" type="range" min="1" max="15" step="0.5" value="6" style="width:140px;accent-color:var(--sm)"><span id="fcLbl" style="min-width:48px;font-variant-numeric:tabular-nums">6.0 Hz</span><select id="ord"><option value="2">order 2</option><option value="4" selected>order 4</option><option value="6">order 6</option></select></span></figcaption></figure>
   </div>
   <div class="card">
     <div class="controls">
@@ -190,10 +190,11 @@ sel.video.onchange = async () => {
 sel.round.onchange = pickRound;
 async function pickRound() {
   const stem = stemOf(sel.video.value), r = +sel.round.value;
-  [RAW, SM] = await Promise.all([loadRound('R', stem, r), loadRound('S', stem, r)]);
+  [RAW, SMF] = await Promise.all([loadRound('R', stem, r), loadRound('S', stem, r)]);
+  applySmoothing();
   if (!RAW) return status('no raw skeleton for this round');
   vid.currentTime = RAW.pts[0];
-  status(SM ? '' : 'This round has no smoothed copy');
+  status(SM ? '' : 'This round has no smoothed copy in the folder');
 }
 
 // ── drawing ──
@@ -206,6 +207,90 @@ function frameAt(S, t) {                        // the last frame whose pts <= t
   return lo;
 }
 const P = (S, f, j, c) => S.data[(f * S.J + j) * S.C + c];
+
+// ── live smoothing: the shelf's recipe in the browser (Akima over gaps inside the observed range, edges held;
+//    Butterworth low-pass as cascaded biquads, run forward and backward = zero phase), on the 6 position channels ──
+let SMF = null;                                     // the smoothed shelf's copy of this round (From folder)
+function akimaFill(v) {                              // v: Float64Array with NaNs, filled in place
+  const idx = []; for (let i = 0; i < v.length; i++) if (Number.isFinite(v[i])) idx.push(i);
+  if (!idx.length) return;
+  const a = idx[0], b = idx[idx.length - 1];
+  for (let i = 0; i < a; i++) v[i] = v[a]; for (let i = b + 1; i < v.length; i++) v[i] = v[b];
+  if (idx.length < 2 || idx.length === b - a + 1) return;
+  const n = idx.length, x = idx, y = idx.map(i => v[i]);
+  const m = new Array(n + 3);                        // slopes, padded 2 left / 1 right as Akima's
+  for (let i = 0; i < n - 1; i++) m[i + 2] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
+  if (n === 2) { m[1] = m[0] = m[3] = m[4] = m[2]; } else {
+    m[1] = 2 * m[2] - m[3]; m[0] = 2 * m[1] - m[2];
+    m[n + 1] = 2 * m[n] - m[n - 1]; m[n + 2] = 2 * m[n + 1] - m[n];
+  }
+  const t = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const w1 = Math.abs(m[i + 3] - m[i + 2]), w2 = Math.abs(m[i + 1] - m[i]);
+    t[i] = w1 + w2 > 1e-12 ? (w1 * m[i + 1] + w2 * m[i + 2]) / (w1 + w2) : (m[i + 1] + m[i + 2]) / 2;
+  }
+  for (let k = 0; k < n - 1; k++) {
+    if (x[k + 1] - x[k] < 2) continue;
+    const h = x[k + 1] - x[k];
+    for (let i = x[k] + 1; i < x[k + 1]; i++) {
+      const s = (i - x[k]) / h, s2 = s * s, s3 = s2 * s;
+      v[i] = (2 * s3 - 3 * s2 + 1) * y[k] + (s3 - 2 * s2 + s) * h * t[k] + (-2 * s3 + 3 * s2) * y[k + 1] + (s3 - s2) * h * t[k + 1];
+    }
+  }
+}
+function butterSections(fc, fs, order) {             // RBJ low-pass biquads with the Butterworth Qs
+  const w0 = 2 * Math.PI * Math.min(fc, 0.45 * fs) / fs, cw = Math.cos(w0), sw = Math.sin(w0), out = [];
+  for (let k = 1; k <= order / 2; k++) {
+    const q = 1 / (2 * Math.sin(Math.PI * (2 * k - 1) / (2 * order))), al = sw / (2 * q), a0 = 1 + al;
+    out.push({ b0: (1 - cw) / 2 / a0, b1: (1 - cw) / a0, b2: (1 - cw) / 2 / a0, a1: -2 * cw / a0, a2: (1 - al) / a0 });
+  }
+  return out;
+}
+function runSections(x, secs) {                      // one pass, each section started at steady state on x[0]
+  let y = x;
+  for (const q of secs) {
+    const o = new Float64Array(y.length), x0 = y[0];
+    let z2 = (q.b2 - q.a2) * x0, z1 = (q.b1 - q.a1) * x0 + z2;
+    for (let i = 0; i < y.length; i++) { const xi = y[i], yi = q.b0 * xi + z1;
+      z1 = q.b1 * xi - q.a1 * yi + z2; z2 = q.b2 * xi - q.a2 * yi; o[i] = yi; }
+    y = o;
+  }
+  return y;
+}
+function filtfilt(v, secs, order) {                  // odd extension at both ends, as scipy's filtfilt
+  const n = v.length, pad = Math.min(3 * (order + 1), n - 1);
+  if (pad < 1) return v;
+  const e = new Float64Array(n + 2 * pad);
+  for (let i = 0; i < pad; i++) e[i] = 2 * v[0] - v[pad - i];
+  e.set(v, pad);
+  for (let i = 0; i < pad; i++) e[pad + n + i] = 2 * v[n - 1] - v[n - 2 - i];
+  let y = runSections(e, secs).reverse(); y = runSections(y, secs).reverse();
+  return y.subarray(pad, pad + n);
+}
+function smoothRound(S, fc, order) {
+  const out = { ...S, data: new Float32Array(S.data) };
+  const secs = butterSections(fc, +S.meta.fps || 30, order), v = new Float64Array(S.n);
+  for (let j = 0; j < S.J; j++) for (let c = 0; c < Math.min(6, S.C); c++) {
+    for (let f = 0; f < S.n; f++) v[f] = S.data[(f * S.J + j) * S.C + c];
+    akimaFill(v);
+    if (!Number.isFinite(v[0])) continue;            // a joint missing all round stays missing
+    const y = filtfilt(v, secs, order);
+    for (let f = 0; f < S.n; f++) out.data[(f * S.J + j) * S.C + c] = y[f];
+  }
+  return out;
+}
+let smTimer = 0;
+function applySmoothing() {
+  const live = document.getElementById('smSrc').value === 'live';
+  document.getElementById('liveCtl').style.display = live ? 'flex' : 'none';
+  const fc = +document.getElementById('fc').value;
+  document.getElementById('fcLbl').textContent = fc.toFixed(1) + ' Hz';
+  if (!RAW) return;
+  clearTimeout(smTimer);
+  smTimer = setTimeout(() => { SM = live ? smoothRound(RAW, fc, +document.getElementById('ord').value) : SMF;
+    if (vid.paused) drawChart(vid.currentTime); }, 60);
+}
+['smSrc', 'fc', 'ord'].forEach(id => document.getElementById(id).addEventListener('input', applySmoothing));
 function drawSkel(ctx, S, f, color) {
   if (!S || f < 0) return;
   const s = Math.max(W, Hh) / 700;
