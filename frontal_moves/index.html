@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontal moves</title>
+<!--
+  Every frontal defensive move in John's frozen defense labels (595 clips, 2026-10-16): each the labeled move ± 1 s,
+  the boxer facing the camera the whole time, with its BlazePose skeleton (image + world landmarks), the nose path in
+  2D and 3D, every length in torso lengths, and the roll models' results. Read-only analytics.
+  Data: Firebase Storage labeler_media/frontal_moves/v1/ — built, evaluated and uploaded by cornerman-backend
+  ml/research/defense/frontal_moves/ (build_frontal_moves.py → evaluate_models.py → upload_to_firebase.py).
+  ?data=<base url> reads another copy instead (e.g. http://localhost:8000/ serving the backend's viewer/data/).
+-->
+<style>
+:root {
+  --bg: #f5f5f7; --card: #fff; --line: #e5e5ea; --line2: #d2d2d7; --text: #1d1d1f; --dim: #6e6e73; --faint: #86868b;
+  --accent: #0071e3; --sel: #e8f0fe; --good: #34c759; --bad: #ff3b30; --unsure: #ff9f0a;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.06);
+  --radius: 16px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+button, select, input { font: inherit; color: inherit; }
+#app { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; }
+
+/* ── sidebar ── */
+#side { display: flex; flex-direction: column; min-height: 0; background: rgba(255,255,255,.75);
+  backdrop-filter: saturate(180%) blur(20px); border-right: 1px solid var(--line); }
+#side header { padding: 22px 18px 10px; display: flex; flex-direction: column; gap: 12px; }
+#side h1 { font-size: 22px; font-weight: 700; letter-spacing: -.025em; margin: 0; }
+.sub { color: var(--faint); font-size: 12px; }
+.seg { display: inline-flex; background: #e9e9ee; border-radius: 9px; padding: 2px; gap: 2px; }
+.seg button { background: transparent; border: 0; border-radius: 7px; padding: 4px 11px; font-weight: 500; font-size: 12.5px;
+  cursor: pointer; transition: background .15s, box-shadow .15s; white-space: nowrap; }
+.seg button:hover { background: rgba(255,255,255,.6); }
+.seg button.on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg.full { display: flex; } .seg.full button { flex: 1; }
+#search { width: 100%; border: 0; background: #e9e9ee; border-radius: 9px; padding: 7px 10px 7px 30px; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2386868b' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 10px center; transition: background-color .15s, box-shadow .15s; }
+#search:focus { background-color: #fff; box-shadow: 0 0 0 3px rgba(0,113,227,.25); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 0; border-radius: 980px; padding: 3px 10px; font-size: 12px; cursor: pointer; user-select: none; color: var(--dim);
+  background: #ececf0; transition: background .15s, color .15s; display: inline-flex; align-items: center; gap: 5px; }
+.chip:hover { background: #e3e3e8; }
+.chip .k { width: 7px; height: 7px; border-radius: 50%; }
+.chip.on { color: #fff; }
+.row { display: flex; align-items: center; gap: 8px; }
+select { border: 0; background: #e9e9ee; border-radius: 8px; padding: 4px 8px; cursor: pointer; outline: none; }
+#list { overflow: auto; flex: 1; padding: 2px 10px 10px; }
+.item { display: grid; grid-template-columns: 44px 1fr; gap: 10px; padding: 8px; border-radius: 12px; cursor: pointer;
+  margin-bottom: 2px; transition: background .12s; align-items: center; }
+.item:hover { background: rgba(0,0,0,.035); }
+.item.sel { background: var(--sel); }
+.item canvas { width: 44px; height: 44px; border-radius: 10px; background: #f5f5f7; display: block; }
+.item .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.item .id { font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+.item .vid { color: var(--faint); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { font-size: 10.5px; padding: 1px 7px; border-radius: 980px; font-weight: 500; }
+#side footer { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+.link { background: transparent; border: 0; color: var(--accent); cursor: pointer; font-weight: 500; padding: 4px 0; }
+
+/* ── main ── */
+#main { min-width: 0; min-height: 0; overflow: auto; }
+.view { display: none; padding: 20px 26px 26px; }
+.view.on { display: block; }
+.head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 14px; }
+.head .t { font-size: 24px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+.head .meta { color: var(--faint); font-size: 12.5px; margin-top: 4px; }
+.head .grow { flex: 1; min-width: 200px; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.round { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--text); color: #fff; cursor: pointer;
+  display: inline-grid; place-items: center; transition: transform .1s, background .15s; }
+.round:hover { background: #3a3a3c; } .round:active { transform: scale(.94); }
+.ghostbtn { width: 32px; height: 32px; border-radius: 50%; border: 0; background: #e9e9ee; cursor: pointer; display: inline-grid;
+  place-items: center; color: var(--text); transition: background .15s; }
+.ghostbtn:hover { background: #dedee3; }
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; min-width: 0; }
+.card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card h3 .seg button { padding: 2px 8px; font-size: 11.5px; }
+#rgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+#lcol, #rcol { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+#vcard { padding: 0; overflow: hidden; position: relative; background: #0b0b0c; height: 480px; }
+#vwrap { position: absolute; left: 0; top: 0; overflow: hidden; background: #000; cursor: grab; touch-action: none; }
+#vwrap.drag { cursor: grabbing; }
+#vinner { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+#vwrap.live #vinner { transition: none; }
+#zoomctl { position: absolute; left: 14px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px;
+  background: rgba(255,255,255,.88); backdrop-filter: blur(10px); border-radius: 980px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+#zoomctl button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; font-size: 15px;
+  line-height: 1; color: var(--text); display: grid; place-items: center; transition: background .15s; }
+#zoomctl button:hover { background: rgba(0,0,0,.07); }
+#zoomctl span { min-width: 42px; text-align: center; font: 600 11.5px -apple-system, system-ui; font-variant-numeric: tabular-nums; color: var(--dim); }
+#vinner video, #vinner canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#badge { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#badge span { background: rgba(255,255,255,.88); backdrop-filter: blur(10px); border-radius: 980px; padding: 4px 11px;
+  font-weight: 600; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+#tcode { position: absolute; right: 14px; bottom: 12px; background: rgba(0,0,0,.45); color: #fff; border-radius: 8px; padding: 2px 8px;
+  font: 500 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events: none; }
+#motion { width: 100%; height: 292px; display: block; cursor: crosshair; touch-action: none; }
+.sq { width: 100%; aspect-ratio: 1; display: block; border-radius: 12px; background: #fafafa; }
+#p3 { cursor: grab; touch-action: none; } #p3:active { cursor: grabbing; }
+.info { margin-top: 8px; color: var(--faint); font-size: 12px; line-height: 1.5; }
+.info b { color: var(--text); font-weight: 600; }
+#tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: #f5f5f7; border-radius: 12px; padding: 9px 11px; }
+.tile .n { color: var(--faint); font-size: 11px; }
+.tile .v { font-size: 18px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 11px; color: var(--faint); font-weight: 500; margin-left: 3px; letter-spacing: 0; }
+.tile .bar { position: relative; height: 4px; background: #e5e5ea; border-radius: 4px; margin: 6px 0 3px; }
+.tile .bar i { position: absolute; top: -3px; width: 10px; height: 10px; border-radius: 50%; margin-left: -5px; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.1); }
+.tile .p { color: var(--faint); font-size: 10.5px; }
+.keys { color: var(--faint); font-size: 11.5px; margin-top: 16px; line-height: 2; }
+kbd { background: #fff; border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px;
+  font: 11px -apple-system, BlinkMacSystemFont, sans-serif; color: var(--dim); }
+
+/* atlas */
+#agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.acard { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 10px; cursor: pointer;
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s; }
+.acard:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0,0,0,.05), 0 14px 30px rgba(0,0,0,.10); }
+.acard canvas { width: 100%; aspect-ratio: 4 / 3; display: block; border-radius: 10px; background: #fafafa; }
+.acard .top { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.acard .id { font-weight: 600; font-variant-numeric: tabular-nums; }
+.acard .nums { color: var(--faint); font-size: 11.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* overlay */
+#ogrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+#ov, #sc { width: 100%; aspect-ratio: 1; display: block; border-radius: 12px; background: #fafafa; cursor: crosshair; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; color: var(--dim); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+#tip { position: fixed; pointer-events: none; background: rgba(29,29,31,.92); color: #fff; border-radius: 10px; padding: 7px 10px;
+  font-size: 12px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.2); opacity: 0; transition: opacity .1s; z-index: 10; max-width: 280px; }
+#tip b { font-weight: 600; } #tip .d { color: #c7c7cc; }
+/* models */
+.otag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 6px; color: #fff; letter-spacing: .02em; }
+.otag.TP { background: #34c759; } .otag.TN { background: #aeaeb2; } .otag.FP { background: #ff3b30; } .otag.FN { background: #ff9500; }
+#lb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#lb th { text-align: right; font-weight: 500; color: var(--faint); font-size: 11.5px; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+#lb td { text-align: right; padding: 10px; border-bottom: 1px solid #f0f0f3; white-space: nowrap; }
+#lb th:first-child, #lb td:first-child { text-align: left; }
+#lb tbody tr { cursor: pointer; } #lb tbody tr:hover td { background: rgba(0,0,0,.025); } #lb tr.sel td { background: var(--sel); }
+#lb td.best { font-weight: 700; } #lb td.dim { color: var(--faint); }
+#lbwrap { overflow-x: auto; }
+#mgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 18px; }
+#cm { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 8px; align-items: stretch; }
+#cm .cell { border-radius: 14px; padding: 14px 10px; text-align: center; cursor: pointer; transition: transform .12s, box-shadow .12s; }
+#cm .cell:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.08); }
+#cm .cell b { display: block; font-size: 30px; letter-spacing: -.03em; line-height: 1.1; }
+#cm .cell span { font-size: 11px; font-weight: 500; }
+#cm .ax { color: var(--faint); font-size: 11.5px; display: flex; align-items: center; justify-content: center; text-align: center; }
+#cms { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.cmt { background: #fafafa; border-radius: 14px; padding: 12px 14px; }
+.cmt .hd { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cmt .hd b { font-size: 13.5px; } .cmt.sel { box-shadow: 0 0 0 2px var(--accent) inset; }
+.cmt table { width: 100%; border-collapse: separate; border-spacing: 4px; font-variant-numeric: tabular-nums; }
+.cmt th { font-weight: 500; color: var(--faint); font-size: 11px; text-align: center; padding: 0 2px 2px; }
+.cmt td.lab { text-align: left; font-size: 12.5px; white-space: nowrap; padding-right: 6px; }
+.cmt td.lab.sub2 { color: var(--dim); padding-left: 16px; font-size: 12px; }
+.cmt td.c { text-align: center; border-radius: 9px; padding: 7px 4px; cursor: pointer; font-weight: 700; font-size: 15px; transition: transform .1s; }
+.cmt td.c:hover { transform: scale(1.04); }
+.cmt td.c small { display: block; font-weight: 500; font-size: 10px; opacity: .8; }
+.cmt td.c.zero { cursor: default; opacity: .45; } .cmt td.c.zero:hover { transform: none; }
+.cmt tr.sep td { height: 4px; padding: 0; }
+#roc { width: 100%; aspect-ratio: 1; display: block; border-radius: 12px; background: #fafafa; }
+#dist { width: 100%; height: 250px; min-height: 250px; display: block; border-radius: 12px; background: #fafafa; cursor: crosshair; }
+#errs { display: flex; flex-wrap: wrap; gap: 6px; }
+#errs button { border: 0; border-radius: 980px; padding: 3px 10px; font-size: 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; background: #f5f5f7; }
+#errs button:hover { background: #ebebf0; }
+#mcard select { max-width: 200px; }
+.bar2 { position: relative; height: 8px; border-radius: 8px; background: #e5e5ea; margin: 12px 0 6px; }
+.bar2 i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; }
+.bar2 b { position: absolute; top: -4px; width: 2px; height: 16px; background: #1d1d1f; border-radius: 1px; }
+#mx { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 12px; margin-top: 10px; }
+#mx span:nth-child(odd) { color: var(--faint); } #mx span:nth-child(even) { font-variant-numeric: tabular-nums; text-align: right; }
+.verdictline { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.verdictline .big { font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+#empty { padding: 80px 40px; color: var(--faint); font-size: 15px; text-align: center; }
+@media (max-width: 1180px) { #rgrid { grid-template-columns: minmax(0, 1fr); } #rcol { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); } #ogrid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) { #app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100vh; } #side { max-height: 46vh; }
+  #main { overflow: visible; } .view { padding: 16px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header>
+      <div><h1>Frontal moves</h1><div class="sub" id="settings"></div></div>
+      <div class="seg full" id="views">
+        <button data-view="review" title="1">Review</button><button data-view="atlas" title="2">Atlas</button><button data-view="overlay" title="3">Overlay</button><button data-view="models" title="4">Models</button>
+      </div>
+      <input id="search" placeholder="Search id or video" autocomplete="off" spellcheck="false">
+      <div class="chips" id="kinds"></div>
+      <div class="chips" id="outcomes"></div>
+      <div class="row"><span class="sub">Sort</span><select id="sort"></select><span class="sub" id="count" style="margin-left:auto"></span></div>
+    </header>
+    <div id="list"></div>
+    <footer>
+      <span class="sub">Read-only · from John's labels</span>
+      <span style="flex:1"></span>
+      <button class="link" id="export" title="Every move with its numbers">Export CSV</button>
+    </footer>
+  </aside>
+
+  <main id="main">
+    <!-- REVIEW -->
+    <section class="view" id="v-review">
+      <div class="head">
+        <div class="grow"><div class="t" id="rtitle">—</div><div class="meta" id="rmeta"></div></div>
+        <button class="ghostbtn" id="prev" title="Previous (↑)">&#8249;</button><button class="ghostbtn" id="next" title="Next (↓)">&#8250;</button>
+      </div>
+      <div class="tools">
+        <button class="round" id="play" title="Play / pause (Space)"><svg width="14" height="14" viewBox="0 0 14 14"><path id="playicon" d="M3 1.5v11l9-5.5z" fill="#fff"/></svg></button>
+        <div class="seg" id="speeds"><button data-speed="0.1">0.1×</button><button data-speed="0.25">0.25×</button><button data-speed="0.5">0.5×</button><button data-speed="1">1×</button></div>
+        <div class="seg" id="toggles">
+          <button data-t="paths" title="The move's nose path on the video">Paths</button>
+          <button data-t="grow" title="Draw paths only up to now">Grow</button>
+          <button data-t="skel" title="Skeleton (S)">Skeleton</button>
+          <button data-t="ghosts" title="Onion skin of the upper body through the move (O)">Ghosts</button>
+          <button data-t="focus" title="Zoom onto the boxer: head, arms and hips (F)">Focus</button>
+          <button data-t="loop" title="Loop the clip (L)">Loop</button>
+        </div>
+      </div>
+      <div id="rgrid">
+        <div id="lcol">
+          <div class="card" id="vcard">
+            <div id="vwrap"><div id="vinner"><video id="video" muted playsinline preload="auto"></video><canvas id="stage"></canvas></div></div>
+            <div id="badge"></div><div id="tcode"></div>
+            <div id="zoomctl"><button id="zout" title="Zoom out (−)">−</button><span id="zpct">100%</span><button id="zin" title="Zoom in (+)">+</button><button id="zfit" title="Fit (0, or double-click the video)">⤢</button></div>
+          </div>
+          <div class="card"><h3>Motion <span class="sub">nose relative to the move's start · drag to scrub</span></h3><canvas id="motion"></canvas></div>
+        </div>
+        <div id="rcol">
+          <div class="card" id="mcard"><h3>Model <select id="msel"></select></h3><div id="mbody"></div></div>
+          <div class="card"><h3>Nose path <span class="sub">as the camera sees it</span></h3><canvas id="p2" class="sq" width="640" height="640"></canvas><div class="info" id="p2info"></div></div>
+          <div class="card"><h3><span class="row" style="gap:8px">3D <span class="seg" id="frame3d"><button data-f3="body" title="Fit the whole skeleton">Body</button><button data-f3="path" title="Close up on the nose path">Path</button></span></span><div class="seg" id="presets"><button data-p="front">Front</button><button data-p="side">Side</button><button data-p="top">Top</button><button data-p="orbit">Orbit</button></div></h3>
+            <canvas id="p3" class="sq" width="640" height="640"></canvas><div class="info" id="p3info"></div></div>
+          <div class="card"><h3>Numbers <span class="sub" id="pctof"></span></h3><div id="tiles"></div></div>
+        </div>
+      </div>
+      <div class="keys"><kbd>Space</kbd> play · <kbd>←</kbd> <kbd>→</kbd> frame · <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>[</kbd> <kbd>]</kbd> speed ·
+        <kbd>F</kbd> focus · <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> zoom (or scroll, drag to pan) · <kbd>O</kbd> ghosts · <kbd>S</kbd> skeleton · <kbd>L</kbd> loop ·
+        <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> views · <kbd>/</kbd> search</div>
+    </section>
+
+    <!-- ATLAS -->
+    <section class="view" id="v-atlas">
+      <div class="head"><div class="grow"><div class="t">Atlas</div><div class="meta">Every nose path, start ○ to end ●, light to dark through time. Click one to review it.</div></div>
+        <div class="seg" id="atools"><button data-t="same" title="One scale for every card, so sizes compare">Same scale</button><button data-t="align" title="Mirror paths so each ends to the right">Align direction</button></div>
+      </div>
+      <div id="agrid"></div>
+    </section>
+
+    <!-- OVERLAY -->
+    <section class="view" id="v-overlay">
+      <div class="head"><div class="grow"><div class="t">Overlay</div><div class="meta">All filtered paths from one start point, in torso lengths, and any two numbers against each other.</div></div></div>
+      <div id="ogrid">
+        <div class="card"><h3>Paths <div class="seg" id="otools"><button data-t="align" title="Mirror paths so each ends to the right">Align</button><button data-t="means" title="Mean path per kind, through normalised time">Means</button></div></h3>
+          <canvas id="ov" width="900" height="900"></canvas><div class="legend" id="olegend"></div></div>
+        <div class="card"><h3>Scatter <span class="row"><select id="sx"></select><span class="sub">vs</span><select id="sy"></select></span></h3>
+          <canvas id="sc" width="900" height="900"></canvas><div class="legend" id="slegend"></div></div>
+      </div>
+    </section>
+    <!-- MODELS -->
+    <section class="view" id="v-models">
+      <div class="head"><div class="grow"><div class="t">Models</div><div class="meta" id="mmeta"></div></div></div>
+      <div class="card"><div id="lbwrap"><table id="lb"></table></div>
+        <div class="info">Click a row to select a model. F1 range: 95 % bootstrap interval. Best F1*: the best any threshold reaches, tuned on these same clips — an upper bound, not a result.</div></div>
+      <div class="card" style="margin-top:18px"><h3>Confusion · every model <span class="sub">rows: what John labeled · columns: what the model says · click a cell to list its clips</span></h3><div id="cms"></div></div>
+      <div id="mgrid">
+        <div class="card"><h3>ROC <span class="sub">every model · bold: selected</span></h3><canvas id="roc"></canvas><div class="legend" id="roclegend"></div></div>
+        <div class="card"><h3>Scores by kind <span class="sub">line: threshold · click a dot</span></h3><canvas id="dist"></canvas></div>
+        <div class="card"><h3>Mistakes <span class="sub" id="errsub"></span></h3><div id="errs"></div></div>
+      </div>
+      <div class="card" style="margin-top:18px"><h3>About this model</h3><div id="mdesc" class="info" style="margin-top:0"></div></div>
+    </section>
+    <div id="empty" style="display:none">No data loaded. It comes from Firebase Storage (labeler_media/frontal_moves/v1/), uploaded by cornerman-backend <code>ml/research/defense/frontal_moves/upload_to_firebase.py</code>.</div>
+  </main>
+</div>
+<div id="tip"></div>
+<script>
+// where the data lives: Firebase Storage with the shared labeler_media token, or ?data=<base url>
+(() => {
+  const FB = 'https://firebasestorage.googleapis.com/v0/b/mycorner-bee6a.firebasestorage.app/o/';
+  const PREFIX = 'labeler_media/frontal_moves/v1/', TOKEN = '628dbeba-2969-4f45-b65e-5b295ef56fdc';
+  const alt = new URLSearchParams(location.search).get('data');
+  window.fmURL = path => alt ? alt.replace(/\/?$/, '/') + path : FB + encodeURIComponent(PREFIX + path) + '?alt=media&token=' + TOKEN;
+  ['index.js', 'atlas.js', 'models.js'].forEach(f => document.write(`<script src="${fmURL(f)}"><\/script>`));   // in order, before the page's script
+})();
+</script>
+<script>
+'use strict';
+// ═════════════ data + state ═════════════
+const SEGS = window.SEGMENTS || [], ATLAS = window.ATLAS || {}, SETTINGS = window.SEGMENT_SETTINGS || {};
+const MOD = window.MODELS && window.MODELS.order && window.MODELS.order.length ? window.MODELS : null;   // evaluate_models.py
+const OCOL = { TP: '#34c759', TN: '#aeaeb2', FP: '#ff3b30', FN: '#ff9500' };
+const ONAME = { TP: 'Roll, found', FP: 'False alarm', FN: 'Roll, missed', TN: 'Not a roll, right' };
+const KCOL = { roll: '#ff9500', slip: '#007aff', duck: '#af52de', pull_back: '#34c759', step_back: '#d4a800' };
+const KNAME = { roll: 'Roll', slip: 'Slip', duck: 'Duck', pull_back: 'Pull back', step_back: 'Step back' };
+const KORDER = ['roll', 'duck', 'slip', 'pull_back', 'step_back'];
+const METRICS = [
+  { k: 'dur', name: 'Duration', unit: 's', d: 2 }, { k: 'lat', name: 'Sideways range', unit: 'torso', d: 2 },
+  { k: 'dip', name: 'Dip below start', unit: 'torso', d: 2 }, { k: 'dx', name: 'Net sideways', unit: 'torso', d: 2 },
+  { k: 'dy', name: 'Net down', unit: 'torso', d: 2 }, { k: 'side3d', name: '3D sideways', unit: 'torso', d: 2 },
+  { k: 'up3d', name: '3D up / down', unit: 'torso', d: 2 }, { k: 'depth3d', name: '3D depth', unit: 'torso', d: 2 },
+  { k: 'speed', name: 'Peak nose speed', unit: 'torso/s', d: 1 }, { k: 'facing', name: 'Facing', unit: '°', d: 1 },
+];
+const MBY = Object.fromEntries(METRICS.map(m => [m.k, m]));
+const BONES = [[0,2],[2,7],[0,5],[5,8],[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],
+  [23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[27,31],[28,30],[30,32],[28,32],[15,17],[15,19],[16,18],[16,20]];
+const UPPER = [[0,11],[0,12],[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24]];
+const LEFT = new Set([1,2,3,7,9,11,13,15,17,19,21,23,25,27,29,31]);
+const $ = id => document.getElementById(id);
+const kc = k => KCOL[k] || '#0071e3';
+const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const rgba = (hex, a) => { const [r, g, b] = rgb(hex); return `rgba(${r},${g},${b},${a})`; };
+const ramp = (hex, u) => { const [r, g, b] = rgb(hex), L = v => Math.round(v + (255 - v) * (1 - u) * 0.72); return `rgb(${L(r)},${L(g)},${L(b)})`; };
+const A = s => ATLAS[s.id] || {};
+const fmt = (k, v) => v === null || v === undefined ? '—' : (+v).toFixed(MBY[k] ? MBY[k].d : 2);
+const sgn = v => (v >= 0 ? '+' : '') ;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('fm.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('fm.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+const S = {
+  view: store.get('view', 'review'), i: 0, data: null, series: null,
+  kinds: new Set(store.get('kinds', [])), q: '', model: store.get('model', null), outcomes: new Set(store.get('outcomes', [])), sort: store.get('sort', 'id'),
+  speed: store.get('speed', 0.5), paths: store.get('paths', true), grow: store.get('grow', false), skel: store.get('skel', true),
+  ghosts: store.get('ghosts', true), focus: store.get('focus', false), loop: store.get('loop', true),
+  preset: store.get('preset', 'orbit'), frame3d: store.get('frame3d', 'body'), same: store.get('same', true), align: store.get('align', true), means: store.get('means', true),
+  sx: store.get('sx', 'lat'), sy: store.get('sy', 'dip'),
+  hoverT: null, dirty: true, cache: {}, zoom: { s: 1, tx: 0, ty: 0 }, cam: { yaw: -0.6, pitch: 0.3, zoom: 1 },
+};
+const save = k => store.set(k, S[k] instanceof Set ? [...S[k]] : S[k]);
+const setHTML = (el, h) => { if (el._h !== h) { el._h = h; el.innerHTML = h; } };     // DOM writes only when the text changes
+const setText = (el, h) => { if (el._t !== h) { el._t = h; el.textContent = h; } };
+['verdicts', 'notes', 'vfilter'].forEach(k => { try { localStorage.removeItem('fm.' + k); } catch (e) {} });   // the page records no input
+const dpr = () => window.devicePixelRatio || 1;
+function fitCanvas(c, cssH) {   // backing store = CSS size × dpr; returns [W, H] in device pixels
+  const r = c.getBoundingClientRect(), w = Math.max(1, Math.round(r.width * dpr())), h = Math.max(1, Math.round((cssH || r.height) * dpr()));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return [w, h];
+}
+
+// ═════════════ sidebar ═════════════
+const MD = () => MOD && MOD.models[S.model] ? MOD.models[S.model] : null;
+const PR = id => { const m = MD(); return m ? m.preds[id] : null; };
+const otag = id => { const p = PR(id); return p ? `<span class="otag ${p.o}" title="${ONAME[p.o]} · score ${p.s.toFixed(2)}">${p.o}</span>` : ''; };
+function visible() {
+  const q = S.q.trim().toLowerCase();
+  let L = SEGS.filter(s => (!S.kinds.size || S.kinds.has(s.kind))
+    && (!S.outcomes.size || (PR(s.id) && S.outcomes.has(PR(s.id).o)))
+    && (!q || `${s.id} ${s.video} ${s.label}`.toLowerCase().includes(q)));
+  if (S.sort !== 'id') L = L.slice().sort((a, b) => (A(b)[S.sort] ?? -1e9) - (A(a)[S.sort] ?? -1e9));
+  return L;
+}
+function renderKinds() {
+  const box = $('kinds'); box.innerHTML = '';
+  const n = {}; SEGS.forEach(s => n[s.kind] = (n[s.kind] || 0) + 1);
+  KORDER.concat(Object.keys(n).filter(k => !KORDER.includes(k))).filter(k => n[k]).forEach(k => {
+    const b = document.createElement('button'); b.className = 'chip' + (S.kinds.has(k) ? ' on' : '');
+    b.innerHTML = `<span class="k" style="background:${S.kinds.has(k) ? '#fff' : kc(k)}"></span>${KNAME[k] || k} ${n[k]}`;
+    if (S.kinds.has(k)) b.style.background = kc(k);
+    b.onclick = () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); save('kinds'); refreshAll(); };
+    box.appendChild(b);
+  });
+}
+function miniPath(c, a, size) {
+  const [W, H] = fitCanvas(c, size), x = c.getContext('2d'); x.clearRect(0, 0, W, H);
+  if (!a.p2 || a.p2.length < 2) return;
+  drawPath2D(x, W, H, a, { pad: 6 * dpr(), lw: 1.8 * dpr(), dots: false, ends: 2.4 * dpr() });
+}
+// canvases are drawn when they scroll into view, not all at once
+const lazy = new IntersectionObserver(es => es.forEach(e => { if (!e.isIntersecting) return; lazy.unobserve(e.target); e.target._draw && e.target._draw(); }), { rootMargin: '300px' });
+function renderList() {
+  const L = visible(), box = $('list'), cur = SEGS[S.i];
+  box.innerHTML = L.map(s => { const sortv = S.sort !== 'id' ? ` · ${fmt(S.sort, A(s)[S.sort])} ${MBY[S.sort].unit}` : '';
+    return `<div class="item${cur === s ? ' sel' : ''}" data-id="${s.id}"><canvas></canvas><div style="min-width:0"><div class="top"><span class="id">${s.id}</span>${otag(s.id)}</div>
+      <div class="row" style="gap:6px;margin:1px 0"><span class="pill" style="background:${rgba(kc(s.kind), .12)};color:${kc(s.kind)}">${s.label.replace('_', ' ')}</span><span class="sub">${A(s).dur ? A(s).dur.toFixed(2) + ' s' : ''}${sortv}</span></div>
+      <div class="vid" title="${esc(s.video)}">${esc(s.video.replace(/\.mp4$/i, ''))}</div></div></div>`; }).join('');
+  box.querySelectorAll('.item canvas').forEach(c => { const id = c.parentElement.dataset.id; c._draw = () => miniPath(c, ATLAS[id] || {}, 44); lazy.observe(c); });
+  $('count').textContent = `${L.length} shown`;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ═════════════ shared path drawing ═════════════
+function pathFrame(a) {   // the 2D path as drawn: optionally mirrored so it ends to the right
+  const flip = S.align && a.dx < 0 ? -1 : 1;
+  return a.p2.map(p => [p[0] * flip, p[1], p[2]]);
+}
+function drawPath2D(x, W, H, a, o = {}) {
+  const P = o.raw ? a.p2 : pathFrame(a);
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+  const span = o.span || Math.max(0.12, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const s = (Math.min(W, H) - 2 * (o.pad || 10)) / span;
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+  const X = v => W / 2 + (v - cx) * s, Y = v => H / 2 + (v - cy) * s, col = kc(a.kind), n = P.length;
+  x.lineCap = x.lineJoin = 'round';
+  for (let k = 1; k < n; k++) { x.strokeStyle = ramp(col, k / (n - 1)); x.lineWidth = o.lw || 2;
+    x.beginPath(); x.moveTo(X(P[k - 1][0]), Y(P[k - 1][1])); x.lineTo(X(P[k][0]), Y(P[k][1])); x.stroke(); }
+  const r = o.ends || 4;
+  x.fillStyle = '#fff'; x.strokeStyle = '#1d1d1f'; x.lineWidth = Math.max(1, r * 0.45);
+  x.beginPath(); x.arc(X(P[0][0]), Y(P[0][1]), r, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = '#1d1d1f'; x.beginPath(); x.arc(X(P[n - 1][0]), Y(P[n - 1][1]), r * 0.9, 0, 7); x.fill();
+  return { X, Y, s };
+}
+
+// ═════════════ review: loading ═════════════
+function loadData(id) {
+  return new Promise((res, rej) => {
+    if (window.SEG_DATA && window.SEG_DATA[id]) return res(window.SEG_DATA[id]);
+    const sc = document.createElement('script'); sc.src = fmURL(`${id}.js`);
+    sc.onload = () => res(window.SEG_DATA[id]); sc.onerror = () => rej(new Error('missing ' + id)); document.head.appendChild(sc);
+  });
+}
+const video = $('video'), stage = $('stage'), sx = stage.getContext('2d');
+async function open(i, show) {
+  if (i < 0 || i >= SEGS.length) return;
+  S.i = i; const seg = SEGS[i]; store.set('last', seg.id);
+  if (show && S.view !== 'review') setView('review');
+  const raw = await loadData(seg.id);
+  // the clip's own move only: any other labeled move in the window is neither drawn nor measured
+  S.data = { ...raw, moves: raw.moves.filter(m => m.main).slice(0, 1) };
+  if (!S.data.moves.length) S.data.moves = raw.moves.slice(0, 1);
+  S.sel = 0;
+  S.series = buildSeries(seg, S.data); S.cache = {};
+  $('rtitle').innerHTML = `${seg.id} <span style="color:${kc(seg.kind)}">· ${seg.label.replace('_', ' ')}</span>`;
+  $('rmeta').textContent = `${seg.video.replace(/\.mp4$/i, '')} · round ${seg.round} · move ${seg.move_start.toFixed(2)}–${seg.move_end.toFixed(2)} s · ${seg.stance} · ${seg.training_type} · facing ${seg.median_deg}° (max ${seg.max_deg}°)`;
+  sizeVideo();
+  video.src = fmURL(`clips/${seg.id}.mp4`); video.playbackRate = S.speed; video.loop = S.loop;
+  video.addEventListener('loadeddata', () => { video.currentTime = 0; computeZoom(); S.dirty = true; if (S.view === 'review') video.play().catch(() => {}); }, { once: true });
+  renderTiles(); renderModelCard(); syncControls();
+  document.querySelectorAll('.item').forEach(el => el.classList.toggle('sel', el.dataset.id === seg.id));
+  const el = document.querySelector(`.item[data-id="${seg.id}"]`); if (el) el.scrollIntoView({ block: 'nearest' });
+  S.dirty = true;
+}
+function buildSeries(seg, d) {   // per-frame nose motion relative to the main move's start
+  const ar = (seg.width || 16) / (seg.height || 9), m = d.moves.find(x => x.main) || d.moves[0];
+  const nose = f => { const k = d.kp[f]; return k && k[2] >= 2 ? [k[0] / 1e4 * ar, k[1] / 1e4] : null; };
+  let f0 = d.t.findIndex((t, f) => t >= m.start - 1e-6 && nose(f)); if (f0 < 0) f0 = 0;
+  const torso = A(seg).torso_img || 0.25, tw = A(seg).torso_world_mm || 500, n0 = nose(f0) || [0.5 * ar, 0.5];
+  const wz = f => d.world && d.world[f] ? d.world[f] : null, w0 = wz(f0);
+  return {
+    torso, ar, f0,
+    lat: d.t.map((_, f) => { const p = nose(f); return p ? (p[0] - n0[0]) / torso : null; }),
+    ver: d.t.map((_, f) => { const p = nose(f); return p ? (p[1] - n0[1]) / torso : null; }),
+    dep: d.t.map((_, f) => { const w = wz(f); return w && w0 ? -(w[2] - w0[2]) / tw : null; }),
+    fac: d.angle.map(a => a === null ? null : Math.abs(a)),
+  };
+}
+
+// ═════════════ review: focus zoom ═════════════
+function computeZoom() {
+  const d = S.data, vw = $('vwrap').getBoundingClientRect(); if (!d || !vw.width) return;
+  // frame the head, arms and hips over the clip (3rd–97th percentile, so one stray joint does not widen it)
+  const xs = [], ys = [];
+  d.kp.forEach(k => { if (!k) return; for (const j of [0, 2, 5, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24]) { if (k[j * 3 + 2] < 6) continue;
+    xs.push(k[j * 3] / 1e4); ys.push(k[j * 3 + 1] / 1e4); } });
+  const pc = (a, p) => { const s = a.slice().sort((u, v) => u - v); return s[Math.max(0, Math.min(s.length - 1, Math.round(p * (s.length - 1))))]; };
+  const x0 = xs.length ? pc(xs, 0.03) : 0, x1 = xs.length ? pc(xs, 0.97) : 1, y0 = ys.length ? pc(ys, 0.03) : 0, y1 = ys.length ? pc(ys, 0.97) : 1;
+  if (!S.focus || x1 <= x0) { S.zoom = { s: 1, tx: 0, ty: 0 }; }
+  else {
+    const W = vw.width, H = vw.height, bw = (x1 - x0) * W * 1.8, bh = (y1 - y0) * H * 1.6;
+    const s = Math.max(1, Math.min(3, W / bw, H / bh));
+    const cx = (x0 + x1) / 2 * W, cy = (y0 + y1) / 2 * H;
+    S.zoom = { s, tx: W / 2 - cx * s, ty: H / 2 - cy * s };
+  }
+  applyZoom();
+}
+// every clip gets the same stage height; the video is fitted inside it at its own aspect and centred
+function sizeVideo() {
+  const seg = SEGS[S.i]; if (!seg) return;
+  const card = $('vcard'), cw = card.clientWidth || 600, H = Math.round(Math.max(260, Math.min(560, window.innerHeight * 0.58)));
+  const ar = (seg.width || 16) / (seg.height || 9), w = Math.min(cw, H * ar), h = w / ar;
+  card.style.height = `${H}px`;
+  Object.assign($('vwrap').style, { width: `${w}px`, height: `${h}px`, left: `${(cw - w) / 2}px`, top: `${(H - h) / 2}px` });
+}
+const ZMAX = 8;
+function applyZoom() {   // clamp so the picture always covers the stage, then set the transform
+  const vw = $('vwrap'), W = vw.clientWidth, H = vw.clientHeight, z = S.zoom;
+  z.s = Math.max(1, Math.min(ZMAX, z.s));
+  z.tx = Math.min(0, Math.max(W - W * z.s, z.tx)); z.ty = Math.min(0, Math.max(H - H * z.s, z.ty));
+  $('vinner').style.transform = `translate(${z.tx}px, ${z.ty}px) scale(${z.s})`;
+  $('zpct').textContent = `${Math.round(z.s * 100)}%`;
+  S.dirty = true;
+}
+function zoomAt(f, mx, my) {   // zoom by f, keeping the point (mx, my) of the stage where it is
+  const z = S.zoom, vw = $('vwrap'), W = vw.clientWidth, H = vw.clientHeight;
+  if (mx === undefined) { mx = W / 2; my = H / 2; }
+  const ns = Math.max(1, Math.min(ZMAX, z.s * f)), px = (mx - z.tx) / z.s, py = (my - z.ty) / z.s;
+  z.s = ns; z.tx = mx - px * ns; z.ty = my - py * ns; applyZoom();
+}
+(() => { const vw = $('vwrap'); let dr = null;
+  vw.addEventListener('wheel', e => { e.preventDefault(); const r = vw.getBoundingClientRect(); vw.classList.add('live');
+    zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - r.left, e.clientY - r.top);
+    clearTimeout(vw._t); vw._t = setTimeout(() => vw.classList.remove('live'), 150); }, { passive: false });
+  vw.addEventListener('pointerdown', e => { if (e.button !== 0) return; dr = { x: e.clientX, y: e.clientY, tx: S.zoom.tx, ty: S.zoom.ty, moved: false };
+    vw.setPointerCapture(e.pointerId); vw.classList.add('live', 'drag'); });
+  vw.addEventListener('pointermove', e => { if (!dr) return; const dx = e.clientX - dr.x, dy = e.clientY - dr.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) dr.moved = true; S.zoom.tx = dr.tx + dx; S.zoom.ty = dr.ty + dy; applyZoom(); });
+  const end = () => { if (dr && !dr.moved) { video.paused ? video.play().catch(() => {}) : video.pause(); }   // a click plays / pauses
+    dr = null; vw.classList.remove('live', 'drag'); };
+  vw.addEventListener('pointerup', end); vw.addEventListener('pointercancel', () => { dr = null; vw.classList.remove('live', 'drag'); });
+  vw.addEventListener('dblclick', e => { e.preventDefault(); computeZoom(); });
+  $('zin').onclick = () => zoomAt(1.4); $('zout').onclick = () => zoomAt(1 / 1.4); $('zfit').onclick = () => computeZoom();
+  ['zin', 'zout', 'zfit'].forEach(id => $(id).addEventListener('pointerdown', e => e.stopPropagation()));
+})();
+
+// ═════════════ review: drawing ═════════════
+function frameAt(t) { const T = S.data.t; let lo = 0, hi = T.length - 1, b = 0; const tt = t + 1 / 120;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (T[m] <= tt) { b = m; lo = m + 1; } else hi = m - 1; } return b; }
+const J = (k, j) => ({ x: k[j * 3] / 1e4, y: k[j * 3 + 1] / 1e4, v: k[j * 3 + 2] });
+function drawStage(t, f) {
+  const vw = $('vwrap'), r = { width: vw.clientWidth, height: vw.clientHeight }, z = Math.min(S.zoom.s, 4096 / Math.max(1, r.width * dpr()), 4096 / Math.max(1, r.height * dpr()));
+  const W = Math.round(r.width * dpr() * z), H = Math.round(r.height * dpr() * z);
+  if (stage.width !== W || stage.height !== H) { stage.width = W; stage.height = H; }
+  const x = sx, q = dpr(), d = S.data, kp = d.kp[f], P = p => [p.x * W, p.y * H];
+  x.clearRect(0, 0, W, H); x.lineCap = x.lineJoin = 'round';
+  // ghosts: the upper body through the main move, faint → stronger with time
+  const m = d.moves[S.sel];
+  if (S.ghosts && m) {
+    const fr = S.cache.ghost || (S.cache.ghost = d.t.map((tt, k) => k).filter(k => d.t[k] >= m.start && d.t[k] <= m.end && d.kp[k]));
+    const step = Math.max(1, Math.round(fr.length / 9));
+    fr.filter((_, k) => k % step === 0).forEach((k, n, arr) => { const g = d.kp[k], a = 0.10 + 0.22 * n / Math.max(1, arr.length - 1);
+      x.strokeStyle = rgba(kc(m.kind), a); x.lineWidth = 2 * q;
+      UPPER.forEach(([u, v]) => { const A1 = J(g, u), B1 = J(g, v); if (A1.v < 4 || B1.v < 4) return;
+        x.beginPath(); x.moveTo(...P(A1)); x.lineTo(...P(B1)); x.stroke(); });
+      const n0 = J(g, 0); if (n0.v >= 4) { x.fillStyle = rgba(kc(m.kind), a + 0.1); x.beginPath(); x.arc(...P(n0), 3 * q, 0, 7); x.fill(); } });
+  }
+  // nose paths, light → dark through time
+  d.moves.forEach((mv, j) => {
+    const active = t >= mv.start && t <= mv.end;
+    if (!S.paths) return;
+    const all = (S.cache.nose = S.cache.nose || {})[j] || (S.cache.nose[j] = (() => { const o = []; for (let k = 0; k < d.t.length; k++) { const tt = d.t[k];
+      if (tt < mv.start || tt > mv.end) continue; const g = d.kp[k]; if (g && g[2] >= 2) o.push({ ...J(g, 0), tt }); } return o; })());
+    const pts = S.grow ? all.filter(p => p.tt <= t) : all;
+    if (pts.length < 2) return;
+    const col = kc(mv.kind), strong = j === S.sel || active, lw = (strong ? 3.2 : 2) * q;
+    x.strokeStyle = 'rgba(0,0,0,.55)'; x.lineWidth = lw + 2.5 * q; x.beginPath(); pts.forEach((p, k) => k ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke();
+    for (let k = 1; k < pts.length; k++) { x.strokeStyle = ramp(col, 0.25 + 0.75 * k / (pts.length - 1)); x.globalAlpha = strong ? 1 : 0.6;
+      x.lineWidth = lw; x.beginPath(); x.moveTo(...P(pts[k - 1])); x.lineTo(...P(pts[k])); x.stroke(); }
+    x.globalAlpha = 1;
+    const a0 = P(pts[0]); x.fillStyle = '#fff'; x.strokeStyle = '#1d1d1f'; x.lineWidth = 2 * q; x.beginPath(); x.arc(...a0, 5 * q, 0, 7); x.fill(); x.stroke();
+    if (!S.grow || t >= mv.end) { const a1 = P(pts[pts.length - 1]); x.fillStyle = '#1d1d1f'; x.strokeStyle = '#fff'; x.beginPath(); x.arc(...a1, 5 * q, 0, 7); x.fill(); x.stroke(); }
+  });
+  // skeleton
+  if (S.skel && kp) {
+    BONES.forEach(([a, b]) => { const A1 = J(kp, a), B1 = J(kp, b); if (A1.v < 4 || B1.v < 4) return;
+      const L1 = LEFT.has(a) && LEFT.has(b), R1 = !LEFT.has(a) && !LEFT.has(b) && a && b;
+      x.strokeStyle = L1 ? 'rgba(10,132,255,.95)' : R1 ? 'rgba(255,149,0,.95)' : 'rgba(255,255,255,.95)';
+      x.lineWidth = 3 * q; x.beginPath(); x.moveTo(...P(A1)); x.lineTo(...P(B1)); x.stroke(); });
+    for (let j = 0; j < 33; j++) { if (j > 0 && j < 11) continue; const p = J(kp, j); if (p.v < 4) continue;
+      x.fillStyle = '#fff'; x.beginPath(); x.arc(...P(p), 2.6 * q, 0, 7); x.fill(); }
+  }
+  // the nose now: a soft glow
+  if (kp) { const n = J(kp, 0); if (n.v >= 2) { const [a, b] = P(n), g = x.createRadialGradient(a, b, 0, a, b, 16 * q);
+    g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.35, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(a, b, 16 * q, 0, 7); x.fill();
+    x.fillStyle = '#0071e3'; x.beginPath(); x.arc(a, b, 3.5 * q, 0, 7); x.fill(); } }
+  // badges + timecode
+  const act = d.moves.filter(mv => t >= mv.start && t <= mv.end);
+  setHTML($('badge'), act.map(mv => `<span style="color:${kc(mv.kind)}">${mv.label.replace('_', ' ').toUpperCase()}</span>`).join(''));
+  const mm = d.moves.find(v => v.main); const rel = mm ? t - mm.start : t;
+  setText($('tcode'), `${rel >= 0 ? '+' : '−'}${Math.abs(rel).toFixed(2)} s · ${(video.duration ? t / video.duration * 100 : 0).toFixed(0)}% · f${f + 1}`);
+}
+
+// motion: lanes of sideways / down / toward camera / facing with the move shaded
+const LANES = [{ k: 'lat', name: 'Sideways', unit: 'torso', h: 58 }, { k: 'ver', name: 'Down', unit: 'torso', h: 58 },
+  { k: 'dep', name: 'Toward camera', unit: 'torso', h: 58 }, { k: 'fac', name: 'Facing', unit: '°', h: 30, fixed: [0, 45] }];
+function drawMotion(t) {
+  const c = $('motion'), [W, H] = fitCanvas(c, 292), x = c.getContext('2d'), q = dpr(), d = S.data, se = S.series;
+  x.clearRect(0, 0, W, H);
+  const L = 104 * q, R = W - 64 * q, dur = video.duration || d.t[d.t.length - 1] || 1, X = s => L + (s / dur) * (R - L);
+  // move strip
+  const top = 4 * q;
+  d.moves.forEach((mv, j) => { const x0 = X(Math.max(0, mv.start)), x1 = X(Math.min(dur, mv.end));
+    x.fillStyle = mv.main ? kc(mv.kind) : rgba(kc(mv.kind), 0.35); roundRect(x, x0, top, Math.max(3 * q, x1 - x0), 18 * q, 6 * q); x.fill();
+    x.fillStyle = '#fff'; x.font = `600 ${10.5 * q}px -apple-system, system-ui`;
+    const lab = mv.label.replace('_', ' '); if (x.measureText(lab).width < x1 - x0 - 8 * q) x.fillText(lab, x0 + 6 * q, top + 12.5 * q); });
+  x.fillStyle = '#86868b'; x.font = `500 ${11 * q}px -apple-system, system-ui`; x.fillText('Move', 12 * q, top + 13 * q);
+  let y = top + 26 * q;
+  const mm = d.moves.find(v => v.main);
+  LANES.forEach(ln => {
+    const h = ln.h * q, vals = se[ln.k];
+    let lo, hi; if (ln.fixed) [lo, hi] = ln.fixed; else { const v = vals.filter(z => z !== null).map(Math.abs); const mx = Math.max(0.25, ...v) * 1.12; lo = -mx; hi = mx; }
+    const Y = v => ln.k === 'ver' ? y + (v - lo) / (hi - lo) * h : y + h - (v - lo) / (hi - lo) * h;   // "down" is drawn downward
+    x.fillStyle = '#fafafa'; roundRect(x, L, y, R - L, h, 8 * q); x.fill();
+    if (mm) { x.fillStyle = rgba(kc(mm.kind), 0.10); x.fillRect(X(mm.start), y, X(mm.end) - X(mm.start), h); }
+    if (!ln.fixed) { x.strokeStyle = '#e5e5ea'; x.lineWidth = q; x.beginPath(); x.moveTo(L, Y(0)); x.lineTo(R, Y(0)); x.stroke(); }
+    else { x.setLineDash([3 * q, 3 * q]); x.strokeStyle = '#d2d2d7'; const y20 = Y(20); x.beginPath(); x.moveTo(L, y20); x.lineTo(R, y20); x.stroke(); x.setLineDash([]); }
+    x.lineWidth = 1.8 * q; let on = false; x.strokeStyle = ln.k === 'fac' ? '#86868b' : '#1d1d1f'; x.beginPath();
+    vals.forEach((v, f) => { if (v === null) { on = false; return; } const px = X(d.t[f]), py = Y(Math.max(lo, Math.min(hi, v)));
+      on ? x.lineTo(px, py) : x.moveTo(px, py); on = true; });
+    x.stroke();
+    if (mm && ln.k !== 'fac') { x.lineWidth = 2.6 * q; x.strokeStyle = kc(mm.kind); x.beginPath(); on = false;
+      vals.forEach((v, f) => { const tt = d.t[f]; if (v === null || tt < mm.start || tt > mm.end) { on = false; return; }
+        const px = X(tt), py = Y(Math.max(lo, Math.min(hi, v))); on ? x.lineTo(px, py) : x.moveTo(px, py); on = true; }); x.stroke(); }
+    x.fillStyle = '#1d1d1f'; x.font = `600 ${11.5 * q}px -apple-system, system-ui`; x.fillText(ln.name, 12 * q, y + 15 * q);
+    x.fillStyle = '#86868b'; x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillText(ln.unit, 12 * q, y + 29 * q);
+    if (!ln.fixed) { x.fillStyle = '#aeaeb2'; x.font = `${9.5 * q}px -apple-system, system-ui`; x.fillText(`${hi.toFixed(2)}`, L + 5 * q, y + 11 * q); x.fillText(`${lo.toFixed(2)}`, L + 5 * q, y + h - 4 * q); }
+    // value now / at hover
+    const tv = S.hoverT ?? t, fv = frameAt(tv), v = vals[fv];
+    x.fillStyle = '#1d1d1f'; x.font = `600 ${12 * q}px -apple-system, system-ui`;
+    x.fillText(v === null ? '—' : `${ln.k === 'fac' ? '' : v >= 0 ? '+' : ''}${v.toFixed(ln.k === 'fac' ? 1 : 2)}`, R + 8 * q, y + h / 2 + 4 * q);
+    y += h + 8 * q;
+  });
+  // seconds ticks + playhead + hover
+  x.fillStyle = '#c7c7cc'; x.font = `${10 * q}px -apple-system, system-ui`;
+  for (let s = 0; s <= dur + 1e-6; s += 0.5) { x.fillRect(X(s), y - 4 * q, q, 4 * q); if (Math.abs(s - Math.round(s)) < 1e-6) x.fillText(`${s.toFixed(0)} s`, X(s) - 6 * q, y + 8 * q); }
+  x.fillStyle = '#0071e3'; x.fillRect(X(t) - q, 0, 2 * q, y);
+  if (S.hoverT !== null) { x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(X(S.hoverT) - q / 2, 0, q, y); }
+}
+function roundRect(c, x, y, w, h, r) { w = Math.max(0, w); h = Math.max(0, h); r = Math.max(0, Math.min(r, w / 2, h / 2)); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+// 2D card: the main move in torso units, the 1 s before / after dashed
+function drawP2(t) {
+  const c = $('p2'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(), d = S.data, se = S.series, seg = SEGS[S.i];
+  x.clearRect(0, 0, W, H);
+  const m = d.moves[S.sel]; if (!m) return;
+  const inM = f => d.t[f] >= m.start && d.t[f] <= m.end, pt = f => se.lat[f] === null ? null : [se.lat[f], se.ver[f]];
+  const mp = S.cache.p2 || (S.cache.p2 = d.t.map((_, f) => inM(f) ? pt(f) : null).filter(Boolean));
+  if (mp.length < 2) { setText($('p2info'), 'no visible nose during this move'); return; }
+  const xs = mp.map(p => p[0]), ys = mp.map(p => p[1]);
+  const span = Math.max(0.5, (Math.max(...xs) - Math.min(...xs)) * 1.35, (Math.max(...ys) - Math.min(...ys)) * 1.35);
+  const s = W / span, cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+  const X = v => W / 2 + (v - cx) * s, Y = v => H / 2 + (v - cy) * s, g = 0.1 * s;
+  x.strokeStyle = '#efeff2'; x.lineWidth = q;
+  for (let k = -12; k <= 12; k++) { const gx = X(Math.round(cx * 10) / 10 + k * 0.1), gy = Y(Math.round(cy * 10) / 10 + k * 0.1);
+    x.beginPath(); x.moveTo(gx, 0); x.lineTo(gx, H); x.stroke(); x.beginPath(); x.moveTo(0, gy); x.lineTo(W, gy); x.stroke(); }
+  // crosshair through the start
+  x.strokeStyle = '#d2d2d7'; x.setLineDash([4 * q, 4 * q]); x.beginPath(); x.moveTo(X(0), 0); x.lineTo(X(0), H); x.moveTo(0, Y(0)); x.lineTo(W, Y(0)); x.stroke(); x.setLineDash([]);
+  // context before / after
+  x.strokeStyle = 'rgba(134,134,139,.55)'; x.lineWidth = 1.6 * q; x.setLineDash([2 * q, 4 * q]);
+  [[0, m.start], [m.end, 1e9]].forEach(([a, b]) => { let on = false; x.beginPath();
+    d.t.forEach((tt, f) => { const p = pt(f); if (!p || tt < a || tt > b) { on = false; return; } on ? x.lineTo(X(p[0]), Y(p[1])) : x.moveTo(X(p[0]), Y(p[1])); on = true; }); x.stroke(); });
+  x.setLineDash([]);
+  // the move: gradient, a dot per frame sized by speed
+  const col = kc(m.kind), F = d.t.map((_, f) => f).filter(f => inM(f) && pt(f));
+  x.lineCap = x.lineJoin = 'round';
+  for (let k = 1; k < F.length; k++) { const a = pt(F[k - 1]), b = pt(F[k]); x.strokeStyle = ramp(col, 0.2 + 0.8 * k / (F.length - 1)); x.lineWidth = 3.5 * q;
+    x.beginPath(); x.moveTo(X(a[0]), Y(a[1])); x.lineTo(X(b[0]), Y(b[1])); x.stroke(); }
+  for (let k = 1; k < F.length; k++) { const a = pt(F[k - 1]), b = pt(F[k]), sp = Math.hypot(b[0] - a[0], b[1] - a[1]) / Math.max(1e-3, d.t[F[k]] - d.t[F[k - 1]]);
+    x.fillStyle = ramp(col, 0.2 + 0.8 * k / (F.length - 1)); x.beginPath(); x.arc(X(b[0]), Y(b[1]), (1.5 + Math.min(4, sp * 0.9)) * q, 0, 7); x.fill(); }
+  const p0 = pt(F[0]), p1 = pt(F[F.length - 1]);
+  x.fillStyle = '#fff'; x.strokeStyle = '#1d1d1f'; x.lineWidth = 2 * q; x.beginPath(); x.arc(X(p0[0]), Y(p0[1]), 7 * q, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = '#1d1d1f'; x.beginPath(); x.arc(X(p1[0]), Y(p1[1]), 6 * q, 0, 7); x.fill();
+  const fn = frameAt(t), pn = pt(fn); if (pn) { x.strokeStyle = '#0071e3'; x.lineWidth = 2.5 * q; x.beginPath(); x.arc(X(pn[0]), Y(pn[1]), 10 * q, 0, 7); x.stroke(); }
+  x.fillStyle = '#86868b'; x.fillRect(14 * q, H - 18 * q, g, 2 * q); x.font = `500 ${11 * q}px -apple-system, system-ui`; x.fillText('0.1 torso', 14 * q, H - 24 * q);
+  x.fillText('○ start   ● end   dashed: 1 s before / after   dot size: speed', 14 * q, 20 * q);
+  const a = A(seg);
+  setHTML($('p2info'), `sideways range <b>${fmt('lat', a.lat)}</b> · dip <b>${fmt('dip', a.dip)}</b> · net <b>${a.dx >= 0 ? '+' : ''}${fmt('dx', a.dx)}</b>, <b>${a.dy >= 0 ? '+' : ''}${fmt('dy', a.dy)}</b> torso (y down)`);
+}
+
+// 3D card: BlazePose world nose, hip-centred, with presets and orbit
+const PRESETS = { front: { yaw: 0, pitch: 0 }, side: { yaw: -Math.PI / 2, pitch: 0 }, top: { yaw: 0, pitch: Math.PI / 2 - 0.001 }, orbit: { yaw: -0.6, pitch: 0.3 } };
+function wj(f, j) { const w = S.data.world && S.data.world[f]; return w ? { x: w[j * 3] / 1000, y: -w[j * 3 + 1] / 1000, z: -w[j * 3 + 2] / 1000 } : null; }
+function drawP3(t) {
+  const c = $('p3'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(), d = S.data;
+  x.clearRect(0, 0, W, H);
+  const m = d.moves[S.sel]; if (!m || !d.world) return;
+  const C = S.cache.p3 || (S.cache.p3 = (() => {    // once per clip: the move's frames, its nose path, path box and body box
+    const F = d.t.map((_, f) => f).filter(f => d.t[f] >= m.start && d.t[f] <= m.end && wj(f, 0)), P = F.map(f => wj(f, 0));
+    const box = pts => { const b = { lo: {}, hi: {}, n: pts.length }; ['x', 'y', 'z'].forEach(k => { b.lo[k] = Math.min(...pts.map(p => p[k])); b.hi[k] = Math.max(...pts.map(p => p[k])); }); return b; };
+    const B = []; F.forEach(f => { for (let j = 0; j < 33; j++) { const v = wj(f, j); if (v && isFinite(v.x)) B.push(v); } });
+    return { F, P, pb: P.length ? box(P) : null, bb: B.length ? box(B) : null };
+  })());
+  const { F, P } = C;
+  if (P.length < 2) { setText($('p3info'), 'no world landmarks during this move'); return; }
+  const lo = k => C.pb.lo[k], hi = k => C.pb.hi[k], ext = k => hi(k) - lo(k);
+  // every joint over the move's frames: the body's box (framing) and its lowest point (the floor)
+  const blo = k => C.bb.lo[k], bhi = k => C.bb.hi[k];
+  const body = S.frame3d === 'body' && C.bb;
+  const ctr = body ? { x: (bhi('x') + blo('x')) / 2, y: (bhi('y') + blo('y')) / 2, z: (bhi('z') + blo('z')) / 2 }
+                   : { x: (hi('x') + lo('x')) / 2, y: (hi('y') + lo('y')) / 2, z: (hi('z') + lo('z')) / 2 };
+  const span = body ? Math.max(0.6, 1.15 * Math.max(bhi('x') - blo('x'), bhi('y') - blo('y'), bhi('z') - blo('z')))
+                    : Math.max(0.4, 1.7 * Math.max(ext('x'), ext('y'), ext('z')));
+  const cam = S.cam, Sc = (W / span) * cam.zoom, cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const pr = p => { const X = p.x - ctr.x, Y = p.y - ctr.y, Z = p.z - ctr.z, x1 = X * cy + Z * sy, z1 = -X * sy + Z * cy,
+    y2 = Y * cp - z1 * sp, z2 = Y * sp + z1 * cp, k = 1 / (1 - 0.3 * z2 / span); return [W / 2 + x1 * Sc * k, H / 2 - y2 * Sc * k, z2]; };
+  const line = pts => { x.beginPath(); pts.forEach((p, k) => { const v = pr(p); k ? x.lineTo(v[0], v[1]) : x.moveTo(v[0], v[1]); }); };
+  // floor grid: at the feet with the body framed, under the path otherwise
+  const tw = (A(SEGS[S.i]).torso_world_mm || 500) / 1000, y0 = body ? blo('y') - 0.01 : lo('y') - 0.06, g = (body ? 0.25 : 0.1) * tw, n = Math.ceil(span / g);   // grid: 0.25 / 0.1 torso
+  x.lineWidth = q; x.strokeStyle = '#ececf0';
+  for (let k = -n; k <= n; k++) { line([{ x: ctr.x + k * g, y: y0, z: ctr.z - n * g }, { x: ctr.x + k * g, y: y0, z: ctr.z + n * g }]); x.stroke();
+    line([{ x: ctr.x - n * g, y: y0, z: ctr.z + k * g }, { x: ctr.x + n * g, y: y0, z: ctr.z + k * g }]); x.stroke(); }
+  x.strokeStyle = '#c7c7cc'; x.lineWidth = 1.5 * q; line([{ x: ctr.x, y: y0, z: ctr.z }, { x: ctr.x, y: y0, z: ctr.z + span * 0.4 }]); x.stroke();
+  const ca = pr({ x: ctr.x, y: y0, z: ctr.z + span * 0.4 }); x.fillStyle = '#86868b'; x.font = `500 ${11 * q}px -apple-system, system-ui`; x.fillText('camera', ca[0] + 5 * q, ca[1] + 4 * q);
+  // the full skeleton now: left blue, right orange, the middle grey; its shadow on the floor
+  const fn = frameAt(t);
+  if (S.skel && wj(fn, 0)) { x.lineCap = 'round';
+    x.strokeStyle = 'rgba(0,0,0,.07)'; x.lineWidth = 3 * q;
+    BONES.forEach(([a, b]) => { const A1 = wj(fn, a), B1 = wj(fn, b); if (A1 && B1) { line([{ ...A1, y: y0 }, { ...B1, y: y0 }]); x.stroke(); } });
+    BONES.forEach(([a, b]) => { const A1 = wj(fn, a), B1 = wj(fn, b); if (!A1 || !B1) return;
+      const L1 = LEFT.has(a) && LEFT.has(b), R1 = !LEFT.has(a) && !LEFT.has(b) && a && b;
+      x.strokeStyle = L1 ? 'rgba(10,132,255,.85)' : R1 ? 'rgba(255,149,0,.85)' : 'rgba(110,110,115,.75)'; x.lineWidth = (body ? 3 : 2.4) * q;
+      line([A1, B1]); x.stroke(); });
+    for (let j = 0; j < 33; j++) { if (j > 0 && j < 11 && ![2, 5, 7, 8].includes(j)) continue; const v = wj(fn, j); if (!v) continue; const pv = pr(v);
+      x.fillStyle = '#fff'; x.strokeStyle = 'rgba(29,29,31,.55)'; x.lineWidth = q; x.beginPath(); x.arc(pv[0], pv[1], (j === 0 ? 3.6 : 2.6) * q, 0, 7); x.fill(); x.stroke(); } }
+  // context before / after: dashed
+  x.setLineDash([2 * q, 4 * q]); x.strokeStyle = 'rgba(134,134,139,.6)'; x.lineWidth = 1.5 * q;
+  [[0, m.start], [m.end, 1e9]].forEach(([a, b]) => { const Q = d.t.map((tt, f) => tt >= a && tt <= b ? wj(f, 0) : null).filter(Boolean); if (Q.length > 1) { line(Q); x.stroke(); } });
+  x.setLineDash([]);
+  const col = kc(m.kind);
+  x.strokeStyle = 'rgba(0,0,0,.10)'; x.lineWidth = 2.2 * q; line(P.map(p => ({ ...p, y: y0 }))); x.stroke();
+  if (!body) { x.strokeStyle = 'rgba(0,0,0,.06)'; x.lineWidth = q; P.forEach((p, k) => { if (k % 3) return; line([p, { ...p, y: y0 }]); x.stroke(); }); }   // drop lines: close-up only
+  x.lineCap = x.lineJoin = 'round';
+  for (let k = 1; k < P.length; k++) { x.strokeStyle = ramp(col, 0.2 + 0.8 * k / (P.length - 1)); x.lineWidth = 3.8 * q; line([P[k - 1], P[k]]); x.stroke(); }
+  const s0 = pr(P[0]), s1 = pr(P[P.length - 1]);
+  x.fillStyle = '#fff'; x.strokeStyle = '#1d1d1f'; x.lineWidth = 2 * q; x.beginPath(); x.arc(s0[0], s0[1], 7 * q, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = '#1d1d1f'; x.beginPath(); x.arc(s1[0], s1[1], 6 * q, 0, 7); x.fill();
+  const nw = wj(fn, 0); if (nw) { const v = pr(nw), gg = x.createRadialGradient(v[0], v[1], 0, v[0], v[1], 14 * q);
+    gg.addColorStop(0, 'rgba(0,113,227,.5)'); gg.addColorStop(1, 'rgba(0,113,227,0)'); x.fillStyle = gg; x.beginPath(); x.arc(v[0], v[1], 14 * q, 0, 7); x.fill();
+    x.fillStyle = '#0071e3'; x.beginPath(); x.arc(v[0], v[1], 4 * q, 0, 7); x.fill(); }
+  // axes
+  [[{ x: 1, y: 0, z: 0 }, 'side'], [{ x: 0, y: 1, z: 0 }, 'up'], [{ x: 0, y: 0, z: 1 }, 'cam']].forEach(([v, lab]) => {
+    const x1 = v.x * cy + v.z * sy, z1 = -v.x * sy + v.z * cy, y2 = v.y * cp - z1 * sp, ox = W - 46 * q, oy = H - 42 * q;
+    x.strokeStyle = '#86868b'; x.lineWidth = 1.5 * q; x.beginPath(); x.moveTo(ox, oy); x.lineTo(ox + x1 * 24 * q, oy - y2 * 24 * q); x.stroke();
+    x.fillStyle = '#86868b'; x.fillText(lab, ox + x1 * 31 * q - 8 * q, oy - y2 * 31 * q + 4 * q); });
+  const tl = v => (v / tw).toFixed(2), e = P[P.length - 1], b = P[0];
+  setHTML($('p3info'), `extent side <b>${tl(ext('x'))}</b> · up/down <b>${tl(ext('y'))}</b> · depth <b>${tl(ext('z'))}</b> · net toward camera <b>${(e.z - b.z) >= 0 ? '+' : ''}${tl(e.z - b.z)}</b> torso<br>grid ${S.frame3d === 'body' ? '0.25' : '0.1'} torso · drag to orbit · scroll to zoom · double-click to reset`);
+}
+
+// numbers: tiles with where the move sits among its kind
+function renderTiles() {
+  const seg = SEGS[S.i], a = A(seg), same = Object.values(ATLAS).filter(v => v.kind === seg.kind);
+  $('pctof').textContent = `bar: all ${same.length} ${(KNAME[seg.kind] || seg.kind).toLowerCase()}s`;
+  $('tiles').innerHTML = METRICS.filter(m => m.k !== 'facing').map(m => {
+    const v = a[m.k], arr = same.map(z => z[m.k]).filter(z => z !== null && z !== undefined).sort((p, r) => p - r);
+    if (v === null || v === undefined || !arr.length) return '';
+    const mn = arr[0], mx = arr[arr.length - 1], pos = mx > mn ? (v - mn) / (mx - mn) * 100 : 50, pct = Math.round(100 * arr.filter(z => z < v).length / arr.length);
+    return `<div class="tile"><div class="n">${m.name}</div><div class="v">${(m.k === 'dx' || m.k === 'dy') && v >= 0 ? '+' : ''}${(+v).toFixed(m.d)}<small>${m.unit}</small></div>
+      <div class="bar"><i style="left:${pos}%;background:${kc(seg.kind)}"></i></div><div class="p">${pct}th percentile</div></div>`;
+  }).join('');
+}
+
+// ═════════════ atlas ═════════════
+function renderAtlas() {
+  const L = visible(), box = $('agrid'); box.innerHTML = '';
+  let span = 0; if (S.same) L.forEach(s => { const a = A(s); if (!a.p2) return; const xs = a.p2.map(p => p[0]), ys = a.p2.map(p => p[1]);
+    span = Math.max(span, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); });
+  const frag = document.createDocumentFragment();
+  L.forEach(s => { const a = A(s), d = document.createElement('div'); d.className = 'acard'; d.dataset.id = s.id;
+    d.innerHTML = `<canvas></canvas><div class="top"><span class="id">${s.id}</span><span class="row" style="gap:6px"><span class="pill" style="background:${rgba(kc(s.kind), .12)};color:${kc(s.kind)}">${s.label.replace('_', ' ')}</span>${otag(s.id)}</span></div>
+      <div class="nums">${a.dur ? a.dur.toFixed(2) + ' s' : ''} · side ${fmt('lat', a.lat)} · dip ${fmt('dip', a.dip)} · depth ${fmt('depth3d', a.depth3d)} torso</div>`;
+    d.onclick = () => open(SEGS.indexOf(s), true); frag.appendChild(d); });
+  box.appendChild(frag);
+  box.querySelectorAll('.acard').forEach(el => { const c = el.querySelector('canvas'), a = ATLAS[el.dataset.id]; c._draw = () => {
+    const [W, H] = fitCanvas(c), x = c.getContext('2d'); x.clearRect(0, 0, W, H); if (!a || !a.p2 || a.p2.length < 2) return;
+    x.strokeStyle = '#efeff2'; x.lineWidth = 1; for (let k = 1; k < 8; k++) { x.beginPath(); x.moveTo(k * W / 8, 0); x.lineTo(k * W / 8, H); x.stroke(); }
+    for (let k = 1; k < 6; k++) { x.beginPath(); x.moveTo(0, k * H / 6); x.lineTo(W, k * H / 6); x.stroke(); }
+    drawPath2D(x, W, H, a, { span: S.same && span ? span * 1.08 : 0, pad: 14 * dpr(), lw: 2.6 * dpr(), ends: 4 * dpr() }); }; lazy.observe(c); });
+}
+
+// ═════════════ overlay + scatter ═════════════
+let OV = { hits: [] }, SC = { hits: [] };
+function resample(P, n = 48) { const T = P[P.length - 1][2] || 1, out = []; let j = 0;
+  for (let i = 0; i < n; i++) { const u = i / (n - 1) * T; while (j < P.length - 2 && P[j + 1][2] < u) j++;
+    const a = P[j], b = P[j + 1], w = b[2] > a[2] ? Math.min(1, Math.max(0, (u - a[2]) / (b[2] - a[2]))) : 0; out.push([a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w]); }
+  return out; }
+function renderOverlay(hl) {
+  const c = $('ov'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(), L = visible().filter(s => A(s).p2 && A(s).p2.length > 1);
+  x.clearRect(0, 0, W, H);
+  const all = L.map(s => ({ s, P: pathFrame(A(s)) }));
+  const ex = all.flatMap(o => o.P.map(p => Math.max(Math.abs(p[0]), Math.abs(p[1])))).sort((a, b) => a - b);
+  const lim = Math.max(0.3, ex.length ? ex[Math.floor(ex.length * 0.98)] : 1) * 1.1, sc = (Math.min(W, H) / 2 - 20 * q) / lim;
+  const X = v => W / 2 + v * sc, Y = v => H / 2 + v * sc;
+  x.strokeStyle = '#efeff2'; x.lineWidth = q; x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b';
+  for (let v = -Math.floor(lim * 10) / 10; v <= lim; v += 0.1) { const r = Math.round(v * 10) / 10;
+    x.strokeStyle = r === 0 ? '#d2d2d7' : '#efeff2'; x.beginPath(); x.moveTo(X(r), 0); x.lineTo(X(r), H); x.stroke(); x.beginPath(); x.moveTo(0, Y(r)); x.lineTo(W, Y(r)); x.stroke(); }
+  x.fillText('torso lengths from the start · y down', 12 * q, H - 12 * q);
+  OV.hits = [];
+  all.forEach(o => { const col = kc(o.s.kind), isH = hl && hl === o.s.id;
+    x.strokeStyle = isH ? col : rgba(col, all.length > 60 ? 0.22 : 0.35); x.lineWidth = (isH ? 3.5 : 1.4) * q; x.lineCap = x.lineJoin = 'round';
+    x.beginPath(); o.P.forEach((p, k) => { const a = X(p[0]), b = Y(p[1]); k ? x.lineTo(a, b) : x.moveTo(a, b); OV.hits.push([a, b, o.s.id]); }); x.stroke();
+    const e = o.P[o.P.length - 1]; x.fillStyle = rgba(col, isH ? 1 : 0.5); x.beginPath(); x.arc(X(e[0]), Y(e[1]), (isH ? 4.5 : 2.2) * q, 0, 7); x.fill(); });
+  if (S.means) KORDER.forEach(k => { const G = all.filter(o => o.s.kind === k); if (G.length < 2) return;
+    const R = G.map(o => resample(o.P)), M = R[0].map((_, i) => [R.reduce((a, r) => a + r[i][0], 0) / R.length, R.reduce((a, r) => a + r[i][1], 0) / R.length]);
+    x.lineCap = x.lineJoin = 'round'; x.strokeStyle = '#fff'; x.lineWidth = 8 * q; x.beginPath(); M.forEach((p, i) => i ? x.lineTo(X(p[0]), Y(p[1])) : x.moveTo(X(p[0]), Y(p[1]))); x.stroke();
+    x.strokeStyle = kc(k); x.lineWidth = 4.5 * q; x.beginPath(); M.forEach((p, i) => i ? x.lineTo(X(p[0]), Y(p[1])) : x.moveTo(X(p[0]), Y(p[1]))); x.stroke();
+    const e = M[M.length - 1]; x.fillStyle = kc(k); x.strokeStyle = '#fff'; x.lineWidth = 2 * q; x.beginPath(); x.arc(X(e[0]), Y(e[1]), 6 * q, 0, 7); x.fill(); x.stroke(); });
+  x.fillStyle = '#fff'; x.strokeStyle = '#1d1d1f'; x.lineWidth = 2 * q; x.beginPath(); x.arc(X(0), Y(0), 6 * q, 0, 7); x.fill(); x.stroke();
+  legend($('olegend'), L, S.means ? 'thick: mean path per kind' : '');
+}
+function renderScatter(hl) {
+  const c = $('sc'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(), mx = MBY[S.sx], my = MBY[S.sy];
+  const L = visible().filter(s => A(s)[S.sx] != null && A(s)[S.sy] != null);
+  x.clearRect(0, 0, W, H);
+  const pad = { l: 56 * q, r: 18 * q, t: 18 * q, b: 44 * q };
+  const xs = L.map(s => A(s)[S.sx]), ys = L.map(s => A(s)[S.sy]);
+  const rng = v => { if (!v.length) return [0, 1]; let a = Math.min(...v), b = Math.max(...v); if (a === b) { a -= 1; b += 1; } const p = (b - a) * 0.08; return [a - p, b + p]; };
+  const [x0, x1] = rng(xs), [y0, y1] = rng(ys);
+  const X = v => pad.l + (v - x0) / (x1 - x0) * (W - pad.l - pad.r), Y = v => H - pad.b - (v - y0) / (y1 - y0) * (H - pad.t - pad.b);
+  const ticks = (a, b) => { const st = Math.pow(10, Math.floor(Math.log10((b - a) / 5))), m = [1, 2, 5].find(k => (b - a) / (st * k) <= 6) || 10, s = st * m, out = [];
+    for (let v = Math.ceil(a / s) * s; v <= b; v += s) out.push(+v.toFixed(6)); return out; };
+  x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b'; x.lineWidth = q;
+  ticks(x0, x1).forEach(v => { x.strokeStyle = '#efeff2'; x.beginPath(); x.moveTo(X(v), pad.t); x.lineTo(X(v), H - pad.b); x.stroke(); x.fillText(String(v), X(v) - 8 * q, H - pad.b + 16 * q); });
+  ticks(y0, y1).forEach(v => { x.strokeStyle = '#efeff2'; x.beginPath(); x.moveTo(pad.l, Y(v)); x.lineTo(W - pad.r, Y(v)); x.stroke(); x.fillText(String(v), 10 * q, Y(v) + 4 * q); });
+  x.fillStyle = '#1d1d1f'; x.font = `600 ${11.5 * q}px -apple-system, system-ui`;
+  x.fillText(`${mx.name} (${mx.unit})`, pad.l, H - 10 * q);
+  x.save(); x.translate(14 * q, pad.t + 4 * q); x.fillText(`${my.name} (${my.unit}) ↑`, 0, 0); x.restore();
+  SC.hits = [];
+  L.forEach(s => { const a = A(s), px = X(a[S.sx]), py = Y(a[S.sy]), isH = hl === s.id, r = (isH ? 7 : 4.5) * q;
+    x.fillStyle = rgba(kc(s.kind), isH ? 1 : 0.78); x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+    const pr = PR(s.id); if (pr && (pr.o === 'FP' || pr.o === 'FN')) { x.strokeStyle = OCOL[pr.o]; x.lineWidth = 2 * q; x.beginPath(); x.arc(px, py, r + 2.5 * q, 0, 7); x.stroke(); }
+    if (isH) { x.strokeStyle = '#1d1d1f'; x.lineWidth = 1.5 * q; x.beginPath(); x.arc(px, py, r, 0, 7); x.stroke(); }
+    SC.hits.push([px, py, s.id]); });
+  legend($('slegend'), L, MD() ? `rings: ${MD().name} ${MD().version} false alarm (red) / missed roll (orange)` : '');
+}
+function legend(box, L, extra) {
+  const n = {}; L.forEach(s => n[s.kind] = (n[s.kind] || 0) + 1);
+  box.innerHTML = Object.keys(n).sort((a, b) => KORDER.indexOf(a) - KORDER.indexOf(b)).map(k => `<span><i style="background:${kc(k)}"></i>${KNAME[k] || k} · ${n[k]}</span>`).join('')
+    + (extra ? `<span class="sub">${extra}</span>` : '');
+}
+function nearest(hits, e, c, maxPx) {
+  const r = c.getBoundingClientRect(), q = c.width / r.width, mx = (e.clientX - r.left) * q, my = (e.clientY - r.top) * q;
+  let best = null, bd = (maxPx * q) ** 2; hits.forEach(h => { const d = (h[0] - mx) ** 2 + (h[1] - my) ** 2; if (d < bd) { bd = d; best = h[2]; } });
+  return best;
+}
+function tip(e, id) {
+  const t = $('tip'); if (!id) { t.style.opacity = 0; return; }
+  const s = SEGS.find(z => z.id === id), a = A(s);
+  t.innerHTML = `<b>${id}</b> · ${s.label.replace('_', ' ')}<br><span class="d">${esc(s.video.replace(/\.mp4$/i, ''))}</span><br>${a.dur?.toFixed(2)} s · side ${fmt('lat', a.lat)} · dip ${fmt('dip', a.dip)} · depth ${fmt('depth3d', a.depth3d)} torso${PR(id) ? `<br>${esc(MD().name)} ${MD().version}: ${PR(id).s.toFixed(2)} · ${PR(id).o}` : ''}`;
+  t.style.left = Math.min(innerWidth - 290, e.clientX + 14) + 'px'; t.style.top = (e.clientY + 14) + 'px'; t.style.opacity = 1;
+}
+[['ov', OV, renderOverlay, 10], ['sc', SC, renderScatter, 12]].forEach(([id, st, fn, px]) => {
+  const c = $(id); let last = null;
+  c.addEventListener('mousemove', e => { const h = nearest(st.hits, e, c, px); tip(e, h); if (h !== last) { last = h; fn(h); } c.style.cursor = h ? 'pointer' : 'crosshair'; });
+  c.addEventListener('mouseleave', () => { tip(null, null); last = null; fn(null); });
+  c.addEventListener('click', e => { const h = nearest(st.hits, e, c, px); if (h) { tip(null, null); open(SEGS.findIndex(s => s.id === h), true); } });
+});
+
+// ═════════════ models ═════════════
+function setModel(k) { if (!MOD || !MOD.models[k]) return; S.model = k; save('model'); refreshAll(); renderModelCard(); }
+function renderOutcomes() {
+  const box = $('outcomes'); box.innerHTML = ''; const m = MD(); if (!m) { box.style.display = 'none'; return; } box.style.display = '';
+  const n = { TP: 0, FP: 0, FN: 0, TN: 0 }; SEGS.forEach(s => { const p = m.preds[s.id]; if (p) n[p.o]++; });
+  ['TP', 'FP', 'FN', 'TN'].forEach(o => { const b = document.createElement('button'), on = S.outcomes.has(o);
+    b.className = 'chip' + (on ? ' on' : ''); b.title = ONAME[o];
+    b.innerHTML = `<span class="k" style="background:${on ? '#fff' : OCOL[o]}"></span>${o} ${n[o]}`; if (on) b.style.background = OCOL[o];
+    b.onclick = () => { on ? S.outcomes.delete(o) : S.outcomes.add(o); save('outcomes'); refreshAll(); }; box.appendChild(b); });
+}
+function renderModelCard() {
+  const card = $('mcard'); if (!MOD) { card.style.display = 'none'; return; }
+  const sel = $('msel'); if (!sel.options.length) { sel.innerHTML = MOD.order.map(k => `<option value="${k}">${esc(MOD.models[k].name)} ${MOD.models[k].version}</option>`).join('');
+    sel.onchange = () => setModel(sel.value); }
+  sel.value = S.model;
+  const m = MD(), seg = SEGS[S.i], p = m && seg ? m.preds[seg.id] : null; if (!p) { $('mbody').innerHTML = '<span class="sub">no prediction for this clip</span>'; return; }
+  const truthRoll = MOD.truth[seg.id] === 1, col = OCOL[p.o];
+  $('mbody').innerHTML = `<div class="verdictline"><span class="big">${p.s.toFixed(2)}</span><span class="otag ${p.o}">${p.o}</span><span class="sub">${ONAME[p.o]}</span></div>
+    <div class="bar2"><i style="width:${(p.s * 100).toFixed(1)}%;background:${col}"></i><b style="left:calc(${(m.threshold * 100).toFixed(1)}% - 1px)"></b></div>
+    <div class="sub">predicts <b style="color:var(--text)">${p.p ? 'roll' : 'not a roll'}</b> (threshold ${m.threshold}) · labeled <b style="color:var(--text)">${truthRoll ? 'roll' : seg.kind}</b></div>
+    <div id="mx">${Object.entries(p.x || {}).map(([k, v]) => `<span>${esc(k)}</span><span>${typeof v === 'number' ? (+v).toFixed(Math.abs(v) >= 10 ? 0 : 2) : esc(v)}</span>`).join('')}</div>`;
+}
+function renderModels() {
+  if (!MOD) return; const m = MD();
+  const pos = Object.values(MOD.truth).filter(v => v === 1).length, n = Object.keys(MOD.truth).length;
+  $('mmeta').textContent = `Roll (1) vs duck / slip (0) on ${n} clips (${pos} rolls, ${n - pos} not) · each model at its own threshold · evaluated ${MOD.created}`;
+  const pct = v => v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`, f2 = v => v === null || v === undefined ? '—' : (+v).toFixed(2);
+  const rows = MOD.order.map(k => MOD.models[k]);
+  const best = key => Math.max(...rows.map(r => r.metrics[key] ?? -1)), bestLow = key => Math.min(...rows.map(r => r.metrics[key] ?? 9));
+  const cls = (r, key, low) => (low ? r.metrics[key] === bestLow(key) : r.metrics[key] === best(key)) && rows.length > 1 ? 'best' : '';
+  const negs = Object.keys(rows[0].fp_rate || {}), fpBest = k => Math.min(...rows.map(r => r.fp_rate[k] ?? 9));
+  $('lb').innerHTML = `<thead><tr><th>Model</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 95 %</th><th>Accuracy</th><th>AUC</th>${negs.map(k => `<th title="share of the ${rows[0].negatives[k]} ${KNAME[k] || k}s called a roll">False alarms · ${(KNAME[k] || k).toLowerCase()}s</th>`).join('')}<th>Best F1*</th><th>ms / clip</th></tr></thead><tbody>` +
+    rows.map(r => { const x = r.metrics; return `<tr data-k="${r.key}" class="${r.key === S.model ? 'sel' : ''}"><td><b>${esc(r.name)}</b> <span class="sub">${r.version}</span></td>
+      <td class="${cls(r, 'precision')}">${f2(x.precision)}</td><td class="${cls(r, 'recall')}">${f2(x.recall)}</td><td class="${cls(r, 'f1')}">${f2(x.f1)}</td>
+      <td class="dim">${f2(x.f1_lo)}–${f2(x.f1_hi)}</td><td class="${cls(r, 'accuracy')}">${f2(x.accuracy)}</td><td class="${cls(r, 'auc')}">${f2(x.auc)}</td>
+      ${negs.map(k => `<td class="${rows.length > 1 && r.fp_rate[k] === fpBest(k) ? 'best' : ''}">${pct(r.fp_rate[k])}</td>`).join('')}<td class="dim">${f2(x.best_f1)}</td><td class="dim">${x.ms_per_clip.toFixed(1)}</td></tr>`; }).join('') + '</tbody>';
+  $('lb').querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => setModel(tr.dataset.k));
+  renderMatrices();
+  if (!m) return;
+  const errs = SEGS.filter(s => ['FP', 'FN'].includes(m.preds[s.id]?.o)).sort((a, b) => m.preds[a.id].o.localeCompare(m.preds[b.id].o) || m.preds[b.id].s - m.preds[a.id].s);
+  $('errsub').textContent = `${errs.length} of ${SEGS.length}`;
+  $('errs').innerHTML = errs.map(s => `<button data-id="${s.id}" title="${esc(s.label)} · score ${m.preds[s.id].s.toFixed(2)}"><span class="otag ${m.preds[s.id].o}">${m.preds[s.id].o}</span>${s.id} <span class="sub">${m.preds[s.id].s.toFixed(2)}</span></button>`).join('') || '<span class="sub">none</span>';
+  $('errs').querySelectorAll('button').forEach(b => b.onclick = () => open(SEGS.findIndex(s => s.id === b.dataset.id), true));
+  $('mdesc').innerHTML = `<b style="color:var(--text)">${esc(m.name)} ${m.version}</b> · <code>models/${m.key}.py</code><br>${esc(m.description)}`;
+  drawROC(); drawDist();
+}
+// one confusion matrix per model: roll, every non-roll together, then each non-roll kind
+function renderMatrices() {
+  const others = KORDER.filter(k => k !== 'roll' && SEGS.some(s => s.kind === k));
+  const cellHtml = (k, kind, pr, n, total) => { const o = kind === 'roll' ? (pr ? 'TP' : 'FN') : (pr ? 'FP' : 'TN');
+    const col = OCOL[o], share = total ? Math.round(100 * n / total) : 0;
+    return `<td class="c${n ? '' : ' zero'}" data-k="${k}" data-kind="${kind}" data-o="${o}" style="background:${rgba(col, o === 'TN' ? .16 : .15)};color:${o === 'TN' ? '#6e6e73' : col}">${n}<small>${share}%</small></td>`; };
+  $('cms').innerHTML = MOD.order.map(k => { const r = MOD.models[k], cnt = {};
+    SEGS.forEach(s => { const p = r.preds[s.id]; if (!p) return; (cnt[s.kind] = cnt[s.kind] || [0, 0])[p.p ? 0 : 1]++; });
+    const row = (label, kind, a, b, cls = '') => `<tr><td class="lab ${cls}">${label} <span class="sub">${a + b}</span></td>${cellHtml(k, kind, 1, a, a + b)}${cellHtml(k, kind, 0, b, a + b)}</tr>`;
+    const roll = cnt.roll || [0, 0], notA = others.reduce((t, o) => t + (cnt[o] || [0, 0])[0], 0), notB = others.reduce((t, o) => t + (cnt[o] || [0, 0])[1], 0);
+    return `<div class="cmt${k === S.model ? ' sel' : ''}"><div class="hd"><b>${esc(r.name)} <span class="sub">${r.version}</span></b><span class="sub">F1 ${r.metrics.f1.toFixed(2)} · threshold ${r.threshold}</span></div>
+      <table><tr><th></th><th>says roll</th><th>says not</th></tr>
+      ${row(`<b style="color:${kc('roll')}">Roll</b>`, 'roll', roll[0], roll[1])}
+      <tr class="sep"><td colspan="3"></td></tr>
+      ${row('<b>Everything else</b>', 'not', notA, notB)}
+      ${others.map(o => row(KNAME[o] || o, o, (cnt[o] || [0, 0])[0], (cnt[o] || [0, 0])[1], 'sub2')).join('')}
+      </table></div>`; }).join('');
+  $('cms').querySelectorAll('td.c').forEach(td => td.onclick = () => { if (td.classList.contains('zero')) return;
+    S.model = td.dataset.k; save('model');
+    S.outcomes = new Set([td.dataset.o]); save('outcomes');
+    S.kinds = new Set(td.dataset.kind === 'not' ? [] : [td.dataset.kind]); save('kinds');
+    refreshAll(); renderModelCard(); });
+}
+function drawROC() {
+  const c = $('roc'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(); x.clearRect(0, 0, W, H);
+  const pad = 40 * q, X = v => pad + v * (W - 1.5 * pad), Y = v => H - pad - v * (H - 1.5 * pad);
+  x.strokeStyle = '#efeff2'; x.lineWidth = q; x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b';
+  for (let v = 0; v <= 1.001; v += 0.25) { x.beginPath(); x.moveTo(X(v), Y(0)); x.lineTo(X(v), Y(1)); x.stroke(); x.beginPath(); x.moveTo(X(0), Y(v)); x.lineTo(X(1), Y(v)); x.stroke();
+    x.fillText(v.toFixed(2), X(v) - 10 * q, H - pad + 16 * q); x.fillText(v.toFixed(2), 6 * q, Y(v) + 4 * q); }
+  x.setLineDash([4 * q, 4 * q]); x.strokeStyle = '#c7c7cc'; x.beginPath(); x.moveTo(X(0), Y(0)); x.lineTo(X(1), Y(1)); x.stroke(); x.setLineDash([]);
+  const pal = ['#0071e3', '#ff9500', '#af52de', '#34c759', '#ff3b30', '#5ac8fa', '#ffcc00'];
+  MOD.order.forEach((k, i) => { const r = MOD.models[k], on = k === S.model; x.strokeStyle = pal[i % pal.length]; x.globalAlpha = on ? 1 : 0.45; x.lineWidth = (on ? 3 : 1.6) * q;
+    x.beginPath(); r.roc.forEach(([fx, ty], j) => j ? x.lineTo(X(fx), Y(ty)) : x.moveTo(X(fx), Y(ty))); x.stroke(); x.globalAlpha = 1;
+    if (on) { const mm = r.metrics, fx = mm.fp / Math.max(1, mm.fp + mm.tn), ty = mm.tp / Math.max(1, mm.tp + mm.fn);
+      x.fillStyle = '#fff'; x.strokeStyle = pal[i % pal.length]; x.lineWidth = 2.5 * q; x.beginPath(); x.arc(X(fx), Y(ty), 5 * q, 0, 7); x.fill(); x.stroke(); } });
+  x.fillStyle = '#1d1d1f'; x.font = `600 ${11 * q}px -apple-system, system-ui`; x.fillText('false-alarm rate →', X(0.55), H - 8 * q);
+  x.save(); x.translate(14 * q, Y(0.45)); x.rotate(-Math.PI / 2); x.fillText('recall →', 0, 0); x.restore();
+  $('roclegend').innerHTML = MOD.order.map((k, i) => `<span><i style="background:${pal[i % pal.length]}"></i>${esc(MOD.models[k].name)} ${MOD.models[k].version} · AUC ${(MOD.models[k].metrics.auc ?? 0).toFixed(2)}</span>`).join('') + '<span class="sub">dot: at its threshold</span>';
+}
+let DS = { hits: [] };
+function drawDist(hl) {
+  const c = $('dist'), [W, H] = fitCanvas(c, 90 + 52 * KORDER.filter(k => SEGS.some(s => s.kind === k)).length), x = c.getContext('2d'), q = dpr(), m = MD(); x.clearRect(0, 0, W, H); if (!m) return;
+  const rows = KORDER.filter(k => SEGS.some(s => s.kind === k)), L = 74 * q, R = W - 18 * q, top = 14 * q, rh = (H - top - 34 * q) / rows.length;
+  const X = v => L + v * (R - L), hash = id => { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (h % 1000) / 1000; };
+  x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b';
+  for (let v = 0; v <= 1.001; v += 0.25) { x.strokeStyle = '#efeff2'; x.lineWidth = q; x.beginPath(); x.moveTo(X(v), top); x.lineTo(X(v), H - 30 * q); x.stroke(); x.fillText(v.toFixed(2), X(v) - 10 * q, H - 14 * q); }
+  DS.hits = [];
+  rows.forEach((k, i) => { const y0 = top + i * rh; x.fillStyle = '#1d1d1f'; x.font = `600 ${11.5 * q}px -apple-system, system-ui`; x.fillText(KNAME[k], 10 * q, y0 + rh / 2 + 4 * q);
+    SEGS.filter(s => s.kind === k).forEach(s => { const p = m.preds[s.id]; if (!p) return; const px = X(p.s), py = y0 + rh * (0.2 + 0.6 * hash(s.id)), isH = hl === s.id;
+      x.fillStyle = rgba(kc(k), isH ? 1 : 0.75); x.beginPath(); x.arc(px, py, (isH ? 6.5 : 4.2) * q, 0, 7); x.fill();
+      if (p.o === 'FP' || p.o === 'FN') { x.strokeStyle = OCOL[p.o]; x.lineWidth = 2 * q; x.beginPath(); x.arc(px, py, (isH ? 9 : 6.8) * q, 0, 7); x.stroke(); }
+      DS.hits.push([px, py, s.id]); }); });
+  x.strokeStyle = '#1d1d1f'; x.lineWidth = 2 * q; x.beginPath(); x.moveTo(X(m.threshold), top - 4 * q); x.lineTo(X(m.threshold), H - 30 * q); x.stroke();
+  x.fillStyle = '#1d1d1f'; x.font = `600 ${10.5 * q}px -apple-system, system-ui`; x.fillText(`threshold ${m.threshold}`, X(m.threshold) + 5 * q, top + 6 * q);
+}
+(() => { const c = $('dist'); let last = null;
+  c.addEventListener('mousemove', e => { const h = nearest(DS.hits, e, c, 10); tip(e, h); if (h !== last) { last = h; drawDist(h); } c.style.cursor = h ? 'pointer' : 'crosshair'; });
+  c.addEventListener('mouseleave', () => { tip(null, null); last = null; drawDist(null); });
+  c.addEventListener('click', e => { const h = nearest(DS.hits, e, c, 10); if (h) { tip(null, null); open(SEGS.findIndex(s => s.id === h), true); } });
+})();
+
+// ═════════════ views + controls ═════════════
+function setView(v) {
+  S.view = v; save('view');
+  document.querySelectorAll('.view').forEach(el => el.classList.toggle('on', el.id === 'v-' + v));
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'review') video.pause();
+  if (v === 'atlas') renderAtlas();
+  if (v === 'overlay') { renderOverlay(); renderScatter(); }
+  if (v === 'models') renderModels();
+  if (v === 'review') { requestAnimationFrame(() => { sizeVideo(); computeZoom(); S.dirty = true; }); }
+  $('main').scrollTop = 0;
+}
+function refreshAll() { renderKinds(); renderOutcomes(); renderList(); syncControls(); if (S.data) renderModelCard(); if (S.view === 'models') renderModels(); if (S.view === 'atlas') renderAtlas(); if (S.view === 'overlay') { renderOverlay(); renderScatter(); } }
+function syncControls() {
+  document.querySelectorAll('#speeds button').forEach(b => b.classList.toggle('on', +b.dataset.speed === S.speed));
+  document.querySelectorAll('#toggles button').forEach(b => b.classList.toggle('on', !!S[b.dataset.t]));
+  document.querySelectorAll('#atools button, #otools button').forEach(b => b.classList.toggle('on', !!S[b.dataset.t]));
+  document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('on', b.dataset.p === S.preset));
+  document.querySelectorAll('#frame3d button').forEach(b => b.classList.toggle('on', b.dataset.f3 === S.frame3d));
+  $('playicon').setAttribute('d', video.paused ? 'M3 1.5v11l9-5.5z' : 'M2.5 1.5h3v11h-3zM8.5 1.5h3v11h-3z');
+}
+function seek(t) { video.currentTime = Math.max(0, Math.min(t, (video.duration || 99) - 0.001)); S.dirty = true; }
+function step(dir) { const L = visible(), p = L.indexOf(SEGS[S.i]); const n = L[Math.max(0, Math.min(L.length - 1, (p < 0 ? 0 : p + dir)))]; if (n) open(SEGS.indexOf(n)); }
+function setSpeed(v) { S.speed = v; video.playbackRate = v; save('speed'); syncControls(); }
+function toggle(k) { S[k] = !S[k]; save(k); if (k === 'focus') computeZoom(); if (k === 'loop') video.loop = S.loop; syncControls(); S.dirty = true;
+  if (k === 'align' || k === 'same') { renderAtlas(); renderOverlay(); }
+  if (k === 'means') renderOverlay(); }
+
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+document.querySelectorAll('#speeds button').forEach(b => b.onclick = () => setSpeed(+b.dataset.speed));
+document.querySelectorAll('#toggles button, #atools button, #otools button').forEach(b => b.onclick = () => toggle(b.dataset.t));
+document.querySelectorAll('#frame3d button').forEach(b => b.onclick = () => { S.frame3d = b.dataset.f3; save('frame3d'); S.cam.zoom = 1; syncControls(); S.dirty = true; });
+document.querySelectorAll('#presets button').forEach(b => b.onclick = () => { S.preset = b.dataset.p; save('preset'); Object.assign(S.cam, PRESETS[S.preset], { zoom: S.cam.zoom }); syncControls(); S.dirty = true; });
+$('prev').onclick = () => step(-1); $('next').onclick = () => step(1);
+$('play').onclick = () => video.paused ? video.play() : video.pause();
+video.addEventListener('play', syncControls); video.addEventListener('pause', () => { syncControls(); S.dirty = true; }); video.addEventListener('seeked', () => S.dirty = true);
+$('list').addEventListener('click', e => { const it = e.target.closest('.item'); if (it) open(SEGS.findIndex(z => z.id === it.dataset.id), true); });
+let sq = null; $('search').addEventListener('input', e => { clearTimeout(sq); sq = setTimeout(() => { S.q = e.target.value; refreshAll(); }, 160); });
+const sortSel = $('sort'); sortSel.innerHTML = `<option value="id">Id</option>` + METRICS.map(m => `<option value="${m.k}">${m.name}</option>`).join('');
+sortSel.value = S.sort; sortSel.onchange = () => { S.sort = sortSel.value; save('sort'); refreshAll(); };
+['sx', 'sy'].forEach(k => { const el = $(k); el.innerHTML = METRICS.map(m => `<option value="${m.k}">${m.name}</option>`).join(''); el.value = S[k];
+  el.onchange = () => { S[k] = el.value; save(k); renderScatter(); }; });
+// motion scrubbing + hover
+(() => { const c = $('motion'); let down = false;
+  const tAt = e => { const r = c.getBoundingClientRect(), L = 104, R = r.width - 64, dur = video.duration || 1; return Math.max(0, Math.min(dur, (e.clientX - r.left - L) / (R - L) * dur)); };
+  c.addEventListener('pointerdown', e => { down = true; c.setPointerCapture(e.pointerId); video.pause(); seek(tAt(e)); });
+  c.addEventListener('pointermove', e => { S.hoverT = tAt(e); if (down) seek(S.hoverT); S.dirty = true; });
+  c.addEventListener('pointerup', () => { down = false; }); c.addEventListener('pointerleave', () => { S.hoverT = null; S.dirty = true; }); })();
+// 3D orbit
+(() => { const c = $('p3'); let dr = null;
+  c.addEventListener('pointerdown', e => { dr = { x: e.clientX, y: e.clientY, yaw: S.cam.yaw, pitch: S.cam.pitch }; c.setPointerCapture(e.pointerId);
+    if (S.preset !== 'free') { S.preset = 'free'; syncControls(); } });
+  c.addEventListener('pointermove', e => { if (!dr) return; S.cam.yaw = dr.yaw + (e.clientX - dr.x) * 0.01;
+    S.cam.pitch = Math.max(-1.55, Math.min(1.55, dr.pitch + (e.clientY - dr.y) * 0.01)); S.dirty = true; });
+  c.addEventListener('pointerup', () => { dr = null; });
+  c.addEventListener('wheel', e => { e.preventDefault(); S.cam.zoom = Math.max(0.25, Math.min(8, S.cam.zoom * Math.exp(-e.deltaY * 0.0015))); S.dirty = true; }, { passive: false });
+  c.addEventListener('dblclick', () => { S.preset = 'orbit'; save('preset'); Object.assign(S.cam, PRESETS.orbit, { zoom: 1 }); syncControls(); S.dirty = true; }); })();
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { if (e.key === 'Escape') e.target.blur(); return; }
+  const fps = (SEGS[S.i] && SEGS[S.i].fps) || 30, sp = [0.1, 0.25, 0.5, 1];
+  switch (e.key) {
+    case ' ': e.preventDefault(); if (S.view === 'review') video.paused ? video.play() : video.pause(); break;
+    case 'ArrowRight': e.preventDefault(); video.pause(); seek(video.currentTime + 1 / fps); break;
+    case 'ArrowLeft': e.preventDefault(); video.pause(); seek(video.currentTime - 1 / fps); break;
+    case 'ArrowDown': case 'j': e.preventDefault(); step(1); break;
+    case 'ArrowUp': case 'k': e.preventDefault(); step(-1); break;
+    case '[': setSpeed(sp[Math.max(0, sp.indexOf(S.speed) - 1)] ?? 0.5); break;
+    case ']': setSpeed(sp[Math.min(sp.length - 1, sp.indexOf(S.speed) + 1)] ?? 0.5); break;
+    case 'f': case 'F': toggle('focus'); break;
+    case '+': case '=': zoomAt(1.4); break;
+    case '-': case '_': zoomAt(1 / 1.4); break;
+    case '0': computeZoom(); break;
+    case 'o': case 'O': toggle('ghosts'); break;
+    case 's': case 'S': toggle('skel'); break;
+    case 'l': case 'L': toggle('loop'); break;
+    case '1': setView('review'); break; case '2': setView('atlas'); break; case '3': setView('overlay'); break; case '4': if (MOD) setView('models'); break;
+    case '/': e.preventDefault(); $('search').focus(); break;
+  }
+});
+$('export').onclick = () => {
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['id', 'kind', 'label', 'video', 'round', 'move_start_sec', 'move_end_sec', ...METRICS.map(m => m.k)];
+  const rows = [head.join(',')].concat(SEGS.map(s => [s.id, s.kind, s.label, q(s.video), s.round, s.move_start, s.move_end,
+    ...METRICS.map(m => A(s)[m.k] ?? '')].join(',')));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' })); a.download = 'frontal_moves.csv'; a.click();
+};
+let rz = null; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { sizeVideo(); computeZoom(); if (S.view === 'atlas') renderAtlas(); if (S.view === 'overlay') { renderOverlay(); renderScatter(); } renderList(); S.dirty = true; }, 120); });
+
+// ═════════════ render loop ═════════════
+let lastT = performance.now(), lastVT = -1, last3d = 0, see3d = true;
+new IntersectionObserver(es => es.forEach(e => { see3d = e.isIntersecting; })).observe($('p3'));
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (S.view === 'review' && S.data && !document.hidden) {
+    const orbit = S.preset === 'orbit' && see3d;
+    if (orbit) S.cam.yaw += dt * 0.35;
+    const vt = video.currentTime;
+    if (S.dirty || vt !== lastVT) { drawNow(); lastVT = vt; last3d = now; }      // the video moved or a setting changed: everything
+    else if (orbit && now - last3d > 33) { drawP3(vt); last3d = now; }          // only the 3D card turns, ~30 fps
+  }
+  requestAnimationFrame(loop);
+}
+function drawNow() { if (S.view !== 'review' || !S.data) return; const t = video.currentTime, f = frameAt(t);
+  drawStage(t, f); drawMotion(t); drawP2(t); drawP3(t); S.dirty = false; }
+// a page in a background tab gets no animation frames: keep the overlays in step from the video's own events
+video.addEventListener('timeupdate', () => { if (document.hidden) drawNow(); });
+video.addEventListener('seeked', () => { S.dirty = true; if (document.hidden) drawNow(); });
+
+// ═════════════ start ═════════════
+if (!SEGS.length) { document.querySelectorAll('.view').forEach(v => v.remove()); $('empty').style.display = 'block'; }
+else {
+  $('settings').textContent = `${SEGS.length} moves · ${SETTINGS.context ?? 1} s either side · facing under ${SETTINGS.max_deg}°` + (SETTINGS.per_video ? ` · ≤ ${SETTINGS.per_video} per video` : ' · every qualifying move');
+  if (MOD && !MOD.models[S.model]) S.model = MOD.order[0];
+  if (!MOD) { const b = document.querySelector('[data-view="models"]'); if (b) b.remove(); if (S.view === 'models') S.view = 'review'; S.outcomes.clear(); }
+  renderKinds(); renderOutcomes(); renderList(); syncControls();
+  Object.assign(S.cam, PRESETS[S.preset] || PRESETS.orbit);
+  const last = store.get('last', null), k = SEGS.findIndex(s => s.id === last);
+  setView(S.view); open(k >= 0 ? k : 0); requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
