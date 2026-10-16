@@ -146,6 +146,8 @@ kbd { background: #fff; border: 1px solid var(--line2); border-bottom-width: 2px
 #lb th:first-child, #lb td:first-child { text-align: left; }
 #lb tbody tr { cursor: pointer; } #lb tbody tr:hover td { background: rgba(0,0,0,.025); } #lb tr.sel td { background: var(--sel); }
 #lb td.best { font-weight: 700; } #lb td.dim { color: var(--faint); }
+#lb tr.ref td { color: var(--faint); font-style: italic; cursor: default; } #lb tr.ref:hover td { background: none; }
+#tgtsel button { padding: 5px 14px; font-size: 13px; }
 #lbwrap { overflow-x: auto; }
 #mgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 18px; }
 #cm { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 8px; align-items: stretch; }
@@ -268,9 +270,9 @@ kbd { background: #fff; border: 1px solid var(--line2); border-bottom-width: 2px
     </section>
     <!-- MODELS -->
     <section class="view" id="v-models">
-      <div class="head"><div class="grow"><div class="t">Models</div><div class="meta" id="mmeta"></div></div></div>
+      <div class="head"><div class="grow"><div class="t">Models</div><div class="meta" id="mmeta"></div></div><div class="seg" id="tgtsel"></div></div>
       <div class="card"><div id="lbwrap"><table id="lb"></table></div>
-        <div class="info">Click a row to select a model. F1 range: 95 % bootstrap interval. Best F1*: the best any threshold reaches, tuned on these same clips — an upper bound, not a result.</div></div>
+        <div class="info">Click a row to select a model. F1 range: 95 % bootstrap interval. Balanced accuracy: the mean of recall and specificity — the fair score when the move is most of the set (slips are 65 %). The grey row calls every clip this move: what a model gets for nothing. Best F1*: the best any threshold reaches, tuned on these same clips — an upper bound, not a result.</div></div>
       <div class="card" style="margin-top:18px"><h3>Confusion · every model <span class="sub">rows: what John labeled · columns: what the model says · click a cell to list its clips</span></h3><div id="cms"></div></div>
       <div id="mgrid">
         <div class="card"><h3>ROC <span class="sub">every model · bold: selected</span></h3><canvas id="roc"></canvas><div class="legend" id="roclegend"></div></div>
@@ -297,9 +299,13 @@ kbd { background: #fff; border: 1px solid var(--line2); border-bottom-width: 2px
 'use strict';
 // ═════════════ data + state ═════════════
 const SEGS = window.SEGMENTS || [], ATLAS = window.ATLAS || {}, SETTINGS = window.SEGMENT_SETTINGS || {};
-const MOD = window.MODELS && window.MODELS.order && window.MODELS.order.length ? window.MODELS : null;   // evaluate_models.py
+// models per target move (evaluate_models.py): {created, targets: {roll: {...}, slip: {...}}}; an older file held one roll target
+const MODRAW = window.MODELS || null;
+const TG = !MODRAW ? {} : MODRAW.targets ? MODRAW.targets
+  : MODRAW.order ? { roll: { target: 'roll', truth: MODRAW.truth, order: MODRAW.order, models: MODRAW.models, reference: null } } : {};
+const TKEYS = ['roll', 'slip', 'duck', 'pull_back', 'step_back'].filter(t => TG[t] && TG[t].order && TG[t].order.length);
+const MOD = TKEYS.length ? TG : null;
 const OCOL = { TP: '#34c759', TN: '#aeaeb2', FP: '#ff3b30', FN: '#ff9500' };
-const ONAME = { TP: 'Roll, found', FP: 'False alarm', FN: 'Roll, missed', TN: 'Not a roll, right' };
 const KCOL = { roll: '#ff9500', slip: '#007aff', duck: '#af52de', pull_back: '#34c759', step_back: '#d4a800' };
 const KNAME = { roll: 'Roll', slip: 'Slip', duck: 'Duck', pull_back: 'Pull back', step_back: 'Step back' };
 const KORDER = ['roll', 'duck', 'slip', 'pull_back', 'step_back'];
@@ -329,7 +335,8 @@ const store = {
 };
 const S = {
   view: store.get('view', 'review'), i: 0, data: null, series: null,
-  kinds: new Set(store.get('kinds', [])), q: '', model: store.get('model', null), outcomes: new Set(store.get('outcomes', [])), sort: store.get('sort', 'id'),
+  kinds: new Set(store.get('kinds', [])), q: '', target: store.get('target', 'roll'), modelBy: store.get('modelBy', {}), model: null,
+  outcomes: new Set(store.get('outcomes', [])), sort: store.get('sort', 'id'),
   speed: store.get('speed', 0.5), paths: store.get('paths', true), grow: store.get('grow', false), skel: store.get('skel', true),
   ghosts: store.get('ghosts', true), focus: store.get('focus', false), loop: store.get('loop', true),
   preset: store.get('preset', 'orbit'), frame3d: store.get('frame3d', 'body'), same: store.get('same', true), align: store.get('align', true), means: store.get('means', true),
@@ -348,9 +355,12 @@ function fitCanvas(c, cssH) {   // backing store = CSS size × dpr; returns [W, 
 }
 
 // ═════════════ sidebar ═════════════
-const MD = () => MOD && MOD.models[S.model] ? MOD.models[S.model] : null;
+const TGT = () => (MOD && TG[S.target]) || null;                       // the selected move's models
+const MD = () => { const T = TGT(); return T && T.models[S.model] ? T.models[S.model] : null; };
 const PR = id => { const m = MD(); return m ? m.preds[id] : null; };
-const otag = id => { const p = PR(id); return p ? `<span class="otag ${p.o}" title="${ONAME[p.o]} · score ${p.s.toFixed(2)}">${p.o}</span>` : ''; };
+const tname = (t = S.target) => (KNAME[t] || t);
+const oname = o => { const n = tname(); return { TP: `${n}, found`, FP: 'False alarm', FN: `${n}, missed`, TN: `Not a ${n.toLowerCase()}, right` }[o]; };
+const otag = id => { const p = PR(id); return p ? `<span class="otag ${p.o}" title="${MD().name} ${MD().version}: ${oname(p.o)} · score ${p.s.toFixed(2)}">${p.o}</span>` : ''; };
 function visible() {
   const q = S.q.trim().toLowerCase();
   let L = SEGS.filter(s => (!S.kinds.size || S.kinds.has(s.kind))
@@ -810,7 +820,7 @@ function renderScatter(hl) {
     const pr = PR(s.id); if (pr && (pr.o === 'FP' || pr.o === 'FN')) { x.strokeStyle = OCOL[pr.o]; x.lineWidth = 2 * q; x.beginPath(); x.arc(px, py, r + 2.5 * q, 0, 7); x.stroke(); }
     if (isH) { x.strokeStyle = '#1d1d1f'; x.lineWidth = 1.5 * q; x.beginPath(); x.arc(px, py, r, 0, 7); x.stroke(); }
     SC.hits.push([px, py, s.id]); });
-  legend($('slegend'), L, MD() ? `rings: ${MD().name} ${MD().version} false alarm (red) / missed roll (orange)` : '');
+  legend($('slegend'), L, MD() ? `rings: ${MD().name} ${MD().version} false alarm (red) / missed ${tname().toLowerCase()} (orange)` : '');
 }
 function legend(box, L, extra) {
   const n = {}; L.forEach(s => n[s.kind] = (n[s.kind] || 0) + 1);
@@ -836,99 +846,117 @@ function tip(e, id) {
 });
 
 // ═════════════ models ═════════════
-function setModel(k) { if (!MOD || !MOD.models[k]) return; S.model = k; save('model'); refreshAll(); renderModelCard(); }
+function setModel(k) { const T = TGT(); if (!T || !T.models[k]) return; S.model = k; S.modelBy[S.target] = k; save('modelBy'); refreshAll(); renderModelCard(); }
+function setTarget(t) {
+  if (!TG[t]) return; S.target = t; save('target');
+  S.model = TG[t].models[S.modelBy[t]] ? S.modelBy[t] : TG[t].order[0];
+  S.outcomes.clear(); save('outcomes'); refreshAll(); renderModelCard();
+}
 function renderOutcomes() {
   const box = $('outcomes'); box.innerHTML = ''; const m = MD(); if (!m) { box.style.display = 'none'; return; } box.style.display = '';
   const n = { TP: 0, FP: 0, FN: 0, TN: 0 }; SEGS.forEach(s => { const p = m.preds[s.id]; if (p) n[p.o]++; });
+  const lab = document.createElement('span'); lab.className = 'sub'; lab.style.alignSelf = 'center'; lab.textContent = `${m.name} ${m.version}:`; box.appendChild(lab);
   ['TP', 'FP', 'FN', 'TN'].forEach(o => { const b = document.createElement('button'), on = S.outcomes.has(o);
-    b.className = 'chip' + (on ? ' on' : ''); b.title = ONAME[o];
+    b.className = 'chip' + (on ? ' on' : ''); b.title = oname(o);
     b.innerHTML = `<span class="k" style="background:${on ? '#fff' : OCOL[o]}"></span>${o} ${n[o]}`; if (on) b.style.background = OCOL[o];
     b.onclick = () => { on ? S.outcomes.delete(o) : S.outcomes.add(o); save('outcomes'); refreshAll(); }; box.appendChild(b); });
 }
 function renderModelCard() {
   const card = $('mcard'); if (!MOD) { card.style.display = 'none'; return; }
-  const sel = $('msel'); if (!sel.options.length) { sel.innerHTML = MOD.order.map(k => `<option value="${k}">${esc(MOD.models[k].name)} ${MOD.models[k].version}</option>`).join('');
-    sel.onchange = () => setModel(sel.value); }
-  sel.value = S.model;
+  const sel = $('msel');
+  if (!sel.options.length) {
+    sel.innerHTML = TKEYS.map(t => `<optgroup label="${tname(t)} models">` + TG[t].order.map(k =>
+      `<option value="${t}|${k}">${esc(TG[t].models[k].name)} ${TG[t].models[k].version}</option>`).join('') + '</optgroup>').join('');
+    sel.onchange = () => { const [t, k] = sel.value.split('|'); if (t !== S.target) { S.target = t; save('target'); S.outcomes.clear(); save('outcomes'); } setModel(k); };
+  }
+  sel.value = `${S.target}|${S.model}`;
   const m = MD(), seg = SEGS[S.i], p = m && seg ? m.preds[seg.id] : null; if (!p) { $('mbody').innerHTML = '<span class="sub">no prediction for this clip</span>'; return; }
-  const truthRoll = MOD.truth[seg.id] === 1, col = OCOL[p.o];
-  $('mbody').innerHTML = `<div class="verdictline"><span class="big">${p.s.toFixed(2)}</span><span class="otag ${p.o}">${p.o}</span><span class="sub">${ONAME[p.o]}</span></div>
+  const n = tname().toLowerCase(), col = OCOL[p.o];
+  $('mbody').innerHTML = `<div class="verdictline"><span class="big">${p.s.toFixed(2)}</span><span class="otag ${p.o}">${p.o}</span><span class="sub">${oname(p.o)}</span></div>
     <div class="bar2"><i style="width:${(p.s * 100).toFixed(1)}%;background:${col}"></i><b style="left:calc(${(m.threshold * 100).toFixed(1)}% - 1px)"></b></div>
-    <div class="sub">predicts <b style="color:var(--text)">${p.p ? 'roll' : 'not a roll'}</b> (threshold ${m.threshold}) · labeled <b style="color:var(--text)">${truthRoll ? 'roll' : seg.kind}</b></div>
+    <div class="sub">predicts <b style="color:var(--text)">${p.p ? n : 'not a ' + n}</b> (threshold ${m.threshold}) · labeled <b style="color:var(--text)">${(KNAME[seg.kind] || seg.kind).toLowerCase()}</b></div>
     <div id="mx">${Object.entries(p.x || {}).map(([k, v]) => `<span>${esc(k)}</span><span>${typeof v === 'number' ? (+v).toFixed(Math.abs(v) >= 10 ? 0 : 2) : esc(v)}</span>`).join('')}</div>`;
 }
 function renderModels() {
-  if (!MOD) return; const m = MD();
-  const pos = Object.values(MOD.truth).filter(v => v === 1).length, n = Object.keys(MOD.truth).length;
-  $('mmeta').textContent = `Roll (1) vs duck / slip (0) on ${n} clips (${pos} rolls, ${n - pos} not) · each model at its own threshold · evaluated ${MOD.created}`;
+  if (!MOD) return; const T = TGT(), m = MD(), tn = tname(), tl = tn.toLowerCase();
+  $('tgtsel').innerHTML = TKEYS.map(t => `<button data-t="${t}" class="${t === S.target ? 'on' : ''}">${tname(t)} · ${TG[t].order.length}</button>`).join('');
+  $('tgtsel').querySelectorAll('button').forEach(b => b.onclick = () => setTarget(b.dataset.t));
+  const pos = Object.values(T.truth).filter(v => v === 1).length, n = Object.keys(T.truth).length;
+  $('mmeta').textContent = `${tn} (1) vs every other move (0) on ${n} clips: ${pos} ${tl}s (${Math.round(100 * pos / n)} %), ${n - pos} not · each model at its own threshold · evaluated ${MODRAW.created || ''}`;
   const pct = v => v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`, f2 = v => v === null || v === undefined ? '—' : (+v).toFixed(2);
-  const rows = MOD.order.map(k => MOD.models[k]);
-  const best = key => Math.max(...rows.map(r => r.metrics[key] ?? -1)), bestLow = key => Math.min(...rows.map(r => r.metrics[key] ?? 9));
-  const cls = (r, key, low) => (low ? r.metrics[key] === bestLow(key) : r.metrics[key] === best(key)) && rows.length > 1 ? 'best' : '';
+  const rows = T.order.map(k => T.models[k]);
+  const best = key => Math.max(...rows.map(r => r.metrics[key] ?? -1));
+  const cls = (r, key) => r.metrics[key] === best(key) && rows.length > 1 ? 'best' : '';
   const negs = Object.keys(rows[0].fp_rate || {}), fpBest = k => Math.min(...rows.map(r => r.fp_rate[k] ?? 9));
-  $('lb').innerHTML = `<thead><tr><th>Model</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 95 %</th><th>Accuracy</th><th>AUC</th>${negs.map(k => `<th title="share of the ${rows[0].negatives[k]} ${KNAME[k] || k}s called a roll">False alarms · ${(KNAME[k] || k).toLowerCase()}s</th>`).join('')}<th>Best F1*</th><th>ms / clip</th></tr></thead><tbody>` +
-    rows.map(r => { const x = r.metrics; return `<tr data-k="${r.key}" class="${r.key === S.model ? 'sel' : ''}"><td><b>${esc(r.name)}</b> <span class="sub">${r.version}</span></td>
+  const ref = T.reference;
+  const refRow = ref ? `<tr class="ref"><td>${esc(ref.name)} <span class="sub">reference</span></td><td>${f2(ref.metrics.precision)}</td><td>${f2(ref.metrics.recall)}</td>
+      <td>${f2(ref.metrics.f1)}</td><td>—</td><td>${f2(ref.metrics.accuracy)}</td><td>${f2(ref.metrics.balanced)}</td><td>${f2(ref.metrics.auc)}</td>
+      ${negs.map(k => `<td>${pct(ref.fp_rate[k])}</td>`).join('')}<td>—</td><td>—</td></tr>` : '';
+  $('lb').innerHTML = `<thead><tr><th>Model</th><th>Precision</th><th>Recall</th><th>F1</th><th>F1 95 %</th><th>Accuracy</th><th>Balanced</th><th>AUC</th>${negs.map(k => `<th title="share of the ${rows[0].negatives[k]} ${tname(k).toLowerCase()}s called a ${tl}">False alarms · ${tname(k).toLowerCase()}s</th>`).join('')}<th>Best F1*</th><th>ms / clip</th></tr></thead><tbody>` +
+    refRow + rows.map(r => { const x = r.metrics; return `<tr data-k="${r.key}" class="${r.key === S.model ? 'sel' : ''}"><td><b>${esc(r.name)}</b> <span class="sub">${r.version}</span></td>
       <td class="${cls(r, 'precision')}">${f2(x.precision)}</td><td class="${cls(r, 'recall')}">${f2(x.recall)}</td><td class="${cls(r, 'f1')}">${f2(x.f1)}</td>
-      <td class="dim">${f2(x.f1_lo)}–${f2(x.f1_hi)}</td><td class="${cls(r, 'accuracy')}">${f2(x.accuracy)}</td><td class="${cls(r, 'auc')}">${f2(x.auc)}</td>
-      ${negs.map(k => `<td class="${rows.length > 1 && r.fp_rate[k] === fpBest(k) ? 'best' : ''}">${pct(r.fp_rate[k])}</td>`).join('')}<td class="dim">${f2(x.best_f1)}</td><td class="dim">${x.ms_per_clip.toFixed(1)}</td></tr>`; }).join('') + '</tbody>';
-  $('lb').querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => setModel(tr.dataset.k));
+      <td class="dim">${f2(x.f1_lo)}–${f2(x.f1_hi)}</td><td class="${cls(r, 'accuracy')}">${f2(x.accuracy)}</td><td class="${cls(r, 'balanced')}">${f2(x.balanced)}</td><td class="${cls(r, 'auc')}">${f2(x.auc)}</td>
+      ${negs.map(k => `<td class="${rows.length > 1 && r.fp_rate[k] === fpBest(k) ? 'best' : ''}">${pct(r.fp_rate[k])}</td>`).join('')}<td class="dim">${f2(x.best_f1)}</td><td class="dim">${(x.ms_per_clip ?? 0).toFixed(1)}</td></tr>`; }).join('') + '</tbody>';
+  $('lb').querySelectorAll('tbody tr[data-k]').forEach(tr => tr.onclick = () => setModel(tr.dataset.k));
   renderMatrices();
   if (!m) return;
   const errs = SEGS.filter(s => ['FP', 'FN'].includes(m.preds[s.id]?.o)).sort((a, b) => m.preds[a.id].o.localeCompare(m.preds[b.id].o) || m.preds[b.id].s - m.preds[a.id].s);
-  $('errsub').textContent = `${errs.length} of ${SEGS.length}`;
+  $('errsub').textContent = `${m.name} ${m.version} · ${errs.length} of ${SEGS.length}`;
   $('errs').innerHTML = errs.map(s => `<button data-id="${s.id}" title="${esc(s.label)} · score ${m.preds[s.id].s.toFixed(2)}"><span class="otag ${m.preds[s.id].o}">${m.preds[s.id].o}</span>${s.id} <span class="sub">${m.preds[s.id].s.toFixed(2)}</span></button>`).join('') || '<span class="sub">none</span>';
   $('errs').querySelectorAll('button').forEach(b => b.onclick = () => open(SEGS.findIndex(s => s.id === b.dataset.id), true));
-  $('mdesc').innerHTML = `<b style="color:var(--text)">${esc(m.name)} ${m.version}</b> · <code>models/${m.key}.py</code><br>${esc(m.description)}`;
+  $('mdesc').innerHTML = `<b style="color:var(--text)">${esc(m.name)} ${m.version}</b> · detects: ${tl} · <code>models/${m.key}.py</code><br>${esc(m.description)}`;
   drawROC(); drawDist();
 }
-// one confusion matrix per model: roll, every non-roll together, then each non-roll kind
+// one confusion matrix per model of the selected move: that move, every other move together, then each other kind
 function renderMatrices() {
-  const others = KORDER.filter(k => k !== 'roll' && SEGS.some(s => s.kind === k));
-  const cellHtml = (k, kind, pr, n, total) => { const o = kind === 'roll' ? (pr ? 'TP' : 'FN') : (pr ? 'FP' : 'TN');
+  const T = TGT(), t = S.target, tl = tname().toLowerCase();
+  const others = KORDER.filter(k => k !== t && SEGS.some(s => s.kind === k));
+  const cellHtml = (k, kind, pr, n, total) => { const o = kind === t ? (pr ? 'TP' : 'FN') : (pr ? 'FP' : 'TN');
     const col = OCOL[o], share = total ? Math.round(100 * n / total) : 0;
     return `<td class="c${n ? '' : ' zero'}" data-k="${k}" data-kind="${kind}" data-o="${o}" style="background:${rgba(col, o === 'TN' ? .16 : .15)};color:${o === 'TN' ? '#6e6e73' : col}">${n}<small>${share}%</small></td>`; };
-  $('cms').innerHTML = MOD.order.map(k => { const r = MOD.models[k], cnt = {};
+  $('cms').innerHTML = T.order.map(k => { const r = T.models[k], cnt = {};
     SEGS.forEach(s => { const p = r.preds[s.id]; if (!p) return; (cnt[s.kind] = cnt[s.kind] || [0, 0])[p.p ? 0 : 1]++; });
     const row = (label, kind, a, b, cls = '') => `<tr><td class="lab ${cls}">${label} <span class="sub">${a + b}</span></td>${cellHtml(k, kind, 1, a, a + b)}${cellHtml(k, kind, 0, b, a + b)}</tr>`;
-    const roll = cnt.roll || [0, 0], notA = others.reduce((t, o) => t + (cnt[o] || [0, 0])[0], 0), notB = others.reduce((t, o) => t + (cnt[o] || [0, 0])[1], 0);
-    return `<div class="cmt${k === S.model ? ' sel' : ''}"><div class="hd"><b>${esc(r.name)} <span class="sub">${r.version}</span></b><span class="sub">F1 ${r.metrics.f1.toFixed(2)} · threshold ${r.threshold}</span></div>
-      <table><tr><th></th><th>says roll</th><th>says not</th></tr>
-      ${row(`<b style="color:${kc('roll')}">Roll</b>`, 'roll', roll[0], roll[1])}
+    const own = cnt[t] || [0, 0], notA = others.reduce((s2, o) => s2 + (cnt[o] || [0, 0])[0], 0), notB = others.reduce((s2, o) => s2 + (cnt[o] || [0, 0])[1], 0);
+    return `<div class="cmt${k === S.model ? ' sel' : ''}"><div class="hd"><b>${esc(r.name)} <span class="sub">${r.version}</span></b><span class="sub">F1 ${r.metrics.f1.toFixed(2)} · balanced ${(r.metrics.balanced ?? 0).toFixed(2)} · threshold ${r.threshold}</span></div>
+      <table><tr><th></th><th>says ${tl}</th><th>says not</th></tr>
+      ${row(`<b style="color:${kc(t)}">${tname()}</b>`, t, own[0], own[1])}
       <tr class="sep"><td colspan="3"></td></tr>
       ${row('<b>Everything else</b>', 'not', notA, notB)}
       ${others.map(o => row(KNAME[o] || o, o, (cnt[o] || [0, 0])[0], (cnt[o] || [0, 0])[1], 'sub2')).join('')}
       </table></div>`; }).join('');
   $('cms').querySelectorAll('td.c').forEach(td => td.onclick = () => { if (td.classList.contains('zero')) return;
-    S.model = td.dataset.k; save('model');
+    S.model = td.dataset.k; S.modelBy[S.target] = S.model; save('modelBy');
     S.outcomes = new Set([td.dataset.o]); save('outcomes');
     S.kinds = new Set(td.dataset.kind === 'not' ? [] : [td.dataset.kind]); save('kinds');
     refreshAll(); renderModelCard(); });
 }
 function drawROC() {
-  const c = $('roc'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(); x.clearRect(0, 0, W, H);
+  const T = TGT(), c = $('roc'), [W, H] = fitCanvas(c), x = c.getContext('2d'), q = dpr(); x.clearRect(0, 0, W, H);
   const pad = 40 * q, X = v => pad + v * (W - 1.5 * pad), Y = v => H - pad - v * (H - 1.5 * pad);
   x.strokeStyle = '#efeff2'; x.lineWidth = q; x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b';
   for (let v = 0; v <= 1.001; v += 0.25) { x.beginPath(); x.moveTo(X(v), Y(0)); x.lineTo(X(v), Y(1)); x.stroke(); x.beginPath(); x.moveTo(X(0), Y(v)); x.lineTo(X(1), Y(v)); x.stroke();
     x.fillText(v.toFixed(2), X(v) - 10 * q, H - pad + 16 * q); x.fillText(v.toFixed(2), 6 * q, Y(v) + 4 * q); }
   x.setLineDash([4 * q, 4 * q]); x.strokeStyle = '#c7c7cc'; x.beginPath(); x.moveTo(X(0), Y(0)); x.lineTo(X(1), Y(1)); x.stroke(); x.setLineDash([]);
   const pal = ['#0071e3', '#ff9500', '#af52de', '#34c759', '#ff3b30', '#5ac8fa', '#ffcc00'];
-  MOD.order.forEach((k, i) => { const r = MOD.models[k], on = k === S.model; x.strokeStyle = pal[i % pal.length]; x.globalAlpha = on ? 1 : 0.45; x.lineWidth = (on ? 3 : 1.6) * q;
+  T.order.forEach((k, i) => { const r = T.models[k], on = k === S.model; x.strokeStyle = pal[i % pal.length]; x.globalAlpha = on ? 1 : 0.45; x.lineWidth = (on ? 3 : 1.6) * q;
     x.beginPath(); r.roc.forEach(([fx, ty], j) => j ? x.lineTo(X(fx), Y(ty)) : x.moveTo(X(fx), Y(ty))); x.stroke(); x.globalAlpha = 1;
     if (on) { const mm = r.metrics, fx = mm.fp / Math.max(1, mm.fp + mm.tn), ty = mm.tp / Math.max(1, mm.tp + mm.fn);
       x.fillStyle = '#fff'; x.strokeStyle = pal[i % pal.length]; x.lineWidth = 2.5 * q; x.beginPath(); x.arc(X(fx), Y(ty), 5 * q, 0, 7); x.fill(); x.stroke(); } });
   x.fillStyle = '#1d1d1f'; x.font = `600 ${11 * q}px -apple-system, system-ui`; x.fillText('false-alarm rate →', X(0.55), H - 8 * q);
   x.save(); x.translate(14 * q, Y(0.45)); x.rotate(-Math.PI / 2); x.fillText('recall →', 0, 0); x.restore();
-  $('roclegend').innerHTML = MOD.order.map((k, i) => `<span><i style="background:${pal[i % pal.length]}"></i>${esc(MOD.models[k].name)} ${MOD.models[k].version} · AUC ${(MOD.models[k].metrics.auc ?? 0).toFixed(2)}</span>`).join('') + '<span class="sub">dot: at its threshold</span>';
+  $('roclegend').innerHTML = T.order.map((k, i) => `<span><i style="background:${pal[i % pal.length]}"></i>${esc(T.models[k].name)} ${T.models[k].version} · AUC ${(T.models[k].metrics.auc ?? 0).toFixed(2)}</span>`).join('') + '<span class="sub">dot: at its threshold</span>';
 }
 let DS = { hits: [] };
 function drawDist(hl) {
-  const c = $('dist'), [W, H] = fitCanvas(c, 90 + 52 * KORDER.filter(k => SEGS.some(s => s.kind === k)).length), x = c.getContext('2d'), q = dpr(), m = MD(); x.clearRect(0, 0, W, H); if (!m) return;
-  const rows = KORDER.filter(k => SEGS.some(s => s.kind === k)), L = 74 * q, R = W - 18 * q, top = 14 * q, rh = (H - top - 34 * q) / rows.length;
+  const kindsHere = [S.target, ...KORDER.filter(k => k !== S.target)].filter(k => SEGS.some(s => s.kind === k));
+  const c = $('dist'), [W, H] = fitCanvas(c, 90 + 52 * kindsHere.length), x = c.getContext('2d'), q = dpr(), m = MD(); x.clearRect(0, 0, W, H); if (!m) return;
+  const rows = kindsHere, L = 74 * q, R = W - 18 * q, top = 14 * q, rh = (H - top - 34 * q) / rows.length;
   const X = v => L + v * (R - L), hash = id => { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (h % 1000) / 1000; };
   x.font = `${10.5 * q}px -apple-system, system-ui`; x.fillStyle = '#86868b';
   for (let v = 0; v <= 1.001; v += 0.25) { x.strokeStyle = '#efeff2'; x.lineWidth = q; x.beginPath(); x.moveTo(X(v), top); x.lineTo(X(v), H - 30 * q); x.stroke(); x.fillText(v.toFixed(2), X(v) - 10 * q, H - 14 * q); }
   DS.hits = [];
-  rows.forEach((k, i) => { const y0 = top + i * rh; x.fillStyle = '#1d1d1f'; x.font = `600 ${11.5 * q}px -apple-system, system-ui`; x.fillText(KNAME[k], 10 * q, y0 + rh / 2 + 4 * q);
+  rows.forEach((k, i) => { const y0 = top + i * rh; x.fillStyle = '#1d1d1f'; x.font = `${k === S.target ? 700 : 500} ${11.5 * q}px -apple-system, system-ui`; x.fillText(KNAME[k], 10 * q, y0 + rh / 2 + 4 * q);
     SEGS.filter(s => s.kind === k).forEach(s => { const p = m.preds[s.id]; if (!p) return; const px = X(p.s), py = y0 + rh * (0.2 + 0.6 * hash(s.id)), isH = hl === s.id;
       x.fillStyle = rgba(kc(k), isH ? 1 : 0.75); x.beginPath(); x.arc(px, py, (isH ? 6.5 : 4.2) * q, 0, 7); x.fill();
       if (p.o === 'FP' || p.o === 'FN') { x.strokeStyle = OCOL[p.o]; x.lineWidth = 2 * q; x.beginPath(); x.arc(px, py, (isH ? 9 : 6.8) * q, 0, 7); x.stroke(); }
@@ -1054,7 +1082,8 @@ video.addEventListener('seeked', () => { S.dirty = true; if (document.hidden) dr
 if (!SEGS.length) { document.querySelectorAll('.view').forEach(v => v.remove()); $('empty').style.display = 'block'; }
 else {
   $('settings').textContent = `${SEGS.length} moves · ${SETTINGS.context ?? 1} s either side · facing under ${SETTINGS.max_deg}°` + (SETTINGS.per_video ? ` · ≤ ${SETTINGS.per_video} per video` : ' · every qualifying move');
-  if (MOD && !MOD.models[S.model]) S.model = MOD.order[0];
+  if (MOD) { if (!TG[S.target] || !TKEYS.includes(S.target)) S.target = TKEYS[0];
+    S.model = TG[S.target].models[S.modelBy[S.target]] ? S.modelBy[S.target] : TG[S.target].order[0]; }
   if (!MOD) { const b = document.querySelector('[data-view="models"]'); if (b) b.remove(); if (S.view === 'models') S.view = 'review'; S.outcomes.clear(); }
   renderKinds(); renderOutcomes(); renderList(); syncControls();
   Object.assign(S.cam, PRESETS[S.preset] || PRESETS.orbit);
