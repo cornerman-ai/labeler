@@ -1087,7 +1087,9 @@ else {
   if (!MOD) { const b = document.querySelector('[data-view="models"]'); if (b) b.remove(); if (S.view === 'models') S.view = 'review'; S.outcomes.clear(); }
   renderKinds(); renderOutcomes(); renderList(); syncControls();
   Object.assign(S.cam, PRESETS[S.preset] || PRESETS.orbit);
-  const last = store.get('last', null), k = SEGS.findIndex(s => s.id === last);
+  const want = new URLSearchParams(location.search).get('clip');                 // ?clip=duck_004 opens that clip in Review
+  const last = want || store.get('last', null), k = SEGS.findIndex(s => s.id === last);
+  if (want && k >= 0) S.view = 'review';
   setView(S.view); open(k >= 0 ? k : 0); requestAnimationFrame(loop);
 }
 </script>
