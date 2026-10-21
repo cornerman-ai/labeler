@@ -491,6 +491,11 @@ function doGet(e) {
     return doGetCalloutEvents(p, labeler, action);
   }
 
+  // Uppercut hand drop (uppercut_drop/) — its own workbook, see doGetUppercutDrop.
+  if (UPPERCUT_DROP_ACTIONS.indexOf(action) !== -1) {
+    return doGetUppercutDrop(p, labeler, action);
+  }
+
   // Sentinels match case-insensitively: since 2026-08 the labeler string comes
   // from labeler_name.js, which capitalizes the first letter, so an old
   // ?labeler=archive / ?labeler=combined review link now arrives as
@@ -7154,4 +7159,76 @@ function markStepWindowDone(ss, p, who, video) {
   row[idx.done] = done; row[idx.ts] = ts;
   sh.getRange(sh.getLastRow() + 1, 1, 1, STEP_DONE_HEADERS.length).setNumberFormat('@').setValues([fillRow(row, STEP_DONE_HEADERS.length)]);
   return jsonOut({ status: 'ok', row: 'created', done: done });
+}
+
+// ============================================================
+// Uppercut hand drop (uppercut_drop/) — the coach rates how far the punching
+// hand drops before each uppercut, one looping clip per labeled uppercut.
+// Own workbook, **Uppercut hand drop** (Drive Ambo/data/labels/labeling_team/),
+// tab `Ratings`, one row per (rater, slot): the page's queue (queue.json,
+// built by cornerman-backend ml/research/hand_drop/uppercut_rating/build.py)
+// plants ~10% blind repeats (rep=1), so the same clip can hold two rows per
+// rater — the slot, not the clip, is the key. Rating a slot again soft-deletes
+// the earlier row (deleted=1) and appends the new one, so every change is kept.
+// rating: great / good / bad / very_bad / cant_tell; rating_rank 4..1, blank
+// for cant_tell (rank rises with a better hand, like the app's 0-100 score).
+// ============================================================
+var UPPERCUT_DROP_SPREADSHEET_ID = '1sb-Vlcx0kSUY4pf1K8J615e4N5w3XIZaKI1OmsRqq4M';
+var UPPERCUT_DROP_ACTIONS = ['listUppercutDrop', 'saveUppercutDrop', 'deleteUppercutDrop'];
+var UPPERCUT_DROP_TAB = 'Ratings';
+var UPPERCUT_DROP_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'punch_uuid', 'video_id', 'video_name',
+  'punch_type', 'hand', 'side', 'target', 'stance', 'punch_sec', 'impact_sec', 'impact_known',
+  'clip_start', 'clip_end', 'rating', 'rating_rank', 'speed', 'dwell_sec', 'deleted'];
+var UPPERCUT_DROP_RANKS = { great: 4, good: 3, bad: 2, very_bad: 1, cant_tell: '' };
+
+function doGetUppercutDrop(p, labeler, action) {
+  var sh = getOrCreateSheetWithHeaders(SpreadsheetApp.openById(UPPERCUT_DROP_SPREADSHEET_ID),
+    UPPERCUT_DROP_TAB, UPPERCUT_DROP_HEADERS);
+  var who = String(labeler || '').trim();
+  if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first (top right)', ud: 1 });
+
+  if (action === 'listUppercutDrop') {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.deleted]) === '1' || String(data[r][idx.rater]) !== who) continue;
+      rows.push({ slot: Number(data[r][idx.slot]), clip_id: String(data[r][idx.clip_id]),
+                  rating: String(data[r][idx.rating]), ts: String(data[r][idx.ts]) });
+    }
+    return jsonOut({ status: 'ok', rows: rows, ud: 1 });
+  }
+
+  return withPunchWriteLock(function () {
+    var slot = parseInt(p.slot, 10);
+    if (!(slot >= 0)) return jsonOut({ status: 'error', message: 'missing field: slot', ud: 1 });
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var superseded = 0;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.deleted]) === '1' || String(data[r][idx.rater]) !== who) continue;
+      if (Number(data[r][idx.slot]) !== slot) continue;
+      sh.getRange(r + 1, idx.deleted + 1).setValue(1);
+      superseded++;
+    }
+    if (action === 'deleteUppercutDrop') return jsonOut({ status: 'ok', deleted: superseded, ud: 1 });
+
+    var rating = String(p.rating || '');
+    if (!UPPERCUT_DROP_RANKS.hasOwnProperty(rating)) {
+      return jsonOut({ status: 'error', message: 'invalid rating: ' + rating, ud: 1 });
+    }
+    if (!p.clip_id) return jsonOut({ status: 'error', message: 'missing field: clip_id', ud: 1 });
+    var row = [];
+    for (var c = 0; c < UPPERCUT_DROP_HEADERS.length; c++) {
+      var col = UPPERCUT_DROP_HEADERS[c];
+      if (col === 'ts') row.push(new Date().toISOString());
+      else if (col === 'rater') row.push(who);
+      else if (col === 'slot') row.push(slot);
+      else if (col === 'rating_rank') row.push(UPPERCUT_DROP_RANKS[rating]);
+      else if (col === 'deleted') row.push('');
+      else row.push(p[col] === undefined ? '' : String(p[col]));
+    }
+    sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+    return jsonOut({ status: 'ok', superseded: superseded, ud: 1 });
+  });
 }
