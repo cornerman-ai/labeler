@@ -102,6 +102,15 @@ video_file | video_name | labeler | window_start_sec | window_end_sec | done |
 ts. A name is required (steps are compared between labelers); a step can only
 be changed by its own labeler.
 
+**Uppercut hand drop** (`uppercut_drop/`, its own README): the coach rates the
+drop before each uppercut, one looping clip per labeled uppercut (clips on
+Firebase, `queue.json` + ~10 % blind repeats built by cornerman-backend's
+`ml/research/hand_drop/uppercut_rating/build.py`). Own workbook, **Uppercut hand
+drop** (`UPPERCUT_DROP_SPREADSHEET_ID`), tab `Ratings`, written by
+`doGetUppercutDrop`: one live row per (rater, slot) — a slot, not a clip, because
+a repeat is its own row; a re-rate marks the old row `deleted=1`. Every response
+carries `ud: 1`.
+
 **Guard Drops sheet** (`guard_drop_label.html` — one verdict per punch on the
 resting/non-punching hand):
 ts | labeler | punch_uuid | video | verdict | guard_hand | skip_reason | deleted

@@ -1,0 +1,30 @@
+{
+ "status": "candidates picked by Claude 2026-10-21 from drop_torso + a look at the frames; Mathé to confirm or swap (any clip id from queue.json)",
+ "examples": [
+  {
+   "rating": "great",
+   "id": "0a777686-8f19-4064-8532-a4227bbb0932",
+   "why": "tight guard, side view; the hand comes straight up"
+  },
+  {
+   "rating": "good",
+   "id": "3a2a1d58-b253-430a-839d-1acaf3f31cbc",
+   "why": "small dip before it comes up"
+  },
+  {
+   "rating": "bad",
+   "id": "67b84318-2cd7-4014-9827-d039b302c380",
+   "why": "both hands sink before the punch (bag work, side view)"
+  },
+  {
+   "rating": "very_bad",
+   "id": "b8dd6201-4555-4677-a467-1ade9a23d46d",
+   "why": "the hand drops to the waist first"
+  },
+  {
+   "rating": "cant_tell",
+   "id": "a33c7578-eaee-493b-bf19-a86db89ee09d",
+   "why": "far away, behind the ring ropes"
+  }
+ ]
+}
