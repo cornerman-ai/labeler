@@ -12,13 +12,24 @@ Link to send: https://cornerman-ai.github.io/labeler/uppercut_drop/uppercut_drop
 
 ## What is on screen
 
-- The clip: 0.5 s before the punch starts → 0.15 s after impact, muted, looping.
-  1× / 0.5× (remembered per browser), tap the clip or press space to pause.
-- The question, and which hand to watch ("Watch the **left hand** · lead uppercut").
-- Five buttons, one tap → saved → next clip. ← Back to change an earlier rating.
-- **Examples**: one clip per rating (`examples.json`), kept out of the queue.
+The steps / punch labelers' template (`../punch/punch.css`, `shared/player.js`,
+`shared/ui.js`), without the video-source rows: every clip is hosted.
+
+- The clip, big: 0.5 s before the punch starts → 0.15 s after impact, muted,
+  looping. Scroll on the picture to zoom, drag to pan, double-click to reset.
+- The timeline: a lane with the half second **before** the punch (where the drop
+  happens), the **punch** up to impact and an impact mark; scroll on it to zoom.
+- Transport: play / pause, ±1 and ±2 frames, the time and frame number, a 0.5×
+  switch and the speed menu (the speed is remembered per browser).
+- Left panel: which hand to watch ("Watch the **left hand** · lead uppercut"),
+  progress, the question and five buttons: one tap → saved → next clip.
+  ◂ Back / Next ▸ to change an earlier rating; **Examples**, one clip per
+  rating (`examples.json`), kept out of the queue.
 - Keys: `1` Great · `2` Good · `3` Bad · `4` Very bad · `0` Can't tell ·
-  space pause · `S` speed · `←` `→` back / next · `E` examples.
+  space pause · `←` `→` one frame · `⇧←` `⇧→` the clip before / after ·
+  `S` 0.5× / 1× · `E` examples · `?` the help sheet.
+- Phone: the page scrolls, clip first, then which hand, the five buttons, back /
+  next; the ±2-frame buttons and the time are hidden.
 
 ## The queue
 

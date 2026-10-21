@@ -1,0 +1,154 @@
+/* uppercut_drop.css — the rating panel, the punch lane, the examples sheet
+   and the phone layout of the uppercut hand-drop labeler. The navigation bar,
+   cards, player, timeline and transport row come from ../punch/punch.css (same
+   ids); the panel follows steps/steps.css. */
+
+:root {
+  --great: #2fa36b; --good: #8bbf3f; --bad: #e39a2d; --very-bad: #d9473c; --cant: #8e8e93;
+  --before: #e39a2d;
+}
+
+.nav-sub { font-size: 12px; color: var(--ink-dim); }
+.nav-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+.sync-chip { font-size: 12px; color: var(--ink-dim); }
+.sync-chip.err { color: var(--no); }
+.sync-chip[hidden] { display: none; }
+
+/* ── the left panel ─────────────────────────────────────────────────────── */
+#ud-panel {
+  flex: none; width: 340px; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+#ud-panel .card { padding: 14px; }
+.count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-dim); }
+.hint { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin: 6px 0 0; }
+.muted { color: var(--ink-dim); }
+#ud-panel kbd {
+  display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--fill); font: 11px ui-monospace, Menlo, monospace;
+  color: var(--ink-dim); vertical-align: middle; text-align: center;
+}
+
+#watch { font-size: 14px; line-height: 1.4; }
+#watch b { color: var(--ink); }
+#progress-bar { height: 4px; border-radius: 2px; background: var(--fill); margin: 10px 0 6px; overflow: hidden; }
+#progress-fill { height: 100%; width: 0; background: var(--accent); }
+#progress { font-size: 12px; }
+
+#question { font-size: 16px; font-weight: 640; letter-spacing: -.01em; line-height: 1.3; margin: 0; }
+#buttons { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.rate {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left;
+  border: 1px solid var(--line); border-left: 4px solid var(--tone); border-radius: 8px;
+  background: var(--fill); color: var(--ink); padding: 8px 10px; font: inherit; cursor: pointer;
+  touch-action: manipulation;
+}
+.rate:hover { border-color: var(--ink-dim); border-left-color: var(--tone); }
+.rate .name { font-size: 14px; font-weight: 600; }
+.rate .desc { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); line-height: 1.35; }
+.rate.chosen { background: color-mix(in srgb, var(--tone) 22%, var(--card)); outline: 2px solid var(--tone); outline-offset: 1px; }
+.rate.flash { transform: scale(.98); }
+.rate[data-r="great"]     { --tone: var(--great); }
+.rate[data-r="good"]      { --tone: var(--good); }
+.rate[data-r="bad"]       { --tone: var(--bad); }
+.rate[data-r="very_bad"]  { --tone: var(--very-bad); }
+.rate[data-r="cant_tell"] { --tone: var(--cant); }
+#done { font-size: 14px; padding: 10px 0; }
+
+.review-actions { display: flex; gap: 8px; }
+.review-actions button {
+  flex: 1; white-space: nowrap; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--fill); color: var(--ink); padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.review-actions button:hover { border-color: var(--ink-dim); }
+
+/* ── the video ───────────────────────────────────────────────────────────── */
+#clip-loading {
+  position: absolute; left: 12px; top: 10px; z-index: 3; font-size: 12px; color: #fff;
+  background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 6px;
+}
+#clip-loading[hidden] { display: none; }
+/* The clip is short and the drop small: let the picture fill its box rather
+   than sit at the file's own pixel size. */
+#video-player { width: 100%; height: 100%; object-fit: contain; }
+
+/* the 0.5x switch next to the speed menu */
+.half-btn {
+  height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.half-btn:hover { border-color: var(--ink-dim); }
+.half-btn.on { background: var(--accent-wash); color: var(--accent-on-wash); border-color: transparent; }
+
+/* ── the punch lane: the half second before, then the punch up to impact ── */
+.seg-lane.lane-punch { height: 18px; }
+.seg-lane .ud-band {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 3px; pointer-events: none;
+  color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
+  overflow: hidden; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em;
+}
+.seg-lane .ud-band.before { background: color-mix(in srgb, var(--before) 75%, transparent); }
+.seg-lane .ud-band.punch  { background: var(--accent-solid); }
+.seg-lane .ud-impact { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); pointer-events: none; }
+#minimap-segments .ud-band { position: absolute; top: 0; height: 100%; }
+#minimap-segments .ud-band.before { background: color-mix(in srgb, var(--before) 75%, transparent); }
+#minimap-segments .ud-band.punch { background: var(--accent-solid); }
+
+/* ── the sheets ──────────────────────────────────────────────────────────── */
+.sc-body .sc-note { font-size: 13px; line-height: 1.5; margin: 8px 0 0; }
+.sc-body .sc-note.muted { color: var(--ink-dim); }
+#ex-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#ex-dialog::backdrop { background: rgba(0,0,0,.28); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+#ex-dialog .sc-body { max-height: 80vh; }
+#ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+#ex-grid figure { margin: 0; border-radius: 10px; overflow: hidden; background: var(--fill); border-top: 4px solid var(--tone); }
+#ex-grid video { width: 100%; aspect-ratio: 16 / 9; background: #000; display: block; object-fit: contain; }
+#ex-grid figcaption { padding: 8px 10px; font-size: 12px; color: var(--ink-dim); line-height: 1.4; }
+#ex-grid figcaption b { display: block; font-size: 14px; color: var(--ink); }
+
+/* ── phone ───────────────────────────────────────────────────────────────── */
+/* punch.css is a desktop layout (a fixed-height app, panel beside the video).
+   On a phone the page scrolls, and what a rating needs comes first: the clip,
+   which hand to watch, the five buttons — then back / next / examples. */
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  #app { height: auto; overflow: visible; }
+  #top-bar { height: auto; min-height: 48px; padding: 6px 12px; gap: 4px 8px; flex-wrap: wrap; }
+  .nav-lead { flex: none; }
+  .nav-sub, .nav-div, #help-btn { display: none; }
+  .nav-title { font-size: 15px; white-space: nowrap; }
+  .nav-actions { margin-left: auto; }
+  #name-field { min-width: 0; height: 28px; }
+  #labeler-input { width: 84px; }
+  #main-layout { flex-direction: column; padding: 8px 12px 16px; gap: 8px; }
+  #ud-panel { display: contents; }
+  #video-container { order: 1; flex: none; gap: 6px; }
+  #clip-card { order: 2; }
+  #rate-card { order: 3; }
+  #nav-card { order: 4; }
+  #video-viewport { flex: none; height: auto; min-height: 0; aspect-ratio: 16 / 9; }
+  #video-controls { padding: 6px 10px 8px; gap: 4px; }
+  #seek-bar-wrapper { margin-top: 4px; }
+  .timeline-tick-label, #time-wrap, #frame-display, .tdiv { display: none; }
+  #controls-row { flex-wrap: nowrap; gap: 6px; }
+  /* ±1 frame only: the ±2 steppers don't fit beside the speed controls */
+  .seg-static button:first-child, .seg-static button:last-child { display: none; }
+  .seg-static button:nth-child(2) { border-radius: 8px 0 0 8px; }
+  .seg-static button:nth-child(3) { border-radius: 0 8px 8px 0; }
+  #ud-panel .card { padding: 8px 12px; }
+  #clip-card .card-eyebrow { margin-bottom: 2px; }
+  #progress-bar { margin: 6px 0 4px; }
+  #rate-card .hint { display: none; }
+  #question { font-size: 14px; }
+  #buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .rate { padding: 6px 8px; }
+  .rate .name { font-size: 13.5px; }
+  .rate .desc { font-size: 11px; }
+  .rate[data-r="cant_tell"] { grid-column: 1 / -1; }
+  #ud-panel kbd { display: none; }
+}

@@ -1,151 +1,193 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Uppercut hand drop</title>
-<style>
-  :root {
-    --bg: #0f1424; --panel: #182038; --line: rgba(255,255,255,.12); --text: #e8ecf5; --muted: #8e98b3;
-    --great: #2fa36b; --good: #8bbf3f; --bad: #e39a2d; --very-bad: #d9473c; --cant: #6b7590;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; }
-  body { min-height: 100vh; -webkit-tap-highlight-color: transparent; }
-  #app { max-width: 1100px; margin: 0 auto; padding: 12px 16px 24px; display: grid; gap: 14px;
-         grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "head head" "video side"; }
-  header { grid-area: head; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; }
-  #progress { color: var(--muted); font-size: 13px; }
-  #save-state { color: var(--muted); font-size: 12px; margin-left: auto; }
-  #save-state.err { color: var(--very-bad); }
-  .link-btn { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px;
-              padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
-  .link-btn:hover { border-color: rgba(255,255,255,.35); }
-
-  #video-col { grid-area: video; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  #question { font-size: 20px; font-weight: 650; margin: 0; }
-  #question small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
-  #watch { font-size: 14px; color: var(--text); background: var(--panel); border-radius: 8px; padding: 6px 10px; align-self: flex-start; }
-  #watch b { color: #ffd47a; }
-  #stage { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; }
-  #stage video { width: 100%; height: 100%; object-fit: contain; display: block; }
-  #paused { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-            font-size: 42px; color: rgba(255,255,255,.85); background: rgba(0,0,0,.25); pointer-events: none; }
-  #stage.is-paused #paused { display: flex; }
-  #loading { position: absolute; left: 10px; top: 8px; font-size: 12px; color: var(--muted); }
-  #controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #controls .spacer { flex: 1; }
-  .speed.on { background: #2b3a66; border-color: #6d86d8; }
-
-  #side { grid-area: side; display: flex; flex-direction: column; gap: 8px; }
-  .rate { display: grid; grid-template-columns: 30px 1fr; gap: 2px 10px; align-items: center; text-align: left;
-          width: 100%; padding: 12px 12px; border-radius: 10px; border: 2px solid transparent; cursor: pointer;
-          background: var(--panel); color: var(--text); font: inherit; touch-action: manipulation; }
-  .rate .key { grid-row: span 2; width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center;
-               font-size: 13px; font-weight: 700; color: #0f1424; }
-  .rate .name { font-weight: 700; font-size: 16px; }
-  .rate .desc { font-size: 13px; color: var(--muted); }
-  .rate:hover { border-color: rgba(255,255,255,.25); }
-  .rate.chosen { border-color: #fff; }
-  .rate.flash { transform: scale(.98); }
-  .rate[data-r="great"] .key { background: var(--great); }
-  .rate[data-r="good"] .key { background: var(--good); }
-  .rate[data-r="bad"] .key { background: var(--bad); }
-  .rate[data-r="very_bad"] .key { background: var(--very-bad); }
-  .rate[data-r="cant_tell"] .key { background: var(--cant); color: #fff; }
-  #buttons { display: flex; flex-direction: column; gap: 8px; }
-  #nav { display: flex; gap: 8px; }
-  #nav .link-btn { flex: 1; }
-  #keys { font-size: 12px; color: var(--muted); }
-  #done { display: none; padding: 30px; text-align: center; font-size: 18px; }
-
-  /* Examples sheet */
-  #ex { position: fixed; inset: 0; background: rgba(5,8,16,.92); z-index: 10000; display: none; overflow: auto; }
-  #ex.open { display: block; }
-  #ex .inner { max-width: 1100px; margin: 0 auto; padding: 16px; }
-  #ex .top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-  #ex h2 { margin: 0; font-size: 18px; }
-  #ex .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-  #ex figure { margin: 0; background: var(--panel); border-radius: 10px; overflow: hidden; }
-  #ex figure video { width: 100%; aspect-ratio: 16 / 9; background: #000; display: block; object-fit: contain; }
-  #ex figcaption { padding: 8px 10px; font-size: 13px; }
-  #ex figcaption b { display: block; font-size: 15px; }
-  #ex figcaption .watch { color: var(--muted); }
-
-  #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #2a3354; color: #fff;
-           padding: 8px 14px; border-radius: 8px; font-size: 13px; display: none; z-index: 10001; }
-  #toast.err { background: #7a2721; }
-
-  @media (max-width: 760px) {
-    #app { grid-template-columns: 1fr; grid-template-areas: "head" "video" "side"; padding: 8px 16px 20px; gap: 10px; }
-    #question { font-size: 17px; }
-    #question small { display: inline; margin-left: 4px; }
-    #buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .rate { grid-template-columns: 24px 1fr; gap: 2px 7px; padding: 8px; align-items: start; }
-    .rate .key { grid-row: auto; width: 22px; height: 22px; font-size: 12px; }
-    .rate .name { font-size: 15px; }
-    .rate .desc { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.3; }
-    .rate[data-r="cant_tell"] { grid-column: 1 / -1; }
-    #keys { display: none; }
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Uppercut hand drop — Cornerman labeler</title>
+  <!-- The steps / punch labelers' template: punch.css carries the navigation
+       bar, the cards, the player, the timeline and the transport row (same ids
+       as those pages, so shared/player.js and shared/ui.js drive them);
+       uppercut_drop.css adds the rating buttons, the punch lane, the examples
+       sheet and the phone layout. No video-source rows: every clip is hosted. -->
+  <link rel="stylesheet" href="../punch/punch.css?v=20260918">
+  <link rel="stylesheet" href="uppercut_drop.css?v=20261021d">
 </head>
 <body>
-<input id="labeler-input" type="hidden">
-<div id="app">
-  <header>
-    <h1>Uppercut hand drop</h1>
-    <span id="progress">Loading…</span>
-    <button class="link-btn" id="btn-examples" title="One clip per rating (E)">Examples</button>
-    <span id="save-state"></span>
-  </header>
+  <div id="app">
 
-  <div id="video-col">
-    <p id="question">How much does the hand drop before the uppercut?
-      <small>Rate only the drop, not the whole punch.</small></p>
-    <div id="watch">—</div>
-    <div id="stage">
-      <video id="clip" muted playsinline autoplay loop preload="auto"></video>
-      <div id="paused">❚❚</div>
-      <span id="loading"></span>
-    </div>
-    <div id="controls">
-      <button class="link-btn speed" data-speed="1">1×</button>
-      <button class="link-btn speed" data-speed="0.5">0.5×</button>
-      <button class="link-btn" id="btn-pause">Pause</button>
-      <span class="spacer"></span>
-      <span id="slot-label" style="color:var(--muted);font-size:12px"></span>
+    <!-- ── navigation bar ───────────────────────────────────────────────── -->
+    <header id="top-bar">
+      <div class="nav-lead">
+        <h1 class="nav-title">Uppercut hand drop</h1>
+        <span class="nav-sub">how far the hand drops before each uppercut</span>
+      </div>
+      <div class="nav-actions">
+        <div class="nav-group">
+          <span id="sync-chip" class="sync-chip" hidden></span>
+        </div>
+        <span class="nav-div"></span>
+        <div class="nav-group">
+          <!-- The name every rating is filed under (labeler_name.js, shared with
+               every labeler): a second rater types their own. -->
+          <div id="name-field">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input id="labeler-input" placeholder="Your name" title="Your name"
+                   autocomplete="off" spellcheck="false" maxlength="40">
+          </div>
+          <button class="icon-btn" id="help-btn" title="Keys and how this works (?)" aria-haspopup="dialog">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+          </button>
+          <a class="nav-link" href="../index.html">All labelers</a>
+        </div>
+      </div>
+    </header>
+
+    <div id="main-layout">
+      <!-- Left: the clip, the question and the five ratings -->
+      <aside id="ud-panel">
+        <section class="card" id="clip-card">
+          <div class="card-eyebrow">Clip <span id="clip-n" class="count"></span></div>
+          <div id="watch" class="muted">Loading the clips…</div>
+          <div id="progress-bar"><div id="progress-fill"></div></div>
+          <div id="progress" class="muted"></div>
+        </section>
+
+        <section class="card" id="rate-card">
+          <h2 id="question">How much does the hand drop before the uppercut?</h2>
+          <p class="hint">Rate only the drop, not the whole punch. One tap saves and plays the next clip.</p>
+          <div id="buttons"></div>
+          <div id="done" class="muted" hidden>All clips rated. Thank you!</div>
+        </section>
+
+        <section class="card" id="nav-card">
+          <div class="review-actions">
+            <button type="button" id="btn-prev" title="The clip before (Shift+←)">◂ Back</button>
+            <button type="button" id="btn-examples" title="One clip per rating (E)">Examples <kbd>E</kbd></button>
+            <button type="button" id="btn-next" title="The next clip (Shift+→)">Next ▸</button>
+          </div>
+        </section>
+      </aside>
+
+      <!-- Centre: the clip and its timeline -->
+      <main id="video-container">
+        <div id="video-viewport">
+          <video id="video-player" muted playsinline autoplay loop preload="auto"></video>
+          <div id="video-overlay"></div>
+          <span id="clip-loading" hidden></span>
+          <!-- Only while the picture is magnified; click to go back to 1x —
+               shared/ui.js's setupVideoZoom(). -->
+          <button id="video-zoom-badge" type="button" hidden title="Reset zoom (or double-click the video)">1.0&times;</button>
+        </div>
+
+        <div id="video-controls">
+          <div id="timeline-minimap" style="display:none">
+            <div id="minimap-segments"></div>
+            <div id="minimap-viewport"></div>
+            <div id="minimap-playhead"></div>
+          </div>
+
+          <div id="seek-bar-wrapper">
+            <div id="timeline-ticks"></div>
+            <!-- One lane, built by renderTimelineOverlay(): the half second
+                 before the punch (where the drop happens) and the punch up to
+                 impact. -->
+            <div id="seg-lanes">
+              <div id="playhead" hidden><span class="playhead-grip"></span></div>
+            </div>
+            <div id="scrub">
+              <div id="seek-bar-overlay"></div>
+              <input type="range" id="seek-bar" min="0" max="1000" value="0" aria-label="Seek">
+            </div>
+          </div>
+
+          <div id="controls-row">
+            <div class="tgroup">
+              <button id="btn-play" class="tbtn" onclick="togglePlay()"
+                      title="Play / pause (Space)" aria-label="Play"></button>
+              <div class="seg-static" role="group" aria-label="Step frames">
+                <button onclick="stepFrames(-2)" title="Back 2 frames" aria-label="Back 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 3 7 7l4 4M7 3 3 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame (←)" aria-label="Back 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 3 5 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame (→)" aria-label="Forward 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(2)" title="Forward 2 frames" aria-label="Forward 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l4 4-4 4M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+            </div>
+
+            <span class="tdiv"></span>
+
+            <span id="time-wrap" title="Click to jump to a time">
+              <span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span>
+              <input id="time-edit" type="text" inputmode="decimal" spellcheck="false"
+                     autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
+            </span>
+            <span id="frame-display" role="status" aria-label="Current frame"></span>
+
+            <span class="tdiv"></span>
+
+            <button type="button" id="btn-half" class="half-btn" title="Half speed on / off (S)">0.5&times;</button>
+            <div id="speed-controls">
+              <button id="speed-btn" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="speed-menu" title="Playback speed">
+                <span id="speed-val">1&times;</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="speed-menu" role="menu" hidden></div>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 
-  <div id="side">
-    <div id="buttons"></div>
-    <div id="nav">
-      <button class="link-btn" id="btn-prev">← Back</button>
-      <button class="link-btn" id="btn-next">Next →</button>
+  <!-- The shortcuts sheet — punch.css's #sc-dialog, opened by shared/ui.js
+       (the ? key, #help-btn). -->
+  <dialog id="sc-dialog">
+    <div class="sc-head">
+      <h2>Uppercut hand drop — how it works</h2>
+      <button class="icon-btn" id="sc-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
     </div>
-    <div id="keys">Keys: <b>1</b>–<b>4</b> rate · <b>0</b> can't tell · <b>space</b> pause · <b>S</b> 0.5× / 1× ·
-      <b>←</b> <b>→</b> back / next · <b>E</b> examples</div>
-    <div id="done">All clips rated. Thank you!</div>
-  </div>
-</div>
+    <div class="sc-body">
+      <p class="sc-note">Each clip is one uppercut: from half a second before the punch until just after it lands,
+        on a loop. Rate <b>only the drop</b> of the punching hand before it comes up, not the whole punch. The
+        timeline shows the half second <b>before</b> the punch and the <b>punch</b> up to impact. Keep your scale the
+        same throughout: <b>Examples</b> has one clip per rating.</p>
+      <p class="sc-sec">Rating</p>
+      <div class="sc-row"><span>Great — fires straight from guard, no visible drop</span><span class="sc-keys"><kbd>1</kbd></span></div>
+      <div class="sc-row"><span>Good — a small dip you wouldn't correct</span><span class="sc-keys"><kbd>2</kbd></span></div>
+      <div class="sc-row"><span>Bad — a clear drop you would mention</span><span class="sc-keys"><kbd>3</kbd></span></div>
+      <div class="sc-row"><span>Very bad — winds down toward the waist and telegraphs the punch</span><span class="sc-keys"><kbd>4</kbd></span></div>
+      <div class="sc-row"><span>Can't tell — hand hidden, bad angle, or not really an uppercut</span><span class="sc-keys"><kbd>0</kbd></span></div>
+      <div class="sc-row"><span>The clip before / after — change an earlier rating by pressing another key</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>←</kbd><kbd>&#8679;</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>Examples, one per rating</span><span class="sc-keys"><kbd>E</kbd></span></div>
+      <p class="sc-sec">Playback</p>
+      <div class="sc-row"><span>Play / pause (or click the video)</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>One frame back / forward</span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>Half speed on / off; other speeds in the speed menu</span><span class="sc-keys"><kbd>S</kbd></span></div>
+      <div class="sc-row"><span>Zoom the picture at the pointer; drag to pan, double-click to reset</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <div class="sc-row"><span>Zoom the timeline</span><span class="sc-keys"><kbd>Scroll</kbd> on it</span></div>
+      <p class="sc-note muted">Ratings go to the <b>Ratings</b> tab of the <b>Uppercut hand drop</b> workbook (Drive,
+        Ambo/data/labels/labeling_team), one row per clip you rate.</p>
+    </div>
+  </dialog>
 
-<div id="ex" role="dialog" aria-label="Examples">
-  <div class="inner">
-    <div class="top">
+  <!-- Examples: one clip per rating, the same sheet chrome as #sc-dialog -->
+  <dialog id="ex-dialog">
+    <div class="sc-head">
       <h2>One example per rating</h2>
-      <span style="color:var(--muted);font-size:13px">Keep your scale the same as these throughout.</span>
-      <span style="flex:1"></span>
-      <button class="link-btn" id="ex-close">Close (Esc)</button>
+      <button class="icon-btn" id="ex-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
     </div>
-    <div class="grid" id="ex-grid"></div>
-  </div>
-</div>
-<div id="toast"></div>
+    <div class="sc-body">
+      <p class="sc-note muted">Keep your scale the same as these throughout.</p>
+      <div id="ex-grid"></div>
+    </div>
+  </dialog>
 
-<script src="../shared/labeler_name.js"></script>
-<script src="../shared/player.js"></script>
-<script src="uppercut_drop.js"></script>
+  <script src="../shared/labeler_name.js?v=20260918"></script>
+  <script src="../shared/player.js?v=20260918"></script>
+  <script src="uppercut_drop.js?v=20261021c"></script>
+  <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>

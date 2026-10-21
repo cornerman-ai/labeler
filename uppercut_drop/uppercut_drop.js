@@ -3,6 +3,12 @@
 // each uppercut. One looping clip per labeled uppercut (0.5 s before the
 // punch → just after it lands), one tap, next clip.
 //
+// The steps / punch labelers' template: shared/player.js drives the player,
+// the seek bar, frame stepping and the timeline zoom; shared/ui.js (loaded
+// last) the transport icons, the speed menu, the picture zoom, the time field,
+// the name field and the shortcuts sheet. This file adds the clip queue, the
+// punch lane and the ratings.
+//
 // queue.json (built by cornerman-backend
 // ml/research/hand_drop/uppercut_rating/build.py — never edited) holds the
 // clips and their fixed order, the same for every rater: ~10% of slots are a
@@ -15,8 +21,6 @@
 //
 // Clips live on Firebase Storage (labeler_media/uppercut_drop/v1/clips/),
 // rows in the "Uppercut hand drop" workbook via doGetUppercutDrop.
-// Uses player.js for sheetUrl() / the Apps Script URL and labeler_name.js for
-// the rater's name.
 // ============================================================
 
 const RATINGS = [
@@ -35,7 +39,7 @@ const clipUrl = (id) => `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o
 const SPEED_KEY = 'uppercutDropSpeed';
 const OUTBOX_KEY = 'uppercutDropOutbox';   // saves the Sheet hasn't confirmed yet, per rater
 
-const ud = {
+Object.assign(state, {
   clips: {},          // id -> clip facts
   queue: [],          // [{slot, id, rep}]
   examples: [],
@@ -43,76 +47,72 @@ const ud = {
   cursor: 0,
   shownAt: 0,
   rater: '',
-};
+  loaded: false,
+});
 
 const $ = (id) => document.getElementById(id);
-const video = () => $('clip');
+const videoEl = () => $('video-player');
 
-function toast(msg, err) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.className = err ? 'err' : '';
-  t.style.display = 'block';
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.style.display = 'none'; }, 2600);
-}
-
-function saveState(text, err) {
-  const el = $('save-state');
-  el.textContent = text;
+function syncChip(text, err) {
+  const el = $('sync-chip');
+  el.hidden = !text;
+  el.textContent = text || '';
   el.classList.toggle('err', !!err);
 }
 
 // ─── load ───────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  setupPlayer();
+  setupVideo();
   buildButtons();
-  wireControls();
+  setupControls();
+  setupKeys();
   try {
     const [q, ex] = await Promise.all([
       fetch('queue.json', { cache: 'no-cache' }).then(r => r.json()),
       fetch('examples.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : { examples: [] }).catch(() => ({ examples: [] })),
     ]);
-    ud.clips = q.clips;
-    ud.examples = ex.examples || [];
-    const exIds = new Set(ud.examples.map(e => e.id));
-    ud.queue = q.queue.map(([id, rep], slot) => ({ slot, id, rep })).filter(s => !exIds.has(s.id));
+    state.clips = q.clips;
+    state.examples = ex.examples || [];
+    const exIds = new Set(state.examples.map(e => e.id));
+    state.queue = q.queue.map(([id, rep], slot) => ({ slot, id, rep })).filter(s => !exIds.has(s.id));
   } catch (e) {
-    $('progress').textContent = 'Could not load the clips: ' + e.message;
+    $('watch').textContent = 'Could not load the clips: ' + e.message;
     return;
   }
   buildExamples();
-  // labeler_name.js keeps this hidden input in sync with the name bar.
-  $('labeler-input').addEventListener('change', () => loadRater());
+  // ui.js commits the name on blur, which runs after this change event.
+  $('labeler-input').addEventListener('change', () => setTimeout(loadRater, 0));
   await loadRater();
 });
 
 async function loadRater() {
   const name = (window.CMLabeler && window.CMLabeler.get()) || '';
-  if (name === ud.rater && ud.loaded) return;
-  ud.rater = name;
-  ud.loaded = !!name;
-  ud.ratings = new Map();
+  if (name === state.rater && state.loaded) return;
+  state.rater = name;
+  state.loaded = !!name;
+  state.ratings = new Map();
   if (!name) {
-    $('progress').textContent = 'Type your name at the top to start';
     showSlot(0);
+    $('progress').textContent = 'Type your name at the top right to start.';
     return;
   }
-  saveState('loading your ratings…');
+  syncChip('Loading your ratings…');
   try {
     const res = await call({ action: 'listUppercutDrop' });
-    for (const row of res.rows) ud.ratings.set(row.slot, row.rating);
-    saveState('');
+    for (const row of res.rows) state.ratings.set(row.slot, row.rating);
+    syncChip('');
   } catch (e) {
-    saveState('could not load your earlier ratings — ' + e.message, true);
+    syncChip('Could not load your earlier ratings — ' + e.message, true);
   }
-  for (const o of outbox()) ud.ratings.set(Number(o.slot), o.rating);
+  for (const o of outbox()) state.ratings.set(Number(o.slot), o.rating);
   flushOutbox();
   showSlot(firstUnrated());
 }
 
 function firstUnrated() {
-  const i = ud.queue.findIndex(s => !ud.ratings.has(s.slot));
-  return i === -1 ? ud.queue.length : i;
+  const i = state.queue.findIndex(s => !state.ratings.has(s.slot));
+  return i === -1 ? state.queue.length : i;
 }
 
 // ─── the Apps Script ──────────────────────────────────────────────────────────
@@ -127,12 +127,12 @@ async function call(params) {
 }
 
 function outbox() {
-  try { return (JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}')[ud.rater]) || []; } catch { return []; }
+  try { return (JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}')[state.rater]) || []; } catch { return []; }
 }
 function setOutbox(list) {
   try {
     const all = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}');
-    all[ud.rater] = list;
+    all[state.rater] = list;
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(all));
   } catch {}
 }
@@ -148,14 +148,15 @@ async function flushOutbox() {
       try {
         await call(item);
       } catch (e) {
-        saveState(`${list.length} not saved yet — retrying (${e.message})`, true);
+        syncChip(`${list.length} not saved yet — retrying (${e.message})`, true);
         setTimeout(() => { flushing = false; flushOutbox(); }, 5000);
         return;
       }
       list = outbox().filter(o => !(o.slot === item.slot && o.ts_local === item.ts_local));
       setOutbox(list);
+      syncChip(list.length ? `Saving… (${list.length})` : 'All saved');
     }
-    saveState('all saved');
+    syncChip('All saved');
   } finally {
     flushing = false;
   }
@@ -163,14 +164,14 @@ async function flushOutbox() {
 
 // ─── rating ─────────────────────────────────────────────────────────────────
 function rate(rating) {
-  if (!ud.rater) { toast('Type your name at the top first', true); return; }
-  const s = ud.queue[ud.cursor];
+  if (!state.rater) { showToast('Type your name at the top right first', 'error'); $('labeler-input').focus(); return; }
+  const s = state.queue[state.cursor];
   if (!s) return;
-  const c = ud.clips[s.id];
+  const c = state.clips[s.id];
   const btn = document.querySelector(`.rate[data-r="${rating}"]`);
   if (btn) { btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 120); }
-  ud.ratings.set(s.slot, rating);
-  const dwell = Math.min(120, (performance.now() - ud.shownAt) / 1000);
+  state.ratings.set(s.slot, rating);
+  const dwell = Math.min(120, (performance.now() - state.shownAt) / 1000);
   // One pending save per slot: a re-rate before the first save went out replaces it.
   const list = outbox().filter(o => Number(o.slot) !== s.slot);
   list.push({
@@ -179,12 +180,12 @@ function rate(rating) {
     punch_type: c.punch_type, hand: c.hand, side: c.side, target: c.target, stance: c.stance,
     punch_sec: c.start_sec, impact_sec: c.impact_sec, impact_known: c.impact_known,
     clip_start: c.clip_start, clip_end: c.clip_end,
-    speed: video().playbackRate, dwell_sec: dwell.toFixed(1), ts_local: Date.now(),
+    speed: videoEl().playbackRate, dwell_sec: dwell.toFixed(1), ts_local: Date.now(),
   });
   setOutbox(list);
-  saveState('saving…');
+  syncChip('Saving…');
   flushOutbox();
-  showSlot(ud.cursor + 1 <= firstUnrated() ? ud.cursor + 1 : firstUnrated());
+  showSlot(Math.min(state.cursor + 1, firstUnrated()));
 }
 
 function driveId(url) {
@@ -194,72 +195,169 @@ function driveId(url) {
 
 // ─── showing a clip ─────────────────────────────────────────────────────────
 function showSlot(i) {
-  ud.cursor = Math.max(0, Math.min(i, ud.queue.length));
-  const done = ud.ratings.size;
-  const total = ud.queue.length;
-  if (ud.rater) $('progress').textContent = `${done.toLocaleString()} of ${total.toLocaleString()} rated`;
-  const finished = ud.cursor >= total;
-  $('done').style.display = finished ? 'block' : 'none';
-  $('buttons').style.display = finished ? 'none' : '';
-  if (finished) { video().removeAttribute('src'); $('watch').textContent = '—'; return; }
-
-  const s = ud.queue[ud.cursor];
-  const c = ud.clips[s.id];
-  const v = video();
+  state.cursor = Math.max(0, Math.min(i, state.queue.length));
+  const done = state.ratings.size, total = state.queue.length;
+  $('progress').textContent = state.rater ? `${done.toLocaleString()} of ${total.toLocaleString()} rated` : '';
+  $('progress-fill').style.width = total ? (100 * done / total) + '%' : '0';
+  const finished = state.cursor >= total;
+  $('done').hidden = !finished;
+  $('buttons').hidden = finished;
+  const v = videoEl();
+  if (finished) {
+    v.removeAttribute('src'); v.load();
+    $('watch').textContent = '—'; $('clip-n').textContent = '';
+    renderTimelineOverlay();
+    return;
+  }
+  const s = state.queue[state.cursor];
+  const c = state.clips[s.id];
   if (v.dataset.id !== s.id) {
     v.dataset.id = s.id;
-    $('loading').textContent = 'loading…';
+    $('clip-loading').hidden = false;
+    $('clip-loading').textContent = 'Loading…';
     v.src = clipUrl(s.id);
   } else {
     v.currentTime = 0;
   }
-  v.playbackRate = speed();
   v.play().catch(() => {});
-  setPaused(false);
   $('watch').innerHTML = `Watch the <b>${c.side} hand</b> · ${c.hand} ${c.target === 'body' ? 'body ' : ''}uppercut`;
-  $('slot-label').textContent = `#${(ud.cursor + 1).toLocaleString()}`;
-  const mine = ud.ratings.get(s.slot);
+  $('clip-n').textContent = `#${(state.cursor + 1).toLocaleString()}`;
+  const mine = state.ratings.get(s.slot);
   for (const b of document.querySelectorAll('.rate')) b.classList.toggle('chosen', b.dataset.r === mine);
-  ud.shownAt = performance.now();
-  prefetch(ud.cursor);
+  state.shownAt = performance.now();
+  renderTimelineOverlay();
+  prefetch(state.cursor);
 }
 
 const prefetched = new Set();
 function prefetch(i) {
-  for (let k = i + 1; k <= i + 4 && k < ud.queue.length; k++) {
-    const id = ud.queue[k].id;
+  for (let k = i + 1; k <= i + 4 && k < state.queue.length; k++) {
+    const id = state.queue[k].id;
     if (prefetched.has(id)) continue;
     prefetched.add(id);
     fetch(clipUrl(id)).catch(() => prefetched.delete(id));
   }
 }
 
-function speed() {
+// ─── the player ──────────────────────────────────────────────────────────────
+// player.js's setupVideoLoader() only wires these when the page has a file
+// picker; this page has none, so they are wired here (as bodyshot.js does).
+function setupVideo() {
+  const v = videoEl();
+  v.addEventListener('loadedmetadata', () => {
+    state.frameDuration = 1 / 30;
+    state.fpsDetected = false;
+    detectFrameRateQuietly(v);
+    setSpeed(savedSpeed());   // through setSpeed, so ui.js repaints the speed menu
+    state.zoomLevel = 1; state.zoomCenter = 0.5;
+    onZoomChanged();
+  });
+  v.addEventListener('loadeddata', () => { $('clip-loading').hidden = true; });
+  v.addEventListener('error', () => {
+    if (!v.getAttribute('src')) return;
+    $('clip-loading').hidden = false;
+    $('clip-loading').textContent = 'The clip failed to load — check the connection and reload the page';
+  });
+  v.addEventListener('timeupdate', () => updateTimeDisplay());
+  v.addEventListener('seeked', _onSeeked);
+  // timeupdate fires ~4x a second, coarse against a one-second clip: move the
+  // playhead every frame while playing.
+  const tick = () => { if (!v.paused) updateTimeDisplay(); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+
+// player.js's detectFrameRate(), minus its toast — this page loads a new clip
+// every few seconds.
+function detectFrameRateQuietly(v) {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+  const times = [];
+  const onFrame = (now, meta) => {
+    times.push(meta.mediaTime);
+    if (times.length < 6) { v.requestVideoFrameCallback(onFrame); return; }
+    const d = times.slice(1).map((t, i) => t - times[i]).sort((a, b) => a - b);
+    const median = d[Math.floor(d.length / 2)];
+    if (median > 0.001 && median < 0.5) { state.frameDuration = median; state.fpsDetected = true; updateTimeDisplay(); }
+  };
+  v.requestVideoFrameCallback(onFrame);
+}
+
+function savedSpeed() {
   try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
 }
-function setSpeed(x) {
-  try { localStorage.setItem(SPEED_KEY, String(x)); } catch {}
-  video().playbackRate = x;
-  for (const b of document.querySelectorAll('.speed')) b.classList.toggle('on', Number(b.dataset.speed) === x);
+// Every speed change (the menu, S, the 0.5× button) goes through setSpeed:
+// remember it there, synchronously — a new src resets playbackRate to
+// defaultPlaybackRate before any ratechange event would arrive. ui.js wraps
+// this again at load to repaint the menu.
+const _playerSetSpeed = window.setSpeed;
+window.setSpeed = function (rate) {
+  _playerSetSpeed(rate);
+  videoEl().defaultPlaybackRate = rate;
+  try { localStorage.setItem(SPEED_KEY, String(rate)); } catch {}
+  $('btn-half').classList.toggle('on', Math.abs(rate - 0.5) < 0.001);
+};
+const toggleHalf = () => setSpeed(Math.abs(videoEl().playbackRate - 0.5) < 0.001 ? 1 : 0.5);
+
+// The punch lane: the half second before the punch (where the drop happens),
+// the punch up to impact, and the impact itself. Clip time = source time − clip_start.
+function renderTimelineOverlay() {
+  const v = videoEl(), lanes = $('seg-lanes');
+  if (!v || !lanes) return;
+  lanes.querySelectorAll('.seg-lane').forEach(n => n.remove());
+  const mini = $('minimap-segments');
+  if (mini) mini.innerHTML = '';
+  const duration = v.duration || 0;
+  const s = state.queue[state.cursor];
+  const c = s && state.clips[s.id];
+  const lane = document.createElement('div');
+  lane.className = 'seg-lane lane-punch';
+  lanes.insertBefore(lane, $('playhead'));
+  if (!duration || !c) return;
+  const t0 = Math.max(0, c.start_sec - c.clip_start), t1 = Math.min(duration, c.impact_sec - c.clip_start);
+  const band = (cls, a, b, label, title) => {
+    const l = timeToViewportPct(a, duration), r = timeToViewportPct(b, duration);
+    const el = document.createElement('div');
+    el.className = 'ud-band ' + cls;
+    el.style.left = Math.max(0, l) + '%';
+    el.style.width = Math.max(0, Math.min(100, r) - Math.max(0, l)) + '%';
+    el.textContent = label; el.title = title;
+    lane.appendChild(el);
+    if (mini) {
+      const m = document.createElement('div');
+      m.className = 'ud-band ' + cls;
+      m.style.left = (100 * a / duration) + '%'; m.style.width = (100 * (b - a) / duration) + '%';
+      mini.appendChild(m);
+    }
+  };
+  band('before', 0, t0, 'before', 'the half second before the punch — where the drop happens');
+  band('punch', t0, t1, 'punch', c.impact_known ? 'the punch, up to impact' : 'the punch, up to its estimated impact');
+  const imp = document.createElement('div');
+  imp.className = 'ud-impact';
+  imp.style.left = timeToViewportPct(t1, duration) + '%';
+  imp.title = c.impact_known ? 'impact' : 'impact (estimated: start + 0.30 s)';
+  lane.appendChild(imp);
+  if (typeof renderTimeTicks === 'function') renderTimeTicks();
+  updateVideoOverlay();
 }
 
-function setPaused(p) {
-  const v = video();
-  if (p) v.pause(); else v.play().catch(() => {});
-  $('stage').classList.toggle('is-paused', p);
-  $('btn-pause').textContent = p ? 'Play' : 'Pause';
+function updateVideoOverlay() {
+  const v = videoEl(), playhead = $('playhead');
+  if (!playhead) return;
+  if (!v.duration) { playhead.hidden = true; return; }
+  const pct = timeToViewportPct(v.currentTime, v.duration);
+  playhead.hidden = pct < 0 || pct > 100;
+  playhead.style.left = pct + '%';
 }
-const togglePause = () => setPaused(!video().paused);
 
-// ─── UI ─────────────────────────────────────────────────────────────────────
+// ─── panel and sheets ────────────────────────────────────────────────────────
 function buildButtons() {
   const wrap = $('buttons');
   for (const x of RATINGS) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'rate';
     b.dataset.r = x.r;
-    b.innerHTML = `<span class="key">${x.key}</span><span class="name">${x.name}</span><span class="desc">${x.desc}</span>`;
-    b.addEventListener('click', () => rate(x.r));
+    b.innerHTML = `<span class="name">${x.name}</span><kbd>${x.key}</kbd><span class="desc">${x.desc}</span>`;
+    b.addEventListener('click', () => { b.blur(); rate(x.r); });
     wrap.appendChild(b);
   }
 }
@@ -267,58 +365,70 @@ function buildButtons() {
 function buildExamples() {
   const grid = $('ex-grid');
   grid.innerHTML = '';
+  const tone = { great: 'great', good: 'good', bad: 'bad', very_bad: 'very-bad', cant_tell: 'cant' };
   for (const x of RATINGS) {
-    const e = ud.examples.find(e => e.rating === x.r);
+    const e = state.examples.find(e => e.rating === x.r);
     if (!e) continue;
-    const c = ud.clips[e.id] || e.clip || {};
+    const c = state.clips[e.id] || {};
     const f = document.createElement('figure');
+    f.style.setProperty('--tone', `var(--${tone[x.r]})`);
     f.innerHTML = `<video muted playsinline loop preload="none" data-src="${clipUrl(e.id)}"></video>
-      <figcaption><b>${x.name}</b>${x.desc}<div class="watch">${c.side ? `Watch the ${c.side} hand · ${c.hand} uppercut` : ''}</div></figcaption>`;
+      <figcaption><b>${x.name}</b>${x.desc}${c.side ? `<br>Watch the ${c.side} hand · ${c.hand} uppercut` : ''}</figcaption>`;
     grid.appendChild(f);
   }
   if (!grid.children.length) grid.textContent = 'No examples yet.';
 }
 
 function openExamples(open) {
-  $('ex').classList.toggle('open', open);
-  for (const v of $('ex').querySelectorAll('video')) {
-    if (open) {
-      if (!v.src) v.src = v.dataset.src;
-      v.playbackRate = speed();
-      v.play().catch(() => {});
-    } else v.pause();
+  const dlg = $('ex-dialog');
+  if (!open) { if (dlg.open) dlg.close(); return; }
+  videoEl().pause();
+  dlg.showModal();
+  // the example clips load only once the sheet is opened
+  for (const v of dlg.querySelectorAll('video')) {
+    if (!v.getAttribute('src')) v.src = v.dataset.src;
+    v.playbackRate = videoEl().playbackRate;
+    v.play().catch(() => {});
   }
-  if (open) video().pause(); else setPaused(false);
 }
 
-function wireControls() {
+function setupControls() {
   $('btn-examples').onclick = () => openExamples(true);
   $('ex-close').onclick = () => openExamples(false);
-  $('btn-pause').onclick = togglePause;
-  $('stage').onclick = togglePause;
-  $('btn-prev').onclick = () => showSlot(ud.cursor - 1);
-  $('btn-next').onclick = () => showSlot(Math.min(ud.cursor + 1, firstUnrated()));
-  for (const b of document.querySelectorAll('.speed')) b.onclick = () => setSpeed(Number(b.dataset.speed));
-  setSpeed(speed());
-  const v = video();
-  v.addEventListener('loadeddata', () => { $('loading').textContent = ''; v.playbackRate = speed(); });
-  v.addEventListener('error', () => { $('loading').textContent = 'clip failed to load — check the connection and reload the page'; });
+  const dlg = $('ex-dialog');
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener('close', () => {
+    for (const v of dlg.querySelectorAll('video')) v.pause();
+    videoEl().play().catch(() => {});
+  });
+  $('btn-prev').onclick = () => showSlot(state.cursor - 1);
+  $('btn-next').onclick = () => showSlot(Math.min(state.cursor + 1, firstUnrated()));
+  $('btn-half').onclick = toggleHalf;
+}
 
+function setupKeys() {
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.target.tagName === 'BUTTON') e.target.blur();
-    if ($('ex').classList.contains('open')) {
-      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E') { e.preventDefault(); openExamples(false); }
-      return;
+    if ($('ex-dialog').open) {
+      if (e.key === 'e' || e.key === 'E') { e.preventDefault(); openExamples(false); }
+      return;                                   // Escape closes the dialog by itself
     }
+    if (t && t.tagName === 'BUTTON') t.blur();
     const r = RATINGS.find(x => x.key === e.key);
     if (r) { e.preventDefault(); rate(r.r); return; }
     switch (e.key) {
-      case ' ': e.preventDefault(); togglePause(); break;
-      case 'ArrowLeft': case 'Backspace': e.preventDefault(); showSlot(ud.cursor - 1); break;
-      case 'ArrowRight': e.preventDefault(); showSlot(Math.min(ud.cursor + 1, firstUnrated())); break;
-      case 's': case 'S': e.preventDefault(); setSpeed(speed() === 1 ? 0.5 : 1); break;
+      case ' ': e.preventDefault(); togglePlay(); break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        e.shiftKey ? showSlot(state.cursor - 1) : stepFrames(-1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        e.shiftKey ? showSlot(Math.min(state.cursor + 1, firstUnrated())) : stepFrames(1);
+        break;
+      case 's': case 'S': e.preventDefault(); toggleHalf(); break;
       case 'e': case 'E': e.preventDefault(); openExamples(true); break;
     }
   });
