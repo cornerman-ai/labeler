@@ -52,6 +52,14 @@ only in the data. Every rater gets the same order. The page resumes at the first
 (2026-10-22) 2,139 clips + 214 repeats = 2,353 slots, from John's 2,156 labeled rolls placed on a cached round
 (the 2026-09-26 freeze); 17 second labels of the same roll were dropped.
 
+**Re-ordered from slot 382 (2026-10-22, `roll_rating/boost_queue.py`)** to get more Bad rolls: Stafford had 9 Bad in
+352 ratings. Slots 0–381 are untouched (he was at 351, + 30 ahead); in the next 300 clips, half come from the 10 % of
+remaining rolls the measures rate most likely looking down (in his first ratings that pool was 57 % Mid / Bad and 9 %
+Bad, the rest 12 % and 2 %), half at random; the rest random again; ~10 % repeats re-planted. 2,350 slots. The sample
+is no longer random from slot 382: any share (of Bad rolls, of a cut-off's false alarms) must weight the boosted
+slots back — `queue.json`'s `params.boost` and cornerman-backend `roll_rating/queue_boost_2026-10-22.csv` (each new
+slot, `boosted`, its score) say which. `build.py` refuses to overwrite a boosted queue without `--force-queue`.
+
 ## Where the ratings land
 
 Workbook **Roll eyes ratings** (Drive `Ambo/data/labels/labeling_team/`, `ROLL_EYES_SPREADSHEET_ID`), tab
