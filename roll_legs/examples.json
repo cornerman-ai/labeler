@@ -1,7 +1,8 @@
 {
- "status": "candidates picked by Claude 2026-10-22 from the knee / lean measure (roll_body.py) + a look at the bottom frame; Mathé to confirm or swap (any roll id from queue.json)",
+ "status": "candidates picked by Claude 2026-10-22 from the knee / lean measure (roll_body.py) + a look at the bottom frame; Mathé to confirm or swap (any roll id from queue.json). The page leaves the examples out of the queue itself, so adding one needs no queue rebuild",
  "examples": [
   {"rating": "uses_legs", "id": "r1594", "why": "side view: a deep knee bend (+55° from guard), the trunk stays upright"},
+  {"rating": "some_legs", "id": "r1226", "why": "knees bend some (+17°) with a lean (+16°)"},
   {"rating": "no_legs", "id": "r0688", "why": "side-on: folds forward at the waist (+26° lean), the knees barely bend (+1°)"},
   {"rating": "cant_tell", "id": "r0437", "why": "the picture stops at the waist: no legs to see"}
  ]

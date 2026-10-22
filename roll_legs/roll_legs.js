@@ -1,7 +1,8 @@
 // ============================================================
 // roll_legs.js — the coach rates whether the boxer uses the legs to get under
 // the punch in each roll (2026-10-22, Mathé: legs or not; the head is the roll
-// eyes pass, so no upper-body scale here). The second pass on the roll eyes
+// eyes pass, so no upper-body scale here; Stafford asked for a middle answer
+// the same day, after 15 ratings). The second pass on the roll eyes
 // clips (same clips, same Firebase folder; its own queue, its own workbook).
 //
 // The question, the hint, the ratings and the Can't tell reasons are the PASS
@@ -30,9 +31,11 @@ const PASS = {
   // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), key: the shortcut,
   // tone: the button's colour
   ratings: [
-    { r: 'uses_legs', key: '1', rank: 1,  tone: '#2fa36b', name: 'Uses the legs',
+    { r: 'uses_legs', key: '1', rank: 2,  tone: '#2fa36b', name: 'Uses the legs',
       desc: 'The knees bend to take the body down.' },
-    { r: 'no_legs',   key: '2', rank: 0,  tone: '#d9473c', name: 'Doesn’t use the legs',
+    { r: 'some_legs', key: '2', rank: 1,  tone: '#e39a2d', name: 'Mid',
+      desc: 'The knees bend some; the rest comes from bending over.' },
+    { r: 'no_legs',   key: '3', rank: 0,  tone: '#d9473c', name: 'Doesn’t use the legs',
       desc: 'The legs stay fairly straight; the dip comes from bending over.' },
     { r: 'cant_tell', key: '0', rank: '', tone: '#8e8e93', name: 'Can’t tell', desc: 'Say why in the comment.' },
   ],
