@@ -7255,7 +7255,7 @@ function doGetUppercutDrop(p, labeler, action) {
 //
 //   roll_eyes/  **Roll eyes ratings** — do the eyes stay up through the roll:
 //               good / mid / bad / cant_tell, rating_rank 3..1, blank for cant_tell.
-//   roll_legs/  **Roll legs ratings** — legs or upper body: the ratings are the
+//   roll_legs/  **Roll legs ratings** — does the boxer use the legs: the ratings are the
 //               page's (its RATINGS block, swapped without touching this file):
 //               any lower_snake name, rating_rank sent by the page (a number or blank).
 // ============================================================

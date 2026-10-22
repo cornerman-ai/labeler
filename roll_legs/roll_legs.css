@@ -1,10 +1,10 @@
 /* roll_legs.css — ../roll_eyes/roll_eyes.css (the rating panel, the comment,
-   the roll lane, admin mode, the phone layout) with five ratings coloured by
-   their position (r1..r4 + Can't tell, so a new scale needs no CSS) and the
-   examples sheet of ../uppercut_drop/. */
+   the roll lane, admin mode, the phone layout) with the buttons coloured from
+   roll_legs.js's PASS block (so a new scale needs no CSS) and the examples
+   sheet of ../uppercut_drop/. */
 
 :root {
-  --r1: #2fa36b; --r2: #8bbf3f; --r3: #e39a2d; --r4: #d9473c; --cant: #8e8e93;
+  --cant: #8e8e93;
   --guard: #8e8e93;
 }
 
@@ -48,11 +48,7 @@
 .rate .desc { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); line-height: 1.35; }
 .rate.chosen { background: color-mix(in srgb, var(--tone) 22%, var(--card)); outline: 2px solid var(--tone); outline-offset: 1px; }
 .rate.flash { transform: scale(.98); }
-.rate:nth-child(1) { --tone: var(--r1); }
-.rate:nth-child(2) { --tone: var(--r2); }
-.rate:nth-child(3) { --tone: var(--r3); }
-.rate:nth-child(4) { --tone: var(--r4); }
-.rate[data-r="cant_tell"] { --tone: var(--cant); }
+.rate { --tone: var(--cant); }   /* each button's colour is its rating's `tone` in roll_legs.js's PASS block */
 
 /* the comment; Can't tell asks for it (.need) and offers quick reasons */
 .comment-label { display: block; font-size: 12px; font-weight: 600; margin-top: 12px; }

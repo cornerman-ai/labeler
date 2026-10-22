@@ -1,18 +1,19 @@
 # Roll legs
 
-How does the boxer get under the punch in a roll: by bending the legs or by bending the upper body? The second pass
-on the roll clips (same clips as `../roll_eyes/`, one question per pass). The coach (Stafford) rates one looping clip
-per labeled roll. **Draft** scale (2026-10-22, Mathé is settling it with Stafford):
+Does the boxer use the legs to get under the punch in a roll? The second pass on the roll clips (same clips as
+`../roll_eyes/`, one question per pass). The coach (Stafford) rates one looping clip per labeled roll:
 
-- **Legs** — knees bend, the torso stays upright
-- **Mostly legs** — knees bend, a little lean
-- **Mostly upper body** — bends at the waist, legs fairly straight
-- **Upper body** — folds forward at the waist, legs straight
+- **Uses the legs** — the knees bend to take the body down
+- **Doesn't use the legs** — the legs stay fairly straight; the dip comes from bending over
 - **Can't tell** — needs a reason in the comment (quick picks: legs out of the picture, body hidden, too blurry /
   too small, not a roll)
 
-Any rating can carry a comment. The ratings set the cut-offs on the skeleton measure (cornerman-backend
-`ml/research/roll_eyes/roll_rating/roll_body.py`: knee bend against forward trunk lean at the bottom of the roll).
+(2026-10-22, Mathé: legs or not — where the head and eyes go is the roll eyes pass, so no upper-body scale here.
+The first draft, Legs / Mostly legs / Mostly upper body / Upper body, was replaced before anyone rated.)
+
+Any rating can carry a comment. The ratings set the cut-off on the skeleton measure (cornerman-backend
+`ml/research/roll_eyes/roll_rating/roll_body.py`: the knee bend added from guard to the bottom of the roll, beside
+the forward trunk lean).
 
 Link to send: https://cornerman-ai.github.io/labeler/roll_legs/roll_legs.html?labeler=Stafford
 (`?labeler=` seeds the name once; a second rater opens the same link with their own name and gets the same order).
@@ -21,7 +22,8 @@ Link to send: https://cornerman-ai.github.io/labeler/roll_legs/roll_legs.html?la
 
 Edit the `PASS` block at the top of `roll_legs.js` — the question, the hint, the "watch" line, the ratings (`r` the
 name stored in the sheet, lower_snake; `key` the shortcut; `rank` the sheet's `rating_rank`, a number or `''`;
-`name`, `desc`) and the Can't tell reasons. The buttons, keys, help sheet, examples and colours (by position) follow.
+`tone` the button's colour, `name`, `desc`) and the Can't tell reasons. The buttons, keys, help sheet and examples
+follow.
 The Apps Script (`doGetRollLegs`) takes any lower_snake rating with the rank the page sends, so it needs no change.
 Then put one clip per new rating in `examples.json` (any roll id from `queue.json`). Changing the scale after
 rating has started mixes two scales in one sheet: say so in the commit, and read the rows by `ts`.
@@ -30,12 +32,12 @@ rating has started mixes two scales in one sheet: say so in the commit, and read
 
 The roll eyes page (see `../roll_eyes/README.md`): the clip (0.6 s before the roll → 0.3 s after it), the timeline
 (guard / roll / lowest point), transport, the comment, the buttons, ◂ Back / **Examples** / Next ▸.
-Keys: `1`–`4` and `0` (from `PASS`) · `C` the comment · `E` examples · space · `←` `→` · `⇧←` `⇧→` · `S` · `?`.
+Keys: `1` uses the legs · `2` doesn't · `0` can't tell (from `PASS`) · `C` the comment · `E` examples · space · `←` `→` · `⇧←` `⇧→` · `S` · `?`.
 
-**Examples** (`examples.json`): one clip per rating, kept out of the queue. The current five were picked by Claude
-from the skeleton measure and a look at the bottom frame — **for Mathé to confirm or swap**:
-legs r1594, mostly legs r2104, mostly upper body r0724, upper body r0688, can't tell r0437 (the picture stops at
-the waist).
+**Examples** (`examples.json`): one clip per rating, kept out of the queue. Picked by Claude from the skeleton
+measure and a look at the bottom frame — **for Mathé to confirm or swap**: uses the legs r1594 (knees +55° from
+guard), doesn't use the legs r0688 (knees +1°, folds forward +26°), can't tell r0437 (the picture stops at the
+waist).
 
 ## Admin mode
 
@@ -49,7 +51,7 @@ rater's rating + comment.
 
 `queue.json` and `admin.json` are built by cornerman-backend `ml/research/roll_eyes/roll_rating/legs_pass.py`:
 every roll clip but the examples, its own fixed shuffle (not the roll eyes order), ~10 % blind repeats.
-(2026-10-22) 2,134 clips + 213 repeats = 2,347 slots.
+(2026-10-22) 2,136 clips + 214 repeats = 2,350 slots.
 
 Workbook **Roll legs ratings** (Drive `Ambo/data/labels/labeling_team/`, `ROLL_LEGS_SPREADSHEET_ID`), tab `Ratings`,
 the same columns and rules as Roll eyes ratings (`../roll_eyes/README.md`): one live row per (rater, slot), a re-rate

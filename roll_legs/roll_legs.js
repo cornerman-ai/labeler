@@ -1,11 +1,12 @@
 // ============================================================
-// roll_legs.js — the coach rates how the boxer gets under the punch in each
-// roll: from the legs or from the upper body. The second pass on the roll eyes
+// roll_legs.js — the coach rates whether the boxer uses the legs to get under
+// the punch in each roll (2026-10-22, Mathé: legs or not; the head is the roll
+// eyes pass, so no upper-body scale here). The second pass on the roll eyes
 // clips (same clips, same Firebase folder; its own queue, its own workbook).
 //
 // The question, the hint, the ratings and the Can't tell reasons are the PASS
 // block just below — the ONLY place to change them: the page builds its
-// buttons, keys, help rows and examples from it, and the Apps Script
+// buttons (and their colours), keys, help rows and examples from it, and the Apps Script
 // (doGetRollLegs) takes any lower_snake rating with the rank sent here. After a
 // change, put an example clip per new rating in examples.json.
 //
@@ -22,17 +23,18 @@
 // ============================================================
 
 const PASS = {
-  question: 'How does the boxer get under the punch?',
-  hint: 'Watch the legs and the waist at the bottom of the roll. Type a comment first if you want one; one tap on a ' +
-        'rating saves both and plays the next clip.',
-  watch: 'Watch the <b>legs and the waist</b>',
-  // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), key: the shortcut
+  question: 'Does the boxer use the legs to get under the punch?',
+  hint: 'Watch the knees at the bottom of the roll: does the body go down by bending the legs? (Where the eyes go is ' +
+        'the roll eyes pass.) Type a comment first if you want one; one tap on a rating saves both and plays the next clip.',
+  watch: 'Watch the <b>legs</b>',
+  // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), key: the shortcut,
+  // tone: the button's colour
   ratings: [
-    { r: 'legs',         key: '1', rank: 4,  name: 'Legs',              desc: 'Knees bend, the torso stays upright.' },
-    { r: 'mostly_legs',  key: '2', rank: 3,  name: 'Mostly legs',       desc: 'Knees bend, a little lean.' },
-    { r: 'mostly_upper', key: '3', rank: 2,  name: 'Mostly upper body', desc: 'Bends at the waist, legs fairly straight.' },
-    { r: 'upper',        key: '4', rank: 1,  name: 'Upper body',        desc: 'Folds forward at the waist, legs straight.' },
-    { r: 'cant_tell',    key: '0', rank: '', name: 'Can’t tell',        desc: 'Say why in the comment.' },
+    { r: 'uses_legs', key: '1', rank: 1,  tone: '#2fa36b', name: 'Uses the legs',
+      desc: 'The knees bend to take the body down.' },
+    { r: 'no_legs',   key: '2', rank: 0,  tone: '#d9473c', name: 'Doesn’t use the legs',
+      desc: 'The legs stay fairly straight; the dip comes from bending over.' },
+    { r: 'cant_tell', key: '0', rank: '', tone: '#8e8e93', name: 'Can’t tell', desc: 'Say why in the comment.' },
   ],
   reasons: ['Legs out of the picture', 'Body hidden', 'Too blurry / too small', 'Not a roll'],
 };
@@ -578,6 +580,7 @@ function buildButtons() {
     b.type = 'button';
     b.className = 'rate';
     b.dataset.r = x.r;
+    if (x.tone) b.style.setProperty('--tone', x.tone);
     b.innerHTML = `<span class="name">${x.name}</span><kbd>${x.key}</kbd><span class="desc">${x.desc}</span>`;
     b.addEventListener('click', () => { b.blur(); rate(x.r); });
     wrap.appendChild(b);
@@ -595,12 +598,11 @@ function setupPassText() {
 function buildExamples() {
   const grid = $('ex-grid');
   grid.innerHTML = '';
-  const tone = ['--r1', '--r2', '--r3', '--r4', '--cant'];
-  RATINGS.forEach((x, i) => {
+  RATINGS.forEach((x) => {
     const e = state.examples.find(e => e.rating === x.r);
     if (!e) return;
     const f = document.createElement('figure');
-    f.style.setProperty('--tone', `var(${x.r === 'cant_tell' ? '--cant' : tone[i] || '--cant'})`);
+    f.style.setProperty('--tone', x.tone || 'var(--cant)');
     f.innerHTML = `<video muted playsinline loop preload="none" data-src="${clipUrl(e.id)}"></video>
       <figcaption><b>${x.name}</b>${x.desc}</figcaption>`;
     grid.appendChild(f);
