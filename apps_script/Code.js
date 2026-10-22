@@ -500,6 +500,10 @@ function doGet(e) {
   if (ROLL_EYES_ACTIONS.indexOf(action) !== -1) {
     return doGetRollEyes(p, labeler, action);
   }
+  // Roll legs (roll_legs/) — its own workbook, see doGetRollLegs.
+  if (ROLL_LEGS_ACTIONS.indexOf(action) !== -1) {
+    return doGetRollLegs(p, labeler, action);
+  }
 
   // Sentinels match case-insensitively: since 2026-08 the labeler string comes
   // from labeler_name.js, which capitalizes the first letter, so an old
@@ -7239,35 +7243,54 @@ function doGetUppercutDrop(p, labeler, action) {
 }
 
 // ============================================================
-// Roll eyes (roll_eyes/) — the coach rates whether the boxer keeps the eyes up
-// at the bottom of each roll, one looping clip per labeled roll.
-// Own workbook, **Roll eyes ratings** (Drive Ambo/data/labels/labeling_team/),
-// tab `Ratings`, one row per (rater, slot) — the uppercut labeler's contract:
-// the page's queue (queue.json, built by cornerman-backend
-// ml/research/roll_eyes/roll_rating/build.py) plants ~10% blind repeats
-// (rep=1), so the slot, not the clip, is the key. Rating a slot again
-// soft-deletes the earlier row (deleted=1) and appends the new one.
-// rating: good / mid / bad / cant_tell; rating_rank 3..1, blank for cant_tell.
+// The roll labelers — one looping clip per labeled roll, one question per pass,
+// each its own workbook (Drive Ambo/data/labels/labeling_team/), tab `Ratings`,
+// one row per (rater, slot) — the uppercut labeler's contract: the page's queue
+// (built by cornerman-backend ml/research/roll_eyes/roll_rating/) plants ~10%
+// blind repeats (rep=1), so the slot, not the clip, is the key. Rating a slot
+// again soft-deletes the earlier row (deleted=1) and appends the new one.
 // `comment` is free text; a cant_tell must carry one (why it can't be told).
-// Admin (the name `admin`) rates nothing: listRollEyes answers every rater's
-// live rows, so the page can show them beside the model's numbers.
+// Admin (the name `admin`) rates nothing: the list action answers every
+// rater's live rows, so the page can show them beside the model's numbers.
+//
+//   roll_eyes/  **Roll eyes ratings** — do the eyes stay up through the roll:
+//               good / mid / bad / cant_tell, rating_rank 3..1, blank for cant_tell.
+//   roll_legs/  **Roll legs ratings** — legs or upper body: the ratings are the
+//               page's (its RATINGS block, swapped without touching this file):
+//               any lower_snake name, rating_rank sent by the page (a number or blank).
 // ============================================================
 var ROLL_EYES_SPREADSHEET_ID = '15w7S5VNiXcVJY8DwWOo5-tuyjeLllMFcuFM2foY8tYI';
 var ROLL_EYES_ACTIONS = ['listRollEyes', 'saveRollEyes', 'deleteRollEyes'];
-var ROLL_EYES_TAB = 'Ratings';
-var ROLL_EYES_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'roll_id', 'video_name', 'side', 'stance',
+var ROLL_LEGS_SPREADSHEET_ID = '1psqgZYr0KDQHxDV8uH_R43sU6Q7F7kMXcWrd30mdf3M';
+var ROLL_LEGS_ACTIONS = ['listRollLegs', 'saveRollLegs', 'deleteRollLegs'];
+var ROLL_TAB = 'Ratings';
+var ROLL_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'roll_id', 'video_name', 'side', 'stance',
   'training_type', 'roll_start', 'roll_end', 'bottom_sec', 'clip_start', 'clip_end', 'rating', 'rating_rank',
   'comment', 'speed', 'dwell_sec', 'deleted'];
 var ROLL_EYES_RANKS = { good: 3, mid: 2, bad: 1, cant_tell: '' };
 
 function doGetRollEyes(p, labeler, action) {
-  var sh = getOrCreateSheetWithHeaders(SpreadsheetApp.openById(ROLL_EYES_SPREADSHEET_ID),
-    ROLL_EYES_TAB, ROLL_EYES_HEADERS);
+  return doGetRollPass({ sheet: ROLL_EYES_SPREADSHEET_ID, list: 'listRollEyes', del: 'deleteRollEyes',
+    rank: function (rating) { return ROLL_EYES_RANKS.hasOwnProperty(rating) ? ROLL_EYES_RANKS[rating] : null; } },
+    p, labeler, action);
+}
+
+function doGetRollLegs(p, labeler, action) {
+  return doGetRollPass({ sheet: ROLL_LEGS_SPREADSHEET_ID, list: 'listRollLegs', del: 'deleteRollLegs',
+    rank: function (rating, p) {
+      if (!/^[a-z_]{1,32}$/.test(rating)) return null;
+      var r = String(p.rating_rank === undefined ? '' : p.rating_rank);
+      return r === '' ? '' : (/^-?\d+$/.test(r) ? Number(r) : null);
+    } }, p, labeler, action);
+}
+
+function doGetRollPass(cfg, p, labeler, action) {
+  var sh = getOrCreateSheetWithHeaders(SpreadsheetApp.openById(cfg.sheet), ROLL_TAB, ROLL_HEADERS);
   var who = String(labeler || '').trim();
   if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first (top right)', re: 1 });
   var admin = who.toLowerCase() === 'admin';
 
-  if (action === 'listRollEyes') {
+  if (action === cfg.list) {
     var data = sh.getDataRange().getValues();
     var idx = unusableHeaderIndex(data[0]);
     var rows = [];
@@ -7294,23 +7317,22 @@ function doGetRollEyes(p, labeler, action) {
       sh.getRange(r + 1, idx.deleted + 1).setValue(1);
       superseded++;
     }
-    if (action === 'deleteRollEyes') return jsonOut({ status: 'ok', deleted: superseded, re: 1 });
+    if (action === cfg.del) return jsonOut({ status: 'ok', deleted: superseded, re: 1 });
 
     var rating = String(p.rating || '');
-    if (!ROLL_EYES_RANKS.hasOwnProperty(rating)) {
-      return jsonOut({ status: 'error', message: 'invalid rating: ' + rating, re: 1 });
-    }
+    var rank = cfg.rank(rating, p);
+    if (rank === null) return jsonOut({ status: 'error', message: 'invalid rating: ' + rating, re: 1 });
     if (rating === 'cant_tell' && !String(p.comment || '').trim()) {
       return jsonOut({ status: 'error', message: "say why you can't tell", re: 1 });
     }
     if (!p.clip_id) return jsonOut({ status: 'error', message: 'missing field: clip_id', re: 1 });
     var row = [];
-    for (var c = 0; c < ROLL_EYES_HEADERS.length; c++) {
-      var col = ROLL_EYES_HEADERS[c];
+    for (var c = 0; c < ROLL_HEADERS.length; c++) {
+      var col = ROLL_HEADERS[c];
       if (col === 'ts') row.push(new Date().toISOString());
       else if (col === 'rater') row.push(who);
       else if (col === 'slot') row.push(slot);
-      else if (col === 'rating_rank') row.push(ROLL_EYES_RANKS[rating]);
+      else if (col === 'rating_rank') row.push(rank);
       else if (col === 'deleted') row.push('');
       else row.push(p[col] === undefined ? '' : String(p[col]));
     }
