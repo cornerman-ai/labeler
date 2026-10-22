@@ -1,0 +1,10 @@
+{
+ "status": "candidates picked by Claude 2026-10-22 from the knee / lean measure (roll_body.py) + a look at the bottom frame; Mathé to confirm or swap (any roll id from queue.json)",
+ "examples": [
+  {"rating": "legs", "id": "r1594", "why": "side view: a deep knee bend, the trunk stays upright"},
+  {"rating": "mostly_legs", "id": "r2104", "why": "side-on: knees bent, a little lean"},
+  {"rating": "mostly_upper", "id": "r0724", "why": "bends at the waist, legs fairly straight"},
+  {"rating": "upper", "id": "r0688", "why": "side-on: folds forward at the waist, legs nearly straight"},
+  {"rating": "cant_tell", "id": "r0437", "why": "the picture stops at the waist: no legs to see"}
+ ]
+}

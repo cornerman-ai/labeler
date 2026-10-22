@@ -1,0 +1,191 @@
+/* roll_legs.css — ../roll_eyes/roll_eyes.css (the rating panel, the comment,
+   the roll lane, admin mode, the phone layout) with five ratings coloured by
+   their position (r1..r4 + Can't tell, so a new scale needs no CSS) and the
+   examples sheet of ../uppercut_drop/. */
+
+:root {
+  --r1: #2fa36b; --r2: #8bbf3f; --r3: #e39a2d; --r4: #d9473c; --cant: #8e8e93;
+  --guard: #8e8e93;
+}
+
+.nav-sub { font-size: 12px; color: var(--ink-dim); }
+.nav-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+.sync-chip { font-size: 12px; color: var(--ink-dim); }
+.sync-chip.err { color: var(--no); }
+.sync-chip[hidden] { display: none; }
+
+/* ── the left panel ─────────────────────────────────────────────────────── */
+#re-panel {
+  flex: none; width: 340px; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+#re-panel .card { padding: 14px; }
+.count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-dim); }
+.hint { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin: 6px 0 0; }
+.muted { color: var(--ink-dim); }
+#re-panel kbd {
+  display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--fill); font: 11px ui-monospace, Menlo, monospace;
+  color: var(--ink-dim); vertical-align: middle; text-align: center;
+}
+
+#watch { font-size: 14px; line-height: 1.4; }
+#watch b { color: var(--ink); }
+#progress-bar { height: 4px; border-radius: 2px; background: var(--fill); margin: 10px 0 6px; overflow: hidden; }
+#progress-fill { height: 100%; width: 0; background: var(--accent); }
+#progress { font-size: 12px; }
+
+#question { font-size: 16px; font-weight: 640; letter-spacing: -.01em; line-height: 1.3; margin: 0; }
+#buttons { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.rate {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left;
+  border: 1px solid var(--line); border-left: 4px solid var(--tone); border-radius: 8px;
+  background: var(--fill); color: var(--ink); padding: 8px 10px; font: inherit; cursor: pointer;
+  touch-action: manipulation;
+}
+.rate:hover { border-color: var(--ink-dim); border-left-color: var(--tone); }
+.rate .name { font-size: 14px; font-weight: 600; }
+.rate .desc { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); line-height: 1.35; }
+.rate.chosen { background: color-mix(in srgb, var(--tone) 22%, var(--card)); outline: 2px solid var(--tone); outline-offset: 1px; }
+.rate.flash { transform: scale(.98); }
+.rate:nth-child(1) { --tone: var(--r1); }
+.rate:nth-child(2) { --tone: var(--r2); }
+.rate:nth-child(3) { --tone: var(--r3); }
+.rate:nth-child(4) { --tone: var(--r4); }
+.rate[data-r="cant_tell"] { --tone: var(--cant); }
+
+/* the comment; Can't tell asks for it (.need) and offers quick reasons */
+.comment-label { display: block; font-size: 12px; font-weight: 600; margin-top: 12px; }
+#comment {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 4px; resize: vertical; min-height: 44px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink);
+  padding: 6px 8px; font: inherit; font-size: 13px; line-height: 1.4;
+}
+#comment:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+#comment.need { outline: 2px solid var(--bad); outline-offset: 0; border-color: transparent; }
+#reasons { margin-top: 6px; }
+#reasons[hidden] { display: none; }
+.reasons-ask { font-size: 12px; color: var(--bad); font-weight: 600; margin-bottom: 4px; }
+#reason-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  border: 1px solid var(--line); border-radius: 999px; background: var(--fill); color: var(--ink);
+  padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.chip:hover { border-color: var(--ink-dim); }
+#done { font-size: 14px; padding: 10px 0; }
+
+.review-actions { display: flex; flex-wrap: wrap; gap: 8px; }   /* admin's four buttons wrap */
+.review-actions button {
+  flex: 1; white-space: nowrap; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--fill); color: var(--ink); padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.review-actions button:hover { border-color: var(--ink-dim); }
+
+/* ── the video ───────────────────────────────────────────────────────────── */
+#clip-loading {
+  position: absolute; left: 12px; top: 10px; z-index: 3; font-size: 12px; color: #fff;
+  background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 6px;
+}
+#clip-loading[hidden] { display: none; }
+/* The clip is short and the drop small: let the picture fill its box rather
+   than sit at the file's own pixel size. */
+#video-player { width: 100%; height: 100%; object-fit: contain; }
+
+/* the 0.5x switch next to the speed menu */
+.half-btn {
+  height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.half-btn:hover { border-color: var(--ink-dim); }
+.half-btn.on { background: var(--accent-wash); color: var(--accent-on-wash); border-color: transparent; }
+
+/* ── the roll lane: guard, the roll, its lowest point ─────────────────────── */
+.seg-lane.lane-roll { height: 18px; }
+.seg-lane .re-band {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 3px; pointer-events: none;
+  color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
+  overflow: hidden; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em;
+}
+.seg-lane .re-band.guard { background: color-mix(in srgb, var(--guard) 60%, transparent); }
+.seg-lane .re-band.roll  { background: var(--accent-solid); }
+.seg-lane .re-bottom { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); pointer-events: none; }
+#minimap-segments .re-band { position: absolute; top: 0; height: 100%; }
+#minimap-segments .re-band.guard { background: color-mix(in srgb, var(--guard) 60%, transparent); }
+#minimap-segments .re-band.roll { background: var(--accent-solid); }
+
+/* ── admin: the model card and the face on the clip ──────────────────────── */
+#model-card[hidden], #rate-card[hidden], #btn-next-video[hidden], #face-canvas[hidden] { display: none; }
+#face-canvas { position: absolute; left: 0; top: 0; z-index: 8; pointer-events: none; }
+.mn-big { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
+.mn-val { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.mn-big .muted { font-size: 11px; }
+.mn-grid { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 3px 10px; font-size: 12px; }
+.mn-grid span { color: var(--ink-dim); }
+#angle-plot { display: block; width: 100%; height: 110px; margin-top: 10px; border-radius: 6px; background: var(--fill); }
+#rater-rows { font-size: 13px; line-height: 1.45; }
+#rater-rows .rr { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+#rater-rows .rr:last-child { border-bottom: 0; }
+#rater-rows .rr span { font-weight: 600; }
+.mn-grid.mn-3 { grid-template-columns: auto 1fr 1fr 1fr; }
+
+/* ── the sheets ──────────────────────────────────────────────────────────── */
+.sc-body .sc-note { font-size: 13px; line-height: 1.5; margin: 8px 0 0; }
+.sc-body .sc-note.muted { color: var(--ink-dim); }
+/* ── the examples sheet (../uppercut_drop/) ─────────────────────────────── */
+#ex-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  padding: 0; border: none; border-radius: 16px;
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+}
+#ex-dialog::backdrop { background: rgba(0,0,0,.28); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+#ex-dialog .sc-body { max-height: 80vh; }
+#ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+#ex-grid figure { margin: 0; border-radius: 10px; overflow: hidden; background: var(--fill); border-top: 4px solid var(--tone); }
+#ex-grid video { width: 100%; aspect-ratio: 16 / 9; background: #000; display: block; object-fit: contain; }
+#ex-grid figcaption { padding: 8px 10px; font-size: 12px; color: var(--ink-dim); line-height: 1.4; }
+#ex-grid figcaption b { display: block; font-size: 14px; color: var(--ink); }
+
+/* ── phone ───────────────────────────────────────────────────────────────── */
+/* punch.css is a desktop layout (a fixed-height app, panel beside the video).
+   On a phone the page scrolls, and what a rating needs comes first: the clip,
+   which roll it is, the comment, the four buttons — then back / next. */
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  #app { height: auto; overflow: visible; }
+  #top-bar { height: auto; min-height: 48px; padding: 6px 12px; gap: 4px 8px; flex-wrap: wrap; }
+  .nav-lead { flex: none; }
+  .nav-sub, .nav-div, #help-btn { display: none; }
+  .nav-title { font-size: 15px; white-space: nowrap; }
+  .nav-actions { margin-left: auto; }
+  #name-field { min-width: 0; height: 28px; }
+  #labeler-input { width: 84px; }
+  #main-layout { flex-direction: column; padding: 8px 12px 16px; gap: 8px; }
+  #re-panel { display: contents; }
+  #video-container { order: 1; flex: none; gap: 6px; }
+  #clip-card { order: 2; }
+  #rate-card { order: 3; }
+  #model-card { order: 3; }
+  #nav-card { order: 4; }
+  #video-viewport { flex: none; height: auto; min-height: 0; aspect-ratio: 16 / 9; }
+  #video-controls { padding: 6px 10px 8px; gap: 4px; }
+  #seek-bar-wrapper { margin-top: 4px; }
+  .timeline-tick-label, #time-wrap, #frame-display, .tdiv { display: none; }
+  #controls-row { flex-wrap: nowrap; gap: 6px; }
+  /* ±1 frame only: the ±2 steppers don't fit beside the speed controls */
+  .seg-static button:first-child, .seg-static button:last-child { display: none; }
+  .seg-static button:nth-child(2) { border-radius: 8px 0 0 8px; }
+  .seg-static button:nth-child(3) { border-radius: 0 8px 8px 0; }
+  #re-panel .card { padding: 8px 12px; }
+  #clip-card .card-eyebrow { margin-bottom: 2px; }
+  #progress-bar { margin: 6px 0 4px; }
+  #rate-card .hint { display: none; }
+  #question { font-size: 14px; }
+  #buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .rate { padding: 6px 8px; }
+  .rate .name { font-size: 13.5px; }
+  .rate .desc { font-size: 11px; }
+  #comment { min-height: 36px; }
+  .rate[data-r="cant_tell"] { grid-column: 1 / -1; }
+  #re-panel kbd { display: none; }
+}
