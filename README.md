@@ -21,6 +21,7 @@ page lists every labeler. First-time Sheet/Apps-Script setup: [SETUP.md](SETUP.m
 | `chin_tuck_1.0/` | Three chin-vs-shoulder questions per sampled frame | **Current chin labeling.** Repeated samples measure each labeler's self-agreement ceiling |
 | `chin_tuck_0.0/` | One verdict (tucked/level/air) per sampled frame | The original chin labeler, frozen for reference. Has no data of its own — reads 1.0's `chin_frames.json`/`frames/` by relative path |
 | `uppercut_drop/` | How far the punching hand drops before each uppercut: Great / Good / Bad / Very bad / Can't tell, one looping clip per labeled uppercut, ~10 % blind repeats | The coach's ratings set the cut-offs of the "keep your hand up before the uppercut" score |
+| `roll_eyes/` | Do the eyes stay up through each roll: Good / Mid / Bad / Can't tell (with a reason) + a comment, one looping clip per labeled roll, ~10 % blind repeats; the name `admin` shows the model's head angle and every rater's answers | The coach's ratings set the cut-off of the "keep your eyes up when you roll" rule |
 | `guard_drop/` | Hands-down moments in a round | Ground truth for the guard-drop rule |
 | `hip_rotation/` | Rotation-quality rubric per punch | Ground truth behind the hip-rotation rule |
 | `bladedness/` | Pairwise "which stance is more squared?" (shoulder pairs + hip pairs), plus the **coach review** where the coach scores curated frontal frames | The too-squared/too-bladed research — pair judgements calibrate the candidate metrics; the coach review is the expert reference |
