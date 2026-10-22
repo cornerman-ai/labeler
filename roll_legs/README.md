@@ -58,6 +58,14 @@ rater's rating + comment.
 every roll clip but the examples, its own fixed shuffle (not the roll eyes order), ~10 % blind repeats.
 (2026-10-22) 2,136 clips + 214 repeats = 2,350 slots.
 
+**Re-ordered from slot 381 (2026-10-22, cornerman-backend `roll_rating/boost_queue.py --pass legs`)** to get more
+"Doesn't use the legs" (4 in Stafford's first 228). Slots 0–380 untouched (he was at 350; 350 itself was the asked
+start, already rated, so + 30 as for roll eyes). In the next 300 clips, half come from the 10 % of remaining rolls
+the skeleton rates least likely to use the legs (less knee bend, less knee bend added, more of the dip from leaning,
+more trunk lean; in his first 271 ratings that pool held every "Doesn't" (15 %) and 35 % Mid, the rest 0 % and 15 %),
+half at random; the rest random; repeats re-planted; the example clips left out. 2,341 slots. Rates from slot 381 on
+must weight the boosted slots back: `queue.json`'s `params.boost` and `roll_rating/queue_boost_legs_2026-10-22.csv`.
+
 Workbook **Roll legs ratings** (Drive `Ambo/data/labels/labeling_team/`, `ROLL_LEGS_SPREADSHEET_ID`), tab `Ratings`,
 the same columns and rules as Roll eyes ratings (`../roll_eyes/README.md`): one live row per (rater, slot), a re-rate
 soft-deletes (`deleted=1`), `clip_id` = `roll_id`, a `cant_tell` always has a `comment`; `rating_rank` is the page's.
