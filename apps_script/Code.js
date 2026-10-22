@@ -496,6 +496,11 @@ function doGet(e) {
     return doGetUppercutDrop(p, labeler, action);
   }
 
+  // Roll eyes (roll_eyes/) — its own workbook, see doGetRollEyes.
+  if (ROLL_EYES_ACTIONS.indexOf(action) !== -1) {
+    return doGetRollEyes(p, labeler, action);
+  }
+
   // Sentinels match case-insensitively: since 2026-08 the labeler string comes
   // from labeler_name.js, which capitalizes the first letter, so an old
   // ?labeler=archive / ?labeler=combined review link now arrives as
@@ -7230,5 +7235,87 @@ function doGetUppercutDrop(p, labeler, action) {
     }
     sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
     return jsonOut({ status: 'ok', superseded: superseded, ud: 1 });
+  });
+}
+
+// ============================================================
+// Roll eyes (roll_eyes/) — the coach rates whether the boxer keeps the eyes up
+// at the bottom of each roll, one looping clip per labeled roll.
+// Own workbook, **Roll eyes ratings** (Drive Ambo/data/labels/labeling_team/),
+// tab `Ratings`, one row per (rater, slot) — the uppercut labeler's contract:
+// the page's queue (queue.json, built by cornerman-backend
+// ml/research/roll_eyes/roll_rating/build.py) plants ~10% blind repeats
+// (rep=1), so the slot, not the clip, is the key. Rating a slot again
+// soft-deletes the earlier row (deleted=1) and appends the new one.
+// rating: good / mid / bad / cant_tell; rating_rank 3..1, blank for cant_tell.
+// `comment` is free text; a cant_tell must carry one (why it can't be told).
+// Admin (the name `admin`) rates nothing: listRollEyes answers every rater's
+// live rows, so the page can show them beside the model's numbers.
+// ============================================================
+var ROLL_EYES_SPREADSHEET_ID = '15w7S5VNiXcVJY8DwWOo5-tuyjeLllMFcuFM2foY8tYI';
+var ROLL_EYES_ACTIONS = ['listRollEyes', 'saveRollEyes', 'deleteRollEyes'];
+var ROLL_EYES_TAB = 'Ratings';
+var ROLL_EYES_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'roll_id', 'video_name', 'side', 'stance',
+  'training_type', 'roll_start', 'roll_end', 'bottom_sec', 'clip_start', 'clip_end', 'rating', 'rating_rank',
+  'comment', 'speed', 'dwell_sec', 'deleted'];
+var ROLL_EYES_RANKS = { good: 3, mid: 2, bad: 1, cant_tell: '' };
+
+function doGetRollEyes(p, labeler, action) {
+  var sh = getOrCreateSheetWithHeaders(SpreadsheetApp.openById(ROLL_EYES_SPREADSHEET_ID),
+    ROLL_EYES_TAB, ROLL_EYES_HEADERS);
+  var who = String(labeler || '').trim();
+  if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first (top right)', re: 1 });
+  var admin = who.toLowerCase() === 'admin';
+
+  if (action === 'listRollEyes') {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.deleted]) === '1') continue;
+      if (!admin && String(data[r][idx.rater]) !== who) continue;
+      rows.push({ rater: String(data[r][idx.rater]), slot: Number(data[r][idx.slot]),
+                  clip_id: String(data[r][idx.clip_id]), rating: String(data[r][idx.rating]),
+                  comment: String(data[r][idx.comment]), ts: String(data[r][idx.ts]) });
+    }
+    return jsonOut({ status: 'ok', rows: rows, re: 1 });
+  }
+
+  if (admin) return jsonOut({ status: 'error', message: 'admin only views — type your own name to rate', re: 1 });
+  return withPunchWriteLock(function () {
+    var slot = parseInt(p.slot, 10);
+    if (!(slot >= 0)) return jsonOut({ status: 'error', message: 'missing field: slot', re: 1 });
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var superseded = 0;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.deleted]) === '1' || String(data[r][idx.rater]) !== who) continue;
+      if (Number(data[r][idx.slot]) !== slot) continue;
+      sh.getRange(r + 1, idx.deleted + 1).setValue(1);
+      superseded++;
+    }
+    if (action === 'deleteRollEyes') return jsonOut({ status: 'ok', deleted: superseded, re: 1 });
+
+    var rating = String(p.rating || '');
+    if (!ROLL_EYES_RANKS.hasOwnProperty(rating)) {
+      return jsonOut({ status: 'error', message: 'invalid rating: ' + rating, re: 1 });
+    }
+    if (rating === 'cant_tell' && !String(p.comment || '').trim()) {
+      return jsonOut({ status: 'error', message: "say why you can't tell", re: 1 });
+    }
+    if (!p.clip_id) return jsonOut({ status: 'error', message: 'missing field: clip_id', re: 1 });
+    var row = [];
+    for (var c = 0; c < ROLL_EYES_HEADERS.length; c++) {
+      var col = ROLL_EYES_HEADERS[c];
+      if (col === 'ts') row.push(new Date().toISOString());
+      else if (col === 'rater') row.push(who);
+      else if (col === 'slot') row.push(slot);
+      else if (col === 'rating_rank') row.push(ROLL_EYES_RANKS[rating]);
+      else if (col === 'deleted') row.push('');
+      else row.push(p[col] === undefined ? '' : String(p[col]));
+    }
+    // text, so a comment like "=1" or "05" lands as typed
+    sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setNumberFormat('@').setValues([row]);
+    return jsonOut({ status: 'ok', superseded: superseded, re: 1 });
   });
 }
