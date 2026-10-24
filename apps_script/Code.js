@@ -7332,6 +7332,12 @@ function bagBiteBook() {
 
 function doGetBagBite(p, labeler, action) {
   var sh = getOrCreateSheetWithHeaders(bagBiteBook(), BAG_BITE_TAB, BAG_BITE_HEADERS);
+  // A tab with no ratings yet under other headers (the first draft's 13 columns) takes these.
+  if (sh.getLastRow() <= 1 && sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].join('|') !== BAG_BITE_HEADERS.join('|')) {
+    sh.clear();
+    sh.getRange(1, 1, 1, BAG_BITE_HEADERS.length).setValues([BAG_BITE_HEADERS]);
+    sh.setFrozenRows(1);
+  }
   var who = String(labeler || '').trim();
   if (!who || who === '1') return jsonOut({ status: 'error', message: 'no rater name', re: 1 });
   var admin = who.toLowerCase() === 'admin';
