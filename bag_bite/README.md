@@ -52,7 +52,8 @@ can be set against these.
 
 ## Where the ratings land
 
-Workbook **Bag bite ratings** (Drive `Ambo/data/labels/labeling_team/`, beside the roll workbooks), tab `Ratings`,
+Workbook **Bag bite ratings** (`1zJsYa5YeRfa01sj9t2ACNu50iN41HBkOr9M0CuI070Q`, Drive `Ambo/data/labels/labeling_team/`,
+beside the roll workbooks), tab `Ratings`,
 written by `doGetBagBite` in `apps_script/Code.js`, which makes the workbook on its first call and keeps its ID in the
 script property `BAG_BITE_SPREADSHEET_ID`:
 
