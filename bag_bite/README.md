@@ -1,7 +1,7 @@
 # Bag bite
 
-Does a punch on the heavy bag **bite** (hits through and snaps straight back) or is it **pushing** (rests on the bag,
-pushes it, drifts back)? The coach rates one looping clip per punch: **Bites**, **Pushing** or **Can't tell** — which
+How well does a punch on the heavy bag **snap** — hit and come straight back, or rest on the bag, push it and drift
+back? The coach rates one looping clip per punch: **Good**, **Mid**, **Bad**, **Very bad** or **Can't tell** — which
 needs a reason: the page won't save it until the comment says why (quick picks: glove hidden, misses the bag, not a
 punch, skeleton on the wrong place, too blurry / too small). Any rating can carry a comment. The ratings are what
 rule 41 ("punches stuck in the bag", cornerman-backend `ml/research/bag_bite/`) is measured against: its readings
@@ -24,7 +24,7 @@ The roll legs labeler's page (`../roll_legs/`, on the roll eyes / uppercut hand-
 - Left panel: the skeleton alone with *before / the punch / after*, and the facing model's angle as a compass seen
   from above (camera at the bottom; orange side-on, blue facing the camera or away).
 - The timeline: two lanes, every punch on the clip — lead hand on top, rear below; the punch to rate is orange.
-- Keys: `1` Bites · `2` Pushing · `0` Can't tell · `C` the comment (Enter finishes it) · `K` the skeleton ·
+- Keys: `1` Good · `2` Mid · `3` Bad · `4` Very bad · `0` Can't tell · `C` the comment (Enter finishes it) · `K` the skeleton ·
   space pause · `←` `→` one frame · `⇧←` `⇧→` the clip before / after · `S` 0.5× / 1× · `?` the help sheet.
 - Phone: the page scrolls: the clip, which punch, the skeleton, the comment, the buttons, back / next.
 
@@ -48,7 +48,7 @@ the page resumes at the first slot the rater hasn't rated.
 training_types.json`), 50 per group: punches from the videos and punch types Oleksandr marked as pushing, punches from
 the bag-work videos he did not mention, rule 41's lowest (punch score under 40) and its highest (85 or more). The first
 survey's 100 punches (the sendable `bag_punch_survey.html`, 25 per group) are among them, so the answers given there
-can be set against these.
+(bites / pushing) can be set against these.
 
 ## Where the ratings land
 
@@ -61,7 +61,7 @@ ts | rater | slot | rep | clip_id | hand | punch_type | rating | rating_rank | c
 
 - One live row per (rater, slot). Rating a slot again marks the old row `deleted=1` and appends the new one; read
   only `deleted` ≠ 1.
-- `rating_rank`: bites 1, pushing 0, blank for cant_tell. A `cant_tell` always has a `comment`.
+- `rating_rank`: good 3, mid 2, bad 1, very_bad 0, blank for cant_tell. A `cant_tell` always has a `comment`.
 - `clip_id` (`b000`…) joins cornerman-backend `ml/research/bag_bite/rating/clips.csv`: the group, the video, the
   punch's frames, rule 41's readings and score, and `survey_id` (the punch's number in the first survey, if it was
   there).

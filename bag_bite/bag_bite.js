@@ -1,9 +1,11 @@
 // ============================================================
-// bag_bite.js — does a punch on the heavy bag bite or push? (2026-10-24, for
+// bag_bite.js — how well does a punch on the heavy bag snap? (2026-10-24, for
 // rule 41 "punches stuck in the bag": its readings did not separate the
 // punches Oleksandr marked, so the coach's eye decides what to measure.)
 // 200 punches from the bag-work test videos, ~10 % blind repeats; the first
 // 100 are the ones of the first survey file, so the two can be compared.
+// The scale: good / mid / bad / very bad (Oleksandr, the same day; the
+// first survey was bites / pushing).
 //
 // The question, the hint, the ratings and the Can't tell reasons are the PASS
 // block just below — the ONLY place to change them: the page builds its
@@ -22,17 +24,21 @@
 // ============================================================
 
 const PASS = {
-  question: 'Does the punch bite or push?',
-  hint: 'Watch the glove on the bag: does it hit through and snap straight back, or rest on the bag, push it and ' +
-        'drift back? Type a comment first if you want one; one tap on a rating saves both and plays the next clip.',
+  question: 'How well does the punch snap?',
+  hint: 'Watch the glove on the bag: does it hit and snap straight back, or rest on the bag, push it and drift ' +
+        'back? Type a comment first if you want one; one tap on a rating saves both and plays the next clip.',
   watch: 'Watch the <b>orange arm</b>',
   // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), key: the shortcut,
   // tone: the button's colour
   ratings: [
-    { r: 'bites',     key: '1', rank: 1,  tone: '#2fa36b', name: 'Bites',
-      desc: 'Hits through and snaps straight back.' },
-    { r: 'pushing',   key: '2', rank: 0,  tone: '#d9473c', name: 'Pushing',
-      desc: 'Rests on the bag, pushes it, drifts back.' },
+    { r: 'good',      key: '1', rank: 3,  tone: '#2fa36b', name: 'Good',
+      desc: 'Hits and snaps straight back, no pause on the bag.' },
+    { r: 'mid',       key: '2', rank: 2,  tone: '#e3b02d', name: 'Mid',
+      desc: 'A short stay on the bag or a slightly lazy return.' },
+    { r: 'bad',       key: '3', rank: 1,  tone: '#e3722d', name: 'Bad',
+      desc: 'Rests on the bag and pushes it before coming back.' },
+    { r: 'very_bad',  key: '4', rank: 0,  tone: '#b3261e', name: 'Very bad',
+      desc: 'Stuck in the bag: leans into it, drifts back slowly.' },
     { r: 'cant_tell', key: '0', rank: '', tone: '#8e8e93', name: 'Can’t tell', desc: 'Say why in the comment.' },
   ],
   reasons: ['Glove hidden', 'Misses the bag', 'Not a punch', 'Skeleton on the wrong place', 'Too blurry / too small'],
