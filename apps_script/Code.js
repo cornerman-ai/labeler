@@ -504,6 +504,10 @@ function doGet(e) {
   if (ROLL_LEGS_ACTIONS.indexOf(action) !== -1) {
     return doGetRollLegs(p, labeler, action);
   }
+  // Bag bite (bag_bite/) — its own workbook, see doGetBagBite.
+  if (BAG_BITE_ACTIONS.indexOf(action) !== -1) {
+    return doGetBagBite(p, labeler, action);
+  }
 
   // Sentinels match case-insensitively: since 2026-08 the labeler string comes
   // from labeler_name.js, which capitalizes the first letter, so an old
@@ -7284,8 +7288,59 @@ function doGetRollLegs(p, labeler, action) {
     } }, p, labeler, action);
 }
 
+// ============================================================
+// Bag bite (bag_bite/, 2026-10-24) — does a punch on the heavy bag bite (hits
+// through and snaps straight back) or push (rests on the bag, pushes it,
+// drifts back)? 200 punches (the page's queue, built by cornerman-backend
+// ml/research/bag_bite/rating/build.py, which keeps the key: which group each
+// punch is from), ~10% blind repeats. The roll labelers' contract and handler
+// (doGetRollPass): one live row per (rater, slot), a re-rate soft-deletes the
+// earlier row, a cant_tell carries a comment, admin rates nothing and lists
+// every rater's rows. The ratings are the page's PASS block (lower_snake,
+// rating_rank sent by the page).
+//
+// The workbook **Bag bite ratings** is made by the first call that needs it
+// (Drive Ambo/data/labels/labeling_team/, beside the roll workbooks); its ID is
+// the script property BAG_BITE_SPREADSHEET_ID from then on.
+// ============================================================
+var BAG_BITE_ACTIONS = ['listBagBite', 'saveBagBite', 'deleteBagBite'];
+var BAG_BITE_PROP = 'BAG_BITE_SPREADSHEET_ID';
+var BAG_BITE_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'hand', 'punch_type', 'rating', 'rating_rank',
+  'comment', 'speed', 'dwell_sec', 'deleted'];
+
+function bagBiteBook() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(BAG_BITE_PROP);
+  if (id) return SpreadsheetApp.openById(id);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    id = props.getProperty(BAG_BITE_PROP);
+    if (id) return SpreadsheetApp.openById(id);
+    var book = SpreadsheetApp.create('Bag bite ratings');
+    book.getSheets()[0].setName(ROLL_TAB);
+    try {
+      DriveApp.getFileById(book.getId()).moveTo(DriveApp.getFileById(ROLL_EYES_SPREADSHEET_ID).getParents().next());
+    } catch (e) {}   // left in the script owner's My Drive root
+    props.setProperty(BAG_BITE_PROP, book.getId());
+    return book;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doGetBagBite(p, labeler, action) {
+  return doGetRollPass({ open: bagBiteBook, headers: BAG_BITE_HEADERS, list: 'listBagBite', del: 'deleteBagBite',
+    rank: function (rating, p) {
+      if (!/^[a-z_]{1,32}$/.test(rating)) return null;
+      var r = String(p.rating_rank === undefined ? '' : p.rating_rank);
+      return r === '' ? '' : (/^-?\d+$/.test(r) ? Number(r) : null);
+    } }, p, labeler, action);
+}
+
 function doGetRollPass(cfg, p, labeler, action) {
-  var sh = getOrCreateSheetWithHeaders(SpreadsheetApp.openById(cfg.sheet), ROLL_TAB, ROLL_HEADERS);
+  var headers = cfg.headers || ROLL_HEADERS;
+  var sh = getOrCreateSheetWithHeaders(cfg.open ? cfg.open() : SpreadsheetApp.openById(cfg.sheet), ROLL_TAB, headers);
   var who = String(labeler || '').trim();
   if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first (top right)', re: 1 });
   var admin = who.toLowerCase() === 'admin';
@@ -7327,8 +7382,8 @@ function doGetRollPass(cfg, p, labeler, action) {
     }
     if (!p.clip_id) return jsonOut({ status: 'error', message: 'missing field: clip_id', re: 1 });
     var row = [];
-    for (var c = 0; c < ROLL_HEADERS.length; c++) {
-      var col = ROLL_HEADERS[c];
+    for (var c = 0; c < headers.length; c++) {
+      var col = headers[c];
       if (col === 'ts') row.push(new Date().toISOString());
       else if (col === 'rater') row.push(who);
       else if (col === 'slot') row.push(slot);

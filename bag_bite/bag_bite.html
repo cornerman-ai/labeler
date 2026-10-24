@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bag bite — Cornerman labeler</title>
+  <!-- The roll legs labeler's page (../roll_legs/, on the roll eyes / uppercut
+       hand-drop / steps / punch template) with the skeleton drawn on the clip
+       and beside it. The question, the hint and the ratings are NOT in this
+       file: bag_bite.js's PASS block fills them in. bag_bite.css =
+       roll_legs.css + the skeleton card and the two punch lanes. -->
+  <link rel="stylesheet" href="../punch/punch.css?v=20260918">
+  <link rel="stylesheet" href="bag_bite.css?v=20261024">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── navigation bar ───────────────────────────────────────────────── -->
+    <header id="top-bar">
+      <div class="nav-lead">
+        <h1 class="nav-title">Bag bite</h1>
+        <span class="nav-sub">does the punch bite or push?</span>
+      </div>
+      <div class="nav-actions">
+        <div class="nav-group">
+          <span id="sync-chip" class="sync-chip" hidden></span>
+        </div>
+        <span class="nav-div"></span>
+        <div class="nav-group">
+          <!-- The name every rating is filed under (labeler_name.js, shared with
+               every labeler): a second rater types their own. -->
+          <div id="name-field">
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="4.4" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 12.2c0-2.3 2.1-3.6 4.8-3.6s4.8 1.3 4.8 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input id="labeler-input" placeholder="Your name" title="Your name"
+                   autocomplete="off" spellcheck="false" maxlength="40">
+          </div>
+          <button class="icon-btn" id="help-btn" title="Keys and how this works (?)" aria-haspopup="dialog">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 6.2a1.75 1.75 0 1 1 2.3 1.66c-.4.14-.6.5-.6.92v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg>
+          </button>
+          <a class="nav-link" href="../index.html">All labelers</a>
+        </div>
+      </div>
+    </header>
+
+    <div id="main-layout">
+      <!-- Left: the clip, the skeleton alone, the question, the ratings and the
+           comment; in admin mode every rater's answers instead of the ratings -->
+      <aside id="re-panel">
+        <section class="card" id="clip-card">
+          <div class="card-eyebrow">Clip <span id="clip-n" class="count"></span></div>
+          <div id="watch" class="muted">Loading the clips…</div>
+          <div id="progress-bar"><div id="progress-fill"></div></div>
+          <div id="progress" class="muted"></div>
+        </section>
+
+        <!-- The skeleton alone, the punching arm orange during the punch, and the
+             facing model's angle seen from above (camera at the bottom) -->
+        <section class="card" id="skel-card">
+          <canvas id="skel-canvas" width="560" height="560"></canvas>
+        </section>
+
+        <section class="card" id="rate-card">
+          <!-- filled in from bag_bite.js's PASS block -->
+          <h2 id="question"></h2>
+          <p class="hint" id="rate-hint"></p>
+          <label class="comment-label" for="comment">Comment <span class="muted">(optional, except for Can’t tell)</span></label>
+          <textarea id="comment" rows="2" maxlength="500" placeholder="Anything worth noting about this punch"></textarea>
+          <div id="reasons" hidden>
+            <div class="reasons-ask">Why can’t you tell? Pick one or type it above.</div>
+            <div id="reason-chips"></div>
+          </div>
+          <div id="buttons"></div>
+          <div id="done" class="muted" hidden>All clips rated. Thank you!</div>
+        </section>
+
+        <!-- Admin mode (the name `admin`): what the raters said. Which group a punch is from (and rule 41's
+             readings) stays in cornerman-backend ml/research/bag_bite/rating/clips.csv, never on this page. -->
+        <section class="card" id="model-card" hidden>
+          <div class="card-eyebrow">Ratings</div>
+          <div id="rater-rows" class="muted"></div>
+        </section>
+
+        <section class="card" id="nav-card">
+          <div class="review-actions">
+            <button type="button" id="btn-prev" title="The clip before (Shift+←)">◂ Back</button>
+                        <button type="button" id="btn-next" title="The next clip (Shift+→)">Next ▸</button>
+            <button type="button" id="btn-skel" title="The skeleton on the clip on / off (K)">Skeleton <kbd>K</kbd></button>
+          </div>
+        </section>
+      </aside>
+
+      <!-- Centre: the clip and its timeline -->
+      <main id="video-container">
+        <div id="video-viewport">
+          <video id="video-player" muted playsinline autoplay loop preload="auto"></video>
+          <div id="video-overlay"></div>
+          <!-- the skeleton over the picture (sized in bag_bite.js); K hides it -->
+          <canvas id="face-canvas"></canvas>
+          <span id="clip-loading" hidden></span>
+          <!-- Only while the picture is magnified; click to go back to 1x —
+               shared/ui.js's setupVideoZoom(). -->
+          <button id="video-zoom-badge" type="button" hidden title="Reset zoom (or double-click the video)">1.0&times;</button>
+        </div>
+
+        <div id="video-controls">
+          <div id="timeline-minimap" style="display:none">
+            <div id="minimap-segments"></div>
+            <div id="minimap-viewport"></div>
+            <div id="minimap-playhead"></div>
+          </div>
+
+          <div id="seek-bar-wrapper">
+            <div id="timeline-ticks"></div>
+            <!-- Two lanes, built by renderTimelineOverlay(): the lead hand's
+                 punches, the rear hand's; the punch rated in orange. -->
+            <div id="seg-lanes">
+              <div id="playhead" hidden><span class="playhead-grip"></span></div>
+            </div>
+            <div id="scrub">
+              <div id="seek-bar-overlay"></div>
+              <input type="range" id="seek-bar" min="0" max="1000" value="0" aria-label="Seek">
+            </div>
+          </div>
+
+          <div id="controls-row">
+            <div class="tgroup">
+              <button id="btn-play" class="tbtn" onclick="togglePlay()"
+                      title="Play / pause (Space)" aria-label="Play"></button>
+              <div class="seg-static" role="group" aria-label="Step frames">
+                <button onclick="stepFrames(-2)" title="Back 2 frames" aria-label="Back 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 3 7 7l4 4M7 3 3 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(-1)" title="Back 1 frame (←)" aria-label="Back 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 3 5 7l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(1)" title="Forward 1 frame (→)" aria-label="Forward 1 frame"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button onclick="stepFrames(2)" title="Forward 2 frames" aria-label="Forward 2 frames"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l4 4-4 4M7 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+            </div>
+
+            <span class="tdiv"></span>
+
+            <span id="time-wrap" title="Click to jump to a time">
+              <span id="time-display" role="status" aria-label="Current time">0:00.000 / 0:00.000</span>
+              <input id="time-edit" type="text" inputmode="decimal" spellcheck="false"
+                     autocomplete="off" aria-label="Jump to time (M:SS.mmm or seconds)" hidden>
+            </span>
+            <span id="frame-display" role="status" aria-label="Current frame"></span>
+
+            <span class="tdiv"></span>
+
+            <button type="button" id="btn-half" class="half-btn" title="Half speed on / off (S)">0.5&times;</button>
+            <div id="speed-controls">
+              <button id="speed-btn" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="speed-menu" title="Playback speed">
+                <span id="speed-val">1&times;</span>
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="speed-menu" role="menu" hidden></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- The shortcuts sheet — punch.css's #sc-dialog, opened by shared/ui.js
+       (the ? key, #help-btn). -->
+  <dialog id="sc-dialog">
+    <div class="sc-head">
+      <h2>Bag bite — how it works</h2>
+      <button class="icon-btn" id="sc-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="sc-body">
+      <p class="sc-note">Each clip is one punch on a heavy bag: 0.7 s before it until 0.7 s after, on a loop,
+        cropped to the boxer. Rate whether the punch <b>bites</b> (hits through and snaps straight back) or is
+        <b>pushing</b> (rests on the bag, pushes it, drifts back). The skeleton is drawn on the clip (<kbd>K</kbd>
+        hides it) and alone on the left, the punching arm in <b>orange</b> while it punches; the compass is the
+        boxer's facing angle seen from above, camera at the bottom. The timeline shows every punch on the clip, lead
+        hand on top, rear below; the one to rate is orange. Keep your scale the same throughout.</p>
+      <p class="sc-sec">Rating</p>
+      <div id="help-ratings"></div>
+      <div class="sc-row"><span>Type a comment (Enter to finish), then rate: the comment saves with the rating</span><span class="sc-keys"><kbd>C</kbd></span></div>
+      <div class="sc-row"><span>The clip before / after — change an earlier rating by pressing another key</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>←</kbd><kbd>&#8679;</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>The skeleton on the clip on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
+      <p class="sc-sec">Playback</p>
+      <div class="sc-row"><span>Play / pause (or click the video)</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>One frame back / forward</span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
+      <div class="sc-row"><span>Half speed on / off; other speeds in the speed menu</span><span class="sc-keys"><kbd>S</kbd></span></div>
+      <div class="sc-row"><span>Zoom the picture at the pointer; drag to pan, double-click to reset</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
+      <div class="sc-row"><span>Zoom the timeline</span><span class="sc-keys"><kbd>Scroll</kbd> on it</span></div>
+      <p class="sc-note muted">Ratings go to the <b>Ratings</b> tab of the <b>Bag bite ratings</b> workbook (Drive,
+        Ambo/data/labels/labeling_team), one row per clip you rate. Type the name <b>admin</b> to see every rater's
+        answers instead of rating.</p>
+    </div>
+  </dialog>
+
+  <script src="../shared/labeler_name.js?v=20260918"></script>
+  <script src="../shared/player.js?v=20260918"></script>
+  <script src="bag_bite.js?v=20261024"></script>
+  <script src="../shared/ui.js?v=20260919b"></script>
+</body>
+</html>
