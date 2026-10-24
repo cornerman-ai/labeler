@@ -504,6 +504,11 @@ function doGet(e) {
   if (ROLL_LEGS_ACTIONS.indexOf(action) !== -1) {
     return doGetRollLegs(p, labeler, action);
   }
+
+  // Roll shoulders (roll_shoulders/) — its own workbook, see doGetRollShoulders.
+  if (ROLL_SHOULDERS_ACTIONS.indexOf(action) !== -1) {
+    return doGetRollShoulders(p, labeler, action);
+  }
   // Bag bite (bag_bite/) — its own workbook, see doGetBagBite.
   if (BAG_BITE_ACTIONS.indexOf(action) !== -1) {
     return doGetBagBite(p, labeler, action);
@@ -7259,6 +7264,8 @@ function doGetUppercutDrop(p, labeler, action) {
 //
 //   roll_eyes/  **Roll eyes ratings** — do the eyes stay up through the roll:
 //               good / mid / bad / cant_tell, rating_rank 3..1, blank for cant_tell.
+//   roll_shoulders/  **Roll shoulders ratings** — do the shoulders rotate through the roll (frontal clips only):
+//               the page's ratings, as roll_legs.
 //   roll_legs/  **Roll legs ratings** — does the boxer use the legs: the ratings are the
 //               page's (its RATINGS block, swapped without touching this file):
 //               any lower_snake name, rating_rank sent by the page (a number or blank).
@@ -7267,6 +7274,8 @@ var ROLL_EYES_SPREADSHEET_ID = '15w7S5VNiXcVJY8DwWOo5-tuyjeLllMFcuFM2foY8tYI';
 var ROLL_EYES_ACTIONS = ['listRollEyes', 'saveRollEyes', 'deleteRollEyes'];
 var ROLL_LEGS_SPREADSHEET_ID = '1psqgZYr0KDQHxDV8uH_R43sU6Q7F7kMXcWrd30mdf3M';
 var ROLL_LEGS_ACTIONS = ['listRollLegs', 'saveRollLegs', 'deleteRollLegs'];
+var ROLL_SHOULDERS_SPREADSHEET_ID = '1bt2_fNAul7XLCTUStZovZ3SlTokkOG2YJVymEA9kuRs';
+var ROLL_SHOULDERS_ACTIONS = ['listRollShoulders', 'saveRollShoulders', 'deleteRollShoulders'];
 var ROLL_TAB = 'Ratings';
 var ROLL_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'roll_id', 'video_name', 'side', 'stance',
   'training_type', 'roll_start', 'roll_end', 'bottom_sec', 'clip_start', 'clip_end', 'rating', 'rating_rank',
@@ -7279,13 +7288,21 @@ function doGetRollEyes(p, labeler, action) {
     p, labeler, action);
 }
 
+// The rating and its rank as the page sends them (roll_legs / roll_shoulders: the scale lives in the page's PASS block).
+function rollPageRank(rating, p) {
+  if (!/^[a-z_]{1,32}$/.test(rating)) return null;
+  var r = String(p.rating_rank === undefined ? '' : p.rating_rank);
+  return r === '' ? '' : (/^-?\d+$/.test(r) ? Number(r) : null);
+}
+
 function doGetRollLegs(p, labeler, action) {
   return doGetRollPass({ sheet: ROLL_LEGS_SPREADSHEET_ID, list: 'listRollLegs', del: 'deleteRollLegs',
-    rank: function (rating, p) {
-      if (!/^[a-z_]{1,32}$/.test(rating)) return null;
-      var r = String(p.rating_rank === undefined ? '' : p.rating_rank);
-      return r === '' ? '' : (/^-?\d+$/.test(r) ? Number(r) : null);
-    } }, p, labeler, action);
+    rank: rollPageRank }, p, labeler, action);
+}
+
+function doGetRollShoulders(p, labeler, action) {
+  return doGetRollPass({ sheet: ROLL_SHOULDERS_SPREADSHEET_ID, list: 'listRollShoulders', del: 'deleteRollShoulders',
+    rank: rollPageRank }, p, labeler, action);
 }
 
 // ============================================================
