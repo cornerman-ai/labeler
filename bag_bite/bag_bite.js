@@ -4,8 +4,9 @@
 // punches Oleksandr marked, so the coach's eye decides what to measure.)
 // 200 punches from the bag-work test videos, ~10 % blind repeats; the first
 // 100 are the ones of the first survey file, so the two can be compared.
-// The scale: good / mid / bad / very bad (Oleksandr, the same day; the
-// first survey was bites / pushing).
+// The scale: snapping / pushing, buttons only (Oleksandr, the same day; the
+// first survey was bites / pushing). The only keys: ← → a frame, ⇧← ⇧→ the
+// clip before / after.
 //
 // The question, the hint, the ratings and the Can't tell reasons are the PASS
 // block just below — the ONLY place to change them: the page builds its
@@ -24,24 +25,19 @@
 // ============================================================
 
 const PASS = {
-  question: 'How well does the punch snap?',
+  question: 'Does the punch snap or push?',
   hint: 'Watch the glove on the bag: does it hit and snap straight back, or rest on the bag, push it and drift ' +
-        'back? Type a comment first if you want one; one tap on a rating saves both and plays the next clip.',
+        'back? Type a comment first if you want one; one click on a rating saves both and plays the next clip.',
   watch: 'Watch the <b>orange arm</b>',
-  // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), key: the shortcut,
-  // tone: the button's colour
+  // r: what lands in the sheet (lower_snake), rank: rating_rank (a number, '' for none), tone: the button's colour.
+  // No rating keys: the buttons only (Oleksandr, 2026-10-24).
   ratings: [
-    { r: 'good',      key: '1', rank: 3,  tone: '#2fa36b', name: 'Good',
+    { r: 'snapping', rank: 1, tone: '#2fa36b', name: 'Snapping',
       desc: 'Hits and snaps straight back, no pause on the bag.' },
-    { r: 'mid',       key: '2', rank: 2,  tone: '#e3b02d', name: 'Mid',
-      desc: 'A short stay on the bag or a slightly lazy return.' },
-    { r: 'bad',       key: '3', rank: 1,  tone: '#e3722d', name: 'Bad',
-      desc: 'Rests on the bag and pushes it before coming back.' },
-    { r: 'very_bad',  key: '4', rank: 0,  tone: '#b3261e', name: 'Very bad',
-      desc: 'Stuck in the bag: leans into it, drifts back slowly.' },
-    { r: 'cant_tell', key: '0', rank: '', tone: '#8e8e93', name: 'Can’t tell', desc: 'Say why in the comment.' },
+    { r: 'pushing',  rank: 0, tone: '#d9473c', name: 'Pushing',
+      desc: 'Rests on the bag, pushes it, drifts back.' },
   ],
-  reasons: ['Glove hidden', 'Misses the bag', 'Not a punch', 'Skeleton on the wrong place', 'Too blurry / too small'],
+  reasons: [],
 };
 const RATINGS = PASS.ratings;
 const REASONS = PASS.reasons;
@@ -551,7 +547,7 @@ function buildButtons() {
     b.className = 'rate';
     b.dataset.r = x.r;
     if (x.tone) b.style.setProperty('--tone', x.tone);
-    b.innerHTML = `<span class="name">${x.name}</span><kbd>${x.key}</kbd><span class="desc">${x.desc}</span>`;
+    b.innerHTML = `<span class="name">${x.name}</span>${x.key ? `<kbd>${x.key}</kbd>` : ''}<span class="desc">${x.desc}</span>`;
     b.addEventListener('click', () => { b.blur(); rate(x.r); });
     wrap.appendChild(b);
   }
@@ -562,7 +558,7 @@ function setupPassText() {
   $('question').textContent = PASS.question;
   $('rate-hint').textContent = PASS.hint;
   $('help-ratings').innerHTML = RATINGS.map(x =>
-    `<div class="sc-row"><span>${x.name} — ${x.desc}</span><span class="sc-keys"><kbd>${x.key}</kbd></span></div>`).join('');
+    `<div class="sc-row"><span>${x.name} — ${x.desc}</span><span class="sc-keys">the button</span></div>`).join('');
 }
 
 function setupComment() {
@@ -597,27 +593,18 @@ function setupControls() {
   $('btn-half').onclick = toggleHalf;
 }
 
+// The only keys: a frame back / ahead (← →) and the clip before / after (⇧← ⇧→). Rating is by the buttons.
 function setupKeys() {
   document.addEventListener('keydown', (e) => {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (t && t.tagName === 'BUTTON') t.blur();
-    const r = RATINGS.find(x => x.key === e.key);
-    if (r && !state.admin) { e.preventDefault(); rate(r.r); return; }
-    switch (e.key) {
-      case ' ': e.preventDefault(); togglePlay(); break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        e.shiftKey ? showSlot(state.cursor - 1) : stepFrames(-1);
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        e.shiftKey ? $('btn-next').click() : stepFrames(1);
-        break;
-      case 's': case 'S': e.preventDefault(); toggleHalf(); break;
-      case 'k': case 'K': e.preventDefault(); showSkeleton(!state.skeletonOn); break;
-      case 'c': case 'C': if (!state.admin) { e.preventDefault(); $('comment').focus(); } break;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      e.shiftKey ? showSlot(state.cursor - 1) : stepFrames(-1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      e.shiftKey ? $('btn-next').click() : stepFrames(1);
     }
   });
 }

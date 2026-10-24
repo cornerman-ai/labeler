@@ -1,9 +1,8 @@
 # Bag bite
 
-How well does a punch on the heavy bag **snap** — hit and come straight back, or rest on the bag, push it and drift
-back? The coach rates one looping clip per punch: **Good**, **Mid**, **Bad**, **Very bad** or **Can't tell** — which
-needs a reason: the page won't save it until the comment says why (quick picks: glove hidden, misses the bag, not a
-punch, skeleton on the wrong place, too blurry / too small). Any rating can carry a comment. The ratings are what
+Does a punch on the heavy bag **snap** (hits and comes straight back) or is it **pushing** (rests on the bag, pushes
+it, drifts back)? The coach rates one looping clip per punch with two buttons, **Snapping** or **Pushing** — no rating
+keys, no "can't tell" (Oleksandr, 2026-10-24). Any rating can carry a comment. The ratings are what
 rule 41 ("punches stuck in the bag", cornerman-backend `ml/research/bag_bite/`) is measured against: its readings
 (arrival speed, pause on the bag, snap back) did not separate the punches Oleksandr marked, so the coach's eye says
 what to measure.
@@ -19,13 +18,13 @@ The roll legs labeler's page (`../roll_legs/`, on the roll eyes / uppercut hand-
 - The clip, big: 0.7 s before the punch starts → 0.7 s after it ends, cropped to a square around the boxer (black
   past the picture's edge), muted, looping, half speed by default. Scroll on the picture to zoom, drag to pan,
   double-click to reset.
-- The skeleton on the clip (BlazePose, smoothed as rule 41 reads it; `K` or the **Skeleton** button hides it), the
+- The skeleton on the clip (BlazePose, smoothed as rule 41 reads it; the **Skeleton** button hides it), the
   punching arm **orange** while it punches; faint bones are joints BlazePose barely sees.
 - Left panel: the skeleton alone with *before / the punch / after*, and the facing model's angle as a compass seen
   from above (camera at the bottom; orange side-on, blue facing the camera or away).
 - The timeline: two lanes, every punch on the clip — lead hand on top, rear below; the punch to rate is orange.
-- Keys: `1` Good · `2` Mid · `3` Bad · `4` Very bad · `0` Can't tell · `C` the comment (Enter finishes it) · `K` the skeleton ·
-  space pause · `←` `→` one frame · `⇧←` `⇧→` the clip before / after · `S` 0.5× / 1× · `?` the help sheet.
+- Rating by the buttons only. The only keys: `←` `→` one frame · `⇧←` `⇧→` the clip before / after (and `?` the help
+  sheet). The skeleton, the 0.5× switch and play / pause are buttons.
 - Phone: the page scrolls: the clip, which punch, the skeleton, the comment, the buttons, back / next.
 
 Nothing on the page (or in `queue.json`, or in the clip files) says which group a punch is from, which video it is,
@@ -61,7 +60,7 @@ ts | rater | slot | rep | clip_id | hand | punch_type | rating | rating_rank | c
 
 - One live row per (rater, slot). Rating a slot again marks the old row `deleted=1` and appends the new one; read
   only `deleted` ≠ 1.
-- `rating_rank`: good 3, mid 2, bad 1, very_bad 0, blank for cant_tell. A `cant_tell` always has a `comment`.
+- `rating`: `snapping` (rating_rank 1) or `pushing` (0).
 - `clip_id` (`b000`…) joins cornerman-backend `ml/research/bag_bite/rating/clips.csv`: the group, the video, the
   punch's frames, rule 41's readings and score, and `survey_id` (the punch's number in the first survey, if it was
   there).

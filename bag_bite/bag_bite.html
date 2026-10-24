@@ -19,7 +19,7 @@
     <header id="top-bar">
       <div class="nav-lead">
         <h1 class="nav-title">Bag bite</h1>
-        <span class="nav-sub">how well does the punch snap?</span>
+        <span class="nav-sub">does the punch snap or push?</span>
       </div>
       <div class="nav-actions">
         <div class="nav-group">
@@ -63,7 +63,7 @@
           <!-- filled in from bag_bite.js's PASS block -->
           <h2 id="question"></h2>
           <p class="hint" id="rate-hint"></p>
-          <label class="comment-label" for="comment">Comment <span class="muted">(optional, except for Can’t tell)</span></label>
+          <label class="comment-label" for="comment">Comment <span class="muted">(optional)</span></label>
           <textarea id="comment" rows="2" maxlength="500" placeholder="Anything worth noting about this punch"></textarea>
           <div id="reasons" hidden>
             <div class="reasons-ask">Why can’t you tell? Pick one or type it above.</div>
@@ -84,7 +84,7 @@
           <div class="review-actions">
             <button type="button" id="btn-prev" title="The clip before (Shift+←)">◂ Back</button>
                         <button type="button" id="btn-next" title="The next clip (Shift+→)">Next ▸</button>
-            <button type="button" id="btn-skel" title="The skeleton on the clip on / off (K)">Skeleton <kbd>K</kbd></button>
+            <button type="button" id="btn-skel" title="The skeleton on the clip on / off">Skeleton</button>
           </div>
         </section>
       </aside>
@@ -171,20 +171,19 @@
     </div>
     <div class="sc-body">
       <p class="sc-note">Each clip is one punch on a heavy bag: 0.7 s before it until 0.7 s after, on a loop,
-        cropped to the boxer. Rate how well the punch <b>snaps</b>: <b>good</b> (hits and snaps straight back) to
-        <b>very bad</b> (stuck in the bag: rests on it, pushes it, drifts back). The skeleton is drawn on the clip (<kbd>K</kbd>
-        hides it) and alone on the left, the punching arm in <b>orange</b> while it punches; the compass is the
+        cropped to the boxer. Rate whether the punch is <b>snapping</b> (hits and snaps straight back) or
+        <b>pushing</b> (rests on the bag, pushes it, drifts back). The skeleton is drawn on the clip (the
+        <b>Skeleton</b> button hides it) and alone on the left, the punching arm in <b>orange</b> while it punches; the compass is the
         boxer's facing angle seen from above, camera at the bottom. The timeline shows every punch on the clip, lead
         hand on top, rear below; the one to rate is orange. Keep your scale the same throughout.</p>
       <p class="sc-sec">Rating</p>
       <div id="help-ratings"></div>
-      <div class="sc-row"><span>Type a comment (Enter to finish), then rate: the comment saves with the rating</span><span class="sc-keys"><kbd>C</kbd></span></div>
-      <div class="sc-row"><span>The clip before / after — change an earlier rating by pressing another key</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>←</kbd><kbd>&#8679;</kbd><kbd>→</kbd></span></div>
-      <div class="sc-row"><span>The skeleton on the clip on / off</span><span class="sc-keys"><kbd>K</kbd></span></div>
+      <div class="sc-row"><span>Type a comment, then rate: the comment saves with the rating</span><span class="sc-keys"></span></div>
+      <div class="sc-row"><span>The clip before / after — change an earlier rating by clicking the other button</span><span class="sc-keys"><kbd>&#8679;</kbd><kbd>←</kbd><kbd>&#8679;</kbd><kbd>→</kbd></span></div>
       <p class="sc-sec">Playback</p>
-      <div class="sc-row"><span>Play / pause (or click the video)</span><span class="sc-keys"><kbd>Space</kbd></span></div>
+      <div class="sc-row"><span>Play / pause: click the video or the play button</span><span class="sc-keys"></span></div>
       <div class="sc-row"><span>One frame back / forward</span><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span></div>
-      <div class="sc-row"><span>Half speed on / off; other speeds in the speed menu</span><span class="sc-keys"><kbd>S</kbd></span></div>
+      <div class="sc-row"><span>Half speed on / off (the 0.5× button); other speeds in the speed menu</span><span class="sc-keys"></span></div>
       <div class="sc-row"><span>Zoom the picture at the pointer; drag to pan, double-click to reset</span><span class="sc-keys"><kbd>Scroll</kbd></span></div>
       <div class="sc-row"><span>Zoom the timeline</span><span class="sc-keys"><kbd>Scroll</kbd> on it</span></div>
       <p class="sc-note muted">Ratings go to the <b>Ratings</b> tab of the <b>Bag bite ratings</b> workbook (Drive,
@@ -195,7 +194,7 @@
 
   <script src="../shared/labeler_name.js?v=20260918"></script>
   <script src="../shared/player.js?v=20260918"></script>
-  <script src="bag_bite.js?v=20261024b"></script>
+  <script src="bag_bite.js?v=20261024c"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>
