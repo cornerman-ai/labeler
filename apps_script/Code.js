@@ -7289,15 +7289,15 @@ function doGetRollLegs(p, labeler, action) {
 }
 
 // ============================================================
-// Bag bite (bag_bite/, 2026-10-24) — does a punch on the heavy bag bite (hits
-// through and snaps straight back) or push (rests on the bag, pushes it,
-// drifts back)? 200 punches (the page's queue, built by cornerman-backend
+// Bag bite (bag_bite/, 2026-10-24) — does a punch on the heavy bag snap or
+// push? 200 punches, each once (the page's queue, built by cornerman-backend
 // ml/research/bag_bite/rating/build.py, which keeps the key: which group each
-// punch is from), each once. The roll labelers' contract and handler
-// (doGetRollPass): one live row per (rater, slot), a re-rate soft-deletes the
-// earlier row, a cant_tell carries a comment, admin rates nothing and lists
-// every rater's rows. The ratings are the page's PASS block (lower_snake,
-// rating_rank sent by the page).
+// punch is from).
+//
+// The table is kept as plain as it can be (Oleksandr): one row per
+// (rater, clip) — clip_id | hand | punch_type | rating | rater — and rating a
+// clip again overwrites its row in place (no history, no soft delete).
+// rating: snapping / pushing. Admin rates nothing and lists every rater's rows.
 //
 // The workbook **Bag bite ratings** is made by the first call that needs it
 // (Drive Ambo/data/labels/labeling_team/, beside the roll workbooks); its ID is
@@ -7305,8 +7305,9 @@ function doGetRollLegs(p, labeler, action) {
 // ============================================================
 var BAG_BITE_ACTIONS = ['listBagBite', 'saveBagBite', 'deleteBagBite'];
 var BAG_BITE_PROP = 'BAG_BITE_SPREADSHEET_ID';
-var BAG_BITE_HEADERS = ['ts', 'rater', 'slot', 'rep', 'clip_id', 'hand', 'punch_type', 'rating', 'rating_rank',
-  'comment', 'speed', 'dwell_sec', 'deleted'];
+var BAG_BITE_TAB = 'Ratings';
+var BAG_BITE_HEADERS = ['clip_id', 'hand', 'punch_type', 'rating', 'rater'];
+var BAG_BITE_RATINGS = ['snapping', 'pushing'];
 
 function bagBiteBook() {
   var props = PropertiesService.getScriptProperties();
@@ -7318,7 +7319,7 @@ function bagBiteBook() {
     id = props.getProperty(BAG_BITE_PROP);
     if (id) return SpreadsheetApp.openById(id);
     var book = SpreadsheetApp.create('Bag bite ratings');
-    book.getSheets()[0].setName(ROLL_TAB);
+    book.getSheets()[0].setName(BAG_BITE_TAB);
     try {
       DriveApp.getFileById(book.getId()).moveTo(DriveApp.getFileById(ROLL_EYES_SPREADSHEET_ID).getParents().next());
     } catch (e) {}   // left in the script owner's My Drive root
@@ -7330,12 +7331,45 @@ function bagBiteBook() {
 }
 
 function doGetBagBite(p, labeler, action) {
-  return doGetRollPass({ open: bagBiteBook, headers: BAG_BITE_HEADERS, list: 'listBagBite', del: 'deleteBagBite',
-    rank: function (rating, p) {
-      if (!/^[a-z_]{1,32}$/.test(rating)) return null;
-      var r = String(p.rating_rank === undefined ? '' : p.rating_rank);
-      return r === '' ? '' : (/^-?\d+$/.test(r) ? Number(r) : null);
-    } }, p, labeler, action);
+  var sh = getOrCreateSheetWithHeaders(bagBiteBook(), BAG_BITE_TAB, BAG_BITE_HEADERS);
+  var who = String(labeler || '').trim();
+  if (!who || who === '1') return jsonOut({ status: 'error', message: 'no rater name', re: 1 });
+  var admin = who.toLowerCase() === 'admin';
+
+  if (action === 'listBagBite') {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      if (!admin && String(data[r][idx.rater]) !== who) continue;
+      rows.push({ rater: String(data[r][idx.rater]), clip_id: String(data[r][idx.clip_id]),
+                  rating: String(data[r][idx.rating]) });
+    }
+    return jsonOut({ status: 'ok', rows: rows, re: 1 });
+  }
+
+  if (admin) return jsonOut({ status: 'error', message: 'admin only views', re: 1 });
+  var clip = String(p.clip_id || '');
+  if (!clip) return jsonOut({ status: 'error', message: 'missing field: clip_id', re: 1 });
+  return withPunchWriteLock(function () {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var at = -1;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.rater]) === who && String(data[r][idx.clip_id]) === clip) { at = r; break; }
+    }
+    if (action === 'deleteBagBite') {
+      if (at !== -1) sh.deleteRow(at + 1);
+      return jsonOut({ status: 'ok', deleted: at === -1 ? 0 : 1, re: 1 });
+    }
+    var rating = String(p.rating || '');
+    if (BAG_BITE_RATINGS.indexOf(rating) === -1) return jsonOut({ status: 'error', message: 'invalid rating: ' + rating, re: 1 });
+    var vals = { clip_id: clip, hand: String(p.hand || ''), punch_type: String(p.punch_type || ''), rating: rating, rater: who };
+    var row = BAG_BITE_HEADERS.map(function (h) { return vals[h]; });
+    var target = at !== -1 ? at + 1 : sh.getLastRow() + 1;
+    sh.getRange(target, 1, 1, row.length).setNumberFormat('@').setValues([row]);
+    return jsonOut({ status: 'ok', replaced: at !== -1, re: 1 });
+  });
 }
 
 function doGetRollPass(cfg, p, labeler, action) {

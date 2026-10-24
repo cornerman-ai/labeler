@@ -128,7 +128,9 @@ async function loadRater() {
   syncChip('Loading your ratings…');
   try {
     const res = await call({ action: ACT.list });
-    for (const row of res.rows) state.ratings.set(row.slot, { rating: row.rating, comment: row.comment });
+    // one row per clip (no repeats): back to the clip's slot in the queue
+    const slotOf = new Map(state.queue.map(s => [s.id, s.slot]));
+    for (const row of res.rows) if (slotOf.has(row.clip_id)) state.ratings.set(slotOf.get(row.clip_id), { rating: row.rating });
     syncChip('');
   } catch (e) {
     syncChip('Could not load your earlier ratings — ' + e.message, true);
@@ -187,7 +189,8 @@ async function flushOutbox() {
     while (list.length) {
       const item = list[0];
       try {
-        await call(item);
+        const { slot, ts_local, ...params } = item;
+        await call(params);
       } catch (e) {
         syncChip(`${list.length} not saved yet — retrying (${e.message})`, true);
         setTimeout(() => { flushing = false; flushOutbox(); }, 5000);
@@ -226,12 +229,9 @@ function rate(rating) {
   const dwell = Math.min(120, (performance.now() - state.shownAt) / 1000);
   // One pending save per slot: a re-rate before the first save went out replaces it.
   const list = outbox().filter(o => Number(o.slot) !== s.slot);
-  list.push({
-    action: ACT.save, slot: s.slot, rep: s.rep, rating, comment,
-    rating_rank: RATINGS.find(x => x.r === rating)?.rank ?? '',
-    clip_id: s.id, hand: c.hand, punch_type: c.type,
-    speed: videoEl().playbackRate, dwell_sec: dwell.toFixed(1), ts_local: Date.now(),
-  });
+  // the sheet keeps clip_id | hand | punch_type | rating | rater (the rater is added by call());
+  // slot / ts_local only key the outbox
+  list.push({ action: ACT.save, slot: s.slot, clip_id: s.id, hand: c.hand, punch_type: c.type, rating, ts_local: Date.now() });
   setOutbox(list);
   syncChip('Saving…');
   flushOutbox();

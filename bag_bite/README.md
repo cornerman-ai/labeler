@@ -54,15 +54,13 @@ survey's 100 punches (the sendable `bag_punch_survey.html`, 25 per group) are am
 ## Where the ratings land
 
 Workbook **Bag bite ratings** (`1zJsYa5YeRfa01sj9t2ACNu50iN41HBkOr9M0CuI070Q`, Drive `Ambo/data/labels/labeling_team/`,
-beside the roll workbooks), tab `Ratings`,
-written by `doGetBagBite` in `apps_script/Code.js`, which makes the workbook on its first call and keeps its ID in the
-script property `BAG_BITE_SPREADSHEET_ID`:
+beside the roll workbooks), tab `Ratings`, written by `doGetBagBite` in `apps_script/Code.js`, which made the workbook
+on its first call and keeps its ID in the script property `BAG_BITE_SPREADSHEET_ID`. Kept as plain as it can be:
 
-ts | rater | slot | rep | clip_id | hand | punch_type | rating | rating_rank | comment | speed | dwell_sec | deleted
+clip_id | hand | punch_type | rating | rater
 
-- One live row per (rater, slot). Rating a slot again marks the old row `deleted=1` and appends the new one; read
-  only `deleted` ≠ 1.
-- `rating`: `snapping` (rating_rank 1) or `pushing` (0).
+- One row per (rater, clip). Rating a clip again overwrites its row in place; no history.
+- `rating`: `snapping` or `pushing`. `rater` is Stafford unless the link's `?labeler=` says otherwise.
 - `clip_id` (`b000`…) joins cornerman-backend `ml/research/bag_bite/rating/clips.csv`: the group, the video, the
   punch's frames, rule 41's readings and score, and `survey_id` (the punch's number in the first survey, if it was
   there).
