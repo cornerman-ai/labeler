@@ -1,0 +1,8 @@
+{
+ "status": "candidates picked by Claude 2026-10-24 from the shoulder-turn measure (roll_shoulders.py) + the guard and bottom frames, frontal clips only; Mathé to confirm or swap (any roll id from queue.json)",
+ "examples": [
+  {"rating": "good", "id": "r1701", "why": "facing the camera: the shoulders turn clearly into the bottom of the roll (98° turn from guard)"},
+  {"rating": "bad", "id": "r0297", "why": "facing the camera: dips straight down, the shoulders stay square (15°)"},
+  {"rating": "cant_tell", "id": "r1805", "why": "half out of the picture and blurred at the bottom"}
+ ]
+}
