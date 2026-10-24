@@ -66,6 +66,12 @@ more trunk lean; in his first 271 ratings that pool held every "Doesn't" (15 %) 
 half at random; the rest random; repeats re-planted; the example clips left out. 2,341 slots. Rates from slot 381 on
 must weight the boosted slots back: `queue.json`'s `params.boost` and `roll_rating/queue_boost_legs_2026-10-22.csv`.
 
+**Boosted again from slot 716 (2026-10-24, `boost_queue.py --pass legs-doesnt --again`)**, aimed at "Doesn't" alone
+(7 in 686 ratings): the 88 unseen rolls of the top 10 % of all clips by a head-low score (nose below the shoulders,
+the head tilt, less knee bend, more trunk lean — 6 of his 7 "Doesn't" sat in its top 3 %) fill half of the next 176
+slots, the other half random. Slots 0–715 untouched (he was at 685). `params.boosts` lists both boosts;
+`roll_rating/queue_boost_legs-doesnt_2026-10-24.csv` the slots.
+
 Workbook **Roll legs ratings** (Drive `Ambo/data/labels/labeling_team/`, `ROLL_LEGS_SPREADSHEET_ID`), tab `Ratings`,
 the same columns and rules as Roll eyes ratings (`../roll_eyes/README.md`): one live row per (rater, slot), a re-rate
 soft-deletes (`deleted=1`), `clip_id` = `roll_id`, a `cant_tell` always has a `comment`; `rating_rank` is the page's.
