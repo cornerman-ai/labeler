@@ -69,7 +69,11 @@ clip_id | hand | punch_type | rating | rater
 
 - Clips and data files are on Firebase Storage (`labeler_media/bag_bite/v1/clips/<id>.mp4`,
   `.../data/<id>.json`), not in this repo. A clip missing there shows "clip failed to load".
-- Saves go through a per-browser outbox (localStorage) and retry every 5 s; a rating is only in the Sheet once the
-  status says "all saved".
+- Saves go through an outbox (in memory, copied to localStorage per rater): one sender at a time, oldest first, a failed
+  save retried every 5 s, so answers to one clip reach the Sheet in the order given and the last one stays; a save
+  sent twice just overwrites the same row. Closing the tab with saves pending asks first, and they are sent on the next
+  visit. A clip takes a rating only after 0.4 s on screen, so a double click doesn't rate the next one too. A rating is
+  in the Sheet once the status says "All saved". (2026-10-24: a double click, 6 ratings 0.45 s apart, three changes of
+  one answer while in flight and a 6 s outage — all 9 rows right, none doubled.)
 - Rebuilding `queue.json` after rating has started reshuffles the slots; the rows keep `clip_id`, so they still
   join, but `slot` / `rep` stop matching the new queue.

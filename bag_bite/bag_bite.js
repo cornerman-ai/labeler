@@ -112,6 +112,7 @@ const RATER = (new URLSearchParams(location.search).get('labeler') || '').trim()
 async function loadRater() {
   const name = RATER;
   state.rater = name;
+  box = null;
   state.loaded = !!name;
   state.ratings = new Map();
   state.admin = name.trim().toLowerCase() === 'admin';
@@ -169,42 +170,60 @@ async function call(params) {
   return body;
 }
 
+// The outbox: every rating the Sheet hasn't confirmed yet, one per clip (a re-rate replaces the pending one), in
+// memory first and copied to localStorage (per rater) so a closed tab or a lost connection keeps it until it is sent.
+// Memory is the truth: with storage blocked (a private window) the ratings still go out while the page is open.
+let box = null;
 function outbox() {
-  try { return (JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}')[state.rater]) || []; } catch { return []; }
+  if (box === null) {
+    try { box = (JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}')[state.rater]) || []; } catch { box = []; }
+  }
+  return box.slice();
 }
 function setOutbox(list) {
+  box = list.slice();
   try {
     const all = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '{}');
-    all[state.rater] = list;
+    all[state.rater] = box;
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(all));
   } catch {}
 }
 
-let flushing = false;
+// One sender at a time, oldest first, so two answers to the same clip always reach the Sheet in the order given
+// (the Sheet keeps one row per clip and a save overwrites it, so sending one twice is harmless). A failed save stays
+// in the outbox and is retried every 5 s; a new rating meanwhile retries at once.
+let flushing = false, retryTimer = null;
 async function flushOutbox() {
   if (flushing) return;
+  clearTimeout(retryTimer); retryTimer = null;
   flushing = true;
   try {
-    let list = outbox();
-    while (list.length) {
+    for (;;) {
+      const list = outbox();
+      if (!list.length) break;
       const item = list[0];
+      syncChip(`Saving… (${list.length})`);
       try {
         const { slot, ts_local, ...params } = item;
         await call(params);
       } catch (e) {
         syncChip(`${list.length} not saved yet — retrying (${e.message})`, true);
-        setTimeout(() => { flushing = false; flushOutbox(); }, 5000);
+        retryTimer = setTimeout(flushOutbox, 5000);
         return;
       }
-      list = outbox().filter(o => !(o.slot === item.slot && o.ts_local === item.ts_local));
-      setOutbox(list);
-      syncChip(list.length ? `Saving… (${list.length})` : 'All saved');
+      // drop only what was sent: a re-rate of this clip made while it was on its way is a new entry and goes next
+      setOutbox(outbox().filter(o => !(o.slot === item.slot && o.ts_local === item.ts_local)));
     }
     syncChip('All saved');
   } finally {
     flushing = false;
   }
 }
+
+// Leaving with ratings not yet in the Sheet: the browser asks first (they are also kept for the next visit).
+window.addEventListener('beforeunload', (e) => {
+  if (box && box.length) { e.preventDefault(); e.returnValue = ''; }
+});
 
 // ─── rating ─────────────────────────────────────────────────────────────────
 function rate(rating) {
@@ -222,6 +241,8 @@ function rate(rating) {
     return;
   }
   state.wantReason = false;
+  // A double click must not rate the next clip too: a clip takes ratings only after it has been on screen 0.4 s.
+  if (performance.now() - state.shownAt < 400) return;
   const c = state.clips[s.id];
   const btn = document.querySelector(`.rate[data-r="${rating}"]`);
   if (btn) { btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 120); }
@@ -233,7 +254,6 @@ function rate(rating) {
   // slot / ts_local only key the outbox
   list.push({ action: ACT.save, slot: s.slot, clip_id: s.id, hand: c.hand, punch_type: c.type, rating, ts_local: Date.now() });
   setOutbox(list);
-  syncChip('Saving…');
   flushOutbox();
   showSlot(state.cursor + 1);
 }
