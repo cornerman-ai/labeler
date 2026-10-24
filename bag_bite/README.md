@@ -8,8 +8,10 @@ rule 41 ("punches stuck in the bag", cornerman-backend `ml/research/bag_bite/`) 
 (arrival speed, pause on the bag, snap back) did not separate the punches Oleksandr marked, so the coach's eye says
 what to measure.
 
-Link to send: https://cornerman-ai.github.io/labeler/bag_bite/bag_bite.html?labeler=Stafford
-(`?labeler=` seeds the name once; anyone else types their own in the top bar).
+Link to send: https://cornerman-ai.github.io/labeler/bag_bite/bag_bite.html — no name to type: every rating is
+filed under **Stafford** unless the link says otherwise (`?labeler=<name>` for another rater, `?labeler=admin` for the
+admin view). The left panel has a progress grid, one square per clip (grey not rated, green snapping, red pushing,
+outlined the one on screen): click a square, or type a number in **Go to**, to jump there.
 
 ## What is on screen
 

@@ -101,14 +101,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('watch').textContent = 'Could not load the clips: ' + e.message;
     return;
   }
-  // ui.js commits the name on blur, which runs after this change event.
-  $('labeler-input').addEventListener('change', () => setTimeout(loadRater, 0));
+  buildGrid();
   await loadRater();
 });
 
+// No name to type: every rating is filed under Stafford, unless the link says otherwise (?labeler=admin for the
+// admin view, ?labeler=<name> for another rater).
+const RATER = (new URLSearchParams(location.search).get('labeler') || '').trim() || 'Stafford';
+
 async function loadRater() {
-  const name = (window.CMLabeler && window.CMLabeler.get()) || '';
-  if (name === state.rater && state.loaded) return;
+  const name = RATER;
   state.rater = name;
   state.loaded = !!name;
   state.ratings = new Map();
@@ -156,7 +158,7 @@ function firstUnrated() {
 
 // ─── the Apps Script ──────────────────────────────────────────────────────────
 async function call(params) {
-  const res = await fetch(sheetUrl(params));
+  const res = await fetch(sheetUrl({ ...params, labeler: state.rater }));
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const body = await res.json();
   // doGet answers unknown actions with a success shape; `re` says this handler ran.
@@ -204,7 +206,6 @@ async function flushOutbox() {
 // ─── rating ─────────────────────────────────────────────────────────────────
 function rate(rating) {
   if (state.admin) return;
-  if (!state.rater) { showToast('Type your name at the top right first', 'error'); $('labeler-input').focus(); return; }
   const s = state.queue[state.cursor];
   if (!s) return;
   const comment = $('comment').value.trim();
@@ -234,7 +235,7 @@ function rate(rating) {
   setOutbox(list);
   syncChip('Saving…');
   flushOutbox();
-  showSlot(Math.min(state.cursor + 1, firstUnrated()));
+  showSlot(state.cursor + 1);
 }
 
 // ─── showing a clip ─────────────────────────────────────────────────────────
@@ -260,7 +261,7 @@ function showSlot(i) {
     v.removeAttribute('src'); v.load();
     state.data = null;
     $('watch').textContent = '—'; $('clip-n').textContent = '';
-    renderTimelineOverlay(); drawOverlay(); drawSkeletonCard();
+    renderTimelineOverlay(); drawOverlay(); drawSkeletonCard(); paintGrid();
     return;
   }
   const s = state.queue[state.cursor];
@@ -288,6 +289,7 @@ function showSlot(i) {
   renderTimelineOverlay();
   if (state.admin) showRaters(s.id);
   prefetch(state.cursor);
+  paintGrid();
 }
 
 const dataCache = new Map();   // id -> Promise of data/<id>.json
@@ -538,6 +540,47 @@ function showRaters(id) {
     : 'Not rated yet.';
 }
 
+// ─── the progress grid: one square per clip, like GitHub's contribution graph ───
+// Grey = not rated, green = snapping, red = pushing, outlined = the clip on screen; click a square (or type a
+// number in Go to) to jump there.
+function buildGrid() {
+  const g = $('grid');
+  g.innerHTML = '';
+  state.queue.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cell';
+    b.title = `#${i + 1}`;
+    b.addEventListener('click', () => { b.blur(); showSlot(i); });
+    g.appendChild(b);
+  });
+  const go = $('goto');
+  if (go.dataset.wired) return;
+  go.dataset.wired = '1';
+  go.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const n = parseInt(go.value, 10);
+    if (n >= 1 && n <= state.queue.length) showSlot(n - 1);
+    go.value = '';
+    go.blur();
+  });
+}
+
+function paintGrid() {
+  const g = $('grid');
+  if (!g) return;
+  if (g.children.length !== state.queue.length) buildGrid();
+  state.queue.forEach((s, i) => {
+    const c = g.children[i];
+    const r = state.admin ? null : state.ratings.get(s.slot)?.rating;
+    c.className = 'cell' + (r ? ' r-' + r : '') + (i === state.cursor ? ' now' : '');
+  });
+  const done = state.admin ? 0 : state.queue.filter(s => state.ratings.has(s.slot)).length;
+  $('grid-count').textContent = state.admin
+    ? `#${Math.min(state.cursor + 1, state.queue.length)} of ${state.queue.length}`
+    : `#${Math.min(state.cursor + 1, state.queue.length)} · ${done} of ${state.queue.length} rated`;
+}
+
 // ─── panel ───────────────────────────────────────────────────────────────────
 function buildButtons() {
   const wrap = $('buttons');
@@ -588,7 +631,7 @@ function setupComment() {
 
 function setupControls() {
   $('btn-prev').onclick = () => showSlot(state.cursor - 1);
-  $('btn-next').onclick = () => showSlot(state.admin ? state.cursor + 1 : Math.min(state.cursor + 1, firstUnrated()));
+  $('btn-next').onclick = () => showSlot(state.cursor + 1);
   $('btn-skel').onclick = () => { $('btn-skel').blur(); showSkeleton(!state.skeletonOn); };
   $('btn-half').onclick = toggleHalf;
 }

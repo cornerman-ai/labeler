@@ -10,7 +10,7 @@
        file: bag_bite.js's PASS block fills them in. bag_bite.css =
        roll_legs.css + the skeleton card and the two punch lanes. -->
   <link rel="stylesheet" href="../punch/punch.css?v=20260918">
-  <link rel="stylesheet" href="bag_bite.css?v=20261024d">
+  <link rel="stylesheet" href="bag_bite.css?v=20261024e">
 </head>
 <body>
   <div id="app">
@@ -78,6 +78,14 @@
         <section class="card" id="model-card" hidden>
           <div class="card-eyebrow">Ratings</div>
           <div id="rater-rows" class="muted"></div>
+        </section>
+
+        <!-- Progress: one square per clip (grey not rated, green snapping, red pushing, outlined the one on screen);
+             click one, or type a number in Go to, to jump there. Built by bag_bite.js -->
+        <section class="card" id="grid-card">
+          <div class="grid-head"><span id="grid-count"></span>
+            <input id="goto" type="text" inputmode="numeric" placeholder="Go to #" aria-label="Go to clip number"></div>
+          <div id="grid"></div>
         </section>
 
         <section class="card" id="nav-card">
@@ -192,9 +200,8 @@
     </div>
   </dialog>
 
-  <script src="../shared/labeler_name.js?v=20260918"></script>
   <script src="../shared/player.js?v=20260918"></script>
-  <script src="bag_bite.js?v=20261024c"></script>
+  <script src="bag_bite.js?v=20261024e"></script>
   <script src="../shared/ui.js?v=20260919b"></script>
 </body>
 </html>
