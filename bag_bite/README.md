@@ -42,11 +42,10 @@ cornerman-backend `ml/research/bag_bite/rating/clips.csv`.
 ## The clips and the queue
 
 `queue.json` (built by cornerman-backend `ml/research/bag_bite/rating/build.py`, never edited by hand): `clips`
-(hand, punch type, frame count, the clip's fps) and `queue` — every clip once in a fixed shuffle, plus ~10 % **blind
-repeats**: the same clip again 40–120 slots later, flagged `rep=1` only in the data. Every rater gets the same order;
-the page resumes at the first slot the rater hasn't rated.
+(hand, punch type, frame count, the clip's fps) and `queue` — every clip once in a fixed shuffle, no repeats
+(Oleksandr, 2026-10-24). Every rater gets the same order; the page resumes at the first slot the rater hasn't rated.
 
-(2026-10-24) 200 clips + 20 repeats = 220 slots, from the 16 bag-work test videos (`combined_pipeline/configs/
+(2026-10-24) 200 clips = 200 slots, from the 16 bag-work test videos (`combined_pipeline/configs/
 training_types.json`), 50 per group: punches from the videos and punch types Oleksandr marked as pushing, punches from
 the bag-work videos he did not mention, rule 41's lowest (punch score under 40) and its highest (85 or more). The first
 survey's 100 punches (the sendable `bag_punch_survey.html`, 25 per group) are among them, so the answers given there
@@ -67,7 +66,6 @@ ts | rater | slot | rep | clip_id | hand | punch_type | rating | rating_rank | c
 - `clip_id` (`b000`…) joins cornerman-backend `ml/research/bag_bite/rating/clips.csv`: the group, the video, the
   punch's frames, rule 41's readings and score, and `survey_id` (the punch's number in the first survey, if it was
   there).
-- Self-consistency: rows with the same rater and clip_id, one `rep=0` and one `rep=1`.
 
 ## Gotchas
 

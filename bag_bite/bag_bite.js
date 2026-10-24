@@ -2,7 +2,7 @@
 // bag_bite.js — how well does a punch on the heavy bag snap? (2026-10-24, for
 // rule 41 "punches stuck in the bag": its readings did not separate the
 // punches Oleksandr marked, so the coach's eye decides what to measure.)
-// 200 punches from the bag-work test videos, ~10 % blind repeats; the first
+// 200 punches from the bag-work test videos, each once (no repeats); the first
 // 100 are the ones of the first survey file, so the two can be compared.
 // The scale: snapping / pushing, buttons only (Oleksandr, the same day; the
 // first survey was bites / pushing). The only keys: ← → a frame, ⇧← ⇧→ the

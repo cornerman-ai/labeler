@@ -7293,7 +7293,7 @@ function doGetRollLegs(p, labeler, action) {
 // through and snaps straight back) or push (rests on the bag, pushes it,
 // drifts back)? 200 punches (the page's queue, built by cornerman-backend
 // ml/research/bag_bite/rating/build.py, which keeps the key: which group each
-// punch is from), ~10% blind repeats. The roll labelers' contract and handler
+// punch is from), each once. The roll labelers' contract and handler
 // (doGetRollPass): one live row per (rater, slot), a re-rate soft-deletes the
 // earlier row, a cant_tell carries a comment, admin rates nothing and lists
 // every rater's rows. The ratings are the page's PASS block (lower_snake,
