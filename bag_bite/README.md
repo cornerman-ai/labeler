@@ -2,7 +2,8 @@
 
 Does a punch on the heavy bag **snap** (hits and comes straight back) or is it **pushing** (rests on the bag, pushes
 it, drifts back)? The coach rates one looping clip per punch with two buttons, **Snapping** or **Pushing** — no rating
-keys, no "can't tell" (Oleksandr, 2026-10-24). Any rating can carry a comment. The ratings are what
+keys, no "can't tell", no comment (Oleksandr, 2026-10-24). The left panel is the skeleton picture and five buttons:
+Snapping, Pushing, Back, Next, Skeleton (no clip card, question or descriptions: `bag_bite.css` hides them). Any rating can carry a comment. The ratings are what
 rule 41 ("punches stuck in the bag", cornerman-backend `ml/research/bag_bite/`) is measured against: its readings
 (arrival speed, pause on the bag, snap back) did not separate the punches Oleksandr marked, so the coach's eye says
 what to measure.

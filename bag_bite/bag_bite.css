@@ -169,3 +169,9 @@
   .rate[data-r="cant_tell"] { grid-column: 1 / -1; }
   #re-panel kbd { display: none; }
 }
+
+/* ── the panel is the picture and five buttons (Oleksandr, 2026-10-24): no clip card, no question / hint, no
+   comment, no button descriptions. The elements stay in the page (bag_bite.js writes to them), hidden. ── */
+#clip-card, #question, #rate-hint, .comment-label, #comment, #reasons, .rate .desc { display: none !important; }
+#buttons { margin-top: 0; }
+.rate { grid-template-columns: 1fr; }
