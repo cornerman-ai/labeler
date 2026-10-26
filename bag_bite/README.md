@@ -51,6 +51,10 @@ the bag-work videos he did not mention, rule 41's lowest (punch score under 40) 
 survey's 100 punches (the sendable `bag_punch_survey.html`, 25 per group) are among them, so the answers given there
 (bites / pushing) can be set against these.
 
+(2026-10-26) **+100 clips, slots 201-300** (`b200`-`b299`, cornerman-backend `rating/add_batch.py`): bag straights picked
+by rule 41's push model - 50 it calls pushing (p ≥ 0.3), 50 snapping - from 25 bag videos, 43 from boxers not in the
+first 200, none overlapping a punch already here; appended after the first 200 so their ratings keep their clips.
+
 ## Where the ratings land
 
 Workbook **Bag bite ratings** (`1zJsYa5YeRfa01sj9t2ACNu50iN41HBkOr9M0CuI070Q`, Drive `Ambo/data/labels/labeling_team/`,
