@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <!-- Workout review: the team goes through every lesson and drill of the app's courses and says if it worked for
@@ -37,16 +37,13 @@
 
 <div class="modal-wrap" id="name-modal" hidden>
   <form class="modal" id="name-form">
-    <div class="modal-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="28" height="28"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-3.6 4.4-5.5 8-5.5s6.5 1.9 8 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-    </div>
     <h2>Who's reviewing?</h2>
-    <p id="name-hint">Your name goes next to your notes, so the team knows who said what.</p>
+    <p id="name-hint"></p>
     <input id="name-input" autocomplete="name" placeholder="Your name" maxlength="40" required>
     <button class="btn" type="submit">Continue</button>
   </form>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

@@ -27,3 +27,6 @@ everyone's notes, on each workout and on the **Team notes** page.
   can't undo a newer note. Everyone's notes are read back every 45 s and when the tab comes back.
 
 The name is the labelers' shared one (`labelerName` in localStorage, as `shared/labeler_name.js`).
+
+When `style.css` or `app.js` change, bump their `?v=` in `index.html`: GitHub Pages lets browsers keep a file
+for 10 minutes, so without it people see the old page for a while.

@@ -18,12 +18,8 @@
     worked: { label: 'Did it work for you?', yes: 'Worked', partly: 'Partly', no: "Didn't work" },
     clear: { label: 'Was it clear what to do?', yes: 'Clear', partly: 'Somewhat', no: 'Confusing' },
   };
-  const DETECT = {
-    judged: ['Judged by the app', 'The app checks every rep on camera.'],
-    part: ['Partly judged', 'The app checks some of it on camera.'],
-    none: ['Not judged yet', 'The app runs it on the clock; nothing is checked on camera.'],
-    watch: ['Watch and copy', 'A video to follow. Nothing to check.'],
-  };
+  /** What the app checks on camera, beside a workout's kind (a video to watch has nothing to check). */
+  const DETECT = { judged: 'Judged by the app', part: 'Partly judged', none: 'Not judged yet' };
 
   const $ = (sel, el = document) => el.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -160,7 +156,7 @@
     else el.textContent = '';
     if (!online) {
       document.querySelectorAll('.saved-note').forEach((s) => {
-        if (mine[s.dataset.item]?.dirty) { s.textContent = 'Kept on this device. It goes out as soon as you’re back online.'; s.classList.remove('ok'); }
+        if (mine[s.dataset.item]?.dirty) { s.textContent = 'Offline. It goes out when you’re back.'; s.classList.remove('ok'); }
       });
     }
   }
@@ -227,39 +223,34 @@
   }
   function lessonItems(c, l) { return [`${c.id}/${l.id}`, ...l.drills.map((d) => `${c.id}/${l.id}/${d.id}`)]; }
   function reviewedCount(list) { return list.filter((k) => hasAnswer(mine[k])).length; }
-  const allItems = () => [...items.keys()];
 
   // ── views ────────────────────────────────────────
   const view = $('#view');
   let current = { name: '' };
 
+  /** The course whose lessons are on the home page: the first one with lessons. */
+  const homeCourse = () => data.courses.find((c) => c.lessons);
+  function courseDone(c) {
+    const its = c.lessons.flatMap((l) => lessonItems(c, l));
+    return `${reviewedCount(its)} of ${its.length} reviewed`;
+  }
+  const lessonSub = (l, done, total) => `${l.drills.length} workouts${done ? ` · ${done}/${total} reviewed` : ''}`;
+
   function homeView() {
-    const all = allItems();
-    const done = reviewedCount(all);
-    const pct = all.length ? (100 * done) / all.length : 0;
-    const course = data.courses.find((c) => c.lessons);
+    const home = homeCourse();
+    const many = data.courses.length > 1;
     const cards = data.courses.map((c, i) => {
       const n = c.lessons ? c.lessons.length : c.planned.length;
       const foot = c.lessons
-        ? `<span>${n} lessons</span><span>${reviewedCount(c.lessons.flatMap((l) => lessonItems(c, l)))} of ${c.lessons.reduce((a, l) => a + 1 + l.drills.length, 0)} reviewed</span>`
+        ? `<span>${n} lessons</span><span data-live="course" data-course="${c.id}">${courseDone(c)}</span>`
         : `<span>Coming ${fmtDate(c.on)}</span><span>${n} lessons</span>`;
-      return `<a class="course${c.lessons ? '' : ' soon'}" href="#c/${c.id}">
-        <img src="img/${c.id}.jpg" alt="" loading="${i < 2 ? 'eager' : 'lazy'}">
-        <div class="c-in"><div class="c-num">Course ${i + 1}</div><div class="c-name">${esc(c.name)}</div><div class="c-line">${esc(c.line)}</div></div>
-        <div class="c-foot">${foot}</div>
-      </a>`;
+      const inner = `<img src="img/${c.id}.jpg" alt="" loading="${i < 2 ? 'eager' : 'lazy'}">
+        <div class="c-in">${many ? `<div class="c-num">Course ${i + 1}</div>` : ''}<div class="c-name">${esc(c.name)}</div><div class="c-line">${esc(c.line)}</div></div>
+        <div class="c-foot">${foot}</div>`;
+      // The course whose lessons follow is their header, not a link to them.
+      return c === home ? `<div class="course">${inner}</div>` : `<a class="course${c.lessons ? '' : ' soon'}" href="#c/${c.id}">${inner}</a>`;
     }).join('');
-    return `<div class="view">
-      <section class="hero">
-        <p class="eyebrow">Workout review</p>
-        <h1>Every workout.<br>Your honest take.</h1>
-        <p class="lede">Go through each lesson and workout in AMBO. Say <b>if it worked</b>, <b>if it was clear</b>, and anything else on your mind. Your notes save as you go, and everyone sees them.</p>
-        <div class="progress-line"><div class="bar"><i style="width:${pct}%"></i></div><span>${done} of ${all.length} reviewed</span></div>
-      </section>
-      <div class="courses">${cards}</div>
-      ${course ? lessonsList(course) : ''}
-      <p class="foot">Courses as of ${esc(data.generated)}, from the app's own data.</p>
-    </div>`;
+    return `<div class="view"><div class="courses">${cards}</div>${home ? lessonsList(home) : ''}</div>`;
   }
 
   function lessonsList(c) {
@@ -270,27 +261,25 @@
       groups[groups.length - 1].lessons.push(l);
     }
     let n = 0;
-    const html = groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
+    return groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
       n++;
       const its = lessonItems(c, l);
       const done = reviewedCount(its);
       return `<a class="row" href="#l/${c.id}/${l.id}" data-live="lesson" data-course="${c.id}" data-lesson="${l.id}">
         <span class="idx ${done === its.length ? 'yes' : ''}">${n}</span>
-        <span class="body"><span class="t">${esc(l.name)}</span><span class="s" style="display:block">${l.drills.length} workouts · ${done ? `${done} of ${its.length} reviewed` : 'Not started'}</span></span>
+        <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${lessonSub(l, done, its.length)}</span></span>
         <span class="end">${ring(done, its.length)}${CHEV}</span>
       </a>`;
     }).join('')}</div>`).join('');
-    return `<h2 class="section">${esc(c.name)}</h2><p class="section-sub">${c.lessons.length} lessons, in the app's order.</p>${html}`;
   }
 
   function courseView(c) {
-    if (c.lessons) return `<div class="view"><button class="back" data-href="#">${BACK} All courses</button>${lessonsList(c)}</div>`;
-    const i = data.courses.indexOf(c);
-    return `<div class="view">
-      <button class="back" data-href="#">${BACK} All courses</button>
-      <div class="lesson-head"><p class="eyebrow">Course ${i + 1} · Coming ${fmtDate(c.on)}</p><h1 class="page-title">${esc(c.name)}</h1><p>${esc(c.line)} Not in the app yet: its lessons are planned, so there's nothing to review here until it's built.</p></div>
+    const back = `<button class="back" data-href="#">${BACK} All courses</button>`;
+    if (c.lessons) return `<div class="view">${back}<h1 class="page-title">${esc(c.name)}</h1>${lessonsList(c)}</div>`;
+    return `<div class="view">${back}
+      <p class="eyebrow">Coming ${fmtDate(c.on)}</p><h1 class="page-title">${esc(c.name)}</h1>
       <div class="group-label">Planned lessons</div>
-      <div class="group">${c.planned.map((t, k) => `<div class="row disabled"><span class="idx">${k + 1}</span><span class="body"><span class="t">${esc(t)}</span></span><span class="end"><span class="pill k">Coming</span></span></div>`).join('')}</div>
+      <div class="group">${c.planned.map((t, k) => `<div class="row disabled"><span class="idx">${k + 1}</span><span class="body"><span class="t">${esc(t)}</span></span></div>`).join('')}</div>
     </div>`;
   }
 
@@ -301,55 +290,45 @@
       const it = `${item}/${d.id}`;
       return `<a class="row" href="#d/${c.id}/${l.id}/${d.id}" data-live="drill" data-item="${it}">
         <span class="idx ${idxClass(it)}">${k + 1}</span>
-        <span class="body"><span class="t">${esc(d.title)}</span><span class="s" style="display:block">${d.kind} · ${fmtLength(d)}</span></span>
+        <span class="body"><span class="t">${esc(d.title)}</span><span class="s">${d.kind} · ${fmtLength(d)}</span></span>
         <span class="end">${tallyHtml(it)}${CHEV}</span>
       </a>`;
     }).join('');
-    const watch = l.drills.filter((d) => d.kind === 'Watch').length;
     return `<div class="view">
-      <button class="back" data-href="#c/${c.id}">${BACK} ${esc(c.name)}</button>
+      <button class="back" data-href="${c === homeCourse() ? '#' : `#c/${c.id}`}">${BACK} ${esc(c.name)}</button>
       <div class="lesson-head">
         <p class="eyebrow">Lesson ${li + 1}${l.section ? ` · ${esc(l.section)}` : ''}</p>
         <h1 class="page-title">${esc(l.name)}</h1>
-        <p>${esc(l.about)}</p>
-        <div class="facts">
-          <div class="fact"><b>${l.drills.length}</b>workouts</div>
-          <div class="fact"><b>${watch}</b>to watch</div>
-          <div class="fact"><b>${l.drills.length - watch}</b>to do</div>
-        </div>
+        <p class="about">${esc(l.about)}</p>
       </div>
       <div class="group-label">Workouts</div>
       <div class="group">${rows}</div>
-      <div class="group-label">The lesson as a whole</div>
-      <div class="card">${reviewHtml(item, 'Your take on the lesson', 'How it went from start to finish: the order, the length, anything missing.')}</div>
+      <div class="group-label">The lesson overall</div>
+      <div class="card">${reviewHtml(item)}</div>
     </div>`;
   }
 
-  function reviewHtml(item, title, sub) {
+  function reviewHtml(item) {
     const n = mine[item] || {};
     const seg = (key) => {
       const a = ANSWERS[key];
       const on = ['yes', 'partly', 'no'].indexOf(n[key]);
-      return `<div class="q"><div class="q-label">${a.label}</div>
-        <div class="seg" data-key="${key}" ${on >= 0 ? 'data-on' : ''} style="--i:${Math.max(on, 0)}">
+      return `<div class="seg" role="group" aria-label="${a.label}" data-key="${key}" ${on >= 0 ? 'data-on' : ''} style="--i:${Math.max(on, 0)}">
           <span class="thumb"></span>
           ${['yes', 'partly', 'no'].map((v) => `<button type="button" class="${v}" data-v="${v}" aria-pressed="${n[key] === v}">${a[v]}</button>`).join('')}
-        </div></div>`;
+        </div>`;
     };
     return `<section class="review" data-item="${esc(item)}">
-      <h3>${esc(title)}</h3><p class="sub">${esc(sub)}</p>
       ${seg('worked')}${seg('clear')}
-      <div class="q"><div class="q-label">Notes</div>
-        <textarea class="notes" rows="3" placeholder="What happened, what felt off, what you'd change…">${esc(n.comment || '')}</textarea>
-        <div class="saved-note" data-item="${esc(item)}">${n.dirty ? 'Saving…' : hasAnswer(n) ? 'Saved' : ''}</div>
-      </div>
+      <textarea class="notes" rows="2" placeholder="Notes" aria-label="Notes">${esc(n.comment || '')}</textarea>
+      <div class="saved-note" data-item="${esc(item)}">${n.dirty ? 'Saving…' : hasAnswer(n) ? 'Saved' : ''}</div>
       <div class="team" data-team="${esc(item)}">${teamHtml(item)}</div>
     </section>`;
   }
 
   function teamHtml(item) {
     const others = [...(team.get(item) || []).values()].filter((x) => x.reviewer !== me && hasAnswer(x)).sort((a, b) => b.at - a.at);
-    return `<h4>From the team</h4>${others.length ? others.map(noteHtml).join('') : '<div class="empty">No one else has said anything here yet.</div>'}`;
+    return others.length ? `<h4>From the team</h4>${others.map((n) => noteHtml(n)).join('')}` : '';
   }
   function noteHtml(n, where) {
     const pills = ['worked', 'clear'].filter((k) => n[k]).map((k) => `<span class="pill ${n[k]}">${ANSWERS[k][n[k]]}</span>`).join('');
@@ -363,7 +342,6 @@
   function drillSheet(c, l, d) {
     const k = l.drills.indexOf(d);
     const item = `${c.id}/${l.id}/${d.id}`;
-    const det = DETECT[d.detect.status];
     const video = d.video ? `<video src="${esc(d.video.url)}" controls playsinline preload="metadata"></video>` : '';
     const list = (title, xs, tag = 'ul') => (xs && xs.length ? `<div class="block"><h4>${title}</h4><${tag}>${xs.map((x) => `<li>${esc(x)}</li>`).join('')}</${tag}></div>` : '');
     return `<div class="sheet-bar"><span class="grip"></span>
@@ -375,17 +353,17 @@
         </span>
       </div>
       <div class="sheet-body">
-        <div class="k-row"><span class="pill k">${d.kind}</span><span class="pill k">${fmtLength(d)}</span>${d.pass ? `<span class="pill k">Pass at ${Math.round(d.pass * 100)}%</span>` : ''}</div>
+        <div class="k-row"><span class="pill k">${d.kind}</span><span class="pill k">${fmtLength(d)}</span>${d.pass ? `<span class="pill k">Pass at ${Math.round(d.pass * 100)}%</span>` : ''}${DETECT[d.detect.status] ? `<span class="pill ${d.detect.status}">${DETECT[d.detect.status]}</span>` : ''}</div>
         <h2 id="sheet-title">${esc(d.title)}</h2>
         <p class="line">${esc(d.line)}</p>
         ${video}
         ${d.calls.length ? `<div class="block"><h4>What AMBO calls</h4><div class="calls">${d.calls.map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>` : ''}
         ${list('How it goes', d.how, 'ol')}
         ${list('Mistakes to watch for', d.mistakes)}
-        ${d.moveOn ? `<div class="block"><h4>Done when</h4><p style="margin:0;font-size:16px">${esc(d.moveOn)}</p></div>` : ''}
-        <div class="block"><h4>On camera</h4><div class="detect"><span class="pill ${d.detect.status}">${det[0]}</span><p>${esc(d.detect.what)}</p></div></div>
+        ${d.moveOn ? `<div class="block"><h4>Done when</h4><p>${esc(d.moveOn)}</p></div>` : ''}
       </div>
-      <div class="card">${reviewHtml(item, 'Your take', 'Did it do what it says? Did the app hear you right?')}</div>`;
+      <div class="group-label">Your take</div>
+      <div class="card">${reviewHtml(item)}</div>`;
   }
 
   function teamView() {
@@ -406,11 +384,11 @@
       return `<a class="where" href="${href}">${esc(it.lesson.name)}${it.drill ? ` › ${esc(it.drill.title)}` : ' · the lesson'}</a>`;
     };
     return `<div class="view">
-      <section class="hero"><p class="eyebrow">Team notes</p><h1>What everyone said.</h1>
-      <p class="lede">${all.length} note${all.length === 1 ? '' : 's'} from ${people.length} ${people.length === 1 ? 'person' : 'people'}, newest first.</p></section>
+      <h1 class="page-title">Team notes</h1>
+      <p class="meta">${all.length} note${all.length === 1 ? '' : 's'} · ${people.length} ${people.length === 1 ? 'person' : 'people'}</p>
       <div class="filters">${chip('who', '', 'Everyone')}${people.map((p) => chip('who', p, p)).join('')}</div>
       <div class="filters">${chip('worked', '', 'Any')}${chip('worked', 'no', "Didn't work")}${chip('worked', 'partly', 'Partly')}${chip('worked', 'yes', 'Worked')}</div>
-      <div class="group feed">${shown.length ? shown.map((n) => noteHtml(n, where(n))).join('') : '<div class="note"><div class="empty" style="color:var(--text-3)">Nothing here yet.</div></div>'}</div>
+      <div class="group feed">${shown.length ? shown.map((n) => noteHtml(n, where(n))).join('') : '<div class="note"><div class="empty">Nothing yet.</div></div>'}</div>
     </div>`;
   }
   const teamFilter = { who: '', worked: '' };
@@ -422,7 +400,8 @@
     const course = (id) => data.courses.find((c) => c.id === id);
     let next = { name: 'home' };
     if (parts[0] === 'team') next = { name: 'team' };
-    else if (parts[0] === 'c' && course(parts[1])) next = { name: 'course', c: course(parts[1]) };
+    // The home page is the first course's page.
+    else if (parts[0] === 'c' && course(parts[1]) && course(parts[1]) !== homeCourse()) next = { name: 'course', c: course(parts[1]) };
     else if ((parts[0] === 'l' || parts[0] === 'd') && course(parts[1])?.lessons) {
       const c = course(parts[1]);
       const l = c.lessons.find((x) => x.id === parts[2]);
@@ -494,7 +473,7 @@
   });
 
   // ── review controls ──────────────────────────────
-  function grow(t) { t.style.height = 'auto'; t.style.height = `${Math.max(110, t.scrollHeight + 2)}px`; }
+  function grow(t) { t.style.height = 'auto'; t.style.height = `${Math.max(64, t.scrollHeight + 2)}px`; }
   function bindReviews(root) {
     root.querySelectorAll('.review').forEach((sec) => {
       const item = sec.dataset.item;
@@ -555,17 +534,13 @@
       const its = lessonItems(c, l);
       const done = reviewedCount(its);
       $('.idx', row).className = `idx ${done === its.length ? 'yes' : ''}`;
-      $('.s', row).textContent = `${l.drills.length} workouts · ${done ? `${done} of ${its.length} reviewed` : 'Not started'}`;
+      $('.s', row).textContent = lessonSub(l, done, its.length);
       $('.end', row).innerHTML = ring(done, its.length) + CHEV;
     });
     document.querySelectorAll('[data-team]').forEach((el) => { el.innerHTML = teamHtml(el.dataset.team); });
-    const bar = $('.progress-line');
-    if (bar) {
-      const all = allItems();
-      const done = reviewedCount(all);
-      $('i', bar).style.width = `${(100 * done) / all.length}%`;
-      $('span', bar).textContent = `${done} of ${all.length} reviewed`;
-    }
+    document.querySelectorAll('[data-live="course"]').forEach((el) => {
+      el.textContent = courseDone(data.courses.find((x) => x.id === el.dataset.course));
+    });
     setSync();
   }
 
@@ -577,7 +552,7 @@
   }
   function askName() {
     modal.hidden = false;
-    $('#name-hint').textContent = 'Your name goes next to your notes, so the team knows who said what.';
+    $('#name-hint').textContent = '';
     const input = $('#name-input');
     input.value = me || '';
     setTimeout(() => input.focus(), 50);
@@ -607,12 +582,12 @@
 
   // ── start ────────────────────────────────────────
   (async function start() {
-    view.innerHTML = '<div class="loading">Loading the courses…</div>';
+    view.innerHTML = '<div class="loading">Loading…</div>';
     showMe();
     try {
       await loadData();
     } catch {
-      view.innerHTML = '<div class="loading">The courses didn\'t load. Check your connection and reload.</div>';
+      view.innerHTML = '<div class="loading">Didn\'t load. Check your connection and reload.</div>';
       return;
     }
     if (me) loadMine();
