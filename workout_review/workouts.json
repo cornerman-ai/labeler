@@ -3118,56 +3118,6 @@
      ]
     }
    ]
-  },
-  {
-   "id": "footwork",
-   "name": "Footwork",
-   "line": "Get in, get out, never get caught.",
-   "coach": "Stafford Swainston",
-   "on": "2026-11-06",
-   "planned": [
-    "Linear and lateral",
-    "Circular",
-    "Back foot",
-    "Shifting",
-    "Ladder drills",
-    "Ladder agility",
-    "Switching"
-   ]
-  },
-  {
-   "id": "applied-defense",
-   "name": "Applied defense",
-   "line": "Make them miss, then pay.",
-   "coach": "Stafford Swainston",
-   "on": "2026-11-11",
-   "planned": [
-    "Reading the jab",
-    "Slip and counter",
-    "Roll under the hook",
-    "Catch and return",
-    "Defending the body",
-    "Off the ropes",
-    "Defense in combinations",
-    "Sparring scenarios"
-   ]
-  },
-  {
-   "id": "reflexes",
-   "name": "Reflexes",
-   "line": "See it coming, gone before it lands.",
-   "coach": "Stafford Swainston",
-   "on": "2026-11-18",
-   "planned": [
-    "Eyes on the shoulders",
-    "First move wins",
-    "Slip bag timing",
-    "Double-end bag rhythm",
-    "React and return",
-    "Counter on the flinch",
-    "Reflexes when tired",
-    "Partner reaction rounds"
-   ]
   }
  ]
 }

@@ -6,7 +6,8 @@ The team goes through every lesson and workout of AMBO's courses and says, for e
 (Worked / Partly / Didn't work), was it clear (Clear / Somewhat / Confusing), and a note. Everyone sees
 everyone's notes, on each workout and on the **Team notes** page.
 
-- `workouts.json` is the courses as the app has them, written from the app's own data by the ios repo:
+- `workouts.json` is the courses on the site as the app has them: Fundamentals only for now (`ON_SITE` in the
+  script; the courses still being made stay in the app), written from the app's own data by the ios repo:
   `node scripts/course-status.mjs --json ../labeler/workout_review/workouts.json` (re-run it when the courses
   change; never edit it by hand). A note is keyed by `course/lesson` or `course/lesson/drill` ids, so it
   stays on its workout when the order changes.
