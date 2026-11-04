@@ -1,11 +1,13 @@
-// Workout review: every lesson and drill of AMBO's courses (workouts.json), and for each, did it work, was it clear,
-// and a note, from everyone on the team.
+// Workout review: every workout of the courses on the site (workouts.json), and two questions on each for everyone on
+// the team: was everything clear, did everything work well, and what wasn't or didn't when the answer is no. Nothing
+// of the workout itself is shown; it's all checked in the app (Oleksandr, 2026-11-04). The courses are a menu as in
+// the app: a course's card opens its lessons, a lesson its workouts, each with its questions right there.
 //
-// Saving: a note is the reviewer's own row per lesson or drill (doGetWorkoutReview in apps_script/Code.js), so two
-// people never write over each other. Each change is kept in this browser first (localStorage, per name) with the
-// time it was made (`at`), then sent by ONE sender, one note at a time, retried until the backend says ok; the
-// backend ignores a note older than the one it has, so a retry or another tab landing late can't undo a newer one.
-// Everyone's notes are read back every 45 s and when the tab comes back.
+// Saving: an answer is the reviewer's own row per workout (doGetWorkoutReview in apps_script/Code.js), so two people
+// never write over each other. Each change is kept in this browser first (localStorage, per name) with the time it
+// was made (`at`), then sent by ONE sender, one workout at a time, retried until the backend says ok; the backend
+// ignores an answer older than the one it has, so a retry or another tab landing late can't undo a newer one.
+// Everyone's answers are read back every 45 s and when the tab comes back.
 (function () {
   'use strict';
 
@@ -14,43 +16,41 @@
   const POLL_MS = 45000;
   const TYPE_MS = 700;
 
-  const ANSWERS = {
-    worked: { label: 'Did it work for you?', yes: 'Worked', partly: 'Partly', no: "Didn't work" },
-    clear: { label: 'Was it clear what to do?', yes: 'Clear', partly: 'Somewhat', no: 'Confusing' },
-  };
-  /** What the app checks on camera, beside a workout's kind (a video to watch has nothing to check). */
-  const DETECT = { judged: 'Judged by the app', part: 'Partly judged', none: 'Not judged yet' };
+  /** The two questions on every workout, in this order, and how an answer reads on the team's page. */
+  const QUESTIONS = [
+    { key: 'clear', text: 'Was everything clear?', ask: 'What wasn’t clear?', label: { yes: 'Clear', partly: 'Partly clear', no: 'Not clear' } },
+    { key: 'worked', text: 'Did everything work well?', ask: 'What didn’t work?', label: { yes: 'Worked', partly: 'Partly worked', no: 'Didn’t work' } },
+  ];
 
   const $ = (sel, el = document) => el.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch { /* blocked: the notes still go out from memory */ } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* blocked: the answers still go out from memory */ } },
   };
 
   let data = null;
   let me = normalize(store.get(NAME_KEY));
-  /** Everyone's notes from the backend: item → reviewer → note. */
+  /** Everyone's answers from the backend: item → reviewer → answer. */
   let team = new Map();
-  /** My notes, as typed here: item → {worked, clear, comment, at, dirty}. */
+  /** My answers, as given here: item → {clear, worked, comment, at, dirty}. */
   let mine = {};
-  const items = new Map(); // item → {course, lesson, drill, title}
+  const items = new Map(); // course/lesson/workout → {course, lesson, drill}
 
   function normalize(s) { return (s || '').trim().replace(/^\w/, (c) => c.toUpperCase()).slice(0, 40); }
   const mineKey = () => `workoutReview.mine.${me}`;
   function loadMine() { try { mine = JSON.parse(store.get(mineKey()) || '{}'); } catch { mine = {}; } }
   const saveMine = () => store.set(mineKey(), JSON.stringify(mine));
   const hasAnswer = (n) => !!(n && (n.worked || n.clear || (n.comment || '').trim()));
+  /** Reviewed: both questions answered. */
+  const answered = (n) => !!(n && n.clear && n.worked);
 
   // ── data ─────────────────────────────────────────
   async function loadData() {
     const r = await fetch('workouts.json', { cache: 'no-cache' });
     data = await r.json();
     for (const c of data.courses) {
-      for (const l of c.lessons || []) {
-        items.set(`${c.id}/${l.id}`, { course: c, lesson: l, title: l.name });
-        for (const d of l.drills) items.set(`${c.id}/${l.id}/${d.id}`, { course: c, lesson: l, drill: d, title: d.title });
-      }
+      for (const l of c.lessons) for (const d of l.drills) items.set(`${c.id}/${l.id}/${d.id}`, { course: c, lesson: l, drill: d });
     }
   }
 
@@ -64,12 +64,12 @@
       for (const row of j.rows) {
         if (!next.has(row.item)) next.set(row.item, new Map());
         next.get(row.item).set(row.reviewer, row);
-        // My own note from another device or browser, newer than what's here.
+        // My own answer from another device or browser, newer than what's here.
         if (row.reviewer === me) {
           const here = mine[row.item];
           if (!here || (!here.dirty && row.at > (here.at || 0))) {
             mine[row.item] = { worked: row.worked, clear: row.clear, comment: row.comment, at: row.at };
-            refreshOpenReview(row.item);
+            refreshWorkout(row.item);
           }
         }
       }
@@ -83,9 +83,10 @@
     }
   }
 
-  // ── saving: one sender, one note at a time ──────
+  // ── saving: one sender, one workout at a time ───
   let sending = false;
   let online = true;
+  let savedOnce = false;
   let retryMs = 0;
   let retryTimer = 0;
   const dirtyItems = () => Object.keys(mine).filter((k) => mine[k].dirty);
@@ -105,7 +106,7 @@
         item,
         course: it?.course.name || '',
         lesson: it?.lesson.name || '',
-        title: it?.title || '',
+        title: it?.drill.title || '',
         worked: n.worked || '',
         clear: n.clear || '',
         comment: n.comment || '',
@@ -119,9 +120,9 @@
       if (!team.has(item)) team.set(item, new Map());
       team.get(item).set(me, { reviewer: me, item, worked: body.worked, clear: body.clear, comment: body.comment, at: n.at });
       online = true;
+      savedOnce = true;
       retryMs = 0;
       sending = false;
-      markSaved(item);
       refreshLive();
       pump();
     } catch {
@@ -136,10 +137,8 @@
 
   let typeTimer = 0;
   function change(item, patch, typing) {
-    const n = { worked: '', clear: '', comment: '', ...mine[item], ...patch, at: Date.now(), dirty: true };
-    mine[item] = n;
+    mine[item] = { worked: '', clear: '', comment: '', ...mine[item], ...patch, at: Date.now(), dirty: true };
     saveMine();
-    setSync();
     refreshLive();
     clearTimeout(typeTimer);
     if (typing) typeTimer = setTimeout(pump, TYPE_MS);
@@ -154,18 +153,6 @@
     else if (waiting) { el.classList.add('offline'); el.textContent = `Offline · ${waiting} waiting`; }
     else if (savedOnce) { el.classList.add('saved'); el.textContent = 'All saved'; }
     else el.textContent = '';
-    if (!online) {
-      document.querySelectorAll('.saved-note').forEach((s) => {
-        if (mine[s.dataset.item]?.dirty) { s.textContent = 'Offline. It goes out when you’re back.'; s.classList.remove('ok'); }
-      });
-    }
-  }
-  let savedOnce = false;
-  function markSaved(item) {
-    savedOnce = true;
-    setSync();
-    const s = document.querySelector(`.saved-note[data-item="${CSS.escape(item)}"]`);
-    if (s && !mine[item]?.dirty) { s.textContent = 'Saved'; s.classList.add('ok'); }
   }
 
   addEventListener('beforeunload', (e) => {
@@ -178,12 +165,6 @@
   // ── helpers for views ────────────────────────────
   const CHEV = '<svg class="chev" viewBox="0 0 8 14"><path d="M1.5 1.5 6.5 7l-5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const BACK = '<svg viewBox="0 0 10 17"><path d="M8.5 1.5 1.5 8.5l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const fmtDate = (s) => new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
-  function fmtLength(d) {
-    if (d.reps) return `${d.reps} reps`;
-    const s = d.video?.seconds || d.seconds;
-    return s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`;
-  }
   function ago(at) {
     if (!at) return '';
     const s = (Date.now() - at) / 1000;
@@ -194,66 +175,45 @@
   }
   function hue(name) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
   const avatar = (name) => `<span class="av" style="background:hsl(${hue(name)} 42% 48%)">${esc((name[0] || '?').toUpperCase())}</span>`;
-
-  /** The notes on an item, mine as typed here and everyone else's. */
-  function notesOn(item) {
-    const out = [];
-    for (const [who, n] of team.get(item) || []) if (who !== me && hasAnswer(n)) out.push(n);
-    if (hasAnswer(mine[item])) out.push({ ...mine[item], reviewer: me });
-    return out;
-  }
-  function tallyHtml(item) {
-    const ns = notesOn(item);
-    if (!ns.length) return '';
-    const c = { yes: 0, partly: 0, no: 0 };
-    for (const n of ns) if (c[n.worked] !== undefined) c[n.worked]++;
-    const parts = ['yes', 'partly', 'no'].filter((k) => c[k]).map((k) => `<b class="${k}" title="${ANSWERS.worked[k]}">${c[k]}</b>`);
-    const comments = ns.filter((n) => (n.comment || '').trim()).length;
-    if (comments) parts.push(`<b class="notes">${comments} note${comments > 1 ? 's' : ''}</b>`);
-    return `<span class="tally">${parts.join('')}</span>`;
-  }
-  function idxClass(item) {
-    const n = mine[item];
-    if (!hasAnswer(n)) return '';
-    return n.worked || 'seen';
-  }
   function ring(done, total) {
     const r = 12, c = 2 * Math.PI * r, off = c * (1 - (total ? done / total : 0));
     return `<svg class="ring" viewBox="0 0 30 30" aria-label="${done} of ${total} reviewed"><circle class="track" cx="15" cy="15" r="${r}"/><circle class="fill" cx="15" cy="15" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${off}"/></svg>`;
   }
-  function lessonItems(c, l) { return [`${c.id}/${l.id}`, ...l.drills.map((d) => `${c.id}/${l.id}/${d.id}`)]; }
-  function reviewedCount(list) { return list.filter((k) => hasAnswer(mine[k])).length; }
-
-  // ── views ────────────────────────────────────────
-  const view = $('#view');
-  let current = { name: '' };
-
-  /** The course whose lessons are on the home page: the first one with lessons. */
-  const homeCourse = () => data.courses.find((c) => c.lessons);
+  const lessonItems = (c, l) => l.drills.map((d) => `${c.id}/${l.id}/${d.id}`);
+  const reviewedCount = (list) => list.filter((k) => answered(mine[k])).length;
   function courseDone(c) {
     const its = c.lessons.flatMap((l) => lessonItems(c, l));
     return `${reviewedCount(its)} of ${its.length} reviewed`;
   }
-  const lessonSub = (l, done, total) => `${l.drills.length} workouts${done ? ` · ${done}/${total} reviewed` : ''}`;
-
-  function homeView() {
-    const home = homeCourse();
-    const many = data.courses.length > 1;
-    const cards = data.courses.map((c, i) => {
-      const n = c.lessons ? c.lessons.length : c.planned.length;
-      const foot = c.lessons
-        ? `<span>${n} lessons</span><span data-live="course" data-course="${c.id}">${courseDone(c)}</span>`
-        : `<span>Coming ${fmtDate(c.on)}</span><span>${n} lessons</span>`;
-      const inner = `<img src="img/${c.id}.jpg" alt="" loading="${i < 2 ? 'eager' : 'lazy'}">
-        <div class="c-in">${many ? `<div class="c-num">Course ${i + 1}</div>` : ''}<div class="c-name">${esc(c.name)}</div><div class="c-line">${esc(c.line)}</div></div>
-        <div class="c-foot">${foot}</div>`;
-      // The course whose lessons follow is their header, not a link to them.
-      return c === home ? `<div class="course">${inner}</div>` : `<a class="course${c.lessons ? '' : ' soon'}" href="#c/${c.id}">${inner}</a>`;
-    }).join('');
-    return `<div class="view"><div class="courses">${cards}</div>${home ? lessonsList(home) : ''}</div>`;
+  const lessonSub = (l, done) => `${l.drills.length} workouts${done ? ` · ${done} reviewed` : ''}`;
+  /** A workout's number: red once anything is a no, green once both are yes. */
+  function idxClass(item) {
+    const n = mine[item];
+    if (!n) return '';
+    if (n.clear === 'no' || n.worked === 'no') return 'no';
+    if (n.clear === 'yes' && n.worked === 'yes') return 'yes';
+    return n.clear || n.worked ? 'seen' : '';
+  }
+  /** The note asks what wasn't clear or didn't work, once either is a no (and stays while it has text). */
+  const showNote = (n) => n.clear === 'no' || n.worked === 'no' || !!(n.comment || '').trim();
+  function notePrompt(n) {
+    const asks = QUESTIONS.filter((q) => n[q.key] === 'no').map((q) => q.ask);
+    return asks.length === 2 ? 'What wasn’t clear, and what didn’t work?' : asks[0] || 'Note';
   }
 
-  function lessonsList(c) {
+  // ── views ────────────────────────────────────────
+  const view = $('#view');
+
+  function homeView() {
+    const cards = data.courses.map((c, i) => `<a class="course" href="#c/${c.id}">
+        <img src="img/${c.id}.jpg" alt="" loading="${i < 2 ? 'eager' : 'lazy'}">
+        <div class="c-in"><div class="c-num">Course ${i + 1}</div><div class="c-name">${esc(c.name)}</div><div class="c-line">${esc(c.line)}</div></div>
+        <div class="c-foot"><span>${c.lessons.length} lessons</span><span data-live="course" data-course="${c.id}">${courseDone(c)}</span></div>
+      </a>`).join('');
+    return `<div class="view"><div class="courses">${cards}</div></div>`;
+  }
+
+  function courseView(c) {
     const groups = [];
     for (const l of c.lessons) {
       const label = l.section || 'Offense';
@@ -261,77 +221,49 @@
       groups[groups.length - 1].lessons.push(l);
     }
     let n = 0;
-    return groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
+    const list = groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
       n++;
       const its = lessonItems(c, l);
       const done = reviewedCount(its);
       return `<a class="row" href="#l/${c.id}/${l.id}" data-live="lesson" data-course="${c.id}" data-lesson="${l.id}">
         <span class="idx ${done === its.length ? 'yes' : ''}">${n}</span>
-        <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${lessonSub(l, done, its.length)}</span></span>
+        <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${lessonSub(l, done)}</span></span>
         <span class="end">${ring(done, its.length)}${CHEV}</span>
       </a>`;
     }).join('')}</div>`).join('');
-  }
-
-  function courseView(c) {
-    const back = `<button class="back" data-href="#">${BACK} All courses</button>`;
-    if (c.lessons) return `<div class="view">${back}<h1 class="page-title">${esc(c.name)}</h1>${lessonsList(c)}</div>`;
-    return `<div class="view">${back}
-      <p class="eyebrow">Coming ${fmtDate(c.on)}</p><h1 class="page-title">${esc(c.name)}</h1>
-      <div class="group-label">Planned lessons</div>
-      <div class="group">${c.planned.map((t, k) => `<div class="row disabled"><span class="idx">${k + 1}</span><span class="body"><span class="t">${esc(t)}</span></span></div>`).join('')}</div>
-    </div>`;
+    return `<div class="view"><button class="back" data-href="#">${BACK} Courses</button><h1 class="page-title">${esc(c.name)}</h1>${list}</div>`;
   }
 
   function lessonView(c, l) {
     const li = c.lessons.indexOf(l);
-    const item = `${c.id}/${l.id}`;
-    const rows = l.drills.map((d, k) => {
-      const it = `${item}/${d.id}`;
-      return `<a class="row" href="#d/${c.id}/${l.id}/${d.id}" data-live="drill" data-item="${it}">
-        <span class="idx ${idxClass(it)}">${k + 1}</span>
-        <span class="body"><span class="t">${esc(d.title)}</span><span class="s">${d.kind} · ${fmtLength(d)}</span></span>
-        <span class="end">${tallyHtml(it)}${CHEV}</span>
-      </a>`;
-    }).join('');
+    const next = c.lessons[li + 1];
     return `<div class="view">
-      <button class="back" data-href="${c === homeCourse() ? '#' : `#c/${c.id}`}">${BACK} ${esc(c.name)}</button>
-      <div class="lesson-head">
-        <p class="eyebrow">Lesson ${li + 1}${l.section ? ` · ${esc(l.section)}` : ''}</p>
-        <h1 class="page-title">${esc(l.name)}</h1>
-        <p class="about">${esc(l.about)}</p>
-      </div>
-      <div class="group-label">Workouts</div>
-      <div class="group">${rows}</div>
-      <div class="group-label">The lesson overall</div>
-      <div class="card">${reviewHtml(item)}</div>
+      <button class="back" data-href="#c/${c.id}">${BACK} ${esc(c.name)}</button>
+      <p class="eyebrow">Lesson ${li + 1}</p>
+      <h1 class="page-title">${esc(l.name)}</h1>
+      <div class="group workouts">${l.drills.map((d, k) => workoutHtml(`${c.id}/${l.id}/${d.id}`, d, k)).join('')}</div>
+      ${next ? `<a class="next" href="#l/${c.id}/${next.id}">Next: ${esc(next.name)} ${CHEV}</a>` : ''}
     </div>`;
   }
 
-  function reviewHtml(item) {
+  function workoutHtml(item, d, k) {
     const n = mine[item] || {};
-    const seg = (key) => {
-      const a = ANSWERS[key];
-      const on = ['yes', 'partly', 'no'].indexOf(n[key]);
-      return `<div class="seg" role="group" aria-label="${a.label}" data-key="${key}" ${on >= 0 ? 'data-on' : ''} style="--i:${Math.max(on, 0)}">
+    const toggle = (q) => `<div class="q"><span class="q-text">${q.text}</span>
+        <div class="seg" role="group" aria-label="${q.text}" data-key="${q.key}"${n[q.key] === 'yes' || n[q.key] === 'no' ? ' data-on' : ''} style="--i:${n[q.key] === 'no' ? 1 : 0}">
           <span class="thumb"></span>
-          ${['yes', 'partly', 'no'].map((v) => `<button type="button" class="${v}" data-v="${v}" aria-pressed="${n[key] === v}">${a[v]}</button>`).join('')}
-        </div>`;
-    };
-    return `<section class="review" data-item="${esc(item)}">
-      ${seg('worked')}${seg('clear')}
-      <textarea class="notes" rows="2" placeholder="Notes" aria-label="Notes">${esc(n.comment || '')}</textarea>
-      <div class="saved-note" data-item="${esc(item)}">${n.dirty ? 'Saving…' : hasAnswer(n) ? 'Saved' : ''}</div>
-      <div class="team" data-team="${esc(item)}">${teamHtml(item)}</div>
+          <button type="button" class="yes" data-v="yes" aria-pressed="${n[q.key] === 'yes'}">Yes</button>
+          <button type="button" class="no" data-v="no" aria-pressed="${n[q.key] === 'no'}">No</button>
+        </div></div>`;
+    return `<section class="workout" id="w-${esc(d.id)}" data-item="${esc(item)}">
+      <div class="w-head"><span class="idx ${idxClass(item)}">${k + 1}</span><span class="w-title">${esc(d.title)}</span></div>
+      <div class="w-qs">${QUESTIONS.map(toggle).join('')}
+        <textarea class="notes" rows="1" placeholder="${notePrompt(n)}" aria-label="${notePrompt(n)}"${showNote(n) ? '' : ' hidden'}>${esc(n.comment || '')}</textarea>
+      </div>
     </section>`;
   }
 
-  function teamHtml(item) {
-    const others = [...(team.get(item) || []).values()].filter((x) => x.reviewer !== me && hasAnswer(x)).sort((a, b) => b.at - a.at);
-    return others.length ? `<h4>From the team</h4>${others.map((n) => noteHtml(n)).join('')}` : '';
-  }
   function noteHtml(n, where) {
-    const pills = ['worked', 'clear'].filter((k) => n[k]).map((k) => `<span class="pill ${n[k]}">${ANSWERS[k][n[k]]}</span>`).join('');
+    const pills = QUESTIONS.filter((q) => n[q.key]).map((q) => `<span class="pill ${n[q.key]}">${q.label[n[q.key]] || esc(n[q.key])}</span>`).join('');
     return `<div class="note">${avatar(n.reviewer)}<div style="min-width:0;flex:1">
       <div class="who">${esc(n.reviewer)} ${pills} <span class="when">${ago(n.at)}</span></div>
       ${where || ''}
@@ -339,205 +271,119 @@
     </div></div>`;
   }
 
-  function drillSheet(c, l, d) {
-    const k = l.drills.indexOf(d);
-    const item = `${c.id}/${l.id}/${d.id}`;
-    const video = d.video ? `<video src="${esc(d.video.url)}" controls playsinline preload="metadata"></video>` : '';
-    const list = (title, xs, tag = 'ul') => (xs && xs.length ? `<div class="block"><h4>${title}</h4><${tag}>${xs.map((x) => `<li>${esc(x)}</li>`).join('')}</${tag}></div>` : '');
-    return `<div class="sheet-bar"><span class="grip"></span>
-        <span class="pos">${esc(l.name)} · ${k + 1} of ${l.drills.length}</span>
-        <span class="nav-btns">
-          <button class="icon-btn" data-step="-1" ${k === 0 ? 'disabled' : ''} aria-label="Previous workout"><svg width="10" height="16" viewBox="0 0 10 17"><path d="M8.5 1.5 1.5 8.5l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <button class="icon-btn" data-step="1" ${k === l.drills.length - 1 ? 'disabled' : ''} aria-label="Next workout"><svg width="10" height="16" viewBox="0 0 10 17"><path d="M1.5 1.5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <button class="icon-btn" data-close aria-label="Close"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M1.5 1.5l9 9m0-9l-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-        </span>
-      </div>
-      <div class="sheet-body">
-        <div class="k-row"><span class="pill k">${d.kind}</span><span class="pill k">${fmtLength(d)}</span>${d.pass ? `<span class="pill k">Pass at ${Math.round(d.pass * 100)}%</span>` : ''}${DETECT[d.detect.status] ? `<span class="pill ${d.detect.status}">${DETECT[d.detect.status]}</span>` : ''}</div>
-        <h2 id="sheet-title">${esc(d.title)}</h2>
-        <p class="line">${esc(d.line)}</p>
-        ${video}
-        ${d.calls.length ? `<div class="block"><h4>What AMBO calls</h4><div class="calls">${d.calls.map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>` : ''}
-        ${list('How it goes', d.how, 'ol')}
-        ${list('Mistakes to watch for', d.mistakes)}
-        ${d.moveOn ? `<div class="block"><h4>Done when</h4><p>${esc(d.moveOn)}</p></div>` : ''}
-      </div>
-      <div class="group-label">Your take</div>
-      <div class="card">${reviewHtml(item)}</div>`;
-  }
-
+  const teamFilter = { who: '', issue: '' };
   function teamView() {
     const all = [];
-    for (const [item, byWho] of team) for (const n of byWho.values()) if (hasAnswer(n)) all.push(n);
+    for (const byWho of team.values()) for (const n of byWho.values()) if (hasAnswer(n)) all.push(n);
     for (const [item, n] of Object.entries(mine)) {
       if (n.dirty && hasAnswer(n) && !all.some((x) => x.item === item && x.reviewer === me)) all.push({ ...n, item, reviewer: me });
     }
     all.sort((a, b) => b.at - a.at);
     const people = [...new Set(all.map((n) => n.reviewer))].sort();
     const f = teamFilter;
-    const shown = all.filter((n) => (!f.who || n.reviewer === f.who) && (!f.worked || n.worked === f.worked));
+    const shown = all.filter((n) => (!f.who || n.reviewer === f.who) && (!f.issue || n[f.issue] === 'no'));
     const chip = (key, val, label) => `<button class="chip" data-f="${key}" data-v="${esc(val)}" aria-pressed="${(f[key] || '') === val}">${esc(label)}</button>`;
     const where = (n) => {
       const it = items.get(n.item);
       if (!it) return `<div class="where">${esc(n.item)}</div>`;
-      const href = it.drill ? `#d/${it.course.id}/${it.lesson.id}/${it.drill.id}` : `#l/${it.course.id}/${it.lesson.id}`;
-      return `<a class="where" href="${href}">${esc(it.lesson.name)}${it.drill ? ` › ${esc(it.drill.title)}` : ' · the lesson'}</a>`;
+      return `<a class="where" href="#l/${it.course.id}/${it.lesson.id}/${it.drill.id}">${esc(it.lesson.name)} › ${esc(it.drill.title)}</a>`;
     };
     return `<div class="view">
       <h1 class="page-title">Team notes</h1>
-      <p class="meta">${all.length} note${all.length === 1 ? '' : 's'} · ${people.length} ${people.length === 1 ? 'person' : 'people'}</p>
+      <p class="meta">${all.length} answer${all.length === 1 ? '' : 's'} · ${people.length} ${people.length === 1 ? 'person' : 'people'}</p>
       <div class="filters">${chip('who', '', 'Everyone')}${people.map((p) => chip('who', p, p)).join('')}</div>
-      <div class="filters">${chip('worked', '', 'Any')}${chip('worked', 'no', "Didn't work")}${chip('worked', 'partly', 'Partly')}${chip('worked', 'yes', 'Worked')}</div>
+      <div class="filters">${chip('issue', '', 'All')}${chip('issue', 'clear', 'Not clear')}${chip('issue', 'worked', 'Didn’t work')}</div>
       <div class="group feed">${shown.length ? shown.map((n) => noteHtml(n, where(n))).join('') : '<div class="note"><div class="empty">Nothing yet.</div></div>'}</div>
     </div>`;
   }
-  const teamFilter = { who: '', worked: '' };
 
   // ── routing ──────────────────────────────────────
+  //   #c/<course>                     a course's lessons
+  //   #l/<course>/<lesson>[/<workout>] a lesson's workouts (scrolled to one, from the team's page)
   function route() {
     if (!data) return;
     const parts = location.hash.replace(/^#/, '').split('/');
     const course = (id) => data.courses.find((c) => c.id === id);
     let next = { name: 'home' };
     if (parts[0] === 'team') next = { name: 'team' };
-    // The home page is the first course's page.
-    else if (parts[0] === 'c' && course(parts[1]) && course(parts[1]) !== homeCourse()) next = { name: 'course', c: course(parts[1]) };
-    else if ((parts[0] === 'l' || parts[0] === 'd') && course(parts[1])?.lessons) {
+    else if (parts[0] === 'c' && course(parts[1])) next = { name: 'course', c: course(parts[1]) };
+    // `d` was a workout's own page, before the questions moved onto the lesson's.
+    else if ((parts[0] === 'l' || parts[0] === 'd') && course(parts[1])) {
       const c = course(parts[1]);
       const l = c.lessons.find((x) => x.id === parts[2]);
-      if (l) {
-        next = { name: 'lesson', c, l };
-        if (parts[0] === 'd') {
-          const d = l.drills.find((x) => x.id === parts[3]);
-          if (d) next.d = d;
-        }
-      }
+      if (l) next = { name: 'lesson', c, l, to: parts[3] };
     }
-    // The page under the sheet stays as it is when only the sheet changes.
-    const page = `${next.name}/${next.c?.id || ''}/${next.l?.id || ''}`;
-    const was = `${current.name}/${current.c?.id || ''}/${current.l?.id || ''}`;
-    if (page !== was) {
-      view.innerHTML = next.name === 'home' ? homeView() : next.name === 'team' ? teamView() : next.name === 'course' ? courseView(next.c) : lessonView(next.c, next.l);
-      if (!next.d) scrollTo({ top: 0, behavior: 'instant' });
-      bindReviews(view);
-      document.title = next.l ? `${next.l.name} · AMBO Review` : next.name === 'team' ? 'Team notes · AMBO Review' : 'AMBO Workout Review';
-    }
-    current = next;
-    if (next.d) openSheet(next.c, next.l, next.d);
-    else closeSheet();
+    view.innerHTML = next.name === 'home' ? homeView() : next.name === 'team' ? teamView() : next.name === 'course' ? courseView(next.c) : lessonView(next.c, next.l);
+    bind(view);
+    document.title = next.l ? `${next.l.name} · AMBO Review` : next.c ? `${next.c.name} · AMBO Review` : next.name === 'team' ? 'Team notes · AMBO Review' : 'AMBO Review';
+    const to = next.to && document.getElementById(`w-${next.to}`);
+    if (to) {
+      to.scrollIntoView({ block: 'center' });
+      to.classList.add('flash');
+    } else scrollTo({ top: 0, behavior: 'instant' });
   }
   addEventListener('hashchange', route);
 
-  // ── the sheet ────────────────────────────────────
-  const sheetWrap = $('#sheet');
-  const sheet = $('.sheet', sheetWrap);
-  function openSheet(c, l, d) {
-    sheetWrap.classList.remove('closing');
-    const fresh = sheetWrap.hidden;
-    sheetWrap.hidden = false;
-    document.body.classList.add('locked');
-    sheet.innerHTML = drillSheet(c, l, d);
-    sheet.scrollTop = 0;
-    if (!fresh) sheet.animate([{ opacity: 0.4, transform: 'translateX(10px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.22,.8,.24,1)' });
-    bindReviews(sheet);
-    sheet.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => step(+b.dataset.step)));
+  // ── answering ────────────────────────────────────
+  function grow(t) { t.style.height = 'auto'; t.style.height = `${Math.max(40, t.scrollHeight + 2)}px`; }
+  function paintSeg(seg, v) {
+    seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
+    if (v === 'yes' || v === 'no') { seg.style.setProperty('--i', v === 'no' ? 1 : 0); seg.setAttribute('data-on', ''); } else seg.removeAttribute('data-on');
   }
-  function closeSheet() {
-    if (sheetWrap.hidden) return;
-    sheet.querySelectorAll('video').forEach((v) => v.pause());
-    sheetWrap.classList.add('closing');
-    setTimeout(() => {
-      if (!sheetWrap.classList.contains('closing')) return;
-      sheetWrap.hidden = true;
-      sheetWrap.classList.remove('closing');
-      sheet.innerHTML = '';
-      document.body.classList.remove('locked');
-    }, 300);
-    refreshLive();
+  /** A workout's answers as they are now: its toggles, its number, its note (shown or not, unless it's being typed in). */
+  function paintWorkout(w) {
+    const n = mine[w.dataset.item] || {};
+    w.querySelectorAll('.seg').forEach((seg) => paintSeg(seg, n[seg.dataset.key] || ''));
+    $('.idx', w).className = `idx ${idxClass(w.dataset.item)}`;
+    const t = $('textarea', w);
+    t.placeholder = notePrompt(n);
+    t.setAttribute('aria-label', notePrompt(n));
+    if (document.activeElement !== t) {
+      t.value = n.comment || '';
+      t.hidden = !showNote(n);
+    }
+    if (!t.hidden) grow(t);
   }
-  function step(by) {
-    const { c, l, d } = current;
-    if (!d) return;
-    const next = l.drills[l.drills.indexOf(d) + by];
-    if (next) location.replace(`#d/${c.id}/${l.id}/${next.id}`);
+  function refreshWorkout(item) {
+    const w = document.querySelector(`.workout[data-item="${CSS.escape(item)}"]`);
+    if (w) paintWorkout(w);
   }
-  sheetWrap.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) location.hash = `l/${current.c.id}/${current.l.id}`;
-  });
-  addEventListener('keydown', (e) => {
-    if (!current.d) return;
-    if (e.key === 'Escape') location.hash = `l/${current.c.id}/${current.l.id}`;
-    if (e.target.closest('textarea, input')) return;
-    if (e.key === 'ArrowRight') step(1);
-    if (e.key === 'ArrowLeft') step(-1);
-  });
-
-  // ── review controls ──────────────────────────────
-  function grow(t) { t.style.height = 'auto'; t.style.height = `${Math.max(64, t.scrollHeight + 2)}px`; }
-  function bindReviews(root) {
-    root.querySelectorAll('.review').forEach((sec) => {
-      const item = sec.dataset.item;
-      sec.querySelectorAll('.seg').forEach((seg) => {
-        seg.addEventListener('click', (e) => {
-          const b = e.target.closest('button');
-          if (!b) return;
-          const key = seg.dataset.key;
-          const v = mine[item]?.[key] === b.dataset.v ? '' : b.dataset.v; // tap again to clear
-          seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
-          const i = ['yes', 'partly', 'no'].indexOf(v);
-          if (i >= 0) { seg.style.setProperty('--i', i); seg.setAttribute('data-on', ''); } else seg.removeAttribute('data-on');
-          savingNote(item);
-          change(item, { [key]: v }, false);
-        });
-      });
-      const t = $('textarea', sec);
-      grow(t);
-      t.addEventListener('input', () => { grow(t); savingNote(item); change(item, { comment: t.value }, true); });
-      t.addEventListener('blur', () => { clearTimeout(typeTimer); pump(); });
+  function bind(root) {
+    root.querySelectorAll('.workout').forEach((w) => {
+      const item = w.dataset.item;
+      const t = $('textarea', w);
+      w.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        const key = seg.dataset.key;
+        const v = mine[item]?.[key] === b.dataset.v ? '' : b.dataset.v; // tap again to clear
+        change(item, { [key]: v }, false);
+        paintWorkout(w);
+      }));
+      if (!t.hidden) grow(t);
+      t.addEventListener('input', () => { grow(t); change(item, { comment: t.value }, true); });
+      t.addEventListener('blur', () => { clearTimeout(typeTimer); pump(); paintWorkout(w); });
     });
     root.querySelectorAll('[data-href]').forEach((b) => b.addEventListener('click', () => { location.hash = b.dataset.href; }));
     root.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
       teamFilter[b.dataset.f] = b.dataset.v;
       view.innerHTML = teamView();
-      bindReviews(view);
+      bind(view);
     }));
   }
-  function savingNote(item) {
-    document.querySelectorAll(`.saved-note[data-item="${CSS.escape(item)}"]`).forEach((s) => { s.textContent = 'Saving…'; s.classList.remove('ok'); });
-  }
-  /** My note changed elsewhere (another device): the open form shows it, unless it's being typed in. */
-  function refreshOpenReview(item) {
-    document.querySelectorAll(`.review[data-item="${CSS.escape(item)}"]`).forEach((sec) => {
-      const n = mine[item] || {};
-      const t = $('textarea', sec);
-      if (document.activeElement !== t) { t.value = n.comment || ''; grow(t); }
-      sec.querySelectorAll('.seg').forEach((seg) => {
-        const v = n[seg.dataset.key] || '';
-        seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
-        const i = ['yes', 'partly', 'no'].indexOf(v);
-        if (i >= 0) { seg.style.setProperty('--i', i); seg.setAttribute('data-on', ''); } else seg.removeAttribute('data-on');
-      });
-    });
-  }
 
-  /** What changes as notes come and go, without touching what's being typed: badges, tallies, the team's notes. */
+  /** What changes as answers come and go, without touching what's being typed: numbers, progress. */
   function refreshLive() {
-    document.querySelectorAll('[data-live="drill"]').forEach((row) => {
-      const item = row.dataset.item;
-      $('.idx', row).className = `idx ${idxClass(item)}`;
-      const end = $('.end', row);
-      end.innerHTML = tallyHtml(item) + CHEV;
-    });
+    document.querySelectorAll('.workout').forEach((w) => { $('.idx', w).className = `idx ${idxClass(w.dataset.item)}`; });
     document.querySelectorAll('[data-live="lesson"]').forEach((row) => {
       const c = data.courses.find((x) => x.id === row.dataset.course);
       const l = c.lessons.find((x) => x.id === row.dataset.lesson);
       const its = lessonItems(c, l);
       const done = reviewedCount(its);
       $('.idx', row).className = `idx ${done === its.length ? 'yes' : ''}`;
-      $('.s', row).textContent = lessonSub(l, done, its.length);
+      $('.s', row).textContent = lessonSub(l, done);
       $('.end', row).innerHTML = ring(done, its.length) + CHEV;
     });
-    document.querySelectorAll('[data-team]').forEach((el) => { el.innerHTML = teamHtml(el.dataset.team); });
     document.querySelectorAll('[data-live="course"]').forEach((el) => {
       el.textContent = courseDone(data.courses.find((x) => x.id === el.dataset.course));
     });
@@ -562,8 +408,8 @@
     const n = normalize($('#name-input').value);
     if (!n) return;
     if (n !== me && dirtyItems().length) {
-      // Notes still on their way go out under the name they were written as: wait for them.
-      $('#name-hint').textContent = 'Your last notes are still saving. Try again in a moment.';
+      // Answers still on their way go out under the name they were given as: wait for them.
+      $('#name-hint').textContent = 'Your last answers are still saving. Try again in a moment.';
       pump();
       return;
     }
@@ -572,7 +418,6 @@
     modal.hidden = true;
     loadMine();
     showMe();
-    current = { name: '' };
     route();
     pull();
     pump();
