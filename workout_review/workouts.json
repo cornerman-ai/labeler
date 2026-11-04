@@ -1,0 +1,3173 @@
+{
+ "generated": "2026-11-04",
+ "courses": [
+  {
+   "id": "fundamentals",
+   "name": "Fundamentals",
+   "line": "Every punch from zero, taught by Stafford.",
+   "coach": "Stafford Swainston",
+   "lessons": [
+    {
+     "id": "learn-stance",
+     "name": "Stance and movement",
+     "section": "Basics",
+     "about": "Teaches how to stand and move before any punch: the stance, orthodox or southpaw, with the hands up, then stepping every way and circling in it, each from Stafford and then on AMBO's calls, and a freestyle round to finish.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-stance--the-stance",
+       "title": "Learn the stance",
+       "line": "Watch the coach teach the stance, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part with him: feet shoulder width, then the back foot steps back (the right foot if you're right-handed, orthodox; the left if you're left-handed, southpaw), knees bent, fists made with the thumb outside, the back fist on your chin, elbows in, the front fist in line with your chin."
+       ],
+       "mistakes": [
+        "Standing up straight: with straight legs you're slow to move and have no power to punch."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/stance/01_the_stance.mp4",
+        "seconds": 128
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-stance--find-your-base",
+       "title": "Practice your stance",
+       "line": "Jump, and land in your stance with your knees bent.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "Jump"
+       ],
+       "how": [
+        "Facing the phone, AMBO says \"jump\" 10 times: a small jump on the spot each time, landing in your stance.",
+        "Land with your knees bent, feet shoulder width and the back foot back, hands up; AMBO reads your feet once they settle."
+       ],
+       "mistakes": [
+        "Landing with your feet close together, or side by side: you're off balance."
+       ],
+       "moveOn": "At least 8 of the 10 landings with no cue.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each jump is one rep: the feet read once they settle, too close across or front to back (Feet stance's check)."
+       }
+      },
+      {
+       "id": "learn-stance--the-steps",
+       "title": "Learn the steps",
+       "line": "Watch the coach teach moving in your stance, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part with him: whichever way you go, that foot steps first and the other follows the same distance, pushing off the other foot; stay side-on and never cross your feet."
+       ],
+       "mistakes": [
+        "A small step with one foot and a big one with the other, so your feet end up close together."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/stance/03_the_steps.mp4",
+        "seconds": 160
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-stance--steps-each-way",
+       "title": "Practice steps each way",
+       "line": "Forward, back, left, right, one step each, at your own pace.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 16,
+       "pass": 0.8,
+       "calls": [
+        "Step forward",
+        "Step back",
+        "Step left",
+        "Step right"
+       ],
+       "how": [
+        "AMBO calls forward, back, left and right in that order, one step each, and calls the next one a second after your step has landed.",
+        "The foot on the side you're going steps first and the other follows the same distance; push off the other foot so it never drags."
+       ],
+       "mistakes": [
+        "Dragging the back foot along the floor instead of pushing off it."
+       ],
+       "moveOn": "At least 80% of the 16 steps started by the right foot; unclear steps don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each step call is one rep: which foot left the floor first (Step and slide's step judge)."
+       }
+      },
+      {
+       "id": "learn-stance--called-steps",
+       "title": "Practice called steps",
+       "line": "The steps come at random, and quicker as you go.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "Step forward",
+        "Step back",
+        "Step left",
+        "Step right"
+       ],
+       "how": [
+        "AMBO calls a step forward, back, left or right at random, never more than a step from where you started, the gaps getting shorter.",
+        "Go straight away: the foot on the side you're going first, equal steps, feet never crossing."
+       ],
+       "mistakes": [
+        "Stepping off whichever foot is lighter when the call surprises you."
+       ],
+       "moveOn": "At least 80% of the 20 steps started by the right foot; unclear steps don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each step call is one rep: which foot left the floor first (Step and slide's step judge)."
+       }
+      },
+      {
+       "id": "learn-stance--circling",
+       "title": "Learn circling",
+       "line": "Watch the coach teach circling, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Put something on the floor a step in front of you, like a bottle, and circle it with him: a small step with the front foot, a bigger one with the back, the foot on the side you're going first, facing it the whole time."
+       ],
+       "mistakes": [
+        "Equal steps with both feet: you turn away from what you're circling."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/stance/06_circling.mp4",
+        "seconds": 91
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-stance--switch-on-the-call",
+       "title": "Practice switching direction",
+       "line": "When I say switch, change direction at once.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Switch"
+       ],
+       "how": [
+        "You circle the marker; at random, sometimes after a long while and sometimes straight away, AMBO calls \"switch\".",
+        "Change direction at once, the foot on the new side stepping first: small steps with the front foot, bigger ones with the back."
+       ],
+       "mistakes": [
+        "Crossing the feet or bringing them together as you change direction."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Switch) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-stance--called-moves",
+       "title": "Practice called moves",
+       "line": "I call any move: two steps forward, back, left or right, or circle.",
+       "kind": "Practice",
+       "seconds": 120,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "Step forward, forward",
+        "Step back, back",
+        "Step left, left",
+        "Step right, right",
+        "Circle left",
+        "Circle right"
+       ],
+       "how": [
+        "AMBO calls two steps forward, back, left or right, or \"circle left\" or \"circle right\" (keep circling until the next call), and keeps you near the middle.",
+        "That foot first on every step, feet never crossing on the circles."
+       ],
+       "mistakes": [
+        "Crossing the feet when a step call comes in the middle of a circle."
+       ],
+       "moveOn": "At least 80% of the 12 step calls with every step started by the right foot; circles and unclear calls don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each step call is one rep: which foot left the floor first (Step and slide's step judge). Circle calls aren't judged."
+       }
+      },
+      {
+       "id": "learn-stance--freestyle",
+       "title": "Practice freestyle",
+       "line": "Move in your stance your way: forward, back, side to side and circling.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": 0.8,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Move every way in your stance: that foot first, equal steps, hands up, circling both ways."
+       ],
+       "mistakes": [
+        "Only moving one way."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Free round, no calls. Each straight step found and judged on its first foot (the free step finder); circling isn't scored."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-jab-and-cross",
+     "name": "Jab and cross",
+     "section": null,
+     "about": "Teaches the jab and the cross from zero: each punch from Stafford, then called by AMBO, then the double jab and the 1-2, and a freestyle round to finish.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-jab-and-cross--the-jab",
+       "title": "Learn the jab",
+       "line": "Watch the coach teach the jab, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part with him: elbow in, the arm all the way out, the knuckles turning over at the end, and the small step with it."
+       ],
+       "mistakes": [
+        "Letting the elbow flare out to the side as the jab goes out."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/jab_and_cross/01_the_jab.mp4",
+        "seconds": 107
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--called-jabs",
+       "title": "Practice the jab",
+       "line": "I call one, you jab.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1"
+       ],
+       "how": [
+        "AMBO says \"one\" 20 times, a couple of seconds apart, never on a steady beat.",
+        "Jab on each call and bring it straight back to your guard."
+       ],
+       "mistakes": [
+        "Jabbing on the beat you expect instead of on the call."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--the-double-jab",
+       "title": "Learn the double jab",
+       "line": "Watch the coach teach the double jab, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy him: push off the back foot, the first jab only half way out, hands and feet moving together."
+       ],
+       "mistakes": [
+        "Two full jabs from a standing start, with no push off the back foot."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/jab_and_cross/03_the_double_jab.mp4",
+        "seconds": 124
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--single-or-double",
+       "title": "Practice 1 or 1-1",
+       "line": "I call one for a single jab, or one, one for a double.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1",
+        "1-1"
+       ],
+       "how": [
+        "AMBO calls \"one\" or \"one, one\" 20 times, more singles than doubles, the singles coming quicker.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing a double when a single was called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--the-cross",
+       "title": "Learn the cross",
+       "line": "Watch the coach teach the cross, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy him: turn the shoulders and the hips, the knuckles turning over at the end, and use your range."
+       ],
+       "mistakes": [
+        "Turning too far, or the rear heel coming off the floor."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/jab_and_cross/05_the_cross.mp4",
+        "seconds": 76
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--called-crosses",
+       "title": "Practice the cross",
+       "line": "I call two, you throw the cross.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2"
+       ],
+       "how": [
+        "AMBO says \"two\" 20 times, a couple of seconds apart, never on a steady beat.",
+        "Throw the cross on each call, turning through the shoulders and hips, and come back to your guard."
+       ],
+       "mistakes": [
+        "Turning so far that you end up square, off balance."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--shoulder-twist",
+       "title": "Learn the shoulder twist",
+       "line": "The coach shows the shoulder twist.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Twist your shoulders with him on each go and reset, 5 times, then throw 5 crosses with him, turning the same way."
+       ],
+       "mistakes": [
+        "Twisting only the arms while the shoulders stay still."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/jab_and_cross/07_shoulder_twist.mp4",
+        "seconds": 47
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--called-1-2",
+       "title": "Practice 1-2",
+       "line": "I call one, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-2"
+       ],
+       "how": [
+        "AMBO says \"one, two\" 20 times, with a few seconds between.",
+        "Throw the jab, then the cross, and come back to your guard after the 2."
+       ],
+       "mistakes": [
+        "Pulling the jab back late, so the cross has to wait for it."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--jab-or-1-2",
+       "title": "Practice 1 or 1-2",
+       "line": "I call one for a jab, or one, two for a 1-2.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1",
+        "1-2"
+       ],
+       "how": [
+        "AMBO calls \"one\" or \"one, two\" 20 times, more jabs than 1-2s.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Adding the cross out of habit when only the jab was called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-jab-and-cross--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw jabs and crosses your way, in any mix.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Jabs, double jabs, crosses and 1-2s in any order, moving as you like."
+       ],
+       "mistakes": [
+        "Throwing only 1-2s; use the double jab and the single jab too."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-hooks",
+     "name": "Hooks",
+     "section": null,
+     "about": "Teaches the lead and the rear hook to the head: each from the coach, a hold drill for each, then called combinations with the straights and a freestyle round.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-hooks--the-lead-hook",
+       "title": "Learn the lead hook",
+       "line": "Watch the coach teach the lead hook, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: turn the shoulders and hips, the elbow up level with the fist, go around the target, and dip your weight in."
+       ],
+       "mistakes": [
+        "Dropping the elbow, so the hook swings in low and wide."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/hooks/01_the_lead_hook.mp4",
+        "seconds": 63
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-hooks--hold-the-cross-explained",
+       "title": "Learn the hold-the-cross drill",
+       "line": "The coach explains the next drill: hold the cross out, throw the lead hook, put the cross back out.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the drill; watch it, no need to copy along.",
+        "Holding the cross out keeps you balanced and whips the hook in."
+       ],
+       "mistakes": [
+        "Pulling the held cross back as the hook goes."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/hooks/02_hold_the_cross.mp4",
+        "seconds": 28
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-hooks--hold-the-cross",
+       "title": "Practice hold the cross, 3",
+       "line": "When I call three, throw the lead hook, then put the cross back out.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "3"
+       ],
+       "how": [
+        "AMBO says \"three\" 12 times, the gaps changing.",
+        "Keep the cross out, throw the lead hook on each call, then put the cross back out."
+       ],
+       "mistakes": [
+        "Letting the held cross drop while the hook goes."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it. Only the hand called is listened to (the other is held out)."
+       }
+      },
+      {
+       "id": "learn-hooks--called-2-3",
+       "title": "Practice 2-3",
+       "line": "I call two, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2-3"
+       ],
+       "how": [
+        "AMBO says \"two, three\" 20 times, the gaps changing.",
+        "Throw the cross, then the lead hook, and come back to your guard."
+       ],
+       "mistakes": [
+        "Squaring up after the cross, so the hook has nothing to turn with."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-hooks--the-rear-hook",
+       "title": "Learn the rear hook",
+       "line": "Watch the coach teach the rear hook, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: the path that suits your range, and the turn without turning too far."
+       ],
+       "mistakes": [
+        "Turning so far that you end up facing away, off balance."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/hooks/05_the_rear_hook.mp4",
+        "seconds": 56
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-hooks--hold-the-jab-explained",
+       "title": "Learn the hold-the-jab drill",
+       "line": "The coach explains the next drill: hold the jab out, throw the rear hook, put the jab back out.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the drill; watch it, no need to copy along.",
+        "Holding the jab out stops you turning too far on the rear hook."
+       ],
+       "mistakes": [
+        "Pulling the held jab back as the hook goes."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/hooks/06_hold_the_jab.mp4",
+        "seconds": 21
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-hooks--hold-the-jab",
+       "title": "Practice hold the jab, 4",
+       "line": "When I call four, throw the rear hook, then put the jab back out.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "4"
+       ],
+       "how": [
+        "AMBO says \"four\" 12 times, the gaps changing.",
+        "Keep the jab out, throw the rear hook on each call, then put the jab back out."
+       ],
+       "mistakes": [
+        "Letting the held jab drop while the hook goes."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it. Only the hand called is listened to (the other is held out)."
+       }
+      },
+      {
+       "id": "learn-hooks--called-1-4",
+       "title": "Practice 1-4",
+       "line": "I call one, four.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-4"
+       ],
+       "how": [
+        "AMBO says \"one, four\" 20 times, the gaps changing.",
+        "Throw the jab, then the rear hook, and come back to your guard."
+       ],
+       "mistakes": [
+        "Pulling the jab back late, so the hook has to wait."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-hooks--2-3-or-1-4",
+       "title": "Practice 2-3 or 1-4",
+       "line": "I call two, three, or one, four.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2-3",
+        "1-4"
+       ],
+       "how": [
+        "AMBO calls \"two, three\" or \"one, four\" 20 times, as many of each, the rhythm changing.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the combination you expect instead of the one called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-hooks--called-1-2-3-4",
+       "title": "Practice 1-2-3-4",
+       "line": "I call one, two, three, four.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-2-3-4"
+       ],
+       "how": [
+        "AMBO says \"one, two, three, four\" 20 times, the gaps changing.",
+        "Throw all four, turning through each, and come back to your guard."
+       ],
+       "mistakes": [
+        "Losing the turn, so the last hook is all arm."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-hooks--three-combinations",
+       "title": "Practice any combination",
+       "line": "I call one of three: one, two, three, four, or two, three, or one, four.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-2-3-4",
+        "2-3",
+        "1-4"
+       ],
+       "how": [
+        "AMBO calls \"one, two, three, four\", \"two, three\" or \"one, four\" 20 times, as many of each.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the long one when a short one was called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-hooks--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw straights and hooks your way.",
+       "kind": "Freestyle",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 90-second round with no calls.",
+        "Jabs, crosses and both hooks, in any mix, moving as you like."
+       ],
+       "mistakes": [
+        "Throwing only the combinations you were called; mix them up."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-uppercuts",
+     "name": "Uppercuts",
+     "section": null,
+     "about": "Teaches the lead and the rear uppercut: each from the coach, called alone and in a hold drill, then with the straights, and a freestyle round with every punch.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-uppercuts--the-lead-uppercut",
+       "title": "Learn the lead uppercut",
+       "line": "Watch the coach teach the lead uppercut, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: your weight, the hips in, and the fist coming up through the middle."
+       ],
+       "mistakes": [
+        "Swinging the arm down toward the floor before it comes up."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/uppercuts/01_the_lead_uppercut.mp4",
+        "seconds": 61
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-uppercuts--called-lead-uppercuts",
+       "title": "Practice the lead uppercut",
+       "line": "I call five, you throw the lead uppercut.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "5"
+       ],
+       "how": [
+        "AMBO says \"five\" 12 times, the gaps changing.",
+        "Throw the lead uppercut on each call and come back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the hand before it comes up."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-uppercuts--hold-the-cross-explained",
+       "title": "Learn the hold-the-cross drill",
+       "line": "The coach explains the next drill: hold the cross out, throw the lead uppercut, put the cross back out.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the drill; watch it, no need to copy along.",
+        "Holding the cross out keeps your weight centred as the uppercut comes up."
+       ],
+       "mistakes": [
+        "Pulling the held cross back as the uppercut goes."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/uppercuts/03_hold_the_cross.mp4",
+        "seconds": 24
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-uppercuts--hold-the-cross",
+       "title": "Practice hold the cross, 5",
+       "line": "When I call five, throw the lead uppercut, then put the cross back out.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "5"
+       ],
+       "how": [
+        "AMBO says \"five\" 12 times, the gaps changing.",
+        "Keep the cross out, throw the lead uppercut on each call, then put the cross back out."
+       ],
+       "mistakes": [
+        "Letting the held cross drop while the uppercut goes."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it. Only the hand called is listened to (the other is held out)."
+       }
+      },
+      {
+       "id": "learn-uppercuts--called-2-5",
+       "title": "Practice 2-5",
+       "line": "I call two, five.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2-5"
+       ],
+       "how": [
+        "AMBO says \"two, five\" 20 times, the gaps changing.",
+        "Throw the cross, then the lead uppercut, and come back to your guard."
+       ],
+       "mistakes": [
+        "Leaning back after the cross, so the uppercut has no weight."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-uppercuts--the-rear-uppercut",
+       "title": "Learn the rear uppercut",
+       "line": "Watch the coach teach the rear uppercut, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: the hip driving it, and the path up through the middle."
+       ],
+       "mistakes": [
+        "Throwing it with the arm alone while the hip stays still."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/uppercuts/06_the_rear_uppercut.mp4",
+        "seconds": 70
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-uppercuts--called-rear-uppercuts",
+       "title": "Practice the rear uppercut",
+       "line": "I call six, you throw the rear uppercut.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "6"
+       ],
+       "how": [
+        "AMBO says \"six\" 12 times, the gaps changing.",
+        "Throw the rear uppercut on each call and come back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the hand before it comes up."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-uppercuts--hold-the-jab-explained",
+       "title": "Learn the hold-the-jab drill",
+       "line": "The coach explains the next drill: hold the jab out, throw the rear uppercut, put the jab back out.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the drill; watch it, no need to copy along.",
+        "Holding the jab out keeps the rear uppercut short and through the middle."
+       ],
+       "mistakes": [
+        "Pulling the held jab back as the uppercut goes."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/uppercuts/08_hold_the_jab.mp4",
+        "seconds": 22
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-uppercuts--hold-the-jab",
+       "title": "Practice hold the jab, 6",
+       "line": "When I call six, throw the rear uppercut, then put the jab back out.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "6"
+       ],
+       "how": [
+        "AMBO says \"six\" 12 times, the gaps changing.",
+        "Keep the jab out, throw the rear uppercut on each call, then put the jab back out."
+       ],
+       "mistakes": [
+        "Letting the held jab drop while the uppercut goes."
+       ],
+       "moveOn": "At least 10 of the 12 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it. Only the hand called is listened to (the other is held out)."
+       }
+      },
+      {
+       "id": "learn-uppercuts--called-1-6",
+       "title": "Practice 1-6",
+       "line": "I call one, six.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-6"
+       ],
+       "how": [
+        "AMBO says \"one, six\" 20 times, the gaps changing.",
+        "Throw the jab, then the rear uppercut, and come back to your guard."
+       ],
+       "mistakes": [
+        "Pulling the jab back late, so the uppercut has to wait."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-uppercuts--2-5-or-1-6",
+       "title": "Practice 2-5 or 1-6",
+       "line": "I call two, five, or one, six.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2-5",
+        "1-6"
+       ],
+       "how": [
+        "AMBO calls \"two, five\" or \"one, six\" 20 times, as many of each, the rhythm changing.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the combination you expect instead of the one called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-uppercuts--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw straights, hooks and uppercuts your way.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Every punch so far, in any mix, moving as you like."
+       ],
+       "mistakes": [
+        "Leaving the uppercuts out; use all six punches."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-body-hooks",
+     "name": "Body hooks",
+     "section": null,
+     "about": "Teaches the lead and the rear hook to the body: each from the coach and called after a jab, then both sides mixed, head and body together, and a freestyle round.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-body-hooks--the-lead-body-hook",
+       "title": "Learn the lead body hook",
+       "line": "Watch the coach teach the lead body hook, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: bend your legs to drop your weight, and turn the hook in on a level path to the ribs."
+       ],
+       "mistakes": [
+        "Dropping the hand to reach the body instead of bending the legs."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/body_hooks/01_the_lead_body_hook.mp4",
+        "seconds": 51
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-body-hooks--called-1-3-body",
+       "title": "Practice 1, 3 body",
+       "line": "I call one, three to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 3 body"
+       ],
+       "how": [
+        "AMBO says \"one, three to the body\" 20 times, the gaps changing.",
+        "Throw the jab, bend your legs and turn the lead hook into the ribs, then come back to your guard."
+       ],
+       "mistakes": [
+        "Staying tall and reaching down with the arm."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-hooks--the-rear-body-hook",
+       "title": "Learn the rear body hook",
+       "line": "Watch the coach teach the rear body hook, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: change levels with your legs, and take your head off the centre line as the hook goes."
+       ],
+       "mistakes": [
+        "Dipping straight down with your head in the middle."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/body_hooks/03_the_rear_body_hook.mp4",
+        "seconds": 65
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-body-hooks--called-1-4-body",
+       "title": "Practice 1, 4 body",
+       "line": "I call one, four to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 4 body"
+       ],
+       "how": [
+        "AMBO says \"one, four to the body\" 20 times, the gaps changing.",
+        "Throw the jab, change levels, and turn the rear hook into the body with your head off the centre line."
+       ],
+       "mistakes": [
+        "Leaving your head on the centre line as you dip for the body."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-hooks--lead-or-rear-to-the-body",
+       "title": "Practice 1, 3 body or 1, 4 body",
+       "line": "I call one, three to the body, or one, four to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 3 body",
+        "1, 4 body"
+       ],
+       "how": [
+        "AMBO calls \"one, three to the body\" or \"one, four to the body\" 20 times, as many of each, the rhythm changing.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the side you expect instead of the one called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-hooks--head-then-body",
+       "title": "Practice 4, 3 body or 3, 4 body",
+       "line": "I call four, three to the body, or three, four to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "4, 3 body",
+        "3, 4 body"
+       ],
+       "how": [
+        "AMBO calls \"four, three to the body\" or \"three, four to the body\" 20 times, as many of each, the rhythm changing.",
+        "Hook to the head, then change levels for the hook to the body, and come back to your guard."
+       ],
+       "mistakes": [
+        "Standing tall for the body hook, so it comes in from above."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-hooks--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw straights, hooks, uppercuts and body hooks your way, and keep moving.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Every punch so far, head and body, moving as you like."
+       ],
+       "mistakes": [
+        "Staying upstairs the whole round; go to the body too."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-body-straights",
+     "name": "Body jab and cross",
+     "section": null,
+     "about": "Teaches the jab and the cross to the body: each from the coach and called after a jab to the head, then mixed, a 1-2 into a body shot of your own, and a freestyle round.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-body-straights--the-body-jab",
+       "title": "Learn the body jab",
+       "line": "Watch the coach teach the body jab, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: bend your legs to drop level with the body, and take your head off the centre line as the jab goes."
+       ],
+       "mistakes": [
+        "Punching down at the body instead of dropping level with it."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/body_straights/01_the_body_jab.mp4",
+        "seconds": 40
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-body-straights--called-1-1-body",
+       "title": "Practice 1, 1 body",
+       "line": "I call one, one to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 1 body"
+       ],
+       "how": [
+        "AMBO says \"one, one to the body\" 20 times, the gaps changing.",
+        "Jab to the head, then drop level for the jab to the body, and come back to your guard."
+       ],
+       "mistakes": [
+        "Bending at the waist instead of at the knees."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-straights--the-body-cross",
+       "title": "Learn the body cross",
+       "line": "Watch the coach teach the body cross, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: drop level, and step to take your head off the centre line as the cross goes."
+       ],
+       "mistakes": [
+        "Leaning over your front knee with your head in the middle."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/body_straights/03_the_body_cross.mp4",
+        "seconds": 43
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-body-straights--called-1-2-body",
+       "title": "Practice 1, 2 body",
+       "line": "I call one, two to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 2 body"
+       ],
+       "how": [
+        "AMBO says \"one, two to the body\" 20 times, the gaps changing.",
+        "Jab, then step and drop level for the cross to the body, and come back to your guard."
+       ],
+       "mistakes": [
+        "Reaching for the body with the cross instead of stepping into it."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-straights--body-jab-or-body-cross",
+       "title": "Practice 1, 1 body or 1, 2 body",
+       "line": "I call one, one to the body, or one, two to the body.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 1 body",
+        "1, 2 body"
+       ],
+       "how": [
+        "AMBO calls \"one, one to the body\" or \"one, two to the body\" 20 times, as many of each, the rhythm changing.",
+        "Throw what is called and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the one you expect instead of the one called."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-straights--1-2-any-body-shot",
+       "title": "Practice 1-2, body shot",
+       "line": "I call one, two, body shot.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1-2, body shot"
+       ],
+       "how": [
+        "AMBO says \"one, two, body shot\" 20 times, the gaps changing.",
+        "Jab and cross to the head, then pick a body shot: a body jab, a body cross or a body hook."
+       ],
+       "mistakes": [
+        "Always picking the same body shot; mix them up."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/body_straights/06_1_2_any_body_shot.mp4",
+        "seconds": 23
+       },
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-body-straights--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw anything to the head or the body your way, and keep moving.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Straights, hooks and uppercuts, body hooks and body straights, in any mix, moving as you like."
+       ],
+       "mistakes": [
+        "Forgetting the body straights; drop level for a few."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-combinations",
+     "name": "Offense combinations",
+     "section": null,
+     "about": "Puts the punches together: what the lesson is from the coach, five of his combinations called one at a time, then any combination from the course, one to four punches.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-combinations--combinations-explained",
+       "title": "Learn what this lesson covers",
+       "line": "The coach explains this lesson: putting the punches together, staying relaxed between combinations, and throwing what I call.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the lesson; watch it, no need to copy along.",
+        "From here on the punches come in combinations: blend each one into the next, and stay relaxed between them."
+       ],
+       "mistakes": [
+        "Tensing up between combinations."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/combinations/01_combinations.mp4",
+        "seconds": 16
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-combinations--called-2-3-2",
+       "title": "Practice 2-3-2",
+       "line": "I call two, three, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "2-3-2"
+       ],
+       "how": [
+        "AMBO says \"two, three, two\" 20 times, the gaps changing.",
+        "Throw all three, turning through each, and come back to your guard."
+       ],
+       "mistakes": [
+        "Squaring up after the hook, so the last cross has no turn in it."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-combinations--called-3-2-3",
+       "title": "Practice 3-2-3",
+       "line": "I call three, two, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "3-2-3"
+       ],
+       "how": [
+        "AMBO says \"three, two, three\" 20 times, the gaps changing.",
+        "Throw all three, turning through each, and come back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the elbow on the second hook."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-combinations--called-6-3-2",
+       "title": "Practice 6-3-2",
+       "line": "I call six, three, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "6-3-2"
+       ],
+       "how": [
+        "AMBO says \"six, three, two\" 20 times, the gaps changing.",
+        "Throw all three, turning through each, and come back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the rear hand before the uppercut comes up."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-combinations--called-1-4-body-3",
+       "title": "Practice 1, 4 body, 3",
+       "line": "I call one, four to the body, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 4 body, 3"
+       ],
+       "how": [
+        "AMBO says \"one, four to the body, three\" 20 times, the gaps changing.",
+        "Drop with your legs for the body hook, come back up into the lead hook, and back to your guard."
+       ],
+       "mistakes": [
+        "Staying low after the body hook, so the lead hook has nothing behind it."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-combinations--called-1-2-body-3-2",
+       "title": "Practice 1, 2 body, 3, 2",
+       "line": "I call one, two to the body, three, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 20,
+       "pass": 0.8,
+       "calls": [
+        "1, 2 body, 3, 2"
+       ],
+       "how": [
+        "AMBO says \"one, two to the body, three, two\" 20 times, the gaps changing.",
+        "Drop level for the body cross, come back up for the hook and the cross, and back to your guard."
+       ],
+       "mistakes": [
+        "Leaning over the front knee on the body cross."
+       ],
+       "moveOn": "At least 16 of the 20 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      },
+      {
+       "id": "learn-combinations--any-combination",
+       "title": "Practice any combination",
+       "line": "For two minutes I call any combination from the course, one to four punches.",
+       "kind": "Practice",
+       "seconds": 120,
+       "reps": 24,
+       "pass": 0.8,
+       "calls": [
+        "1",
+        "2",
+        "1-1",
+        "1-2",
+        "2-3",
+        "1-4",
+        "1-2-3-4",
+        "2-5",
+        "1-6",
+        "1, 3 body",
+        "1, 4 body",
+        "1, 1 body",
+        "1, 2 body",
+        "2-3-2",
+        "3-2-3",
+        "6-3-2",
+        "1, 4 body, 3",
+        "1, 2 body, 3, 2"
+       ],
+       "how": [
+        "AMBO calls 24 combinations from the course, one to four punches each, as many of each, the rhythm changing.",
+        "Throw what is called, keep moving between them, and come back to your guard after each."
+       ],
+       "mistakes": [
+        "Throwing the combination you expect instead of the one called."
+       ],
+       "moveOn": "At least 20 of the 24 right.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: every punch judged on its hand and kind by the punch model (detection identical to the backend's). Generous: the called kind counts at 5% of the punch or 20% in one frame; a wind-up running into the punch is part of it."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-step-back",
+     "name": "Pull and step back",
+     "section": "Defense",
+     "about": "Teaches the first defence, getting out of range: the pull off the back foot and the step back with both feet, each from the coach and called, then with punches before and after.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-step-back--the-pull",
+       "title": "Learn the pull",
+       "line": "Watch the coach teach the pull, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: the front foot stays, the back leg takes the weight and bends, your head stays in line over your hips, then come straight back in."
+       ],
+       "mistakes": [
+        "Leaning your head back past your hips: you're off balance and slow to come back in."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/step_back/01_the_pull.mp4",
+        "seconds": 79
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-step-back--called-pulls",
+       "title": "Practice the pull",
+       "line": "When I say pull, pull back out of range, then come back.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Pull"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"pull\" at changing gaps.",
+        "Take the weight onto your bent back leg, head in line, then come back to your stance and keep moving."
+       ],
+       "mistakes": [
+        "Keeping the back leg straight, so you can't spring back in."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Pull) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--the-step-back",
+       "title": "Learn the step back",
+       "line": "Watch the coach teach the step back, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: push off the front foot and land on the back one, both feet moving, then push off the back foot to come back in, your head within your hips."
+       ],
+       "mistakes": [
+        "Leaning back or looking away instead of letting your feet do the work."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/step_back/03_the_step_back.mp4",
+        "seconds": 85
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-step-back--called-step-backs",
+       "title": "Practice the step back",
+       "line": "When I say step back, step back with both feet, then keep moving.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Step back"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"step back\" at changing gaps.",
+        "Push off the front foot and land in your stance, both feet moving, then keep moving."
+       ],
+       "mistakes": [
+        "Leaning back from the waist instead of stepping."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Step back) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--jab-step-back-jab",
+       "title": "Practice 1, step back, 1",
+       "line": "I call one, step back, one.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "1, step back, 1"
+       ],
+       "how": [
+        "AMBO says \"one, step back, one\" at changing gaps.",
+        "Jab, step back with both feet, and jab again as you land."
+       ],
+       "mistakes": [
+        "Jabbing from too far after the step back: land in range for the second jab."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (1, step back, 1) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--jab-pull-cross",
+       "title": "Practice 1, pull, 2",
+       "line": "I call one, pull, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "1, pull, 2"
+       ],
+       "how": [
+        "AMBO says \"one, pull, two\" at changing gaps.",
+        "Jab, take the weight onto your bent back leg, then spring off it into the cross."
+       ],
+       "mistakes": [
+        "Throwing the cross while your weight is still back."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (1, pull, 2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--combo-step-back-jab",
+       "title": "Practice combo, step back, 1",
+       "line": "When I say combo, throw a combination of your own, step back, and jab.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Combo, step back, 1"
+       ],
+       "how": [
+        "AMBO says \"combo, step back, one\" at changing gaps.",
+        "Throw any combination you like, step back out of range, and jab as you land."
+       ],
+       "mistakes": [
+        "Standing still in range after your combination."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Combo, step back, 1) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--combo-step-back-cross",
+       "title": "Practice combo, step back, 2",
+       "line": "When I say combo, throw a combination of your own, step back, and throw the cross.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Combo, step back, 2"
+       ],
+       "how": [
+        "AMBO says \"combo, step back, two\" at changing gaps.",
+        "Throw any combination you like, step back out of range, and come back with the cross."
+       ],
+       "mistakes": [
+        "Stepping back with your guard down after the combination."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Combo, step back, 2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-step-back--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw your punches, and pull or step back out of range your way.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Any punches from the course, and the pull and the step back to get out of range, moving as you like."
+       ],
+       "mistakes": [
+        "Forgetting to defend: pull or step back after a few of your combinations."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-blocking",
+     "name": "Blocking",
+     "section": "Defense",
+     "about": "Teaches blocking: straights and hooks to the head, then hooks to the body, each from the coach and called, then each block followed by a counter.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-blocking--blocking-straights-and-hooks",
+       "title": "Learn the block",
+       "line": "Watch the coach teach blocking to the head, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: gloves on your forehead, elbows tight; for a straight, bring the elbow to the centre line and back; for a hook, turn the hand and brush your hair back, the elbow still in. Keep a small bend in your legs."
+       ],
+       "mistakes": [
+        "Lifting the elbow high to block, which leaves your body open."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/blocking/01_blocking_straights_and_hooks.mp4",
+        "seconds": 134
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-blocking--called-blocks",
+       "title": "Practice lead or rear block",
+       "line": "When I say lead block or rear block, block on that side, then back to your guard.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead block",
+        "Rear block"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"lead block\" or \"rear block\", as many of each, at changing gaps.",
+        "Block on that side with the smallest movement you can, glove on your head, then back to your guard."
+       ],
+       "mistakes": [
+        "Taking the glove off your head, so the block knocks it into your own face."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead block · Rear block) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--lead-block-2-3",
+       "title": "Practice lead block, 2-3",
+       "line": "I call lead block, two, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead block, 2-3"
+       ],
+       "how": [
+        "AMBO says \"lead block, two, three\" at changing gaps.",
+        "Block on the lead side, then throw the cross and the lead hook straight off it, and back to your guard."
+       ],
+       "mistakes": [
+        "Waiting after the block instead of firing straight back."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead block, 2-3) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--rear-block-3-2",
+       "title": "Practice rear block, 3-2",
+       "line": "I call rear block, three, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Rear block, 3-2"
+       ],
+       "how": [
+        "AMBO says \"rear block, three, two\" at changing gaps.",
+        "Block on the rear side, then throw the lead hook and the cross straight off it, and back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the blocking hand as you counter."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Rear block, 3-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--either-block",
+       "title": "Practice either block combo",
+       "line": "I call lead block, two, three or rear block, three, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead block, 2-3",
+        "Rear block, 3-2"
+       ],
+       "how": [
+        "AMBO calls either combination, as many of each, at changing gaps.",
+        "Block on the side called, then throw its counter, and back to your guard."
+       ],
+       "mistakes": [
+        "Blocking the side you expect instead of the one called."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead block, 2-3 · Rear block, 3-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--blocking-body-shots",
+       "title": "Learn the body block",
+       "line": "Watch the coach teach blocking to the body, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: bring your elbow down to your hip as one unit with your body, bending into your legs to take the impact into the floor."
+       ],
+       "mistakes": [
+        "Dropping only the arm, which leaves your head open to hooks."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/blocking/06_blocking_body_shots.mp4",
+        "seconds": 61
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-blocking--called-body-blocks",
+       "title": "Practice lead or rear body block",
+       "line": "When I say lead body block or rear body block, block the body on that side.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead body block",
+        "Rear body block"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"lead body block\" or \"rear body block\", as many of each, at changing gaps.",
+        "Bring the elbow down to the hip on that side, bending into your legs, then back to your guard."
+       ],
+       "mistakes": [
+        "Blocking with straight legs, so a body shot pushes you off balance."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead body block · Rear body block) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--rear-body-block-6-3",
+       "title": "Practice rear body block, 6-3",
+       "line": "I call rear body block, six, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Rear body block, 6-3"
+       ],
+       "how": [
+        "AMBO says \"rear body block, six, three\" at changing gaps.",
+        "Block the body on the rear side, then throw the rear uppercut and the lead hook straight off it, and back to your guard."
+       ],
+       "mistakes": [
+        "Staying low after the block instead of coming up into the uppercut."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Rear body block, 6-3) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--lead-body-block-5-2",
+       "title": "Practice lead body block, 5-2",
+       "line": "I call lead body block, five, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead body block, 5-2"
+       ],
+       "how": [
+        "AMBO says \"lead body block, five, two\" at changing gaps.",
+        "Block the body on the lead side, then throw the lead uppercut and the cross straight off it, and back to your guard."
+       ],
+       "mistakes": [
+        "Dropping the rear hand from your chin while you block."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead body block, 5-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--either-body-block",
+       "title": "Practice either body block combo",
+       "line": "I call rear body block, six, three or lead body block, five, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Rear body block, 6-3",
+        "Lead body block, 5-2"
+       ],
+       "how": [
+        "AMBO calls either combination, as many of each, at changing gaps.",
+        "Block the body on the side called, then throw its counter, and back to your guard."
+       ],
+       "mistakes": [
+        "Blocking the side you expect instead of the one called."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Rear body block, 6-3 · Lead body block, 5-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-blocking--any-block",
+       "title": "Practice any block combo",
+       "line": "For two minutes I call any of the four: two blocks to the head and two to the body, each with its counter.",
+       "kind": "Practice",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead block, 2-3",
+        "Rear block, 3-2",
+        "Rear body block, 6-3",
+        "Lead body block, 5-2"
+       ],
+       "how": [
+        "AMBO calls all four combinations, as many of each, at changing gaps.",
+        "Block on the side called, head or body, then throw its counter, and keep moving between calls."
+       ],
+       "mistakes": [
+        "Letting the guard drift down as you tire: gloves back on your head after each counter."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead block, 2-3 · Rear block, 3-2 · Rear body block, 6-3 · Lead body block, 5-2) on the clock. Nothing judged on camera yet."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-parrying",
+     "name": "Parrying",
+     "section": "Defense",
+     "about": "Teaches the parry: a small push with the palm that takes a straight off the centre line, called with a punch after it, then your own combinations with blocks and parries after them.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-parrying--parrying",
+       "title": "Learn the parry",
+       "line": "Watch the coach teach the parry, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: open the hand and meet the punch with your palm at its longest reach, on the same side, and push it off the centre line with a small movement, then back."
+       ],
+       "mistakes": [
+        "Reaching out for the punch, so a miss leaves you open."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/parrying/01_parrying.mp4",
+        "seconds": 109
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-parrying--lead-parry-1",
+       "title": "Practice lead parry, 1",
+       "line": "I call lead parry, one.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Lead parry, 1"
+       ],
+       "how": [
+        "AMBO says \"lead parry, one\" at changing gaps.",
+        "Parry with the lead palm, a small push off the centre line, then jab straight off it."
+       ],
+       "mistakes": [
+        "Parrying with a closed fist instead of an open palm."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Lead parry, 1) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-parrying--rear-parry-1",
+       "title": "Practice rear parry, 1",
+       "line": "I call rear parry, one.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Rear parry, 1"
+       ],
+       "how": [
+        "AMBO says \"rear parry, one\" at changing gaps.",
+        "Parry with the rear palm across to the centre line and back to your chin, then jab."
+       ],
+       "mistakes": [
+        "Pushing the rear hand far across, away from your chin."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Rear parry, 1) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-parrying--rear-parry-2",
+       "title": "Practice rear parry, 2",
+       "line": "I call rear parry, two.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Rear parry, 2"
+       ],
+       "how": [
+        "AMBO says \"rear parry, two\" at changing gaps.",
+        "Parry with the rear palm to the centre line, bring it back, and throw the cross with the same hand."
+       ],
+       "mistakes": [
+        "Throwing the cross before the parrying hand is back to your chin."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Rear parry, 2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-parrying--combo-then-defend-explained",
+       "title": "Learn the combo, block, parry drill",
+       "line": "The coach explains the last drill: your own combination on my call, then blocks and parries.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the next drill; watch it, no need to copy along.",
+        "When AMBO calls, throw any combination up to four punches, then block and parry, moving, until the next call."
+       ],
+       "mistakes": [
+        "Throwing the same combination every time."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/parrying/05_combo_block_and_parry.mp4",
+        "seconds": 39
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-parrying--combo-then-defend",
+       "title": "Practice combo, block, parry",
+       "line": "For two minutes, when I say combo, throw a combination of your own, then block and parry until the next call.",
+       "kind": "Practice",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "Combo"
+       ],
+       "how": [
+        "AMBO says \"combo\" at changing gaps.",
+        "Throw any combination, one to four punches, then work your blocks and parries, moving, until the next call."
+       ],
+       "mistakes": [
+        "Standing still between calls instead of defending and moving."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (Combo) on the clock. Nothing judged on camera yet."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-slipping",
+     "name": "Slipping",
+     "section": "Defense",
+     "about": "Teaches the slip against the jab and the cross: the ear to the centre line, the legs bending, from the coach and called, then with punches before and after.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-slipping--the-slip",
+       "title": "Learn the slip",
+       "line": "Watch the coach teach the slip to the lead and the rear, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: nose over the line on the floor, then the ear to that line, the whole body moving and the legs bending, so you stay in your stance, loaded to throw back."
+       ],
+       "mistakes": [
+        "Taking the head out past your knee, which leaves you off balance and open to the hook."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/slipping/01_slips.mp4",
+        "seconds": 105
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-slipping--called-slips",
+       "title": "Practice lead or rear slip",
+       "line": "When I say lead slip or rear slip, slip to that side, then back to your stance.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 16,
+       "pass": 0.8,
+       "calls": [
+        "Lead slip",
+        "Rear slip"
+       ],
+       "how": [
+        "AMBO says \"lead slip\" or \"rear slip\", as many of each, at changing gaps.",
+        "Ear to the centre line on that side, bending your legs, then back to your stance."
+       ],
+       "mistakes": [
+        "Moving only the head, so the legs stay straight and you can't throw back."
+       ],
+       "moveOn": "At least 80% of the 16 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: lead slip, rear slip judged by the backend's frontal detectors (slips, rolls, ducks). A called slip's side is checked."
+       }
+      },
+      {
+       "id": "learn-slipping--2-3-slip-3",
+       "title": "Practice 2-3, slip, 3",
+       "line": "I call two, three, slip, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "2-3, slip, 3"
+       ],
+       "how": [
+        "AMBO says \"two, three, slip, three\" at changing gaps.",
+        "Throw the cross and the lead hook, slip, and come back with the lead hook from your bent legs."
+       ],
+       "mistakes": [
+        "Standing up out of the slip before the last hook."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: slip judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 2-3, 3."
+       }
+      },
+      {
+       "id": "learn-slipping--1-2-slip-2",
+       "title": "Practice 1-2, slip, 2",
+       "line": "I call one, two, slip, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "1-2, slip, 2"
+       ],
+       "how": [
+        "AMBO says \"one, two, slip, two\" at changing gaps.",
+        "Throw the jab and the cross, slip, and come back with the cross off your loaded legs."
+       ],
+       "mistakes": [
+        "Leaving the guard down after the 1-2, so the slip is late."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: slip judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 1-2, 2."
+       }
+      },
+      {
+       "id": "learn-slipping--either-combination",
+       "title": "Practice either slip combo",
+       "line": "I call two, three, slip, three or one, two, slip, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "2-3, slip, 3",
+        "1-2, slip, 2"
+       ],
+       "how": [
+        "AMBO calls either combination, as many of each, at changing gaps.",
+        "Throw what's called, slip, and fire back, back to your stance after each."
+       ],
+       "mistakes": [
+        "Throwing the combination you expect instead of the one called."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: slip judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 2-3, 3, 1-2, 2."
+       }
+      },
+      {
+       "id": "learn-slipping--freestyle",
+       "title": "Practice freestyle",
+       "line": "Throw, slip and throw again your way, and keep moving.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Throw your punches, slip, and throw again, moving as you like."
+       ],
+       "mistakes": [
+        "Slipping with straight legs as you tire: keep bending into them."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-rolling",
+     "name": "Rolling and ducking",
+     "section": "Defense",
+     "about": "Teaches getting under punches: the duck, the roll and the double roll, each from the coach and called, then rolling into your own punches.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-rolling--the-duck",
+       "title": "Learn the duck",
+       "line": "Watch the coach teach the duck, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: a small bend in your legs, chin tucked down, ducking under straights and hooks to the head, and on your own to keep the target moving."
+       ],
+       "mistakes": [
+        "Squatting all the way down, or ducking with your chin up into an uppercut."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/rolling/01_duck.mp4",
+        "seconds": 70
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-rolling--called-ducks",
+       "title": "Practice the duck",
+       "line": "When I say duck, duck, then keep moving.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "Duck"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"duck\" at changing gaps.",
+        "A small bend in your legs, chin tucked, then back up and keep moving."
+       ],
+       "mistakes": [
+        "Bending at the waist instead of the legs."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: duck judged by the backend's frontal detectors (slips, rolls, ducks)."
+       }
+      },
+      {
+       "id": "learn-rolling--the-roll",
+       "title": "Learn the roll",
+       "line": "Watch the coach teach the roll, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: bend one leg and move your weight across to the other foot in a U, coming up on the far side, hands up and looking through your eyebrows."
+       ],
+       "mistakes": [
+        "Hinging at the hips and looking at the floor, so you can't see the next punch."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/rolling/03_roll.mp4",
+        "seconds": 68
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-rolling--called-rolls",
+       "title": "Practice the roll",
+       "line": "When I say roll, roll to either side, then keep moving.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "Roll"
+       ],
+       "how": [
+        "Move around in your stance; AMBO says \"roll\" at changing gaps.",
+        "Roll to the side you pick, making the U with your legs, then keep moving."
+       ],
+       "mistakes": [
+        "Dropping the hands as you roll."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: roll judged by the backend's frontal detectors (slips, rolls, ducks)."
+       }
+      },
+      {
+       "id": "learn-rolling--the-double-roll",
+       "title": "Learn the double roll",
+       "line": "Watch the coach teach the double roll, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: roll one way, come up in between, then roll the other way, hands up and eyes through your eyebrows."
+       ],
+       "mistakes": [
+        "Staying down after the first roll and trying to roll again from there."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/rolling/05_double_roll.mp4",
+        "seconds": 35
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-rolling--called-double-rolls",
+       "title": "Practice the double roll",
+       "line": "When I say double roll, roll one way and then the other, either side first.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "Double roll"
+       ],
+       "how": [
+        "AMBO says \"double roll\" at changing gaps.",
+        "Roll one way, come up, roll the other, starting on the side you pick."
+       ],
+       "mistakes": [
+        "Not coming up between the two rolls."
+       ],
+       "moveOn": "At least 80% of the 10 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: double roll judged by the backend's frontal detectors (slips, rolls, ducks)."
+       }
+      },
+      {
+       "id": "learn-rolling--double-roll-to-strike-explained",
+       "title": "Learn the double roll, combo drill",
+       "line": "The coach explains the next two drills: a double roll, then a combination of your own.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the next two drills; watch it, no need to copy along.",
+        "First the rear side, then the lead side, then strike; in the drill after, the lead side first."
+       ],
+       "mistakes": [
+        "Throwing from the bottom of the roll instead of after coming up."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/rolling/07_double_roll_to_strike.mp4",
+        "seconds": 22
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-rolling--rear-then-lead-combo",
+       "title": "Practice rear roll, lead roll, combo",
+       "line": "I call rear roll, lead roll, combo.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "Rear roll, lead roll, combo"
+       ],
+       "how": [
+        "AMBO says \"rear roll, lead roll, combo\" at changing gaps.",
+        "Roll to the rear side, then the lead side, come up and throw any combination you like."
+       ],
+       "mistakes": [
+        "Throwing the combination before you're back up."
+       ],
+       "moveOn": "At least 80% of the 10 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: rear roll, lead roll judged by the backend's frontal detectors (slips, rolls, ducks). A roll's side isn't read (the backend has none). Not judged: combo."
+       }
+      },
+      {
+       "id": "learn-rolling--lead-then-rear-combo",
+       "title": "Practice lead roll, rear roll, combo",
+       "line": "I call lead roll, rear roll, combo.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "Lead roll, rear roll, combo"
+       ],
+       "how": [
+        "AMBO says \"lead roll, rear roll, combo\" at changing gaps.",
+        "Roll to the lead side, then the rear side, come up and throw any combination you like."
+       ],
+       "mistakes": [
+        "Looking at the floor through the rolls, so the combination starts blind."
+       ],
+       "moveOn": "At least 80% of the 10 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: lead roll, rear roll judged by the backend's frontal detectors (slips, rolls, ducks). A roll's side isn't read (the backend has none). Not judged: combo."
+       }
+      },
+      {
+       "id": "learn-rolling--1-2-roll-or-2-3-roll",
+       "title": "Practice 1-2, roll or 2-3, roll",
+       "line": "I call one, two, roll or two, three, roll.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "1-2, roll",
+        "2-3, roll"
+       ],
+       "how": [
+        "AMBO calls either combination, as many of each, at changing gaps.",
+        "Throw the punches called, then roll under the counter, and back to your guard."
+       ],
+       "mistakes": [
+        "Standing tall after the punches instead of rolling straight away."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: roll judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 1-2, 2-3."
+       }
+      },
+      {
+       "id": "learn-rolling--step-and-roll",
+       "title": "Learn the step and roll",
+       "line": "Watch the coach teach the step and roll, and copy each part as it comes.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video plays and teaches it one part at a time.",
+        "Copy each part: add a step at an angle, bend into the leg, and make the U."
+       ],
+       "mistakes": [
+        "Stepping straight back instead of at an angle."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/rolling/11_step_and_roll.mp4",
+        "seconds": 43
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-rolling--called-step-rolls",
+       "title": "Practice lead or rear step and roll",
+       "line": "When I say lead roll or rear roll, step and roll to that side.",
+       "kind": "Practice",
+       "seconds": 60,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "Lead roll",
+        "Rear roll"
+       ],
+       "how": [
+        "AMBO says \"lead roll\" or \"rear roll\", as many of each, at changing gaps.",
+        "Step at an angle as you roll to that side, bending into the leg, then back to your stance."
+       ],
+       "mistakes": [
+        "Rolling without the step."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "judged",
+        "what": "Each call is one rep: lead roll, rear roll judged by the backend's frontal detectors (slips, rolls, ducks). A roll's side isn't read (the backend has none)."
+       }
+      },
+      {
+       "id": "learn-rolling--step-roll-combinations",
+       "title": "Practice 1-2 or 2-3, step and roll",
+       "line": "I call one, two, roll or two, three, roll.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 12,
+       "pass": 0.8,
+       "calls": [
+        "1-2, roll",
+        "2-3, roll"
+       ],
+       "how": [
+        "AMBO calls either combination, as many of each, at changing gaps.",
+        "Throw the punches called, then step at an angle as you roll."
+       ],
+       "mistakes": [
+        "Losing the angle on the step."
+       ],
+       "moveOn": "At least 80% of the 12 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: roll judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 1-2, 2-3."
+       }
+      },
+      {
+       "id": "learn-rolling--freestyle",
+       "title": "Practice freestyle",
+       "line": "Put it together: punch, duck and roll your way, and keep moving.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Your punches, ducks, rolls and double rolls, moving as you like."
+       ],
+       "mistakes": [
+        "Rolling with the hands down as you tire."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    },
+    {
+     "id": "learn-defense-combinations",
+     "name": "Defense combinations",
+     "section": "Defense",
+     "about": "Puts offense, defense and counters together: four of the coach's combinations called one at a time, then any of them, then your own.",
+     "camera": "Put your phone about waist high, facing you, 2 to 3 metres away, with your whole body in the picture.",
+     "drills": [
+      {
+       "id": "learn-defense-combinations--putting-it-together",
+       "title": "Learn what this lesson covers",
+       "line": "The coach explains this lesson: offense, defense and counters together, on my call.",
+       "kind": "Watch",
+       "seconds": 180,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "The coach's video explains the lesson; watch it, no need to copy along.",
+        "From here on each call mixes punches and defences: stay loose and keep moving between calls, then tense up and throw when you hear one."
+       ],
+       "mistakes": [
+        "Staying tense between calls."
+       ],
+       "moveOn": "Done when the video ends.",
+       "video": {
+        "url": "https://ambo-media.web.app/coach_videos/fundamentals/defense_combinations/01_putting_it_together.mp4",
+        "seconds": 36
+       },
+       "detect": {
+        "status": "watch",
+        "what": "Video to watch and copy. Nothing to detect."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--called-1-2-body-block-6-3",
+       "title": "Practice 1-2, body block, 6-3",
+       "line": "I call one, two, body block, six, three.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "1-2, body block, 6-3"
+       ],
+       "how": [
+        "AMBO says \"one, two, body block, six, three\" at changing gaps.",
+        "Throw and defend it all the way through, then back to your stance and stay loose until the next call."
+       ],
+       "mistakes": [
+        "Dropping only the arm for the body block."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (1-2, body block, 6-3) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--called-1-2-3-body-block-5-2",
+       "title": "Practice 1-2-3, body block, 5-2",
+       "line": "I call one, two, three, body block, five, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "1-2-3, body block, 5-2"
+       ],
+       "how": [
+        "AMBO says \"one, two, three, body block, five, two\" at changing gaps.",
+        "Throw and defend it all the way through, then back to your stance and stay loose until the next call."
+       ],
+       "mistakes": [
+        "Leaning over the front knee after the lead hook."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (1-2-3, body block, 5-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--called-1-2-slip-roll-3-2-step-back-1",
+       "title": "Practice 1-2, slip, roll, 3-2, step back, 1",
+       "line": "I call one, two, slip, roll, three, two, step back, one.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "1-2, slip, roll, 3-2, step back, 1"
+       ],
+       "how": [
+        "AMBO says \"one, two, slip, roll, three, two, step back, one\" at changing gaps.",
+        "Throw and defend it all the way through, then back to your stance and stay loose until the next call."
+       ],
+       "mistakes": [
+        "Rushing the slip and the roll into one movement."
+       ],
+       "moveOn": "At least 80% of the 10 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: slip, roll judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 1-2, 3-2, step back, 1."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--called-1-slip-5-2-roll-1-1-2",
+       "title": "Practice 1, slip, 5-2, roll, 1-1-2",
+       "line": "I call one, slip, five, two, roll, one, one, two.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": 10,
+       "pass": 0.8,
+       "calls": [
+        "1, slip, 5-2, roll, 1-1-2"
+       ],
+       "how": [
+        "AMBO says \"one, slip, five, two, roll, one, one, two\" at changing gaps.",
+        "Throw and defend it all the way through, then back to your stance and stay loose until the next call."
+       ],
+       "mistakes": [
+        "Standing up straight between the defences."
+       ],
+       "moveOn": "At least 80% of the 10 calls defended as called; calls AMBO couldn't see don't count.",
+       "video": null,
+       "detect": {
+        "status": "part",
+        "what": "Each call is one rep: slip, roll judged by the backend's frontal detectors (slips, rolls, ducks). Not judged: 1, 5-2, 1-1-2."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--any-combination",
+       "title": "Practice any combination",
+       "line": "I call any of the four combinations.",
+       "kind": "Practice",
+       "seconds": 90,
+       "reps": null,
+       "pass": null,
+       "calls": [
+        "1-2, body block, 6-3",
+        "1-2-3, body block, 5-2",
+        "1-2, slip, roll, 3-2, step back, 1",
+        "1, slip, 5-2, roll, 1-1-2"
+       ],
+       "how": [
+        "AMBO calls all four combinations, as many of each, at changing gaps.",
+        "Throw and defend what's called, loose and moving between calls."
+       ],
+       "mistakes": [
+        "Throwing the combination you expect instead of the one called."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Calls (1-2, body block, 6-3 · 1-2-3, body block, 5-2 · 1-2, slip, roll, 3-2, step back, 1 · 1, slip, 5-2, roll, 1-1-2) on the clock. Nothing judged on camera yet."
+       }
+      },
+      {
+       "id": "learn-defense-combinations--freestyle",
+       "title": "Practice freestyle",
+       "line": "Offense, defense and counters your way, and keep moving.",
+       "kind": "Freestyle",
+       "seconds": 120,
+       "reps": null,
+       "pass": null,
+       "calls": [],
+       "how": [
+        "One 2-minute round with no calls.",
+        "Punch, defend and counter as you like, loose between your combinations."
+       ],
+       "mistakes": [
+        "Only attacking: defend and counter too."
+       ],
+       "moveOn": "Done when the round ends.",
+       "video": null,
+       "detect": {
+        "status": "none",
+        "what": "Free round, no calls. Recorded and uploaded; nothing judged in the app."
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "footwork",
+   "name": "Footwork",
+   "line": "Get in, get out, never get caught.",
+   "coach": "Stafford Swainston",
+   "on": "2026-11-06",
+   "planned": [
+    "Linear and lateral",
+    "Circular",
+    "Back foot",
+    "Shifting",
+    "Ladder drills",
+    "Ladder agility",
+    "Switching"
+   ]
+  },
+  {
+   "id": "applied-defense",
+   "name": "Applied defense",
+   "line": "Make them miss, then pay.",
+   "coach": "Stafford Swainston",
+   "on": "2026-11-11",
+   "planned": [
+    "Reading the jab",
+    "Slip and counter",
+    "Roll under the hook",
+    "Catch and return",
+    "Defending the body",
+    "Off the ropes",
+    "Defense in combinations",
+    "Sparring scenarios"
+   ]
+  },
+  {
+   "id": "reflexes",
+   "name": "Reflexes",
+   "line": "See it coming, gone before it lands.",
+   "coach": "Stafford Swainston",
+   "on": "2026-11-18",
+   "planned": [
+    "Eyes on the shoulders",
+    "First move wins",
+    "Slip bag timing",
+    "Double-end bag rhythm",
+    "React and return",
+    "Counter on the flinch",
+    "Reflexes when tired",
+    "Partner reaction rounds"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AMBO Workout Review</title>
+<meta name="description" content="Go through every lesson and workout in AMBO and say what worked.">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Workout review: the team goes through every lesson and drill of the app's courses and says if it worked for
+     them, if it was clear, and anything else. The courses come from workouts.json, written from the app's own data by
+     the ios repo's scripts/course-status.mjs --json; the notes save to the shared Apps Script (doGetWorkoutReview),
+     one row per person per lesson or drill, in the "Workout review notes" workbook. -->
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="#">AMBO <span>Review</span></a>
+    <div class="nav-right">
+      <span class="sync" id="sync" aria-live="polite"></span>
+      <a class="nav-link" href="#team">Team notes</a>
+      <button class="me" id="me" type="button" aria-label="Change your name"></button>
+    </div>
+  </div>
+</header>
+
+<main id="view" tabindex="-1"></main>
+
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet-back" data-close></div>
+  <article class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></article>
+</div>
+
+<div class="modal-wrap" id="name-modal" hidden>
+  <form class="modal" id="name-form">
+    <div class="modal-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="28" height="28"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-3.6 4.4-5.5 8-5.5s6.5 1.9 8 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </div>
+    <h2>Who's reviewing?</h2>
+    <p id="name-hint">Your name goes next to your notes, so the team knows who said what.</p>
+    <input id="name-input" autocomplete="name" placeholder="Your name" maxlength="40" required>
+    <button class="btn" type="submit">Continue</button>
+  </form>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

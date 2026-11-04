@@ -29,6 +29,10 @@ function doPost(e) {
   if (action === 'saveCalloutEvents' || action === 'listCalloutEvents') {
     return doGetCalloutEvents(p, labeler, action);
   }
+  // Workout review: a note's comment can be long, so it comes in the body.
+  if (WORKOUT_REVIEW_ACTIONS.indexOf(action) !== -1) {
+    return doGetWorkoutReview(p, labeler, action);
+  }
   // Lead-everyone, for the same reason: it is bounded by a position in the
   // QUEUE, and the queue order lives in the page — this script has never seen
   // it. So the page sends the frames the lead is allowed to touch, and that
@@ -512,6 +516,10 @@ function doGet(e) {
   // Bag bite (bag_bite/) — its own workbook, see doGetBagBite.
   if (BAG_BITE_ACTIONS.indexOf(action) !== -1) {
     return doGetBagBite(p, labeler, action);
+  }
+  // Workout review (workout_review/) — its own workbook, see doGetWorkoutReview.
+  if (WORKOUT_REVIEW_ACTIONS.indexOf(action) !== -1) {
+    return doGetWorkoutReview(p, labeler, action);
   }
 
   // Sentinels match case-insensitively: since 2026-08 the labeler string comes
@@ -7451,5 +7459,92 @@ function doGetRollPass(cfg, p, labeler, action) {
     // text, so a comment like "=1" or "05" lands as typed
     sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setNumberFormat('@').setValues([row]);
     return jsonOut({ status: 'ok', superseded: superseded, re: 1 });
+  });
+}
+
+// ============================================================
+// Workout review (workout_review/): the team's notes on every lesson and drill
+// in the app's courses — did it work, was it clear, and a comment. Its own
+// workbook, made on first use (WORKOUT_REVIEW_SPREADSHEET_ID in the script
+// properties), tab `Notes`:
+//   ts | reviewer | item | course | lesson | title | worked | clear | comment | at
+// One live row per (reviewer, item): a save rewrites only that reviewer's own
+// row, so two people never overwrite each other. `at` is the page's clock when
+// the note was changed: a save older than the row's is ignored, so a retry or a
+// second tab landing late can't undo a newer note. worked / clear: yes, partly,
+// no or blank. Saves come as POST (the comment rides in the body); the list is
+// everyone's notes, so the page shows what the others wrote.
+// ============================================================
+var WORKOUT_REVIEW_ACTIONS = ['listWorkoutReview', 'saveWorkoutReview'];
+var WORKOUT_REVIEW_PROP = 'WORKOUT_REVIEW_SPREADSHEET_ID';
+var WORKOUT_REVIEW_TAB = 'Notes';
+var WORKOUT_REVIEW_HEADERS = ['ts', 'reviewer', 'item', 'course', 'lesson', 'title', 'worked', 'clear', 'comment', 'at'];
+var WORKOUT_REVIEW_ANSWERS = ['', 'yes', 'partly', 'no'];
+
+function workoutReviewBook() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(WORKOUT_REVIEW_PROP);
+  if (id) return SpreadsheetApp.openById(id);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    id = props.getProperty(WORKOUT_REVIEW_PROP);
+    if (id) return SpreadsheetApp.openById(id);
+    var book = SpreadsheetApp.create('Workout review notes');
+    book.getSheets()[0].setName(WORKOUT_REVIEW_TAB);
+    try {
+      DriveApp.getFileById(book.getId()).moveTo(DriveApp.getFileById(ROLL_EYES_SPREADSHEET_ID).getParents().next());
+    } catch (e) {}   // left in the script owner's My Drive root
+    props.setProperty(WORKOUT_REVIEW_PROP, book.getId());
+    return book;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doGetWorkoutReview(p, labeler, action) {
+  var sh = getOrCreateSheetWithHeaders(workoutReviewBook(), WORKOUT_REVIEW_TAB, WORKOUT_REVIEW_HEADERS);
+
+  if (action === 'listWorkoutReview') {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var rows = [];
+    for (var r = 1; r < data.length; r++) {
+      rows.push({ reviewer: String(data[r][idx.reviewer]), item: String(data[r][idx.item]),
+                  worked: String(data[r][idx.worked]), clear: String(data[r][idx.clear]),
+                  comment: String(data[r][idx.comment]), at: Number(data[r][idx.at]) || 0 });
+    }
+    return jsonOut({ status: 'ok', rows: rows, wr: 1 });
+  }
+
+  var q = p;
+  if (p.payload) {
+    try { q = JSON.parse(p.payload); } catch (e) { return jsonOut({ status: 'error', message: 'bad payload', wr: 1 }); }
+  }
+  var who = String(q.reviewer || labeler || '').trim().slice(0, 40);
+  if (!who || who === '1') return jsonOut({ status: 'error', message: 'type your name first', wr: 1 });
+  var item = String(q.item || '');
+  if (!/^[a-z0-9-]+(\/[a-z0-9-]+){0,2}$/.test(item)) return jsonOut({ status: 'error', message: 'bad item: ' + item, wr: 1 });
+  var worked = String(q.worked || ''), clear = String(q.clear || '');
+  if (WORKOUT_REVIEW_ANSWERS.indexOf(worked) === -1 || WORKOUT_REVIEW_ANSWERS.indexOf(clear) === -1) {
+    return jsonOut({ status: 'error', message: 'bad answer', wr: 1 });
+  }
+  var at = Number(q.at) || Date.now();
+  return withPunchWriteLock(function () {
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var row = -1;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idx.reviewer]) === who && String(data[r][idx.item]) === item) { row = r; break; }
+    }
+    if (row !== -1 && (Number(data[row][idx.at]) || 0) > at) return jsonOut({ status: 'ok', stale: true, wr: 1 });
+    var vals = { ts: new Date().toISOString(), reviewer: who, item: item, course: String(q.course || ''),
+                 lesson: String(q.lesson || ''), title: String(q.title || ''), worked: worked, clear: clear,
+                 comment: String(q.comment || '').slice(0, 5000), at: String(at) };
+    var line = WORKOUT_REVIEW_HEADERS.map(function (h) { return vals[h]; });
+    var target = row !== -1 ? row + 1 : sh.getLastRow() + 1;
+    // text, so a comment like "=1" or "05" lands as typed
+    sh.getRange(target, 1, 1, line.length).setNumberFormat('@').setValues([line]);
+    return jsonOut({ status: 'ok', replaced: row !== -1, wr: 1 });
   });
 }
