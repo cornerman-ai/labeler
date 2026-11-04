@@ -4,8 +4,9 @@ https://cornerman-ai.github.io/labeler/workout_review/
 
 The team answers two questions on every workout of AMBO's courses: **Was everything clear?** and **Did
 everything work well?** (Yes / No), and when either is a no, what wasn't or what didn't. Nothing of the workout
-itself is shown: it's all checked in the app. The courses are a menu as in the app: a course's card opens its
-lessons, a lesson its workouts with their questions. **Team notes** lists everyone's answers.
+itself is shown: it's all checked in the app. The menu: **Your notes** (a course's card opens its lessons, a
+lesson its drills with their questions), **Team notes** (the same courses, lessons and drills, with everyone's
+answers on each drill) and **Profile** (your name).
 
 - `workouts.json` is the courses on the site, ids and names only: Fundamentals for now (`ON_SITE` in the script;
   the courses still being made stay in the app). Written from the app's own data by the ios repo:

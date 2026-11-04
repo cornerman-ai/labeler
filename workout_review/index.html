@@ -10,25 +10,27 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
-<!-- Workout review: the team answers two questions on every workout of the app's courses, was everything clear and
-     did everything work well. The courses come from workouts.json, written from the app's own data by the ios repo's
+<!-- Workout review: the team answers two questions on every drill of the app's courses, was everything clear and
+     did everything work well; Your notes, Team notes (everyone's answers, the same menu) and Profile. The courses come from workouts.json, written from the app's own data by the ios repo's
      scripts/workout-review-data.mjs; the answers save to the shared Apps Script (doGetWorkoutReview), one row per
-     person per workout, in the "Workout review notes" workbook. -->
+     person per drill, in the "Workout review notes" workbook. -->
 <header class="nav">
   <div class="nav-in">
-    <a class="brand" href="#">AMBO <span>Review</span></a>
-    <div class="nav-right">
-      <span class="sync" id="sync" aria-live="polite"></span>
-      <a class="nav-link" href="#team">Team notes</a>
-      <button class="me" id="me" type="button" aria-label="Change your name"></button>
-    </div>
+    <span class="brand">AMBO <span>Review</span></span>
+    <nav class="tabs" aria-label="Menu">
+      <a href="#" data-tab="mine">Your notes</a>
+      <a href="#team" data-tab="team">Team notes</a>
+      <a href="#profile" data-tab="profile">Profile</a>
+    </nav>
   </div>
 </header>
 
 <main id="view" tabindex="-1"></main>
+
+<div class="sync" id="sync" role="status" aria-live="polite"></div>
 
 <div class="modal-wrap" id="name-modal" hidden>
   <form class="modal" id="name-form">
@@ -39,6 +41,6 @@
   </form>
 </div>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

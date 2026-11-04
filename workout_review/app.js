@@ -1,11 +1,14 @@
-// Workout review: every workout of the courses on the site (workouts.json), and two questions on each for everyone on
+// Workout review: every drill of the courses on the site (workouts.json), and two questions on each for everyone on
 // the team: was everything clear, did everything work well, and what wasn't or didn't when the answer is no. Nothing
-// of the workout itself is shown; it's all checked in the app (Oleksandr, 2026-11-04). The courses are a menu as in
-// the app: a course's card opens its lessons, a lesson its workouts, each with its questions right there.
+// of the drill itself is shown; it's all checked in the app (Oleksandr, 2026-11-04).
 //
-// Saving: an answer is the reviewer's own row per workout (doGetWorkoutReview in apps_script/Code.js), so two people
+// The menu (Oleksandr, 2026-11-04): Your notes, Team notes, Profile. Your notes and Team notes are the same courses →
+// lessons → drills as in the app: in Your notes each drill has its two questions right there, in Team notes everyone's
+// answers on it.
+//
+// Saving: an answer is the reviewer's own row per drill (doGetWorkoutReview in apps_script/Code.js), so two people
 // never write over each other. Each change is kept in this browser first (localStorage, per name) with the time it
-// was made (`at`), then sent by ONE sender, one workout at a time, retried until the backend says ok; the backend
+// was made (`at`), then sent by ONE sender, one drill at a time, retried until the backend says ok; the backend
 // ignores an answer older than the one it has, so a retry or another tab landing late can't undo a newer one.
 // Everyone's answers are read back every 45 s and when the tab comes back.
 (function () {
@@ -16,7 +19,7 @@
   const POLL_MS = 45000;
   const TYPE_MS = 700;
 
-  /** The two questions on every workout, in this order, and how an answer reads on the team's page. */
+  /** The two questions on every drill, in this order, and how an answer reads in Team notes. */
   const QUESTIONS = [
     { key: 'clear', text: 'Was everything clear?', ask: 'What wasn’t clear?', label: { yes: 'Clear', partly: 'Partly clear', no: 'Not clear' } },
     { key: 'worked', text: 'Did everything work well?', ask: 'What didn’t work?', label: { yes: 'Worked', partly: 'Partly worked', no: 'Didn’t work' } },
@@ -35,7 +38,7 @@
   let team = new Map();
   /** My answers, as given here: item → {clear, worked, comment, at, dirty}. */
   let mine = {};
-  const items = new Map(); // course/lesson/workout → {course, lesson, drill}
+  const items = new Map(); // course/lesson/drill → {course, lesson, drill}
 
   function normalize(s) { return (s || '').trim().replace(/^\w/, (c) => c.toUpperCase()).slice(0, 40); }
   const mineKey = () => `workoutReview.mine.${me}`;
@@ -44,6 +47,8 @@
   const hasAnswer = (n) => !!(n && (n.worked || n.clear || (n.comment || '').trim()));
   /** Reviewed: both questions answered. */
   const answered = (n) => !!(n && n.clear && n.worked);
+  /** An answer as a whole: a no if either is a no, a yes once both are. */
+  const verdict = (n) => (n.clear === 'no' || n.worked === 'no' ? 'no' : n.clear === 'yes' && n.worked === 'yes' ? 'yes' : 'seen');
 
   // ── data ─────────────────────────────────────────
   async function loadData() {
@@ -69,7 +74,7 @@
           const here = mine[row.item];
           if (!here || (!here.dirty && row.at > (here.at || 0))) {
             mine[row.item] = { worked: row.worked, clear: row.clear, comment: row.comment, at: row.at };
-            refreshWorkout(row.item);
+            refreshDrill(row.item);
           }
         }
       }
@@ -83,10 +88,9 @@
     }
   }
 
-  // ── saving: one sender, one workout at a time ───
+  // ── saving: one sender, one drill at a time ─────
   let sending = false;
   let online = true;
-  let savedOnce = false;
   let retryMs = 0;
   let retryTimer = 0;
   const dirtyItems = () => Object.keys(mine).filter((k) => mine[k].dirty);
@@ -120,7 +124,6 @@
       if (!team.has(item)) team.set(item, new Map());
       team.get(item).set(me, { reviewer: me, item, worked: body.worked, clear: body.clear, comment: body.comment, at: n.at });
       online = true;
-      savedOnce = true;
       retryMs = 0;
       sending = false;
       refreshLive();
@@ -145,14 +148,24 @@
     else pump();
   }
 
+  /** The save state, as a pill at the bottom: Saving…, then Saved for a moment; Offline while answers wait. */
+  let syncState = 'idle';
+  let syncTimer = 0;
   function setSync() {
     const el = $('#sync');
     const waiting = dirtyItems().length;
-    el.className = 'sync';
-    if (sending || (waiting && online)) { el.classList.add('saving'); el.textContent = 'Saving…'; }
-    else if (waiting) { el.classList.add('offline'); el.textContent = `Offline · ${waiting} waiting`; }
-    else if (savedOnce) { el.classList.add('saved'); el.textContent = 'All saved'; }
-    else el.textContent = '';
+    const next = sending || (waiting && online) ? 'saving' : waiting ? 'offline' : syncState === 'saving' || syncState === 'offline' ? 'saved' : syncState;
+    if (next === 'offline') el.textContent = `Offline · ${waiting} waiting`;
+    if (next === syncState) return;
+    syncState = next;
+    clearTimeout(syncTimer);
+    if (next === 'idle') return el.classList.remove('show');
+    el.className = `sync show ${next}`;
+    if (next === 'saving') el.textContent = 'Saving…';
+    if (next === 'saved') {
+      el.textContent = 'Saved';
+      syncTimer = setTimeout(() => { syncState = 'idle'; el.classList.remove('show'); }, 1400);
+    }
   }
 
   addEventListener('beforeunload', (e) => {
@@ -174,25 +187,22 @@
     return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   }
   function hue(name) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
-  const avatar = (name) => `<span class="av" style="background:hsl(${hue(name)} 42% 48%)">${esc((name[0] || '?').toUpperCase())}</span>`;
+  const avatar = (name, big) => `<span class="av${big ? ' big' : ''}" style="background:hsl(${hue(name)} 42% 48%)">${esc((name[0] || '?').toUpperCase())}</span>`;
   function ring(done, total) {
     const r = 12, c = 2 * Math.PI * r, off = c * (1 - (total ? done / total : 0));
     return `<svg class="ring" viewBox="0 0 30 30" aria-label="${done} of ${total} reviewed"><circle class="track" cx="15" cy="15" r="${r}"/><circle class="fill" cx="15" cy="15" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${off}"/></svg>`;
   }
+  const courseById = (id) => data.courses.find((c) => c.id === id);
   const lessonItems = (c, l) => l.drills.map((d) => `${c.id}/${l.id}/${d.id}`);
   const reviewedCount = (list) => list.filter((k) => answered(mine[k])).length;
   function courseDone(c) {
     const its = c.lessons.flatMap((l) => lessonItems(c, l));
     return `${reviewedCount(its)} of ${its.length} reviewed`;
   }
-  const lessonSub = (l, done) => `${l.drills.length} workouts${done ? ` · ${done} reviewed` : ''}`;
-  /** A workout's number: red once anything is a no, green once both are yes. */
+  /** A drill's number in Your notes: red once anything is a no, green once both are yes. */
   function idxClass(item) {
     const n = mine[item];
-    if (!n) return '';
-    if (n.clear === 'no' || n.worked === 'no') return 'no';
-    if (n.clear === 'yes' && n.worked === 'yes') return 'yes';
-    return n.clear || n.worked ? 'seen' : '';
+    return n && hasAnswer(n) ? verdict(n) : '';
   }
   /** The note asks what wasn't clear or didn't work, once either is a no (and stays while it has text). */
   const showNote = (n) => n.clear === 'no' || n.worked === 'no' || !!(n.comment || '').trim();
@@ -201,19 +211,64 @@
     return asks.length === 2 ? 'What wasn’t clear, and what didn’t work?' : asks[0] || 'Note';
   }
 
-  // ── views ────────────────────────────────────────
-  const view = $('#view');
+  /** Everyone's answers on a drill, mine as given here, newest first. */
+  function answersOn(item) {
+    const out = [];
+    for (const [who, n] of team.get(item) || []) if (who !== me && hasAnswer(n)) out.push(n);
+    if (hasAnswer(mine[item])) out.push({ ...mine[item], reviewer: me });
+    return out.sort((a, b) => b.at - a.at);
+  }
+  /** Everyone's answers on these drills: how many, how many all yes, how many with a no. */
+  function tally(list) {
+    const t = { all: 0, yes: 0, no: 0 };
+    for (const item of list) {
+      for (const n of answersOn(item)) {
+        t.all++;
+        const v = verdict(n);
+        if (v === 'yes' || v === 'no') t[v]++;
+      }
+    }
+    return t;
+  }
+  const tallyHtml = (t) => `<span class="tally">${t.yes ? `<b class="yes" title="All yes">${t.yes}</b>` : ''}${t.no ? `<b class="no" title="With a no">${t.no}</b>` : ''}</span>`;
+  const answersCount = (n) => `${n} answer${n === 1 ? '' : 's'}`;
+  const teamCourseDone = (c) => answersCount(tally(c.lessons.flatMap((l) => lessonItems(c, l))).all);
+  /** A drill's number in Team notes: red if anyone said no, green once everyone who answered said yes to both. */
+  function teamIdx(item) {
+    const ns = answersOn(item);
+    if (!ns.length) return '';
+    if (ns.some((n) => verdict(n) === 'no')) return 'no';
+    return ns.every((n) => verdict(n) === 'yes') ? 'yes' : 'seen';
+  }
+  const pills = (n) => QUESTIONS.filter((q) => n[q.key]).map((q) => `<span class="pill ${n[q.key]}">${q.label[n[q.key]] || esc(n[q.key])}</span>`).join('');
 
-  function homeView() {
-    const cards = data.courses.map((c, i) => `<a class="course" href="#c/${c.id}">
+  // ── views: Your notes and Team notes, the same menu ──
+  const view = $('#view');
+  const base = (isTeam) => (isTeam ? '#team/' : '#');
+
+  function coursesView(isTeam) {
+    const cards = data.courses.map((c, i) => `<a class="course" href="${base(isTeam)}c/${c.id}">
         <img src="img/${c.id}.jpg" alt="" loading="${i < 2 ? 'eager' : 'lazy'}">
         <div class="c-in"><div class="c-num">Course ${i + 1}</div><div class="c-name">${esc(c.name)}</div><div class="c-line">${esc(c.line)}</div></div>
-        <div class="c-foot"><span>${c.lessons.length} lessons</span><span data-live="course" data-course="${c.id}">${courseDone(c)}</span></div>
+        <div class="c-foot"><span>${c.lessons.length} lessons</span><span data-live="${isTeam ? 'team-course' : 'course'}" data-course="${c.id}">${isTeam ? teamCourseDone(c) : courseDone(c)}</span></div>
       </a>`).join('');
     return `<div class="view"><div class="courses">${cards}</div></div>`;
   }
 
-  function courseView(c) {
+  function lessonRow(c, l, n) {
+    const its = lessonItems(c, l);
+    const done = reviewedCount(its);
+    return `<span class="idx ${done === its.length ? 'yes' : ''}">${n}</span>
+      <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${l.drills.length} drills${done ? ` · ${done} reviewed` : ''}</span></span>
+      <span class="end">${ring(done, its.length)}${CHEV}</span>`;
+  }
+  function teamLessonRow(c, l, n) {
+    const t = tally(lessonItems(c, l));
+    return `<span class="idx">${n}</span>
+      <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${l.drills.length} drills${t.all ? ` · ${answersCount(t.all)}` : ''}</span></span>
+      <span class="end">${tallyHtml(t)}${CHEV}</span>`;
+  }
+  function courseView(c, isTeam) {
     const groups = [];
     for (const l of c.lessons) {
       const label = l.section || 'Offense';
@@ -223,30 +278,26 @@
     let n = 0;
     const list = groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
       n++;
-      const its = lessonItems(c, l);
-      const done = reviewedCount(its);
-      return `<a class="row" href="#l/${c.id}/${l.id}" data-live="lesson" data-course="${c.id}" data-lesson="${l.id}">
-        <span class="idx ${done === its.length ? 'yes' : ''}">${n}</span>
-        <span class="body"><span class="t">${esc(l.name)}</span><span class="s">${lessonSub(l, done)}</span></span>
-        <span class="end">${ring(done, its.length)}${CHEV}</span>
-      </a>`;
+      return `<a class="row" href="${base(isTeam)}l/${c.id}/${l.id}" data-live="${isTeam ? 'team-lesson' : 'lesson'}" data-course="${c.id}" data-lesson="${l.id}" data-n="${n}">${isTeam ? teamLessonRow(c, l, n) : lessonRow(c, l, n)}</a>`;
     }).join('')}</div>`).join('');
-    return `<div class="view"><button class="back" data-href="#">${BACK} Courses</button><h1 class="page-title">${esc(c.name)}</h1>${list}</div>`;
+    return `<div class="view"><button class="back" data-href="${base(isTeam)}">${BACK} Courses</button><h1 class="page-title">${esc(c.name)}</h1>${list}</div>`;
   }
 
-  function lessonView(c, l) {
+  function lessonView(c, l, isTeam) {
     const li = c.lessons.indexOf(l);
     const next = c.lessons[li + 1];
+    const drill = isTeam ? teamDrillHtml : drillHtml;
     return `<div class="view">
-      <button class="back" data-href="#c/${c.id}">${BACK} ${esc(c.name)}</button>
+      <button class="back" data-href="${base(isTeam)}c/${c.id}">${BACK} ${esc(c.name)}</button>
       <p class="eyebrow">Lesson ${li + 1}</p>
       <h1 class="page-title">${esc(l.name)}</h1>
-      <div class="group workouts">${l.drills.map((d, k) => workoutHtml(`${c.id}/${l.id}/${d.id}`, d, k)).join('')}</div>
-      ${next ? `<a class="next" href="#l/${c.id}/${next.id}">Next: ${esc(next.name)} ${CHEV}</a>` : ''}
+      <div class="group drills">${l.drills.map((d, k) => drill(`${c.id}/${l.id}/${d.id}`, d, k)).join('')}</div>
+      ${next ? `<a class="next" href="${base(isTeam)}l/${c.id}/${next.id}">Next: ${esc(next.name)} ${CHEV}</a>` : ''}
     </div>`;
   }
 
-  function workoutHtml(item, d, k) {
+  /** A drill in Your notes: its two questions, and what wasn't or didn't once either is a no. */
+  function drillHtml(item, d, k) {
     const n = mine[item] || {};
     const toggle = (q) => `<div class="q"><span class="q-text">${q.text}</span>
         <div class="seg" role="group" aria-label="${q.text}" data-key="${q.key}"${n[q.key] === 'yes' || n[q.key] === 'no' ? ' data-on' : ''} style="--i:${n[q.key] === 'no' ? 1 : 0}">
@@ -254,68 +305,68 @@
           <button type="button" class="yes" data-v="yes" aria-pressed="${n[q.key] === 'yes'}">Yes</button>
           <button type="button" class="no" data-v="no" aria-pressed="${n[q.key] === 'no'}">No</button>
         </div></div>`;
-    return `<section class="workout" id="w-${esc(d.id)}" data-item="${esc(item)}">
-      <div class="w-head"><span class="idx ${idxClass(item)}">${k + 1}</span><span class="w-title">${esc(d.title)}</span></div>
-      <div class="w-qs">${QUESTIONS.map(toggle).join('')}
+    return `<section class="drill" id="w-${esc(d.id)}" data-item="${esc(item)}">
+      <div class="d-head"><span class="idx ${idxClass(item)}">${k + 1}</span><span class="d-title">${esc(d.title)}</span></div>
+      <div class="d-body">${QUESTIONS.map(toggle).join('')}
         <textarea class="notes" rows="1" placeholder="${notePrompt(n)}" aria-label="${notePrompt(n)}"${showNote(n) ? '' : ' hidden'}>${esc(n.comment || '')}</textarea>
       </div>
     </section>`;
   }
 
-  function noteHtml(n, where) {
-    const pills = QUESTIONS.filter((q) => n[q.key]).map((q) => `<span class="pill ${n[q.key]}">${q.label[n[q.key]] || esc(n[q.key])}</span>`).join('');
-    return `<div class="note">${avatar(n.reviewer)}<div style="min-width:0;flex:1">
-      <div class="who">${esc(n.reviewer)} ${pills} <span class="when">${ago(n.at)}</span></div>
-      ${where || ''}
-      ${(n.comment || '').trim() ? `<div class="txt">${esc(n.comment)}</div>` : ''}
-    </div></div>`;
+  /** A drill in Team notes: who answered what. */
+  function teamDrillHtml(item, d, k) {
+    return `<section class="drill" id="w-${esc(d.id)}">
+      <div class="d-head"><span class="idx ${teamIdx(item)}" data-team-idx="${esc(item)}">${k + 1}</span><span class="d-title">${esc(d.title)}</span></div>
+      <div class="d-body" data-answers="${esc(item)}">${answersHtml(item)}</div>
+    </section>`;
+  }
+  function answersHtml(item) {
+    const ns = answersOn(item);
+    if (!ns.length) return '<div class="none">No answers yet</div>';
+    return ns.map((n) => `<div class="ans">${avatar(n.reviewer)}<div class="ans-body">
+        <div class="who">${esc(n.reviewer)} ${pills(n)} <span class="when">${ago(n.at)}</span></div>
+        ${(n.comment || '').trim() ? `<div class="txt">${esc(n.comment)}</div>` : ''}
+      </div></div>`).join('');
   }
 
-  const teamFilter = { who: '', issue: '' };
-  function teamView() {
-    const all = [];
-    for (const byWho of team.values()) for (const n of byWho.values()) if (hasAnswer(n)) all.push(n);
-    for (const [item, n] of Object.entries(mine)) {
-      if (n.dirty && hasAnswer(n) && !all.some((x) => x.item === item && x.reviewer === me)) all.push({ ...n, item, reviewer: me });
-    }
-    all.sort((a, b) => b.at - a.at);
-    const people = [...new Set(all.map((n) => n.reviewer))].sort();
-    const f = teamFilter;
-    const shown = all.filter((n) => (!f.who || n.reviewer === f.who) && (!f.issue || n[f.issue] === 'no'));
-    const chip = (key, val, label) => `<button class="chip" data-f="${key}" data-v="${esc(val)}" aria-pressed="${(f[key] || '') === val}">${esc(label)}</button>`;
-    const where = (n) => {
-      const it = items.get(n.item);
-      if (!it) return `<div class="where">${esc(n.item)}</div>`;
-      return `<a class="where" href="#l/${it.course.id}/${it.lesson.id}/${it.drill.id}">${esc(it.lesson.name)} › ${esc(it.drill.title)}</a>`;
-    };
+  function profileView() {
+    const all = [...items.keys()];
     return `<div class="view">
-      <h1 class="page-title">Team notes</h1>
-      <p class="meta">${all.length} answer${all.length === 1 ? '' : 's'} · ${people.length} ${people.length === 1 ? 'person' : 'people'}</p>
-      <div class="filters">${chip('who', '', 'Everyone')}${people.map((p) => chip('who', p, p)).join('')}</div>
-      <div class="filters">${chip('issue', '', 'All')}${chip('issue', 'clear', 'Not clear')}${chip('issue', 'worked', 'Didn’t work')}</div>
-      <div class="group feed">${shown.length ? shown.map((n) => noteHtml(n, where(n))).join('') : '<div class="note"><div class="empty">Nothing yet.</div></div>'}</div>
+      <div class="p-head">${avatar(me || '?', true)}<div><h1 class="page-title">${esc(me || 'Your name')}</h1><p class="meta" id="p-done">${reviewedCount(all)} of ${all.length} drills reviewed</p></div></div>
+      <form class="p-name" id="p-form">
+        <div class="group-label">Name</div>
+        <div class="p-row"><input id="p-input" value="${esc(me)}" maxlength="40" autocomplete="name" required aria-label="Name"><button class="btn" type="submit">Save</button></div>
+        <p class="p-hint" id="p-hint"></p>
+      </form>
     </div>`;
   }
 
   // ── routing ──────────────────────────────────────
-  //   #c/<course>                     a course's lessons
-  //   #l/<course>/<lesson>[/<workout>] a lesson's workouts (scrolled to one, from the team's page)
+  //   #c/<course>                         your notes: a course's lessons
+  //   #l/<course>/<lesson>[/<drill>]      your notes: a lesson's drills (scrolled to one)
+  //   #team, #team/c/…, #team/l/…         the same, with everyone's answers
+  //   #profile
   function route() {
     if (!data) return;
     const parts = location.hash.replace(/^#/, '').split('/');
-    const course = (id) => data.courses.find((c) => c.id === id);
-    let next = { name: 'home' };
-    if (parts[0] === 'team') next = { name: 'team' };
-    else if (parts[0] === 'c' && course(parts[1])) next = { name: 'course', c: course(parts[1]) };
-    // `d` was a workout's own page, before the questions moved onto the lesson's.
-    else if ((parts[0] === 'l' || parts[0] === 'd') && course(parts[1])) {
-      const c = course(parts[1]);
-      const l = c.lessons.find((x) => x.id === parts[2]);
-      if (l) next = { name: 'lesson', c, l, to: parts[3] };
+    const isTeam = parts[0] === 'team';
+    const p = isTeam ? parts.slice(1) : parts;
+    const next = { tab: parts[0] === 'profile' ? 'profile' : isTeam ? 'team' : 'mine' };
+    if (next.tab !== 'profile' && p[0] === 'c' && courseById(p[1])) next.c = courseById(p[1]);
+    // `d` was a drill's own page, before the questions moved onto the lesson's.
+    else if (next.tab !== 'profile' && (p[0] === 'l' || p[0] === 'd') && courseById(p[1])) {
+      const c = courseById(p[1]);
+      const l = c.lessons.find((x) => x.id === p[2]);
+      if (l) Object.assign(next, { c, l, to: p[3] });
     }
-    view.innerHTML = next.name === 'home' ? homeView() : next.name === 'team' ? teamView() : next.name === 'course' ? courseView(next.c) : lessonView(next.c, next.l);
+    view.innerHTML = next.tab === 'profile' ? profileView() : next.l ? lessonView(next.c, next.l, isTeam) : next.c ? courseView(next.c, isTeam) : coursesView(isTeam);
     bind(view);
-    document.title = next.l ? `${next.l.name} · AMBO Review` : next.c ? `${next.c.name} · AMBO Review` : next.name === 'team' ? 'Team notes · AMBO Review' : 'AMBO Review';
+    document.querySelectorAll('.tabs a').forEach((a) => {
+      if (a.dataset.tab === next.tab) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+    const where = next.l?.name || next.c?.name || { mine: 'Your notes', team: 'Team notes', profile: 'Profile' }[next.tab];
+    document.title = `${where} · AMBO Review`;
     const to = next.to && document.getElementById(`w-${next.to}`);
     if (to) {
       to.scrollIntoView({ block: 'center' });
@@ -330,8 +381,8 @@
     seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
     if (v === 'yes' || v === 'no') { seg.style.setProperty('--i', v === 'no' ? 1 : 0); seg.setAttribute('data-on', ''); } else seg.removeAttribute('data-on');
   }
-  /** A workout's answers as they are now: its toggles, its number, its note (shown or not, unless it's being typed in). */
-  function paintWorkout(w) {
+  /** A drill's answers as they are now: its toggles, its number, its note (shown or not, unless it's being typed in). */
+  function paintDrill(w) {
     const n = mine[w.dataset.item] || {};
     w.querySelectorAll('.seg').forEach((seg) => paintSeg(seg, n[seg.dataset.key] || ''));
     $('.idx', w).className = `idx ${idxClass(w.dataset.item)}`;
@@ -344,12 +395,12 @@
     }
     if (!t.hidden) grow(t);
   }
-  function refreshWorkout(item) {
-    const w = document.querySelector(`.workout[data-item="${CSS.escape(item)}"]`);
-    if (w) paintWorkout(w);
+  function refreshDrill(item) {
+    const w = document.querySelector(`.drill[data-item="${CSS.escape(item)}"]`);
+    if (w) paintDrill(w);
   }
   function bind(root) {
-    root.querySelectorAll('.workout').forEach((w) => {
+    root.querySelectorAll('.drill[data-item]').forEach((w) => {
       const item = w.dataset.item;
       const t = $('textarea', w);
       w.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
@@ -358,77 +409,61 @@
         const key = seg.dataset.key;
         const v = mine[item]?.[key] === b.dataset.v ? '' : b.dataset.v; // tap again to clear
         change(item, { [key]: v }, false);
-        paintWorkout(w);
+        paintDrill(w);
       }));
       if (!t.hidden) grow(t);
       t.addEventListener('input', () => { grow(t); change(item, { comment: t.value }, true); });
-      t.addEventListener('blur', () => { clearTimeout(typeTimer); pump(); paintWorkout(w); });
+      t.addEventListener('blur', () => { clearTimeout(typeTimer); pump(); paintDrill(w); });
     });
     root.querySelectorAll('[data-href]').forEach((b) => b.addEventListener('click', () => { location.hash = b.dataset.href; }));
-    root.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
-      teamFilter[b.dataset.f] = b.dataset.v;
-      view.innerHTML = teamView();
-      bind(view);
-    }));
+    const form = $('#p-form', root);
+    if (form) form.addEventListener('submit', (e) => { e.preventDefault(); setName($('#p-input').value, $('#p-hint')); });
   }
 
-  /** What changes as answers come and go, without touching what's being typed: numbers, progress. */
+  /** What changes as answers come and go, without touching what's being typed. */
   function refreshLive() {
-    document.querySelectorAll('.workout').forEach((w) => { $('.idx', w).className = `idx ${idxClass(w.dataset.item)}`; });
-    document.querySelectorAll('[data-live="lesson"]').forEach((row) => {
-      const c = data.courses.find((x) => x.id === row.dataset.course);
+    document.querySelectorAll('.drill[data-item]').forEach((w) => { $('.idx', w).className = `idx ${idxClass(w.dataset.item)}`; });
+    document.querySelectorAll('[data-live="lesson"], [data-live="team-lesson"]').forEach((row) => {
+      const c = courseById(row.dataset.course);
       const l = c.lessons.find((x) => x.id === row.dataset.lesson);
-      const its = lessonItems(c, l);
-      const done = reviewedCount(its);
-      $('.idx', row).className = `idx ${done === its.length ? 'yes' : ''}`;
-      $('.s', row).textContent = lessonSub(l, done);
-      $('.end', row).innerHTML = ring(done, its.length) + CHEV;
+      row.innerHTML = (row.dataset.live === 'lesson' ? lessonRow : teamLessonRow)(c, l, +row.dataset.n);
     });
-    document.querySelectorAll('[data-live="course"]').forEach((el) => {
-      el.textContent = courseDone(data.courses.find((x) => x.id === el.dataset.course));
-    });
+    document.querySelectorAll('[data-live="course"]').forEach((el) => { el.textContent = courseDone(courseById(el.dataset.course)); });
+    document.querySelectorAll('[data-live="team-course"]').forEach((el) => { el.textContent = teamCourseDone(courseById(el.dataset.course)); });
+    document.querySelectorAll('[data-answers]').forEach((el) => { el.innerHTML = answersHtml(el.dataset.answers); });
+    document.querySelectorAll('[data-team-idx]').forEach((el) => { el.className = `idx ${teamIdx(el.dataset.teamIdx)}`; });
+    const done = $('#p-done');
+    if (done) done.textContent = `${reviewedCount([...items.keys()])} of ${items.size} drills reviewed`;
     setSync();
   }
 
   // ── name ─────────────────────────────────────────
-  const modal = $('#name-modal');
-  function showMe() {
-    const b = $('#me');
-    b.innerHTML = me ? `${avatar(me)}<span class="nm">${esc(me)}</span>` : 'Your name';
-  }
-  function askName() {
-    modal.hidden = false;
-    $('#name-hint').textContent = '';
-    const input = $('#name-input');
-    input.value = me || '';
-    setTimeout(() => input.focus(), 50);
-  }
-  $('#name-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const n = normalize($('#name-input').value);
-    if (!n) return;
+  /** Answers still on their way go out under the name they were given as: a new name waits for them. */
+  function setName(value, hint) {
+    const n = normalize(value);
+    if (!n) return false;
     if (n !== me && dirtyItems().length) {
-      // Answers still on their way go out under the name they were given as: wait for them.
-      $('#name-hint').textContent = 'Your last answers are still saving. Try again in a moment.';
+      hint.textContent = 'Your last answers are still saving. Try again in a moment.';
       pump();
-      return;
+      return false;
     }
     me = n;
     store.set(NAME_KEY, me);
-    modal.hidden = true;
     loadMine();
-    showMe();
     route();
     pull();
     pump();
+    return true;
+  }
+  const modal = $('#name-modal');
+  $('#name-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (setName($('#name-input').value, $('#name-hint'))) modal.hidden = true;
   });
-  $('#me').addEventListener('click', askName);
-  modal.addEventListener('click', (e) => { if (e.target === modal && me) modal.hidden = true; });
 
   // ── start ────────────────────────────────────────
   (async function start() {
     view.innerHTML = '<div class="loading">Loading…</div>';
-    showMe();
     try {
       await loadData();
     } catch {
@@ -437,7 +472,9 @@
     }
     if (me) loadMine();
     route();
-    if (!me) askName();
-    else { pull(); pump(); }
+    if (!me) {
+      modal.hidden = false;
+      setTimeout(() => $('#name-input').focus(), 50);
+    } else { pull(); pump(); }
   })();
 })();
