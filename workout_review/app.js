@@ -1,6 +1,7 @@
 // Workout review: every drill of the courses on the site (workouts.json), and two questions on each for everyone on
-// the team: was everything clear, did everything work well, and what wasn't or didn't when the answer is no. Nothing
-// of the drill itself is shown; it's all checked in the app (Oleksandr, 2026-11-04).
+// the team: was everything clear, did everything work well; and a comment on each, always there (2026-11-05), which
+// asks what wasn't clear or didn't work when an answer is no. Nothing of the drill itself is shown; it's all checked
+// in the app (Oleksandr, 2026-11-04).
 //
 // The menu (Oleksandr, 2026-11-04): Your notes, Team notes, Profile. Your notes and Team notes are the same courses →
 // lessons → drills as in the app: in Your notes each drill has its two questions right there, in Team notes everyone's
@@ -18,6 +19,12 @@
   const NAME_KEY = 'labelerName'; // the labelers' shared name (shared/labeler_name.js)
   const POLL_MS = 45000;
   const TYPE_MS = 700;
+  /**
+   * An answer tapped this soon after the name dialog closes is ignored: it's the dialog's own Continue landing on the
+   * toggle under it (2026-11-05: Continue answered "Was everything clear?" on the drill under the button).
+   */
+  const NAMED_GUARD_MS = 500;
+  let namedAt = 0;
 
   /** The two questions on every drill, in this order, and how an answer reads in Team notes. */
   const QUESTIONS = [
@@ -204,11 +211,14 @@
     const n = mine[item];
     return n && hasAnswer(n) ? verdict(n) : '';
   }
-  /** The note asks what wasn't clear or didn't work, once either is a no (and stays while it has text). */
-  const showNote = (n) => n.clear === 'no' || n.worked === 'no' || !!(n.comment || '').trim();
+  /**
+   * Every drill's comment box, always there (Oleksandr, 2026-11-05: "for every workout lesson part it should be possible
+   * to write a comment"), saved under the reviewer's name; once either answer is a no, it asks what wasn't clear or
+   * didn't work.
+   */
   function notePrompt(n) {
     const asks = QUESTIONS.filter((q) => n[q.key] === 'no').map((q) => q.ask);
-    return asks.length === 2 ? 'What wasn’t clear, and what didn’t work?' : asks[0] || 'Note';
+    return asks.length === 2 ? 'What wasn’t clear, and what didn’t work?' : asks[0] || (me ? `Comment as ${me}` : 'Comment');
   }
 
   /** Everyone's answers on a drill, mine as given here, newest first. */
@@ -296,7 +306,7 @@
     </div>`;
   }
 
-  /** A drill in Your notes: its two questions, and what wasn't or didn't once either is a no. */
+  /** A drill in Your notes: its two questions and its comment. */
   function drillHtml(item, d, k) {
     const n = mine[item] || {};
     const toggle = (q) => `<div class="q"><span class="q-text">${q.text}</span>
@@ -308,7 +318,7 @@
     return `<section class="drill" id="w-${esc(d.id)}" data-item="${esc(item)}">
       <div class="d-head"><span class="idx ${idxClass(item)}">${k + 1}</span><span class="d-title">${esc(d.title)}</span></div>
       <div class="d-body">${QUESTIONS.map(toggle).join('')}
-        <textarea class="notes" rows="1" placeholder="${notePrompt(n)}" aria-label="${notePrompt(n)}"${showNote(n) ? '' : ' hidden'}>${esc(n.comment || '')}</textarea>
+        <textarea class="notes" rows="1" placeholder="${esc(notePrompt(n))}" aria-label="${esc(notePrompt(n))}">${esc(n.comment || '')}</textarea>
       </div>
     </section>`;
   }
@@ -381,7 +391,7 @@
     seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
     if (v === 'yes' || v === 'no') { seg.style.setProperty('--i', v === 'no' ? 1 : 0); seg.setAttribute('data-on', ''); } else seg.removeAttribute('data-on');
   }
-  /** A drill's answers as they are now: its toggles, its number, its note (shown or not, unless it's being typed in). */
+  /** A drill's answers as they are now: its toggles, its number, its comment (unless it's being typed in). */
   function paintDrill(w) {
     const n = mine[w.dataset.item] || {};
     w.querySelectorAll('.seg').forEach((seg) => paintSeg(seg, n[seg.dataset.key] || ''));
@@ -389,11 +399,8 @@
     const t = $('textarea', w);
     t.placeholder = notePrompt(n);
     t.setAttribute('aria-label', notePrompt(n));
-    if (document.activeElement !== t) {
-      t.value = n.comment || '';
-      t.hidden = !showNote(n);
-    }
-    if (!t.hidden) grow(t);
+    if (document.activeElement !== t) t.value = n.comment || '';
+    grow(t);
   }
   function refreshDrill(item) {
     const w = document.querySelector(`.drill[data-item="${CSS.escape(item)}"]`);
@@ -405,13 +412,13 @@
       const t = $('textarea', w);
       w.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
         const b = e.target.closest('button');
-        if (!b) return;
+        if (!b || Date.now() - namedAt < NAMED_GUARD_MS) return;
         const key = seg.dataset.key;
         const v = mine[item]?.[key] === b.dataset.v ? '' : b.dataset.v; // tap again to clear
         change(item, { [key]: v }, false);
         paintDrill(w);
       }));
-      if (!t.hidden) grow(t);
+      grow(t);
       t.addEventListener('input', () => { grow(t); change(item, { comment: t.value }, true); });
       t.addEventListener('blur', () => { clearTimeout(typeTimer); pump(); paintDrill(w); });
     });
@@ -458,7 +465,10 @@
   const modal = $('#name-modal');
   $('#name-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    if (setName($('#name-input').value, $('#name-hint'))) modal.hidden = true;
+    if (setName($('#name-input').value, $('#name-hint'))) {
+      modal.hidden = true;
+      namedAt = Date.now();
+    }
   });
 
   // ── start ────────────────────────────────────────

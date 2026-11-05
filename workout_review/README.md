@@ -3,7 +3,8 @@
 https://cornerman-ai.github.io/labeler/workout_review/
 
 The team answers two questions on every workout of AMBO's courses: **Was everything clear?** and **Did
-everything work well?** (Yes / No), and when either is a no, what wasn't or what didn't. Nothing of the workout
+everything work well?** (Yes / No), and can leave a comment on each one, saved under their name (the box is always
+there; when either answer is a no, it asks what wasn't clear or what didn't work). Nothing of the workout
 itself is shown: it's all checked in the app. The menu: **Your notes** (a course's card opens its lessons, a
 lesson its drills with their questions), **Team notes** (the same courses, lessons and drills, with everyone's
 answers on each drill) and **Profile** (your name).
@@ -16,7 +17,7 @@ answers on each drill) and **Profile** (your name).
 - Answers save through the shared Apps Script, `doGetWorkoutReview` in `apps_script/Code.js`, to its own
   workbook, **Workout review notes** (made on first use, beside the roll eyes workbook), tab `Notes`:
   `ts | reviewer | item | course | lesson | title | worked | clear | comment | at` (`clear` and `worked`: yes or
-  no; `comment`: what wasn't clear or didn't work).
+  no; `comment`: the reviewer's comment, what wasn't clear or didn't work when either is a no).
 
 ## No lost or crossed notes
 

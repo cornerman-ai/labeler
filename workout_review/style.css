@@ -328,7 +328,6 @@ textarea.notes {
   letter-spacing: -0.01em;
   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
   overflow: hidden;
-  animation: rise 0.3s var(--ease) both;
 }
 textarea.notes::placeholder { color: var(--text-3); }
 textarea.notes:focus { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 4px var(--accent-soft); }
