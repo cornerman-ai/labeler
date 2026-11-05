@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-04",
+ "generated": "2026-11-05",
  "courses": [
   {
    "id": "fundamentals",
@@ -562,6 +562,228 @@
       {
        "id": "learn-defense-combinations--freestyle",
        "title": "Practice freestyle"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "footwork",
+   "name": "Footwork",
+   "line": "Get in, get out, never get caught.",
+   "lessons": [
+    {
+     "id": "footwork-linear-and-lateral",
+     "name": "Linear and lateral",
+     "section": null,
+     "drills": [
+      {
+       "id": "footwork-linear-and-lateral--forward-and-back",
+       "title": "Learn forward and back"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-forward-and-back",
+       "title": "Practice forward and back"
+      },
+      {
+       "id": "footwork-linear-and-lateral--forward-and-back-with-punches",
+       "title": "Learn forward and back with punches"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-forward-and-back-with-punches",
+       "title": "Practice forward and back with punches"
+      },
+      {
+       "id": "footwork-linear-and-lateral--left-to-right",
+       "title": "Learn left to right"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-left-to-right",
+       "title": "Practice left to right"
+      },
+      {
+       "id": "footwork-linear-and-lateral--left-to-right-with-punches",
+       "title": "Learn left to right with punches"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-left-to-right-with-punches",
+       "title": "Practice left to right with punches"
+      },
+      {
+       "id": "footwork-linear-and-lateral--step-in-and-out",
+       "title": "Learn stepping in and out"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-step-in",
+       "title": "Practice stepping in and out"
+      },
+      {
+       "id": "footwork-linear-and-lateral--step-in-with-the-jab",
+       "title": "Learn stepping in with the jab"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-step-in-jab",
+       "title": "Practice stepping in with the jab"
+      },
+      {
+       "id": "footwork-linear-and-lateral--step-in-with-1-2",
+       "title": "Learn stepping in with the 1-2"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-step-in-1-2",
+       "title": "Practice stepping in with the 1-2"
+      },
+      {
+       "id": "footwork-linear-and-lateral--step-in-with-1-2-1",
+       "title": "Learn stepping in with the 1-2-1"
+      },
+      {
+       "id": "footwork-linear-and-lateral--called-step-in-1-2-1",
+       "title": "Practice stepping in with the 1-2-1"
+      }
+     ]
+    },
+    {
+     "id": "footwork-circular",
+     "name": "Circular",
+     "section": null,
+     "drills": [
+      {
+       "id": "footwork-circular--circle-drill",
+       "title": "Learn the circle drill"
+      },
+      {
+       "id": "footwork-circular--called-square-or-stance",
+       "title": "Practice square or stance"
+      },
+      {
+       "id": "footwork-circular--circle-with-pivots",
+       "title": "Learn the pivot"
+      },
+      {
+       "id": "footwork-circular--called-step-in-and-pivot",
+       "title": "Practice step in and pivot"
+      },
+      {
+       "id": "footwork-circular--circle-with-punches",
+       "title": "Learn the circle drill with punches"
+      },
+      {
+       "id": "footwork-circular--called-step-in-and-strike",
+       "title": "Practice step in and strike"
+      }
+     ]
+    },
+    {
+     "id": "footwork-back-foot",
+     "name": "Back foot",
+     "section": null,
+     "drills": [
+      {
+       "id": "footwork-back-foot--retreat-fast",
+       "title": "Learn retreating fast"
+      },
+      {
+       "id": "footwork-back-foot--called-retreat",
+       "title": "Practice retreating fast"
+      },
+      {
+       "id": "footwork-back-foot--retreat-to-throw-the-rear",
+       "title": "Learn retreating to throw the rear"
+      },
+      {
+       "id": "footwork-back-foot--called-retreat-and-strike",
+       "title": "Practice retreat and strike"
+      }
+     ]
+    },
+    {
+     "id": "footwork-shifting",
+     "name": "Shifting",
+     "section": null,
+     "drills": [
+      {
+       "id": "footwork-shifting--slip-shift",
+       "title": "Learn the slip shift"
+      },
+      {
+       "id": "footwork-shifting--called-slip-shift",
+       "title": "Practice the slip shift"
+      },
+      {
+       "id": "footwork-shifting--step-shift",
+       "title": "Learn the step shift"
+      },
+      {
+       "id": "footwork-shifting--called-step-shift",
+       "title": "Practice the step shift"
+      },
+      {
+       "id": "footwork-shifting--fake-one-side",
+       "title": "Learn faking one side to go the other"
+      },
+      {
+       "id": "footwork-shifting--called-fake-and-shift",
+       "title": "Practice faking to shift"
+      }
+     ]
+    },
+    {
+     "id": "footwork-switching",
+     "name": "Switching",
+     "section": null,
+     "drills": [
+      {
+       "id": "footwork-switching--opposite-stance",
+       "title": "Learn why your opposite stance comes first"
+      },
+      {
+       "id": "footwork-switching--forward-and-back",
+       "title": "Learn to switch forward and back"
+      },
+      {
+       "id": "footwork-switching--called-forward-and-back",
+       "title": "Practice switching forward and back"
+      },
+      {
+       "id": "footwork-switching--l-step",
+       "title": "Learn the L step"
+      },
+      {
+       "id": "footwork-switching--called-l-step",
+       "title": "Practice the L step"
+      },
+      {
+       "id": "footwork-switching--negative-step",
+       "title": "Learn the negative step"
+      },
+      {
+       "id": "footwork-switching--called-negative-step",
+       "title": "Practice the negative step"
+      },
+      {
+       "id": "footwork-switching--step-out",
+       "title": "Learn the step out"
+      },
+      {
+       "id": "footwork-switching--called-step-out",
+       "title": "Practice the step out"
+      },
+      {
+       "id": "footwork-switching--shuffle",
+       "title": "Learn the shuffle"
+      },
+      {
+       "id": "footwork-switching--shuffle-on-your-own",
+       "title": "Practice the shuffle"
+      },
+      {
+       "id": "footwork-switching--cross-over",
+       "title": "Learn the cross over"
+      },
+      {
+       "id": "footwork-switching--cross-over-on-your-own",
+       "title": "Practice the cross over"
       }
      ]
     }

@@ -280,13 +280,16 @@
   }
   function courseView(c, isTeam) {
     const groups = [];
+    // Fundamentals' lessons come in parts (Basics, Offense, Defense) as in the app; a course in one part (Footwork) has
+    // no part's name over it.
+    const parted = c.lessons.some((l) => l.section);
     for (const l of c.lessons) {
-      const label = l.section || 'Offense';
+      const label = parted ? l.section || 'Offense' : '';
       if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, lessons: [] });
       groups[groups.length - 1].lessons.push(l);
     }
     let n = 0;
-    const list = groups.map((g) => `<div class="group-label">${esc(g.label)}</div><div class="group">${g.lessons.map((l) => {
+    const list = groups.map((g) => `${g.label ? `<div class="group-label">${esc(g.label)}</div>` : ''}<div class="group">${g.lessons.map((l) => {
       n++;
       return `<a class="row" href="${base(isTeam)}l/${c.id}/${l.id}" data-live="${isTeam ? 'team-lesson' : 'lesson'}" data-course="${c.id}" data-lesson="${l.id}" data-n="${n}">${isTeam ? teamLessonRow(c, l, n) : lessonRow(c, l, n)}</a>`;
     }).join('')}</div>`).join('');

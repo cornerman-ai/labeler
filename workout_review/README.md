@@ -9,8 +9,8 @@ itself is shown: it's all checked in the app. The menu: **Your notes** (a course
 lesson its drills with their questions), **Team notes** (the same courses, lessons and drills, with everyone's
 answers on each drill) and **Profile** (your name).
 
-- `workouts.json` is the courses on the site, ids and names only: Fundamentals for now (`ON_SITE` in the script;
-  the courses still being made stay in the app). Written from the app's own data by the ios repo:
+- `workouts.json` is the courses on the site, ids and names only: Fundamentals and Footwork, the courses open in the app
+  (`ON_SITE` in the script; the ones still being made stay off it). Written from the app's own data by the ios repo:
   `node scripts/workout-review-data.mjs` (re-run it when the courses change; never edit it by hand). An answer is
   keyed by `course/lesson/workout` ids, so it stays on its workout when the order changes.
 - `img/` holds the course cards (from the app's `assets/images/courses/*-card.jpg`, 1100 px wide).
