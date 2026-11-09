@@ -1,0 +1,25 @@
+{
+ "generated": "2026-11-09",
+ "max_punches": 200,
+ "max_per_boxer": 2,
+ "videos": [
+  {
+   "name": "ambo_beginner_demo_r1_20261109T051935-c8645a5d",
+   "link": "https://drive.google.com/file/d/1XtKDuqiSfaycC54wH4mN5_5VdrlPoCMK/view",
+   "round": "20261109T051935-c8645a5d",
+   "what": "demo",
+   "drill": null,
+   "punches_called": 35,
+   "boxer": "iPhuVO"
+  },
+  {
+   "name": "ambo_beginner_jab_called-jabs_20261109T055615-3e67be3c",
+   "link": "https://drive.google.com/file/d/1qL71CpYvH2SlkOzSQh7g4kpyTBIQZAyL/view",
+   "round": "20261109T055615-3e67be3c",
+   "what": "jab",
+   "drill": "learn-jab-and-cross--called-jabs",
+   "punches_called": 36,
+   "boxer": "iPhuVO"
+  }
+ ]
+}

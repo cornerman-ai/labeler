@@ -3266,17 +3266,25 @@ let _pendingAutoLoadName = null;
 
 function fetchVideoCatalog() {
   if (_videoCatalogPromise) return _videoCatalogPromise;
-  _videoCatalogPromise = fetchJson(sheetUrl({ action: 'listTrackingVideos' }), 20000)
-    .then((result) => {
-      _videoCatalog = Array.isArray(result && result.videos) ? result.videos : [];
-      // Fixed 1-based number per video, tied to its row in the tracking
-      // sheet — so it stays the same video's number whether or not a
-      // search is narrowing the list, and matches what someone would count
-      // scrolling down that sheet by hand.
-      _videoCatalog.forEach((v, i) => { v.n = i + 1; });
-      return _videoCatalog;
-    })
-    .catch(() => { _videoCatalog = []; return _videoCatalog; });
+  // Beginners' app rounds (beginner_queue.json, written by cornerman-backend's
+  // ml/punch_classification/beginner_queue.py) come after the sheet's videos —
+  // they aren't in the tracking sheet, which the team doesn't own here.
+  const sheet = fetchJson(sheetUrl({ action: 'listTrackingVideos' }), 20000)
+    .then((result) => (Array.isArray(result && result.videos) ? result.videos : []))
+    .catch(() => []);
+  const beginners = fetch('beginner_queue.json', { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : { videos: [] }))
+    .then((q) => (q.videos || []).map((v) => ({ name: v.name, link: v.link })))
+    .catch(() => []);
+  _videoCatalogPromise = Promise.all([sheet, beginners]).then(([rows, queue]) => {
+    _videoCatalog = rows.concat(queue);
+    // Fixed 1-based number per video, tied to its row in the tracking
+    // sheet — so it stays the same video's number whether or not a
+    // search is narrowing the list, and matches what someone would count
+    // scrolling down that sheet by hand.
+    _videoCatalog.forEach((v, i) => { v.n = i + 1; });
+    return _videoCatalog;
+  });
   return _videoCatalogPromise;
 }
 
