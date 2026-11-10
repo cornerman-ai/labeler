@@ -100,6 +100,22 @@ function fetchAppRounds() {
   return _appRoundsPromise;
 }
 
+// The beginner queue's videos (punch/beginner_queue.json) are app rounds
+// too, copied to Drive; app.js's fetchVideoCatalog() hands their links over.
+let _appQueueLinks = new Set();
+function setAppQueueLinks(links) {
+  _appQueueLinks = new Set(links.map(normalizeDriveUrl));
+  // The open video may be one of them: its round is drawn from this.
+  updateRoundIndicator();
+  renderTimelineOverlay();
+}
+
+// A video the AMBO app recorded — an App rounds link or a beginner queue
+// video. One round, start to end: see app.js's wholeVideoIsRound().
+function isAppVideo(link) {
+  return !!appRoundId(link) || _appQueueLinks.has(normalizeDriveUrl(link));
+}
+
 // The round id behind an App rounds link, or null for any other link.
 function appRoundId(link) {
   return APP_LINK_RE.exec(String(link || '').trim())?.[1] || null;

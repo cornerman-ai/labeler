@@ -78,6 +78,11 @@ Web-based video labeling tool for boxing punch annotation.
   rounds tab lists a round the labeler marked green with a checkmark, and
   other labelers' marks as a badge with their names (for Admin and Analyst,
   who get no button, any mark is green).
+  An app video is **one round, start to end** (`wholeVideoIsRound()`): an App
+  rounds link or a `beginner_queue.json` video (`isAppVideo()`). The page
+  draws one round over the whole timeline, S / E and the round button do
+  nothing there, and no `round_start` / `round_end` rows are written, so
+  whatever reads the sheet has to take an app video as one whole round too.
 
 ## Sheet Columns
 

@@ -3252,6 +3252,8 @@ function resetVideoForNewLink() {
   if (typeof resetSkeletonState === 'function') resetSkeletonState();
   if (typeof resetPredictionsState === 'function') resetPredictionsState();
   if (typeof resetAppCallouts === 'function') resetAppCallouts();
+  // The new link may be an app video, or the last one was — see wholeVideoIsRound().
+  updateRoundIndicator();
 }
 
 // ============================================================
@@ -3281,6 +3283,8 @@ function fetchVideoCatalog() {
     .then((r) => (r.ok ? r.json() : { videos: [] }))
     .then((q) => (q.videos || []).map((v) => ({ name: v.name, link: v.link })))
     .catch(() => []);
+  // These are app rounds too, copied to Drive: tell app-rounds.js their links.
+  beginners.then((queue) => { if (typeof setAppQueueLinks === 'function') setAppQueueLinks(queue.map((v) => v.link)); });
   _videoCatalogPromise = Promise.all([sheet, beginners]).then(([rows, queue]) => {
     _videoCatalog = rows.concat(queue);
     // Fixed 1-based number per video, tied to its row in the tracking
@@ -4893,7 +4897,9 @@ function setupKeyboardShortcuts() {
 
       case 'KeyS':
         e.preventDefault();
-        if (state.roundActive) {
+        if (wholeVideoIsRound()) {
+          showToast('An app video is one round already — no start or end needed', 'info');
+        } else if (state.roundActive) {
           showToast('Round already active — press E to end it first', 'error');
         } else {
           state.roundActive = true;
@@ -4905,7 +4911,9 @@ function setupKeyboardShortcuts() {
 
       case 'KeyE':
         e.preventDefault();
-        if (!state.roundActive) {
+        if (wholeVideoIsRound()) {
+          showToast('An app video is one round already — no start or end needed', 'info');
+        } else if (!state.roundActive) {
           showToast('No round in progress — press S to start one', 'error');
         } else {
           state.roundActive = false;
@@ -5035,7 +5043,20 @@ function setupKeyboardShortcuts() {
 // separate round_start/round_end markers, and moving an edge means mutating
 // and saving whichever one of those it actually is.
 function roundSpansWithIdx() {
+  // An app video is one round, start to end, with no rows behind it (see
+  // wholeVideoIsRound()), so nothing to drag or select.
+  if (wholeVideoIsRound()) return [{ start: 0, end: Infinity, startIdx: null, endIdx: null }];
   return markerSpansWithIdx('round');
+}
+
+// An AMBO app round is filmed as one round: the whole video counts, and
+// nobody marks its start and end (Mathé, 2026-11-10). No round_start /
+// round_end rows are written for it; cornerman-backend has to read an app
+// video as one whole round too. app-rounds.js's isAppVideo() says which
+// links those are. Markers a labeler saved on one before this are ignored
+// here and stay in the Labels list.
+function wholeVideoIsRound() {
+  return typeof isAppVideo === 'function' && isAppVideo(document.getElementById('drive-link').value);
 }
 
 // Same pairing for either kind of boundary — see MARKER_KINDS.
@@ -5104,7 +5125,11 @@ function updateRoundIndicator() {
   }
   const indicator = document.getElementById('round-indicator');
   if (!indicator) return;
-  if (state.roundActive) {
+  if (wholeVideoIsRound()) {
+    indicator.textContent = 'The whole video is the round';
+    indicator.className = 'round-idle';
+    indicator.onclick = null;
+  } else if (state.roundActive) {
     indicator.textContent = '\u25B6 Round Active — press E to end';
     indicator.className = 'round-active';
     indicator.onclick = () => {
@@ -5559,6 +5584,8 @@ function updateVideoOverlay() {
     .map(l => l.start)
     .sort((a, b) => a - b);
   const insideUnusable = markerSpansWithIdx('unusable').some(u => t >= u.start && t <= u.end);
+  // No round tag and no "Outside Round" dim on an app video: all of it is the round.
+  if (wholeVideoIsRound()) { roundStarts.length = 0; roundEnds.length = 0; }
 
   const rounds = [];
   for (let i = 0; i < roundStarts.length; i++) {
