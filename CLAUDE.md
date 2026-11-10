@@ -79,7 +79,9 @@ Web-based video labeling tool for boxing punch annotation.
   other labelers' marks as a badge with their names (for Admin and Analyst,
   who get no button, any mark is green).
   A round from any other build is listed only when its id is in
-  `APP_ADDED_ROUNDS` (a beginner's first demo, filmed on a dev build; the
+  `APP_ADDED_ROUNDS` (a beginner's first demo, filmed on a dev build, and four
+  of Arianne's drills from before the first TestFlight build, their punches
+  called counted in `APP_ADDED_CALLED`; the
   beginner queue, `punch/beginner_queue.json`, is gone since 2026-11-10).
   An app video is **one round, start to end** (`wholeVideoIsRound()`): an App
   rounds link (`isAppVideo()`). The page
