@@ -57,6 +57,17 @@ Web-based video labeling tool for boxing punch annotation.
   via the `analyst-mode` body class rather than hidden. All viewing surfaces
   (timelines, Labels list, filters, Agreement report) work normally.
 
+- **App rounds** (punch labeler, `punch/app-rounds.js`): the video picker's
+  second tab lists the AMBO app's TestFlight rounds (channels `testflight`,
+  `guided-beta`, `defense-beta`) that called punches, plus every final check,
+  live from the QA site's API (qa-tool's `api/sessions.js`, `api/session.js`):
+  no script or Drive copy. Needs a Google sign-in whose email is on the QA
+  site's `TEAM_EMAILS`, and the page's origin in Firebase Auth's authorized
+  domains and in qa-tool's `ORIGINS` (`api/_store.js`). A round's link, and so
+  its rows' `video_file`, is `https://ambo-qa.vercel.app/#/s/<round id>`;
+  footage streams from a signed Storage URL, the app's own skeleton is round 0.
+  Locally: qa-tool's `npm run dev`, then `/punch/?qa=http://localhost:4173`.
+
 ## Sheet Columns
 
 **Labeler sheets** ("Labeled Data Software {N}"):

@@ -155,6 +155,12 @@
            #drive-link and fires the same debounced load setupDriveLink()
            already wires up for a pasted link. -->
       <div id="video-picker-panel" hidden>
+        <!-- App rounds: the AMBO app's TestFlight rounds, live from the QA
+             site (app-rounds.js). -->
+        <div class="vp-tabs" role="tablist">
+          <button type="button" class="vp-tab active" data-mode="videos">Videos</button>
+          <button type="button" class="vp-tab" data-mode="app">App rounds</button>
+        </div>
         <input type="text" id="video-picker-search" placeholder="Search videos…">
         <div id="video-picker-list"></div>
       </div>
@@ -913,7 +919,8 @@
        consumer. -->
   <script src="../shared/xlsx.full.min.js?v=20260917h"></script>
   <script src="predictions.js?v=20260917h"></script>
-  <script src="app.js?v=20260917h"></script>
+  <script src="app-rounds.js?v=20261110a"></script>
+  <script src="app.js?v=20261110a"></script>
   <!-- After app.js: reads state.highlightedLabel, foreignOwnerName(), punchLabel(). -->
   <script src="export-clip.js?v=20260917h"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/

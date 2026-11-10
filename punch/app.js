@@ -3197,6 +3197,10 @@ function setupDriveLink() {
         state.undoStack = [];
         resetVideoForNewLink();
         fetchLabelsFromSheet(true);
+        // An App rounds link (app-rounds.js) opens from the QA site, not
+        // from the connected folders — picked from the list or pasted.
+        const appId = typeof appRoundId === 'function' ? appRoundId(input.value) : null;
+        if (appId) { loadAppRound(appId); _pendingAutoLoadName = null; return; }
         // Set by the video picker (see setupVideoPicker()'s pick()) right
         // before it dispatches this same 'input' event — has to run AFTER
         // resetVideoForNewLink() above, which would otherwise immediately
@@ -3334,7 +3338,56 @@ function setupVideoPicker() {
   const input = document.getElementById('drive-link');
   if (!btn || !panel || !search || !list || !input) return;
 
+  // Two tabs: the tracking sheet's videos, and the AMBO app's TestFlight
+  // rounds (app-rounds.js), which need a Google sign-in first.
+  const tabs = Array.from(panel.querySelectorAll('.vp-tab'));
+  let mode = 'videos';
+  let appError = null;          // why the App rounds tab couldn't list, or null
+
+  function setMode(next) {
+    mode = next;
+    tabs.forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
+    search.placeholder = mode === 'app' ? 'Search app rounds (id, kind, boxer)…' : 'Search videos…';
+    renderList(search.value);
+    if (mode === 'app' && !_appRounds) loadAppList();
+  }
+
+  async function loadAppList() {
+    appError = null;
+    try {
+      if (!(await appSignedIn())) { appError = 'signed-out'; renderList(search.value); return; }
+      await fetchAppRounds();
+    } catch (err) {
+      appError = err.message || String(err);
+    }
+    if (mode === 'app') renderList(search.value);
+  }
+
+  function renderAppList(filter) {
+    if (appError === 'signed-out') {
+      list.innerHTML = '<div class="vp-empty">The app rounds come from the QA site.<br><button type="button" class="vp-signin">Sign in with Google</button></div>';
+      list.querySelector('.vp-signin').addEventListener('click', async () => {
+        try { await appSignIn(); } catch (err) { showToast(`Sign-in failed: ${err.message}`, 'error'); return; }
+        list.innerHTML = '<div class="vp-loading">Loading app rounds…</div>';
+        loadAppList();
+      });
+      return;
+    }
+    if (appError) { list.innerHTML = `<div class="vp-empty">${escapeHtml(appError)}</div>`; return; }
+    if (!_appRounds) { list.innerHTML = '<div class="vp-loading">Loading app rounds…</div>'; return; }
+    const q = filter.trim().toLowerCase();
+    const rows = q ? _appRounds.filter((v) => v.name.toLowerCase().includes(q)) : _appRounds;
+    if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
+    list.innerHTML = rows.map((v) =>
+      `<button type="button" class="vp-row"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span><span class="vp-called">${v.called ? `${v.called} called` : ''}</span></button>`
+    ).join('');
+    Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
+      el.addEventListener('click', () => pick(rows[i]));
+    });
+  }
+
   function renderList(filter) {
+    if (mode === 'app') { renderAppList(filter); return; }
     if (!_videoCatalog) { list.innerHTML = '<div class="vp-loading">Loading videos…</div>'; return; }
     const q = filter.trim().toLowerCase();
     const rows = q ? _videoCatalog.filter((v) => v.name.toLowerCase().includes(q)) : _videoCatalog;
@@ -3374,6 +3427,7 @@ function setupVideoPicker() {
   });
   search.addEventListener('input', () => renderList(search.value));
   search.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+  tabs.forEach((t) => t.addEventListener('click', () => { setMode(t.dataset.mode); search.focus(); }));
   document.addEventListener('click', (e) => {
     if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) closePanel();
   });
