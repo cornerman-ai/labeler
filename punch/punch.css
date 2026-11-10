@@ -601,6 +601,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .vp-tab:hover { background: var(--fill); }
 .vp-tab.active { background: var(--fill-2); color: var(--ink); font-weight: 600; }
+/* A round this labeler marked as labeled (app-rounds.js) — or, for Admin
+   and Analyst, that anyone did. */
+.vp-row.vp-done { background: var(--yes-wash); }
+.vp-row.vp-done .vp-name { color: var(--yes-on-wash); font-weight: 600; }
+/* The Labeling done button under the link box, on an app round only. */
+#btn-app-done {
+  align-self: flex-start; height: 28px; padding: 0 12px; border: 0; border-radius: 7px;
+  background: var(--fill-2); color: var(--ink); font-size: 12.5px; cursor: pointer;
+}
+#btn-app-done[hidden] { display: none; }
+#btn-app-done.done { background: var(--yes-wash); color: var(--yes-on-wash); font-weight: 600; }
+#btn-app-done:disabled { opacity: .6; cursor: default; }
 .vp-called { flex: none; color: var(--ink-dim); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .vp-signin {
   margin-top: 8px; height: 28px; padding: 0 12px; border: 0; border-radius: 7px;
@@ -1369,6 +1381,19 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   text-transform: uppercase; color: var(--accent-on-wash);
   white-space: nowrap; pointer-events: none;
 }
+
+/* An app round's callouts (app-rounds.js's renderCalloutStrip()): a row on
+   top of the ribbons, one mark per call from its moment to the next call —
+   a tick where it was called, then what was called. Nothing to drag. */
+#callout-markers { position: relative; height: 14px; flex: none; margin-bottom: 2px; }
+#callout-markers[hidden] { display: none; }
+.callout-span {
+  position: absolute; top: 0; bottom: 0; min-width: 3px; padding-left: 4px;
+  border-left: 2px solid var(--ink-dim); cursor: pointer;
+  font-size: 9.5px; font-weight: 700; line-height: 14px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: clip;
+}
+.callout-span:hover { background: var(--fill-2); }
 
 /* Unusable spans: the same ribbon idiom one row up, in red and hatched — a
    stretch to leave out, not a period of the take. */

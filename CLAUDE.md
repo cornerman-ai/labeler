@@ -67,6 +67,17 @@ Web-based video labeling tool for boxing punch annotation.
   its rows' `video_file`, is `https://ambo-qa.vercel.app/#/s/<round id>`;
   footage streams from a signed Storage URL, the app's own skeleton is round 0.
   Locally: qa-tool's `npm run dev`, then `/punch/?qa=http://localhost:4173`.
+  On an app round the page adds two things. A **Called** ribbon on top of the
+  timeline's rounds (`renderCalloutStrip()`): what the app called and when,
+  from the round's `callouts` (`t` is on the skeleton's clock, so the footage
+  time is `t - videoT0`); read-only, a click goes to the call. And a **Mark
+  labeling done** button under the link box: one row per (round, labeler) in
+  the punch workbook's `App Rounds Done` tab (video_file | labeler | ts,
+  `doGetAppRoundsDone`, actions `listAppRoundsDone` / `setAppRoundDone`, every
+  response carries `appDone: 1`); clicking again deletes the row. The App
+  rounds tab lists a round the labeler marked green with a checkmark, and
+  other labelers' marks as a badge with their names (for Admin and Analyst,
+  who get no button, any mark is green).
 
 ## Sheet Columns
 

@@ -339,6 +339,17 @@ function doGet(e) {
     return doGetUnusable(p, labeler, action);
   }
 
+  // Where a video load's seconds go — read-only, see doGetPerfProbe.
+  if (action === 'perfProbe') {
+    return doGetPerfProbe(p);
+  }
+
+  // App rounds done (punch/app-rounds.js): a labeler's "labeling done" mark on
+  // an AMBO app round — see doGetAppRoundsDone at the bottom of this file.
+  if (APP_DONE_ACTIONS.indexOf(action) !== -1) {
+    return doGetAppRoundsDone(p, labeler, action);
+  }
+
   // Footwork step labeler (steps/index.html): one span per step, with the foot
   // and the direction, inside a fixed 20 s window per video; its own workbook —
   // see doGetSteps at the bottom of this file.
@@ -7591,4 +7602,80 @@ function doGetWorkoutReview(p, labeler, action) {
     sh.getRange(target, 1, 1, line.length).setNumberFormat('@').setValues([line]);
     return jsonOut({ status: 'ok', replaced: row !== -1, wr: 1 });
   });
+}
+
+
+// ============================================================
+// App rounds done (punch/app-rounds.js) — the punch labeler's "Labeling done"
+// button on an AMBO app round: who has finished labeling which round, so the
+// picker's App rounds tab can show it green with a checkmark and nobody
+// labels it twice. The app rounds aren't on the tracking sheet, which is
+// where a video's progress is otherwise kept. One tab in the punch workbook:
+//   App Rounds Done  video_file | labeler | ts
+// One row per (round, labeler); taking the mark back deletes the row. Every
+// response carries `appDone: 1` — doGet answers an unknown action with a
+// success shape, so without it a page talking to an older deployment would
+// read a mark as saved having written nothing.
+// ============================================================
+var APP_DONE_ACTIONS = ['listAppRoundsDone', 'setAppRoundDone'];
+var APP_DONE_NAME = 'App Rounds Done';
+var APP_DONE_HEADERS = ['video_file', 'labeler', 'ts'];
+
+function doGetAppRoundsDone(p, labeler, action) {
+  var pss = punchSpreadsheet();
+  if (action === 'listAppRoundsDone') {
+    var lsh = pss.getSheetByName(APP_DONE_NAME);
+    return jsonOut({ status: 'ok', appDone: 1, done: lsh ? unusableRows(lsh) : [] });
+  }
+  var video = normalizeDriveUrl(p.video || '');
+  var who = String(p.labeler || '').trim();
+  if (!video) return jsonOut({ status: 'error', appDone: 1, message: 'missing field: video' });
+  if (!who) return jsonOut({ status: 'error', appDone: 1, message: 'missing field: labeler' });
+  var want = String(p.done) !== '0';
+  return withPunchWriteLock(function () {
+    var sh = getOrCreateSheetWithHeaders(pss, APP_DONE_NAME, APP_DONE_HEADERS);
+    var data = sh.getDataRange().getValues();
+    var idx = unusableHeaderIndex(data[0]);
+    var has = false;
+    for (var r = data.length - 1; r >= 1; r--) {
+      if (normalizeDriveUrl(data[r][idx.video_file]) !== video) continue;
+      if (String(data[r][idx.labeler]).trim() !== who) continue;
+      if (want) has = true; else sh.deleteRow(r + 1);
+    }
+    if (want && !has) {
+      var row = [];
+      row[idx.video_file] = video; row[idx.labeler] = who; row[idx.ts] = new Date().toISOString();
+      sh.appendRow(fillRow(row, APP_DONE_HEADERS.length));
+    }
+    return jsonOut({ status: 'ok', appDone: 1, done: unusableRows(sh) });
+  });
+}
+
+
+// ============================================================
+// perfProbe — where the seconds of a punch video load go. Read-only: times
+// each step a `list` takes on one labeler tab (`sheet`, default Labeled Data
+// John) and answers { rows, cols, ms: [[step, milliseconds], …] }.
+// Added 2026-11-10: reading only a video's rows instead of the whole tab
+// (readVideoRows) left `list` at the same 9–14 s, so the cost is somewhere
+// this has to show rather than where it was guessed. The first read of a
+// workbook carries whatever opening it costs; `whole tab` comes last so it
+// doesn't hide that.
+// ============================================================
+function doGetPerfProbe(p) {
+  var ms = [], at = Date.now();
+  var mark = function (step) { var now = Date.now(); ms.push([step, now - at]); at = now; };
+  var pss = punchSpreadsheet(); mark('openById');
+  var sh = pss.getSheetByName(p.sheet || 'Labeled Data John'); mark('getSheetByName');
+  if (!sh) return jsonOut({ status: 'error', message: 'Sheet not found: ' + p.sheet });
+  var rows = sh.getLastRow(); mark('getLastRow');
+  var cols = sh.getLastColumn(); mark('getLastColumn');
+  if (rows < 2 || cols < 1) return jsonOut({ status: 'ok', rows: rows, cols: cols, ms: ms });
+  sh.getRange(1, 1, 1, cols).getValues(); mark('header row');
+  sh.getRange(2, 2, rows - 1, 1).getValues(); mark('one column');
+  sh.getRange(2, 1, Math.min(100, rows - 1), cols).getValues(); mark('100 rows');
+  sh.getRange(1, 1, 1, cols).getValues(); mark('header row again');
+  pss.getSheets(); mark('getSheets');
+  sh.getDataRange().getValues(); mark('whole tab');
+  return jsonOut({ status: 'ok', rows: rows, cols: cols, ms: ms });
 }
