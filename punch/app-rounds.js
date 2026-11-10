@@ -24,6 +24,10 @@ const APP_QA = new URLSearchParams(location.search).get('qa') || 'https://ambo-q
 const APP_QA_LOCAL = /^http:\/\/localhost[:/]/.test(APP_QA);
 // The app's EAS channels whose builds go out through TestFlight (ambo's eas.json).
 const APP_TESTFLIGHT_CHANNELS = ['testflight', 'guided-beta', 'defense-beta'];
+// Rounds listed whatever build filmed them, picked by hand: a beginner's whole
+// first demo session, 3 rounds of 2 min, filmed on a dev build (2026-11-08;
+// Mathé, 2026-11-10: moved here from the beginner queue).
+const APP_ADDED_ROUNDS = ['20261108T100059-d743920b', '20261108T100408-1f0cfcdd', '20261108T100718-9400f8e6'];
 const APP_LINK_RE = /^https:\/\/ambo-qa\.vercel\.app\/#\/s\/([\w-]+)/;
 
 let _appAuth = null;          // firebase-auth module + auth instance, once loaded
@@ -75,11 +79,11 @@ async function appApi(path) {
   return body;
 }
 
-// The rounds worth labeling: a TestFlight build's, with footage, that called
-// punches — or a final check, which is scored on the punches thrown whatever
-// was called (Mathé, 2026-11-10).
+// The rounds worth labeling: a TestFlight build's (or one added by hand, see
+// APP_ADDED_ROUNDS), with footage, that called punches — or a final check,
+// which is scored on the punches thrown whatever was called (Mathé, 2026-11-10).
 function appRoundWanted(s) {
-  return APP_TESTFLIGHT_CHANNELS.includes(s.channel) && s.hasVideo && (s.called > 0 || s.kind === 'check');
+  return (APP_TESTFLIGHT_CHANNELS.includes(s.channel) || APP_ADDED_ROUNDS.includes(s.id)) && s.hasVideo && (s.called > 0 || s.kind === 'check');
 }
 
 function appRoundName(s) {
@@ -108,20 +112,10 @@ function fetchAppRounds() {
   return _appRoundsPromise;
 }
 
-// The beginner queue's videos (punch/beginner_queue.json) are app rounds
-// too, copied to Drive; app.js's fetchVideoCatalog() hands their links over.
-let _appQueueLinks = new Set();
-function setAppQueueLinks(links) {
-  _appQueueLinks = new Set(links.map(normalizeDriveUrl));
-  // The open video may be one of them: its round is drawn from this.
-  updateRoundIndicator();
-  renderTimelineOverlay();
-}
-
-// A video the AMBO app recorded — an App rounds link or a beginner queue
-// video. One round, start to end: see app.js's wholeVideoIsRound().
+// A video the AMBO app recorded — an App rounds link. One round, start to
+// end: see app.js's wholeVideoIsRound().
 function isAppVideo(link) {
-  return !!appRoundId(link) || _appQueueLinks.has(normalizeDriveUrl(link));
+  return !!appRoundId(link);
 }
 
 // The round id behind an App rounds link, or null for any other link.
