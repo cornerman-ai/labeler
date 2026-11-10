@@ -601,6 +601,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .vp-tab:hover { background: var(--fill); }
 .vp-tab.active { background: var(--fill-2); color: var(--ink); font-weight: 600; }
+/* App rounds are grouped per boxer: the boxer's name over their rounds. */
+.vp-group {
+  flex: none; display: flex; align-items: baseline; gap: 6px; padding: 8px 9px 3px;
+  font-size: 11px; font-weight: 700; color: var(--ink-dim);
+}
+.vp-group:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--fill-2); }
+.vp-group span:last-child { flex: none; font-weight: 500; font-variant-numeric: tabular-nums; }
 /* A round this labeler marked as labeled (app-rounds.js) — or, for Admin
    and Analyst, that anyone did. */
 .vp-row.vp-done { background: var(--yes-wash); }

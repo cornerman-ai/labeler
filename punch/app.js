@@ -3384,19 +3384,28 @@ function setupVideoPicker() {
     if (appError) { list.innerHTML = `<div class="vp-empty">${escapeHtml(appError)}</div>`; return; }
     if (!_appRounds) { list.innerHTML = '<div class="vp-loading">Loading app rounds…</div>'; return; }
     const q = filter.trim().toLowerCase();
-    const rows = q ? _appRounds.filter((v) => v.name.toLowerCase().includes(q)) : _appRounds;
+    // The boxer is the group's header now, not part of the row's name.
+    const rows = q ? _appRounds.filter((v) => `${v.name} ${v.owner}`.toLowerCase().includes(q)) : _appRounds;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
     // A round this labeler marked as labeled (app-rounds.js's Labeling done
     // button) is green with a checkmark; other labelers' marks are a badge
     // with their names. Admin and Analyst label nothing: any mark is green.
     const me = labelerId();
     const viewer = state.isAdmin || state.isAnalyst;
-    list.innerHTML = rows.map((v) => {
+    // Grouped per boxer (fetchAppRounds() orders them so): a header where the
+    // boxer changes, with how many of the rounds shown are marked as labeled.
+    const isDone = (v) => { const names = appDoneNames(v.link); return viewer ? names.length > 0 : names.includes(me); };
+    list.innerHTML = rows.map((v, i) => {
+      let head = '';
+      if (!i || rows[i - 1].owner !== v.owner) {
+        const group = rows.filter((x) => x.owner === v.owner);
+        head = `<div class="vp-group"><span class="vp-name">${escapeHtml(v.owner)}</span><span>${group.filter(isDone).length} of ${group.length} labeled</span></div>`;
+      }
       const names = appDoneNames(v.link);
       const mine = viewer ? names.length > 0 : names.includes(me);
       const others = viewer ? names : names.filter((n) => n !== me);
       const badge = others.length ? `<span class="vp-ver vp-v-v1" title="Marked as labeled by ${escapeHtml(others.join(', '))}">✓ ${escapeHtml(others.join(', '))}</span>` : '';
-      return `<button type="button" class="vp-row${mine ? ' vp-done' : ''}"><span class="vp-n">${v.n}.</span><span class="vp-name">${mine ? '✓ ' : ''}${escapeHtml(v.name)}</span>${badge}<span class="vp-called" title="Punches the app detected · punches it called">${v.detected == null ? '–' : v.detected} detected · ${v.called || 0} called</span></button>`;
+      return `${head}<button type="button" class="vp-row${mine ? ' vp-done' : ''}"><span class="vp-n">${v.n}.</span><span class="vp-name">${mine ? '✓ ' : ''}${escapeHtml(v.name)}</span>${badge}<span class="vp-called" title="Punches the app detected · punches it called">${v.detected == null ? '–' : v.detected} detected · ${v.called || 0} called</span></button>`;
     }).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));

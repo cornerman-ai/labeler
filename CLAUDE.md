@@ -61,7 +61,7 @@ Web-based video labeling tool for boxing punch annotation.
   second tab lists the AMBO app's TestFlight rounds (channels `testflight`,
   `guided-beta`, `defense-beta`) that called punches, plus every final check,
   live from the QA site's API (qa-tool's `api/sessions.js`, `api/session.js`):
-  no script or Drive copy. Needs a Google sign-in whose email is on the QA
+  no script or Drive copy, grouped per boxer (the round's `owner`). Needs a Google sign-in whose email is on the QA
   site's `TEAM_EMAILS`, and the page's origin in Firebase Auth's authorized
   domains and in qa-tool's `ORIGINS` (`api/_store.js`). A round's link, and so
   its rows' `video_file`, is `https://ambo-qa.vercel.app/#/s/<round id>`;

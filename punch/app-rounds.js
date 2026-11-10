@@ -84,17 +84,25 @@ function appRoundWanted(s) {
 
 function appRoundName(s) {
   const what = s.kind === 'session' ? 'guided session' : s.kind === 'check' ? 'final check' : (s.drill || s.kind || '').replace(/^.*--/, '').replace(/-/g, ' ');
-  return `${s.id} · ${what}${s.endedEarly ? ' (ended early)' : ''} · ${s.owner}`;
+  return `${s.id} · ${what}${s.endedEarly ? ' (ended early)' : ''}`;
 }
 
-// {name, link, n, called, detected} rows for the picker (detected: punches the app's classifier found, null on
-// a round from before it saved them), newest first (the API's order). Throws when not signed in.
+// {name, owner, link, n, called, detected} rows for the picker (detected: punches the app's classifier found,
+// null on a round from before it saved them), grouped per boxer: the boxer with the newest round first, each
+// boxer's rounds newest first (the API's order). Throws when not signed in.
 function fetchAppRounds() {
   if (_appRoundsPromise) return _appRoundsPromise;
   _appRoundsPromise = appApi('/api/sessions').then(({ sessions }) => {
-    _appRounds = sessions.filter(appRoundWanted).map((s, i) => ({
-      name: appRoundName(s), link: `https://ambo-qa.vercel.app/#/s/${s.id}`, n: i + 1, called: s.called, detected: s.detected,
-    }));
+    const byOwner = new Map();
+    for (const s of sessions.filter(appRoundWanted)) {
+      const owner = s.owner || 'anonymous';
+      if (!byOwner.has(owner)) byOwner.set(owner, []);
+      byOwner.get(owner).push({
+        name: appRoundName(s), owner, link: `https://ambo-qa.vercel.app/#/s/${s.id}`, called: s.called, detected: s.detected,
+      });
+    }
+    _appRounds = [...byOwner.values()].flat();
+    _appRounds.forEach((v, i) => { v.n = i + 1; });
     return _appRounds;
   }).catch((err) => { _appRoundsPromise = null; throw err; });
   return _appRoundsPromise;
