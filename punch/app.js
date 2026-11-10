@@ -3379,7 +3379,7 @@ function setupVideoPicker() {
     const rows = q ? _appRounds.filter((v) => v.name.toLowerCase().includes(q)) : _appRounds;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
     list.innerHTML = rows.map((v) =>
-      `<button type="button" class="vp-row"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span><span class="vp-called">${v.called ? `${v.called} called` : ''}</span></button>`
+      `<button type="button" class="vp-row"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span><span class="vp-called" title="Punches the app detected · punches it called">${v.detected == null ? '–' : v.detected} detected · ${v.called || 0} called</span></button>`
     ).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));

@@ -84,12 +84,13 @@ function appRoundName(s) {
   return `${s.id} · ${what}${s.endedEarly ? ' (ended early)' : ''} · ${s.owner}`;
 }
 
-// {name, link, n, called} rows for the picker, newest first (the API's order). Throws when not signed in.
+// {name, link, n, called, detected} rows for the picker (detected: punches the app's classifier found, null on
+// a round from before it saved them), newest first (the API's order). Throws when not signed in.
 function fetchAppRounds() {
   if (_appRoundsPromise) return _appRoundsPromise;
   _appRoundsPromise = appApi('/api/sessions').then(({ sessions }) => {
     _appRounds = sessions.filter(appRoundWanted).map((s, i) => ({
-      name: appRoundName(s), link: `https://ambo-qa.vercel.app/#/s/${s.id}`, n: i + 1, called: s.called,
+      name: appRoundName(s), link: `https://ambo-qa.vercel.app/#/s/${s.id}`, n: i + 1, called: s.called, detected: s.detected,
     }));
     return _appRounds;
   }).catch((err) => { _appRoundsPromise = null; throw err; });
