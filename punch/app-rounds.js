@@ -30,6 +30,9 @@ let _appAuth = null;          // firebase-auth module + auth instance, once load
 let _appUser = null;
 let _appRounds = null;        // null = not fetched yet
 let _appRoundsPromise = null;
+// The open round's callouts, [{t, show}] on the footage's clock, in time
+// order — what the app called and when, for the timeline's Called ribbon.
+let _appCallouts = [];
 
 // Firebase's modular SDK is ES modules only; this page's scripts are classic,
 // so it comes in through import() the first time it's needed.
@@ -152,6 +155,12 @@ async function loadAppRound(id) {
   video.load();
   if (thumbVideo) { thumbVideo.src = url; thumbVideo.load(); }
   applySkeletonLoadResult({ rounds: [appSkeletonRound(s.round)], incomplete: 0, invalid: 0, invalidReasons: [] });
+  // Callouts are on the skeleton's clock, like its frames (see appSkeletonRound()).
+  _appCallouts = (s.round.callouts || [])
+    .filter((c) => Number.isFinite(c.t) && c.show)
+    .map((c) => ({ t: c.t - (s.round.videoT0 || 0), show: String(c.show) }))
+    .sort((a, b) => a.t - b.t);
+  if (typeof renderTimelineOverlay === 'function') renderTimelineOverlay();
   const stance = document.getElementById('stance-select');
   const appStance = { orthodox: 'Orthodox', southpaw: 'Southpaw' }[s.round.stance];
   if (stance && appStance && stance.value !== appStance) {
@@ -161,3 +170,114 @@ async function loadAppRound(id) {
   showToast(`Loaded app round ${id}`, 'success');
   return true;
 }
+
+// Called by app.js's resetVideoForNewLink(): the callouts belong to the round
+// that was open.
+function resetAppCallouts() {
+  _appCallouts = [];
+  // Emptied here too: with no video open the timeline has no length yet and
+  // renderTimelineOverlay() stops before it reaches the ribbons.
+  const layer = document.getElementById('callout-markers');
+  if (layer) { layer.innerHTML = ''; layer.hidden = true; }
+}
+
+// The Called ribbon, on top of the timeline's rounds: one mark per callout,
+// from when it was called to the next one, so a labeler sees which punches
+// to expect where (Mathé, 2026-11-10). Read-only; a click goes to the call.
+// Called by app.js's renderTimelineOverlay(), which rebuilds every ribbon.
+function renderCalloutStrip(duration, video) {
+  const layer = document.getElementById('callout-markers');
+  if (!layer) return;
+  layer.innerHTML = '';
+  layer.hidden = !_appCallouts.length;
+  _appCallouts.forEach((c, i) => {
+    const next = i + 1 < _appCallouts.length ? _appCallouts[i + 1].t : duration;
+    const l = timeToViewportPct(c.t, duration);
+    const r = timeToViewportPct(Math.max(next, c.t), duration);
+    if (r < 0 || l > 100) return;
+    const span = document.createElement('div');
+    span.className = 'callout-span';
+    span.style.left = Math.max(0, l) + '%';
+    span.style.width = Math.max(Math.min(100, r) - Math.max(0, l), 0.4) + '%';
+    span.title = `Called ${c.show} at ${formatTime(c.t)}`;
+    span.textContent = c.show;
+    span.addEventListener('click', (e) => { e.stopPropagation(); video.currentTime = Math.max(0, c.t); });
+    layer.appendChild(span);
+  });
+}
+
+// ── Labeling done ───────────────────────────────────────────────────────
+// The app rounds aren't on the tracking sheet, so nothing said a round was
+// already labeled (Mathé, 2026-11-10). The button under the link box marks
+// the open round as labeled by this labeler (the punch workbook's "App
+// Rounds Done" tab, Code.js's doGetAppRoundsDone()); the picker's App rounds
+// tab then lists it green with a checkmark. Clicking again takes it back.
+let _appDone = null;          // {round link: [labeler, …]}, null = not fetched yet
+let _appDonePromise = null;
+
+function appDoneApply(result) {
+  // `appDone` is the script's marker: an older deployment answers an action
+  // it doesn't know with a success shape.
+  if (!result || result.status !== 'ok' || result.appDone !== 1) {
+    throw new Error((result && result.message) || 'the sheet script has no app rounds done yet');
+  }
+  _appDone = {};
+  for (const r of result.done || []) (_appDone[r.video_file] = _appDone[r.video_file] || []).push(r.labeler);
+}
+
+// `fresh` asks again: another labeler may have marked a round since.
+function fetchAppDone(fresh) {
+  if (_appDonePromise && !fresh) return _appDonePromise;
+  _appDonePromise = fetchJson(sheetUrl({ action: 'listAppRoundsDone' }), 20000)
+    .then(appDoneApply)
+    .catch((err) => { _appDonePromise = null; throw err; });
+  return _appDonePromise;
+}
+
+// Who marked this round as labeled.
+function appDoneNames(link) {
+  return (_appDone && _appDone[normalizeDriveUrl(link)]) || [];
+}
+
+// Shown only on an app round, and not to Admin or Analyst, who don't label.
+function refreshAppDoneButton() {
+  const btn = document.getElementById('btn-app-done');
+  if (!btn) return;
+  const link = document.getElementById('drive-link').value.trim();
+  btn.hidden = !appRoundId(link) || state.isAdmin || state.isAnalyst;
+  if (btn.hidden) return;
+  const done = appDoneNames(link).includes(labelerId());
+  btn.classList.toggle('done', done);
+  btn.textContent = done ? '✓ Labeling done' : 'Mark labeling done';
+  btn.title = done ? 'You marked this round as labeled. Click to take it back.'
+                   : 'Mark this round as labeled, so nobody labels it again.';
+  if (!_appDone) fetchAppDone().then(refreshAppDoneButton, () => {});
+}
+
+async function toggleAppDone() {
+  const btn = document.getElementById('btn-app-done');
+  const link = document.getElementById('drive-link').value.trim();
+  if (!appRoundId(link)) return;
+  if (!labelerId()) { showToast('Enter your name first.', 'error'); return; }
+  const done = !appDoneNames(link).includes(labelerId());
+  btn.disabled = true;
+  try {
+    appDoneApply(await fetchJson(sheetUrl({ action: 'setAppRoundDone', video: normalizeDriveUrl(link), done: done ? 1 : 0 }), 30000));
+    showToast(done ? 'Marked as labeled.' : 'No longer marked as labeled.', 'success');
+  } catch (err) {
+    showToast(`Could not save the mark: ${err.name === 'AbortError' ? 'timed out' : err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    refreshAppDoneButton();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('btn-app-done');
+  const input = document.getElementById('drive-link');
+  if (!btn || !input) return;
+  btn.addEventListener('click', toggleAppDone);
+  input.addEventListener('input', refreshAppDoneButton);
+  // After app.js's own DOMContentLoaded, which is what sets Admin / Analyst.
+  setTimeout(refreshAppDoneButton, 0);
+});

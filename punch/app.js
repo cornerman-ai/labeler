@@ -3251,6 +3251,7 @@ function resetVideoForNewLink() {
 
   if (typeof resetSkeletonState === 'function') resetSkeletonState();
   if (typeof resetPredictionsState === 'function') resetPredictionsState();
+  if (typeof resetAppCallouts === 'function') resetAppCallouts();
 }
 
 // ============================================================
@@ -3350,13 +3351,16 @@ function setupVideoPicker() {
     search.placeholder = mode === 'app' ? 'Search app rounds (id, kind, boxer)…' : 'Search videos…';
     renderList(search.value);
     if (mode === 'app' && !_appRounds) loadAppList();
+    // Someone may have marked a round as labeled since the list was drawn.
+    else if (mode === 'app') fetchAppDone(true).then(() => { if (mode === 'app') renderList(search.value); }, () => {});
   }
 
   async function loadAppList() {
     appError = null;
     try {
       if (!(await appSignedIn())) { appError = 'signed-out'; renderList(search.value); return; }
-      await fetchAppRounds();
+      // The labeling-done marks ride along; without them the list still shows.
+      await Promise.all([fetchAppRounds(), fetchAppDone().catch(() => {})]);
     } catch (err) {
       appError = err.message || String(err);
     }
@@ -3378,9 +3382,18 @@ function setupVideoPicker() {
     const q = filter.trim().toLowerCase();
     const rows = q ? _appRounds.filter((v) => v.name.toLowerCase().includes(q)) : _appRounds;
     if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matches</div>'; return; }
-    list.innerHTML = rows.map((v) =>
-      `<button type="button" class="vp-row"><span class="vp-n">${v.n}.</span><span class="vp-name">${escapeHtml(v.name)}</span><span class="vp-called" title="Punches the app detected · punches it called">${v.detected == null ? '–' : v.detected} detected · ${v.called || 0} called</span></button>`
-    ).join('');
+    // A round this labeler marked as labeled (app-rounds.js's Labeling done
+    // button) is green with a checkmark; other labelers' marks are a badge
+    // with their names. Admin and Analyst label nothing: any mark is green.
+    const me = labelerId();
+    const viewer = state.isAdmin || state.isAnalyst;
+    list.innerHTML = rows.map((v) => {
+      const names = appDoneNames(v.link);
+      const mine = viewer ? names.length > 0 : names.includes(me);
+      const others = viewer ? names : names.filter((n) => n !== me);
+      const badge = others.length ? `<span class="vp-ver vp-v-v1" title="Marked as labeled by ${escapeHtml(others.join(', '))}">✓ ${escapeHtml(others.join(', '))}</span>` : '';
+      return `<button type="button" class="vp-row${mine ? ' vp-done' : ''}"><span class="vp-n">${v.n}.</span><span class="vp-name">${mine ? '✓ ' : ''}${escapeHtml(v.name)}</span>${badge}<span class="vp-called" title="Punches the app detected · punches it called">${v.detected == null ? '–' : v.detected} detected · ${v.called || 0} called</span></button>`;
+    }).join('');
     Array.from(list.querySelectorAll('.vp-row')).forEach((el, i) => {
       el.addEventListener('click', () => pick(rows[i]));
     });
@@ -5156,12 +5169,16 @@ function buildSegLanes(container, markersLayer, overlay) {
   const playhead = document.getElementById('playhead');
   const probLane = document.getElementById('prob-lane');
   const unusableLayer = document.getElementById('unusable-markers');
+  const calloutLayer = document.getElementById('callout-markers');
+  if (calloutLayer && calloutLayer.parentNode === container) calloutLayer.remove();
   if (unusableLayer && unusableLayer.parentNode === container) unusableLayer.remove();
   if (markersLayer && markersLayer.parentNode === container) markersLayer.remove();
   if (playhead && playhead.parentNode === container) playhead.remove();
   if (probLane && probLane.parentNode === container) probLane.remove();
   container.innerHTML = '';
-  // Unusable over rounds, rounds over the lanes — headers for what they span.
+  // An app round's callouts on top, then unusable over rounds, rounds over
+  // the lanes — headers for what they span.
+  if (calloutLayer) container.appendChild(calloutLayer);
   if (unusableLayer) container.appendChild(unusableLayer);
   if (markersLayer) container.appendChild(markersLayer);
 
@@ -5405,6 +5422,8 @@ function renderTimelineOverlay() {
     start: r.start, end: Number.isFinite(r.end) ? r.end : duration, startIdx: r.startIdx, endIdx: r.endIdx,
   }));
   renderUnusableStrip(unusableLayer, overlay, unusable, duration, video);
+  // An app round's callouts (app-rounds.js) — its own ribbon, on top.
+  if (typeof renderCalloutStrip === 'function') renderCalloutStrip(duration, video);
 
   updatePlayhead();
 

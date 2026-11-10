@@ -14,7 +14,7 @@
        isn't there" and as a page half-running old code against new markup.
        Bump this string whenever any of the four assets below change; the
        query makes the URL new, so the browser has to re-fetch. -->
-  <link rel="stylesheet" href="punch.css?v=20260917h">
+  <link rel="stylesheet" href="punch.css?v=20261110c">
 </head>
 <body>
   <div id="app">
@@ -165,6 +165,10 @@
         <div id="video-picker-list"></div>
       </div>
       </div>
+      <!-- On an App rounds link only: marks the round as labeled by this
+           labeler, which the picker's App rounds tab shows green with a
+           checkmark. app-rounds.js's refreshAppDoneButton(). -->
+      <button type="button" id="btn-app-done" hidden>Mark labeling done</button>
 
       <!-- Same .src-field component as the link row above it — same height,
            fill, radius, trailing copy button and confirmation chip, and the
@@ -421,6 +425,9 @@
                    of a take that can't be used, e.g. the skeleton tracked
                    someone else. Shown only when the video has one; filled by
                    app.js's renderUnusableStrip(), dragged like rounds. -->
+              <!-- What the app called and when, on an App rounds video only.
+                   app-rounds.js's renderCalloutStrip() fills and shows it. -->
+              <div id="callout-markers" hidden></div>
               <div id="unusable-markers" hidden></div>
               <div id="round-markers"></div>
               <!-- The roll detector's held-out p(roll), under every lane.
@@ -919,8 +926,8 @@
        consumer. -->
   <script src="../shared/xlsx.full.min.js?v=20260917h"></script>
   <script src="predictions.js?v=20260917h"></script>
-  <script src="app-rounds.js?v=20261110b"></script>
-  <script src="app.js?v=20261110c"></script>
+  <script src="app-rounds.js?v=20261110c"></script>
+  <script src="app.js?v=20261110d"></script>
   <!-- After app.js: reads state.highlightedLabel, foreignOwnerName(), punchLabel(). -->
   <script src="export-clip.js?v=20260917h"></script>
   <!-- After app.js: reads computeProblems()/highlightLabel()/labelerId()/
@@ -935,6 +942,6 @@
        training type / stance into the <select>s, and ui.js has to read them
        back out to light the right segment. -->
   <script src="ui.js?v=20260919b"></script>
-  <script src="../shared/ui.js?v=20260919b"></script>
+  <script src="../shared/ui.js?v=20261110c"></script>
 </body>
 </html>
