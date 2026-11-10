@@ -27,7 +27,17 @@ const APP_TESTFLIGHT_CHANNELS = ['testflight', 'guided-beta', 'defense-beta'];
 // Rounds listed whatever build filmed them, picked by hand: a beginner's whole
 // first demo session, 3 rounds of 2 min, filmed on a dev build (2026-11-08;
 // Mathé, 2026-11-10: moved here from the beginner queue).
-const APP_ADDED_ROUNDS = ['20261108T100059-d743920b', '20261108T100408-1f0cfcdd', '20261108T100718-9400f8e6'];
+// Four of Arianne's drills from before the first TestFlight build (2026-11-06/07),
+// picked for their mix of punches: hooks, uppercuts, body hooks and one round of
+// any combination. The QA site reads no punches called for a round that old, so
+// they're counted here (189 in all; Mathé, 2026-11-10: up to 200 to label).
+const APP_ADDED_CALLED = {
+  '20261106T083748-a83a772f': 48, // three combinations: 1-4, 2-3, 1-2-3-4
+  '20261106T091207-9103be81': 40, // 2-5 or 1-6
+  '20261107T081804-b250d630': 40, // head then body: 4, 3 body / 3, 4 body
+  '20261107T095822-477220b6': 61, // any combination: 13 different calls
+};
+const APP_ADDED_ROUNDS = ['20261108T100059-d743920b', '20261108T100408-1f0cfcdd', '20261108T100718-9400f8e6', ...Object.keys(APP_ADDED_CALLED)];
 const APP_LINK_RE = /^https:\/\/ambo-qa\.vercel\.app\/#\/s\/([\w-]+)/;
 
 let _appAuth = null;          // firebase-auth module + auth instance, once loaded
@@ -83,7 +93,7 @@ async function appApi(path) {
 // APP_ADDED_ROUNDS), with footage, that called punches — or a final check,
 // which is scored on the punches thrown whatever was called (Mathé, 2026-11-10).
 function appRoundWanted(s) {
-  return (APP_TESTFLIGHT_CHANNELS.includes(s.channel) || APP_ADDED_ROUNDS.includes(s.id)) && s.hasVideo && (s.called > 0 || s.kind === 'check');
+  return (APP_TESTFLIGHT_CHANNELS.includes(s.channel) || APP_ADDED_ROUNDS.includes(s.id)) && s.hasVideo && (s.called > 0 || s.kind === 'check' || s.id in APP_ADDED_CALLED);
 }
 
 function appRoundName(s) {
@@ -102,7 +112,7 @@ function fetchAppRounds() {
       const owner = s.owner || 'anonymous';
       if (!byOwner.has(owner)) byOwner.set(owner, []);
       byOwner.get(owner).push({
-        name: appRoundName(s), owner, link: `https://ambo-qa.vercel.app/#/s/${s.id}`, called: s.called, detected: s.detected,
+        name: appRoundName(s), owner, link: `https://ambo-qa.vercel.app/#/s/${s.id}`, called: s.called ?? APP_ADDED_CALLED[s.id], detected: s.detected,
       });
     }
     _appRounds = [...byOwner.values()].flat();
