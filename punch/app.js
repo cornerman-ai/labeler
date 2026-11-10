@@ -3588,6 +3588,17 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // When the request went out — a save confirmed after this may not be in
   // the reply. See isProtectedLabel().
   const requestedAt = Date.now();
+  // Phase 2's request goes out now, beside phase 1's, instead of after it:
+  // the two reads don't depend on each other, and one after the other they
+  // kept a new video behind the dialog for ~20s (measured 2026-11-10: ~9s
+  // own rows, then ~12s everyone else's). Its reply is still only applied
+  // below, after phase 1's. See there for who asks at all.
+  const wantsForeign = isFreshLoad || state.isAdmin;
+  const foreignRequest = wantsForeign
+    ? fetchJson(sheetUrl({ action: 'listForeign', video: driveLink }), 60000)
+    : null;
+  // Phase 1 can return early (error, superseded) without ever awaiting it.
+  if (foreignRequest) foreignRequest.catch(() => {});
   try {
     const result = await fetchJson(sheetUrl({ action: 'list', video: driveLink }), 30000);
     if (!current()) return;                    // superseded — drop it
@@ -3655,7 +3666,10 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
       // Advance the dialog only if there is a second half still coming.
       // Anything else — an error, a supersede — takes it down, so it can
       // never sit there loading something nobody is loading.
-      if (phase1ok) setLoadingStage('foreign');
+      // Admin and Analyst own no rows, so for them the second half IS the
+      // video. A labeler's own rows are in and editable: the dialog goes,
+      // and everyone else's fold into the timeline when they arrive.
+      if (phase1ok && (state.isAdmin || state.isAnalyst)) setLoadingStage('foreign');
       else hideLoadingDialog();
       // Phase 2 (and the seedProblemsBaseline() call that un-suppresses)
       // only runs below when phase 1 actually succeeded — on a failure this
@@ -3682,11 +3696,11 @@ async function fetchLabelsFromSheet(isFreshLoad = false) {
   // just created comes back as somebody else's FOREIGN row, and until that
   // arrives the optimistic local copy has no owner to write a later edit
   // back to. See mergeForeignPunchLabels(), which adopts it in place.
-  if (!isFreshLoad && !state.isAdmin) return;
+  if (!wantsForeign) return;
 
   try {
-    const foreignRequestedAt = Date.now();
-    const fgn = await fetchJson(sheetUrl({ action: 'listForeign', video: driveLink }), 60000);
+    const foreignRequestedAt = requestedAt;
+    const fgn = await foreignRequest;
     if (!current()) return;
     if (fgn.status === 'error') {
       console.error('Foreign fetch error:', fgn.message);

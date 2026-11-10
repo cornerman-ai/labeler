@@ -205,6 +205,34 @@ function sameLabelAsRow(rowVals, cols, p) {
   return rowStart === reqStart;
 }
 
+// One video's rows from a tab, without reading the whole tab: the header,
+// then the video_file column alone, then one block from the video's first
+// row to its last (a video's rows normally sit together — `add` inserts
+// among them; scattered rows only make that block bigger).
+// sheet.getDataRange().getValues() on Labeled Data John (25,735 rows × 26
+// columns) was most of the ~9 s a video's own labels took to load, and of
+// the ~12 s for everyone else's (measured 2026-11-10); every load paid it
+// to keep a few dozen rows.
+// Returns { cols, rows: [{ n: the 1-based sheet row, v: its values }] }.
+function readVideoRows(sheet, video) {
+  var out = { cols: findColumns([]), rows: [] };
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return out;
+  out.cols = findColumns(sheet.getRange(1, 1, 1, lastCol).getValues()[0]);
+  if (out.cols.video < 0 || lastRow < 2) return out;
+  var target = normalizeDriveUrl(video);
+  var links = sheet.getRange(2, out.cols.video + 1, lastRow - 1, 1).getValues();
+  var hits = [];
+  for (var i = 0; i < links.length; i++) {
+    if (normalizeDriveUrl(links[i][0]) === target) hits.push(i + 2);
+  }
+  if (!hits.length) return out;
+  var first = hits[0];
+  var block = sheet.getRange(first, 1, hits[hits.length - 1] - first + 1, lastCol).getValues();
+  for (var h = 0; h < hits.length; h++) out.rows.push({ n: hits[h], v: block[hits[h] - first] });
+  return out;
+}
+
 // Find the next available ID (max existing + 1)
 function nextId(data, cols) {
   var maxId = 0;
@@ -639,27 +667,44 @@ function doGet(e) {
 
   // === LIST labels for a video ===
   if (action === 'list' && p.video) {
-    var data = sheet.getDataRange().getValues();
-    var cols = findColumns(data[0]);
-    // Ensure every row has a stable punch_uuid before returning anything —
-    // backfills on the fly so downstream consumers (rules labeler) always
-    // see a uuid to join on.
-    var ensured = ensureUuidColumn(sheet, data, cols);
-    data = ensured.data; cols = ensured.cols;
-    var labels = [];
-    for (var i = 1; i < data.length; i++) {
-      if (normalizeDriveUrl(data[i][cols.video]) === normalizeDriveUrl(p.video)) {
-        labels.push({
-          id: parseInt(data[i][cols.id]) || (i + 1),
-          punch_uuid: cols.uuid >= 0 ? String(data[i][cols.uuid] || '') : '',
-          videoName: data[i][cols.video],
-          angle: cols.angle >= 0 ? data[i][cols.angle] : '',
-          stance: cols.stance >= 0 ? data[i][cols.stance] : '',
-          punch: data[i][cols.punch],
-          startTime: cols.start >= 0 ? toSeconds(data[i][cols.start]) : 0,
-          endTime: cols.end >= 0 ? toSeconds(data[i][cols.end]) : 0,
-        });
+    // Just this video's rows — see readVideoRows() for why not the whole tab.
+    var got = readVideoRows(sheet, p.video);
+    var cols = got.cols;
+    // Every row goes out with a stable punch_uuid, so downstream consumers
+    // (rules labeler) always see a uuid to join on. A tab with no uuid
+    // column, or a row of this video without one, takes the old whole-tab
+    // read, which backfills them (ensureUuidColumn) — once; after that the
+    // video is back on the quick read.
+    var needsUuid = cols.uuid < 0;
+    for (var u = 0; u < got.rows.length && !needsUuid; u++) {
+      var uv = got.rows[u].v[cols.uuid];
+      if (uv === '' || uv == null) needsUuid = true;
+    }
+    if (needsUuid) {
+      var data = sheet.getDataRange().getValues();
+      cols = findColumns(data[0]);
+      var ensured = ensureUuidColumn(sheet, data, cols);
+      data = ensured.data; cols = ensured.cols;
+      got = { cols: cols, rows: [] };
+      for (var i = 1; i < data.length; i++) {
+        if (normalizeDriveUrl(data[i][cols.video]) === normalizeDriveUrl(p.video)) {
+          got.rows.push({ n: i + 1, v: data[i] });
+        }
       }
+    }
+    var labels = [];
+    for (var g = 0; g < got.rows.length; g++) {
+      var rv = got.rows[g].v;
+      labels.push({
+        id: parseInt(rv[cols.id]) || got.rows[g].n,
+        punch_uuid: cols.uuid >= 0 ? String(rv[cols.uuid] || '') : '',
+        videoName: rv[cols.video],
+        angle: cols.angle >= 0 ? rv[cols.angle] : '',
+        stance: cols.stance >= 0 ? rv[cols.stance] : '',
+        punch: rv[cols.punch],
+        startTime: cols.start >= 0 ? toSeconds(rv[cols.start]) : 0,
+        endTime: cols.end >= 0 ? toSeconds(rv[cols.end]) : 0,
+      });
     }
     // Own rows only — deliberately just this one sheet. Everyone else's rows
     // (and the shared round markers) come from the separate `listForeign`
@@ -2108,7 +2153,6 @@ function putVideoRowCacheUnlessWritten(cache, video, genBefore, payload) {
 // collectForeignRows() treat those as round-markers-only — exactly what the
 // old collectForeignPunchLabels() did by skipping such a sheet outright.
 function scanAllRowsForVideo(pss, video) {
-  var target = normalizeDriveUrl(video);
   var out = [];
   var sawRoundMarker = false;
   var sheets = pss.getSheets();
@@ -2120,20 +2164,20 @@ function scanAllRowsForVideo(pss, video) {
     // Not a teammate — see NON_PERSON_LABELER_SHEETS.
     if (isNonPersonLabelerSheet(name)) continue;
     if (sheet.getLastRow() < 2) continue;
-    var data = sheet.getDataRange().getValues();
-    var cols = findColumns(data[0]);
+    var got = readVideoRows(sheet, video);
+    var cols = got.cols;
     if (cols.punch < 0 || cols.video < 0 || cols.start < 0) continue;
     var hasEnd = cols.end >= 0;
-    for (var r = 1; r < data.length; r++) {
-      var lbl = String(data[r][cols.punch] || '').toLowerCase().trim();
+    for (var r = 0; r < got.rows.length; r++) {
+      var vals = got.rows[r].v, n = got.rows[r].n;
+      var lbl = String(vals[cols.punch] || '').toLowerCase().trim();
       if (!lbl) continue;
-      if (normalizeDriveUrl(data[r][cols.video]) !== target) continue;
       if (lbl === 'round_start' || lbl === 'round_end') sawRoundMarker = true;
       out.push({
-        id: cols.id >= 0 ? (parseInt(data[r][cols.id]) || (r + 1)) : (r + 1),
+        id: cols.id >= 0 ? (parseInt(vals[cols.id]) || n) : n,
         punch: lbl,
-        startTime: toSeconds(data[r][cols.start]),
-        endTime: hasEnd ? toSeconds(data[r][cols.end]) : null,
+        startTime: toSeconds(vals[cols.start]),
+        endTime: hasEnd ? toSeconds(vals[cols.end]) : null,
         sheet: name,
       });
     }
@@ -2153,17 +2197,17 @@ function scanAllRowsForVideo(pss, video) {
   if (!sawRoundMarker) {
     var combined = pss.getSheetByName(COMBINED_NAME);
     if (combined && combined.getLastRow() >= 2) {
-      var cdata = combined.getDataRange().getValues();
-      var ccols = findColumns(cdata[0]);
+      var cgot = readVideoRows(combined, video);
+      var ccols = cgot.cols;
       if (ccols.punch >= 0 && ccols.video >= 0 && ccols.start >= 0) {
-        for (var cr = 1; cr < cdata.length; cr++) {
-          var clbl = String(cdata[cr][ccols.punch] || '').toLowerCase().trim();
+        for (var cr = 0; cr < cgot.rows.length; cr++) {
+          var cvals = cgot.rows[cr].v, cn = cgot.rows[cr].n;
+          var clbl = String(cvals[ccols.punch] || '').toLowerCase().trim();
           if (clbl !== 'round_start' && clbl !== 'round_end') continue;
-          if (normalizeDriveUrl(cdata[cr][ccols.video]) !== target) continue;
           out.push({
-            id: ccols.id >= 0 ? (parseInt(cdata[cr][ccols.id]) || (cr + 1)) : (cr + 1),
+            id: ccols.id >= 0 ? (parseInt(cvals[ccols.id]) || cn) : cn,
             punch: clbl,
-            startTime: toSeconds(cdata[cr][ccols.start]),
+            startTime: toSeconds(cvals[ccols.start]),
             endTime: null,
             sheet: COMBINED_NAME,
           });
