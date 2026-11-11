@@ -101,22 +101,25 @@ function appRoundName(s) {
   return `${s.id} · ${what}${s.endedEarly ? ' (ended early)' : ''}`;
 }
 
-// {name, owner, link, n, called, detected} rows for the picker (detected: punches the app's classifier found,
-// null on a round from before it saved them), grouped per boxer: the boxer with the newest round first, each
-// boxer's rounds newest first (the API's order). Throws when not signed in.
-function fetchAppRounds() {
-  if (_appRoundsPromise) return _appRoundsPromise;
+// {name, owner, link, n, called, detected, listed} rows for the picker (detected: punches the app's classifier
+// found, null on a round from before it saved them), grouped per boxer: the boxer with the newest round first,
+// each boxer's rounds newest first (the API's order). Every round with footage is a row, so the picker's search
+// finds any of them by round id or boxer; `listed` (and a number) marks the ones worth labeling, which is all
+// the list shows without a search. `fresh` asks the QA site again. Throws when not signed in.
+function fetchAppRounds(fresh) {
+  if (_appRoundsPromise && !fresh) return _appRoundsPromise;
   _appRoundsPromise = appApi('/api/sessions').then(({ sessions }) => {
     const byOwner = new Map();
-    for (const s of sessions.filter(appRoundWanted)) {
+    for (const s of sessions.filter((x) => x.hasVideo)) {
       const owner = s.owner || 'anonymous';
       if (!byOwner.has(owner)) byOwner.set(owner, []);
       byOwner.get(owner).push({
         name: appRoundName(s), owner, link: `https://ambo-qa.vercel.app/#/s/${s.id}`, called: s.called ?? APP_ADDED_CALLED[s.id], detected: s.detected,
+        listed: appRoundWanted(s),
       });
     }
     _appRounds = [...byOwner.values()].flat();
-    _appRounds.forEach((v, i) => { v.n = i + 1; });
+    _appRounds.filter((v) => v.listed).forEach((v, i) => { v.n = i + 1; });
     return _appRounds;
   }).catch((err) => { _appRoundsPromise = null; throw err; });
   return _appRoundsPromise;
